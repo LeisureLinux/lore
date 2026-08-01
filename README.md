@@ -1,17 +1,29 @@
 # 📜 LeisureLinux Lore
 
-> 技术传说，记录于此。
+> Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库
 
-LeisureLinux 的技术写作存档——公众号文章源文件 + GitHub Pages 博客。
+[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-059669)](https://leisurelinux.github.io/lore)
+[![License](https://img.shields.io/badge/license-CC%20BY--SA%204.0-blue)](https://creativecommons.org/licenses/by-sa/4.0/)
+[![LLMs.txt](https://img.shields.io/badge/LLMs-txt-8B5CF6)](https://leisurelinux.github.io/lore/llms.txt)
 
-## 📖 文章列表
+**LeisureLinux Lore** 是一份面向 **Linux 内核工程师、SRE、DevSecOps 从业者** 的深度技术写作存档。内容覆盖 Linux 内核机制、TLS/PKI 信任链、网络协议栈安全、CVE 漏洞分析、DevOps 工具链与 AI 安全运营。
 
-| 日期 | 标题 | 标签 |
-| 2026-08-01 | [这个开源项目让 GitHub .deb 安装从 5 步变成 1 步](https://leisurelinux.github.io/lore/articles/2026-08-01_ghdeb-deb-installer/) | GitHub · Debian · CLI · 包管理 |
+每篇文章提供 **生产级配置、诊断命令与架构级分析**，适合高级工程师直接参考落地。
+
+---
+
+## 📖 最新文章
+
+| 日期 | 标题 | 领域 |
 |------|------|------|
-| 2026-07-30 | [微软的安全AI不拼参数了](https://leisurelinux.github.io/lore/articles/2026-07-30_microsoft-multi-model-cyber-stack/) | AI · 网络安全 · 微软 · 多模型编排 |
-| 2026-08-01 | [一文讲透 Linux TLS 信任库](https://leisurelinux.github.io/lore/articles/2026-08-01_tls-trust-store/) | Linux · TLS · Java · 国密 |
-| 2026-07-26 | [CVE-2026-53921：DHCPv6 拿下 Root](https://leisurelinux.github.io/lore/articles/2026-07-26_dhcpv6-slaac-vuln/) | CVE · DHCPv6 · SLAAC · OpenWrt |
+| 2026-08-01 | [一文讲透 Linux TLS 信任库：从 OpenSSL 到 Java/Go/Python/Node.js 的证书链校验全景](https://leisurelinux.github.io/lore/articles/2026-08-01_tls-trust-store/) | Linux · TLS · PKI · 国密 |
+| 2026-08-01 | [这个开源项目让 GitHub .deb 安装从 5 步变成 1 步](https://leisurelinux.github.io/lore/articles/2026-08-01_ghdeb-deb-installer/) | Debian · CLI · 包管理 |
+| 2026-07-30 | [微软的安全AI不拼参数了：小模型编排打赢 GPT 5.4](https://leisurelinux.github.io/lore/articles/2026-07-30_microsoft-multi-model-cyber-stack/) | AI · 网络安全 · 多模型编排 |
+| 2026-07-26 | [CVE-2026-53921：DHCPv6 拿下 Root 权限](https://leisurelinux.github.io/lore/articles/2026-07-26_dhcpv6-slaac-vuln/) | CVE · DHCPv6 · OpenWrt |
+
+👉 [**查看全部文章 →**](https://leisurelinux.github.io/lore)
+
+---
 
 ## 🏗️ 仓库结构
 
@@ -20,24 +32,50 @@ lore/
 ├── articles/                    # Markdown 源文件（唯一事实源）
 │   └── YYYY-MM-DD_slug/
 │       ├── article.md           # 文章正文
-│       └── metadata.yaml        # 元数据（标题、标签、发布时间）
-├── docs/                        # GitHub Pages 静态站点
+│       └── metadata.yaml        # 元数据（标题、标签、SEO 描述）
+├── docs/                        # GitHub Pages 静态站点（自动生成）
 │   ├── index.html               # 文章列表首页
+│   ├── sitemap.xml              # 搜索引擎站点地图
+│   ├── robots.txt               # 爬虫规则
+│   ├── llms.txt                 # LLM 语义索引（GEO 优化）
 │   └── articles/
 │       └── YYYY-MM-DD_slug/
-│           └── index.html       # 文章页面
+│           └── index.html       # 文章页面（含 JSON-LD 结构化数据）
+├── build.py                     # 静态站点构建脚本
+├── llms.txt                     # LLM 语义索引源文件
 └── README.md
 ```
 
 ## 📝 发布流程
 
 ```
-写 Markdown → 提交到 articles/ → GitHub Actions 自动构建 → 发布到公众号 + Pages
+写 Markdown → 提交到 articles/ → GitHub Actions 自动构建 → 发布到公众号 + GitHub Pages
 ```
+
+构建命令（本地预览）：
+
+```bash
+pip install pyyaml
+python build.py
+# 生成的站点位于 docs/ 目录
+```
+
+## 🤖 LLM / AI 集成
+
+本仓库提供 [`llms.txt`](https://leisurelinux.github.io/lore/llms.txt) 语义索引文件，遵循 [llmstxt.org](https://llmstxt.org) 规范，方便 LLM 应用（ChatGPT、Perplexity、Claude 等）快速索引和引用本仓库的技术内容。
+
+## 🏷️ 技术标签
+
+`linux-kernel` · `tls` · `pki` · `devsecops` · `network-security` · `cve-analysis` · `sysadmin` · `infrastructure` · `ebpf` · `systemd` · `openssl` · `debian` · `ai-security`
+
+---
 
 ## ✍️ 作者
 
 **LeisureLinux** — 大智若愚，精通 Linux 底层架构。
+
+- 📧 albertxu@freelamp.com
+- 🐙 [GitHub](https://github.com/LeisureLinux)
 
 ---
 
