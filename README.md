@@ -8,6 +8,7 @@ LeisureLinux 的技术写作存档——公众号文章源文件 + GitHub Pages 
 
 | 日期 | 标题 | 标签 |
 |------|------|------|
+| 2026-07-30 | [微软的安全AI不拼参数了](https://leisurelinux.github.io/lore/articles/2026-07-30_microsoft-multi-model-cyber-stack/) | AI · 网络安全 · 微软 · 多模型编排 |
 | 2026-08-01 | [一文讲透 Linux TLS 信任库](https://leisurelinux.github.io/lore/articles/2026-08-01_tls-trust-store/) | Linux · TLS · Java · 国密 |
 | 2026-07-26 | [CVE-2026-53921：DHCPv6 拿下 Root](https://leisurelinux.github.io/lore/articles/2026-07-26_dhcpv6-slaac-vuln/) | CVE · DHCPv6 · SLAAC · OpenWrt |
 
