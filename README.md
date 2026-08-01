@@ -7,6 +7,7 @@ LeisureLinux 的技术写作存档——公众号文章源文件 + GitHub Pages 
 ## 📖 文章列表
 
 | 日期 | 标题 | 标签 |
+| 2026-08-01 | [这个开源项目让 GitHub .deb 安装从 5 步变成 1 步](https://leisurelinux.github.io/lore/articles/2026-08-01_ghdeb-deb-installer/) | GitHub · Debian · CLI · 包管理 |
 |------|------|------|
 | 2026-07-30 | [微软的安全AI不拼参数了](https://leisurelinux.github.io/lore/articles/2026-07-30_microsoft-multi-model-cyber-stack/) | AI · 网络安全 · 微软 · 多模型编排 |
 | 2026-08-01 | [一文讲透 Linux TLS 信任库](https://leisurelinux.github.io/lore/articles/2026-08-01_tls-trust-store/) | Linux · TLS · Java · 国密 |
