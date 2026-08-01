@@ -680,7 +680,22 @@ def main():
         (DOCS_DIR / "llms.txt").write_text(llms_src.read_text(encoding='utf-8'), encoding='utf-8')
         print("✅ 复制 LLM 索引：docs/llms.txt")
     
-    total_files = len(articles) + 3  # 首页 + 文章 + sitemap + robots
+    # 复制静态验证文件到 docs 目录（Google/Bing 等搜索引擎验证）
+    static_files = [
+        "googlec29651f57d804644.html",  # Google Search Console 验证
+        # 可在此添加其他验证文件，如：
+        # "BingSiteAuth.xml",  # Bing 验证
+    ]
+    
+    copied_static = 0
+    for filename in static_files:
+        src_file = LORE_DIR / filename
+        if src_file.exists():
+            (DOCS_DIR / filename).write_text(src_file.read_text(encoding='utf-8'), encoding='utf-8')
+            print(f"✅ 复制验证文件：docs/{filename}")
+            copied_static += 1
+    
+    total_files = len(articles) + 3 + copied_static  # 首页 + 文章 + sitemap + robots
     print(f"\n🎉 构建完成！共生成 {total_files} 个文件（含 SEO/GEO 优化）")
 
 
