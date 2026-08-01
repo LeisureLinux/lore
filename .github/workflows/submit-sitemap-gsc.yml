@@ -1,0 +1,68 @@
+# Google Search Console API 自动提交 Sitemap
+# 每次部署到 GitHub Pages 后自动通知 Google
+#
+# 前置配置：
+# 1. 在 Google Cloud Console 创建 Service Account
+# 2. 下载 JSON key，将内容添加到 GitHub Secret: GSC_SERVICE_ACCOUNT_JSON
+# 3. 在 GSC 中添加 Service Account 邮箱为「已验证所有者」
+#
+# 参考：https://developers.google.com/webmaster-tools/v1/api_reference
+
+name: Submit Sitemap to Google Search Console
+
+on:
+  # 部署完成后触发
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+    branches: [main]
+  # 手动触发
+  workflow_dispatch:
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    # 仅在部署成功时执行
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install google-auth google-api-python-client
+      
+      - name: Write Service Account key
+        env:
+          GSC_KEY_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GSC_KEY_JSON" ]; then
+            echo "⚠️  未配置 GSC_SERVICE_ACCOUNT_JSON Secret，跳过 GSC 提交"
+            echo "📝 配置方法："
+            echo "   1. 在 Google Cloud Console 创建 Service Account"
+            echo "   2. 下载 JSON key 文件"
+            echo "   3. 在仓库 Settings → Secrets → Actions 中添加："
+            echo "      Name: GSC_SERVICE_ACCOUNT_JSON"
+            echo "      Value: JSON key 文件的完整内容"
+            echo "   4. 在 GSC 中添加 Service Account 邮箱为「已验证所有者」"
+            exit 0
+          fi
+          echo "$GSC_KEY_JSON" > /tmp/gsc-key.json
+      
+      - name: Submit sitemap to GSC
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: /tmp/gsc-key.json
+        run: |
+          python scripts/submit_sitemap_to_gsc.py
+        continue-on-error: true
+      
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/gsc-key.json

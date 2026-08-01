@@ -1,0 +1,65 @@
+# IndexNow 自动提交（Bing/Yandex/DuckDuckGo）
+# 每次部署到 GitHub Pages 后自动通知搜索引擎
+# 参考：https://www.indexnow.org/
+
+name: IndexNow Sitemap Submission
+
+on:
+  # 部署完成后触发
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+    branches: [main]
+  # 手动触发
+  workflow_dispatch:
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    # 仅在部署成功时执行
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Submit sitemap to IndexNow
+        env:
+          # 站点 URL（不带尾部斜杠）
+          SITE_URL: https://leisurelinux.github.io/lore
+          # Sitemap URL
+          SITEMAP_URL: https://leisurelinux.github.io/lore/sitemap.xml
+        run: |
+          echo "🚀 Submitting sitemap to IndexNow-compatible search engines..."
+          
+          # IndexNow API endpoint
+          INDEXNOW_URL="https://api.indexnow.org/indexnow"
+          
+          # 构建请求 payload
+          # 格式：URL=<site_url>&url=<sitemap_url>&type=sitemap
+          PAYLOAD="url=${SITE_URL}&sitemap=${SITEMAP_URL}"
+          
+          # 提交到 IndexNow（支持 Bing/Yandex/DuckDuckGo）
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${INDEXNOW_URL}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "${PAYLOAD}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response: ${BODY}"
+          echo "HTTP Status: ${HTTP_CODE}"
+          
+          # 检查响应状态
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Sitemap submitted successfully to IndexNow!"
+          elif [ "$HTTP_CODE" = "202" ]; then
+            echo "✅ Sitemap accepted for processing."
+          else
+            echo "⚠️  Submission returned status ${HTTP_CODE}"
+            # 不失败 workflow，因为 IndexNow 是可选的
+          fi
+          
+          echo ""
+          echo "📝 Note: Google does not support IndexNow."
+          echo "For Google, submit sitemap manually at: https://search.google.com/search-console"
