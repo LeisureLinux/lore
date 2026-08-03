@@ -16,6 +16,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-08-04 | [别急着给 AI 排岗位——读完麦肯锡《Rewired》我的一点不同意见](https://leisurelinux.github.io/lore/articles/2026-08-04_rewired-dont-hire-agent-managers/) | AI · 组织管理 · 管理幅度 |
 | 2026-08-04 | [你的下一个下属，是个 AI——麦肯锡《Rewired》的答案](https://leisurelinux.github.io/lore/articles/2026-08-04_rewired-agent-managers/) | AI · 组织管理 · 智能体 |
 | 2026-08-01 | [一文讲透 Linux TLS 信任库：从 OpenSSL 到 Java/Go/Python/Node.js 的证书链校验全景](https://leisurelinux.github.io/lore/articles/2026-08-01_tls-trust-store/) | Linux · TLS · PKI · 国密 |
 | 2026-08-01 | [这个开源项目让 GitHub .deb 安装从 5 步变成 1 步](https://leisurelinux.github.io/lore/articles/2026-08-01_ghdeb-deb-installer/) | Debian · CLI · 包管理 |
