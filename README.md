@@ -5,6 +5,7 @@
 [![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-059669)](https://leisurelinux.github.io/lore)
 [![License](https://img.shields.io/badge/license-CC%20BY--SA%204.0-blue)](https://creativecommons.org/licenses/by-sa/4.0/)
 [![LLMs.txt](https://img.shields.io/badge/LLMs-txt-8B5CF6)](https://leisurelinux.github.io/lore/llms.txt)
+[![RSS](https://img.shields.io/badge/RSS-feed-FF6600)](https://leisurelinux.github.io/lore/rss.xml)
 
 **LeisureLinux Lore** 是一份面向 **Linux 内核工程师、SRE、DevSecOps 从业者** 的深度技术写作存档。内容覆盖 Linux 内核机制、TLS/PKI 信任链、网络协议栈安全、CVE 漏洞分析、DevOps 工具链与 AI 安全运营。
 
@@ -66,6 +67,8 @@ python build.py
 ## 🤖 LLM / AI 集成
 
 本仓库提供 [`llms.txt`](https://leisurelinux.github.io/lore/llms.txt) 语义索引文件，遵循 [llmstxt.org](https://llmstxt.org) 规范，方便 LLM 应用（ChatGPT、Perplexity、Claude 等）快速索引和引用本仓库的技术内容。
+
+同时提供 RSS 订阅源：**[`rss.xml`](https://leisurelinux.github.io/lore/rss.xml)**，配合浏览器 RSS 插件或阅读器即可订阅文章更新。
 
 ## 🏷️ 技术标签
 
