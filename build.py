@@ -51,6 +51,8 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="FreeLAMP.com — 技术传说">
   <meta name="twitter:description" content="{site_description}">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
 
   <!-- JSON-LD 结构化数据：WebSite + SearchAction -->
   <script type="application/ld+json">
@@ -198,6 +200,8 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="{title}">
   <meta name="twitter:description" content="{meta_description}">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
 
   <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
   <script type="application/ld+json">
