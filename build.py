@@ -178,6 +178,43 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
     </div>
   </footer>
 
+  <script>
+    // 动态拉取 GitHub Discussions 评论数，显示到首页"参与讨论"按钮
+    (function () {{
+      var KEY = 'freelamp_discussions';
+      var map = {{}};
+      try {{ map = JSON.parse(localStorage.getItem(KEY) || '{{}}') || {{}}; }} catch (e) {{}}
+
+      function norm(p) {{ return String(p || '').replace(/^\/+|\/+$/g, ''); }}
+
+      function apply() {{
+        document.querySelectorAll('.comment-link').forEach(function (btn) {{
+          var path = norm(btn.getAttribute('data-path'));
+          var n = map[path];
+          if (typeof n === 'number' && n > 0) {{
+            btn.textContent = '💬 ' + n;
+            btn.title = '已有 ' + n + ' 条点评，点击参与讨论';
+          }}
+        }});
+      }}
+      apply();
+
+      fetch('https://api.github.com/repos/LeisureLinux/lore/discussions?per_page=100')
+        .then(function (r) {{ if (!r.ok) throw new Error(r.status); return r.json(); }})
+        .then(function (list) {{
+          if (!Array.isArray(list)) return;
+          map = {{}};
+          list.forEach(function (d) {{
+            if (d && typeof d.title === 'string' && typeof d.comments === 'number') {{
+              map[norm(d.title)] = d.comments;
+            }}
+          }});
+          try {{ localStorage.setItem(KEY, JSON.stringify(map)); }} catch (e) {{}}
+          apply();
+        }})
+        .catch(function () {{}});
+    }})();
+  </script>
 </body>
 </html>"""
 
@@ -689,7 +726,7 @@ def build_index(articles):
         </a>
         <div class="article-tags">{tags_html}</div>
         <div class="article-meta">
-          <a class="comment-link" href="articles/{slug}/#comments">💬 参与讨论</a>
+          <a class="comment-link" href="articles/{slug}/#comments" data-path="articles/{slug}/">💬 参与讨论</a>
         </div>
       </li>"""
         articles_html.append(article_html)
