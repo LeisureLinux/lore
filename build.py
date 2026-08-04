@@ -737,7 +737,10 @@ def build_article_page(article):
     canonical_url = f"{SITE_URL}/articles/{article['slug']}/"
     
     tags_html = ''.join([f'<a itemprop="keywords" href="/tags/{quote(tag)}/">{tag}</a>' for tag in tags])
-    content_html = markdown_to_html(article['content'])
+
+    # 去掉正文开头的重复标题（页面顶部 post-title 已展示标题）
+    article_content = re.sub(r'^\s*#\s+[^\n]*\n?', '', article['content'], count=1, flags=re.MULTILINE)
+    content_html = markdown_to_html(article_content)
     
     # 生成 JSON-LD
     json_ld = build_json_ld(meta, canonical_url, article['content'])
