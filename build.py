@@ -142,7 +142,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 <body>
   <header>
     <div class="container">
-      <h1>📜 LeisureLinux Lore</h1>
+      <h1><a href="/" style="color:#111827; text-decoration:none;">FreeLAMP.com 像风一样自由</a></h1>
       <p>技术传说，记录于此。</p>
       <div class="tags">
         <span>Linux</span><span>内核</span><span>安全</span><span>开源</span>
@@ -828,7 +828,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>关于 FreeLAMP — LeisureLinux Lore</title>
-  <meta name="description" content="FreeLAMP.com 由徐永久（LeisureLinux）于 2001 年创立，是一个宣讲自由软件、供系统管理员和开放源码爱好者交流技术的网站。这里记录了这个域名二十多年的历史、作者介绍，以及重开博客的初心。">
+  <meta name="description" content="FreeLAMP.com 于 2001 年创立，是一个宣讲自由软件、供系统管理员和开放源码爱好者交流技术的网站。这里记录了这个域名二十多年的历史、作者介绍，以及重开博客的初心。">
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{site_url}/about-freelamp.html">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -931,16 +931,16 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
   <main class="container">
     <article class="post-content">
 
-      <p>你好，我是 <strong>徐永久（LeisureLinux / Albert Xu）</strong>，系统管理员出身，自由软件的忠实信徒，爱折腾。这个网站叫 <strong>FreeLAMP.com</strong>，它比很多人的 QQ 号还老。借着这次用现代工具把它重新点亮，我想把这个域名的故事、我自己，以及为什么要重新开这个博客，好好写一写。</p>
+      <p>你好，我是 <strong>老徐</strong>，系统管理员出身，自由软件的忠实信徒，爱折腾。这个网站叫 <strong>FreeLAMP.com</strong>，它比很多人的 QQ 号还老。借着这次用现代工具把它重新点亮，我想把这个域名的故事、我自己，以及为什么要重新开这个博客，好好写一写。</p>
 
       <h2>一、这个网站的历史</h2>
       <ul class="timeline">
-        <li><span class="yr">2001 年 3 月</span>我（徐永久）在宁波电信创立了 FreeLAMP.com，最初托管于宁波电信。它是系统管理员和开放源码爱好者交流技术的早期中文站点之一。</li>
+        <li><span class="yr">2001 年 3 月</span>我注册了 FreeLAMP.com，最初托管于宁波电信。它是系统管理员和开放源码爱好者交流技术的早期中文站点之一。起源于 O'Reilly 的 OnLAMP.com </li>
         <li><span class="yr">2001–2007</span>期间站点搬迁到北京网通。</li>
         <li><span class="yr">2008 年底</span>托管于上海某电信机房。</li>
         <li><span class="yr">2009 年</span>搬迁至上海浦东沈家弄机房。</li>
         <li><span class="yr">2010 年 12 月</span>搬迁到 GoDaddy。</li>
-        <li><span class="yr">2016 年 11 月</span>搬迁到免费的 AWS 云端。</li>
+        <li><span class="yr">2016 年 11 月</span>搬迁到 AWS 云端。</li>
         <li><span class="yr">2020 年 1 月</span>以个人身份完成备案，搬迁到杭州阿里云服务器。</li>
         <li><span class="yr">2026 年</span>迁移到 GitHub Pages，用静态站点 + 自定义域名 <strong>freelamp.com</strong> 重新上线，也就是你现在看到的这个站点。</li>
       </ul>
@@ -951,7 +951,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
       <p>所以本站不是免费提供灯泡的地方（笑）。<strong>「FreeLAMP，像风一样自由」</strong>，是 FreeLAMP.com 作为宣传自由软件的口号。FreeLAMP.com 是一个宣讲计算机软件的网站，是系统管理员和开放源码爱好者学习和交流技术的场所。</p>
 
       <h2>三、作者：一个爱折腾的系统管理员</h2>
-      <p>我在 IT 一线做了三十来年：管过大规模银行终端网络（几万台端点，当时只有三个工程师），写 Perl 和 Shell，研究 Linux 内核、DNS、TLS、虚拟化，也一路看着开源从一个「圈子」长成整个数字世界的基石。我写过不少代码，也踩过无数坑，而我很早就养成了一个习惯——<strong>把踩过的坑、想明白的道理，用文字沉淀下来。</strong></p>
+      <p>我在 IT 一线做了三十来年：管过大规模银行终端网络，写 Perl 和 Shell，研究 Linux 内核、DNS、虚拟化，也一路看着开源从一个「圈子」长成整个数字世界的基石。我写过不少代码，也踩过无数坑，而我很早就养成了一个习惯——<strong>把踩过的坑、想明白的道理，用文字沉淀下来。</strong></p>
       <p>这也是为什么这些年我一直叫自己 LeisureLinux：闲下来，就折腾 Linux。</p>
 
       <h2>四、为什么重新开这个博客？</h2>
@@ -966,7 +966,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
       <hr>
       <h2>五、联系方式</h2>
       <ul>
-        <li>邮箱：<a href="mailto:albertxu@freelamp.com">albertxu@freelamp.com</a></li>
+        <li>同名公众号和B站频道<a href="#">Leisure Linux</a></li>
         <li>GitHub：<a href="https://github.com/LeisureLinux">LeisureLinux</a></li>
         <li>博客：<a href="{site_url}/">https://freelamp.com/</a></li>
         <li>RSS 订阅：<a href="{site_url}/rss.xml">rss.xml</a></li>
