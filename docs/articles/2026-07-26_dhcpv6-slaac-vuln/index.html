@@ -227,12 +227,13 @@
 <h1>CVE-2026-53921：一个路由器上的 DHCPv6，拿下 Root 权限</h1>
 <p>> 从 odhcpd 到 dnsmasq 再到 ISC-DHCP，一场 IPv6 时代的「基建成设工艺灾难」</p>
 <h2>本文看点</h2>
-<p>| # | 要点 |
-|---|------|
-| 1 | DHCPv6 IA 序列化栈溢出——零交互 Root RCE 的技术拆解 |
-| 2 | <strong>SLAAC + odhcpd 的「共生体风险」</strong>——关了 DHCPv6 不等于安全 |
-| 3 | <strong>攻击面的三级跳</strong>——odhcpd → dnsmasq(虚拟化) → ISC-DHCP(企业生产) |
-| 4 | 缓解策略与长期展望 |</p>
+<table>
+<tr><th>#</th><th>要点</th></tr>
+<tr><td>1</td><td>DHCPv6 IA 序列化栈溢出——零交互 Root RCE 的技术拆解</td></tr>
+<tr><td>2</td><td><strong>SLAAC + odhcpd 的「共生体风险」</strong>——关了 DHCPv6 不等于安全</td></tr>
+<tr><td>3</td><td><strong>攻击面的三级跳</strong>——odhcpd → dnsmasq(虚拟化) → ISC-DHCP(企业生产)</td></tr>
+<tr><td>4</td><td>缓解策略与长期展望</td></tr>
+</table>
 <p>---</p>
 <h2>一、一句话定调</h2>
 <p><strong>一个路由器上的 DHCPv6 服务，就能让攻击者拿到 root。</strong> 不需要用户点击链接，不需要管理员输入密码，甚至不需要知道网络里有任何其他设备存在——只要在同一个 LAN 段，发一条构造好的包过去就行。</p>
@@ -242,16 +243,17 @@
 <p>---</p>
 <h2>二、技术拆解</h2>
 <h3>2.1 基本信息</h3>
-<p>| 项目 | 内容 |
-|------|------|
-| CVE | CVE-2026-53921 |
-| CVSS | 9.8 Critical |
-| 影响组件 | OpenWrt <code>odhcpd</code>（DHCPv6 Server + RA/SLAAC 服务） |
-| 修复版本 | OpenWrt 24.10.8 / 25.12.5 |
-| 发布日期 | 2026-07-26 |
-| 攻击向量 | 网络相邻（同一广播域/LAN 段） |
-| 认证要求 | 无需认证 |
-| 影响结果 | 远程代码执行，以 root 身份 |</p>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>CVE</td><td>CVE-2026-53921</td></tr>
+<tr><td>CVSS</td><td>9.8 Critical</td></tr>
+<tr><td>影响组件</td><td>OpenWrt <code>odhcpd</code>（DHCPv6 Server + RA/SLAAC 服务）</td></tr>
+<tr><td>修复版本</td><td>OpenWrt 24.10.8 / 25.12.5</td></tr>
+<tr><td>发布日期</td><td>2026-07-26</td></tr>
+<tr><td>攻击向量</td><td>网络相邻（同一广播域/LAN 段）</td></tr>
+<tr><td>认证要求</td><td>无需认证</td></tr>
+<tr><td>影响结果</td><td>远程代码执行，以 root 身份</td></tr>
+</table>
 <h3>2.2 漏洞本质：经典栈溢出，但在意想不到的地方</h3>
 <p>这不是什么复杂的逻辑缺陷或竞争条件，就是一个经典的<strong>栈缓冲区溢出</strong>。它发生在 DHCPv6 IA（Identity Association，身份关联）回复的序列化过程中。</p>
 <p>恶意客户端构造一条特殊的 DHCPv6 REQUEST 报文，其中包含超长 IA Prefix 选项 → odhcpd 接收并解析该报文 → 在将 IA Prefix 序列化为回复报文的字节流时，把不可信数据原封不动复制到栈上的小缓冲区 → 没有长度校验，栈被撑爆 → 返回地址被覆盖 → Shellcode 执行 → root shell 到手。</p>
@@ -356,11 +358,12 @@ ISC-DHCP  → 运营商 BNG / BRAS
 ISC-DHCP  → 自建私有云 SDN 部署
 </code></pre>
 <p>看清楚这张图谱的意义了吗？</p>
-<p>| 领域 | 你的攻击面在哪 | 一句话总结 |
-|------|---------------|-----------|
-| 嵌入式/路由 | odhcpd + dnsmasq 固件 | 全家桶全中枪 |
-| <strong>虚拟化/容器</strong> | <strong>宿主机的 dnsmasq</strong> | <strong>容器逃逸 + dnsmasq RCE = 宿主机拿握</strong> |
-| <strong>企业生产</strong> | <strong>ISC-DHCP 服务器</strong> | <strong>运营商/银行/政府机房都在跑</strong> |</p>
+<table>
+<tr><th>领域</th><th>你的攻击面在哪</th><th>一句话总结</th></tr>
+<tr><td>嵌入式/路由</td><td>odhcpd + dnsmasq 固件</td><td>全家桶全中枪</td></tr>
+<tr><td><strong>虚拟化/容器</strong></td><td><strong>宿主机的 dnsmasq</strong></td><td><strong>容器逃逸 + dnsmasq RCE = 宿主机拿握</strong></td></tr>
+<tr><td><strong>企业生产</strong></td><td><strong>ISC-DHCP 服务器</strong></td><td><strong>运营商/银行/政府机房都在跑</strong></td></tr>
+</table>
 <p>dnsmasq 不仅是路由器固件的专利，它在虚拟化领域同样是事实标准。一台跑了 50 台虚拟机的 KVM 宿主机，默认会为每个 VM 网桥拉起一个 dnsmasq 实例——这些实例全部以 root 权限运行。如果 dnsmasq 爆出类似 DHCPv6 序列化漏洞（事实上 CVE-2026-4892 就是），那就意味着<strong>任意一台联网的攻击者都可以尝试穿透到宿主机层面</strong>。</p>
 <h3>3.3 IA（Identity Association）概念的结构性风险</h3>
 <p>理解这个漏洞的关键在于理解 DHCPv6 的 IA 机制。IPv6 相比 IPv4 增加了 IA_NA 和 IA_PD 两种身份关联类型，每种都有各自的序列化流程。问题就在于：这些序列化路径对 Option 数据的长度验证不足。</p>
@@ -377,28 +380,30 @@ ISC-DHCP  → 自建私有云 SDN 部署
 <p>嵌入式场景下，每 KB 内存都精打细算，安全边界检查自然成了第一个被牺牲的东西。即使是 ISC-DHCP 这样维护了三十年的老牌项目，历史上也反复出现过缓冲区溢出漏洞（比如 CVE-2020-25647，也是栈溢出）。</p>
 <p>---</p>
 <h2>四、横向对比：DHCPv6 全年事故记录</h2>
-<p>| CVE | 组件 | 类型 | CVSS | 时间 |
-|-----|------|------|------|------|
-| CVE-2026-53921 | OpenWrt odhcpd | 栈溢出 → RCE | 9.8 | 2026-07 |
-| CVE-2026-4892 | dnsmasq | 堆溢出 → RCE | 9.8 | 2026-05 |
-| CVE-2026-29004 | BusyBox udhcpc6 | 堆溢出 | High | 2026-05 |
-| CVE-2026-42511 | FreeBSD dhclient | RCE | Critical | 2026-05 |
-| CVE-2026-44815 | Windows DHCP Client | 栈溢出 → RCE | 9.8 | 2026-06 |</p>
+<table>
+<tr><th>CVE</th><th>组件</th><th>类型</th><th>CVSS</th><th>时间</th></tr>
+<tr><td>CVE-2026-53921</td><td>OpenWrt odhcpd</td><td>栈溢出 → RCE</td><td>9.8</td><td>2026-07</td></tr>
+<tr><td>CVE-2026-4892</td><td>dnsmasq</td><td>堆溢出 → RCE</td><td>9.8</td><td>2026-05</td></tr>
+<tr><td>CVE-2026-29004</td><td>BusyBox udhcpc6</td><td>堆溢出</td><td>High</td><td>2026-05</td></tr>
+<tr><td>CVE-2026-42511</td><td>FreeBSD dhclient</td><td>RCE</td><td>Critical</td><td>2026-05</td></tr>
+<tr><td>CVE-2026-44815</td><td>Windows DHCP Client</td><td>栈溢出 → RCE</td><td>9.8</td><td>2026-06</td></tr>
+</table>
 <p>从嵌入式 Linux 到 FreeBSD，再到 Windows——从路由器固件到虚拟化平台——全年 DHCPv6 漏洞几乎月月爆，且清一色 9.8 级。这不是偶然现象，这是协议设计和实现层面的系统性问题。</p>
 <p>---</p>
 <h2>五、缓解措施</h2>
-<p>| 措施 | 说明 |
-|------|------|
-| <strong>立即升级</strong> | OpenWrt 升级到 24.10.8 或 25.12.5+ |
-| <strong>禁用 DHCPv6</strong> | 不需要的话，设置 <code>option dhcpv6 'disabled'</code> |
-| <strong>但仍注意 SLAAC</strong> | 即使禁用了 DHCPv6，SLAAC（RA）仍在工作，odhcpd 仍在运行 |
-| <strong>彻底关闭 odhcpd</strong> | 如果不需要任何 IPv6 地址分配，可以直接停用 <code>odhcpd</code> 服务 |
-| <strong>虚拟化平台专项检查</strong> | KVM/Docker/Podman 宿主机的 dnsmasq 需同步关注 CVE-2026-4892 等漏洞 |
-| <strong>企业级 DHCPv6 升级</strong> | RHEL/CentOS/Debian 等发行版的 ISC-DHCP 需跟进官方安全更新 |
-| <strong>网络分段</strong> | 将 DHCP/RA 服务器放在独立 VLAN |
-| <strong>交换机端口过滤</strong> | 禁止 UDP 547 跨网段转发 |
-| <strong>DHCP Snooping</strong> | 交换机的 DHCP Snooping 功能阻止非法 DHCP/RA 响应 |
-| <strong>RA Guard</strong> | 在交换机上启用 RA Guard，限制只有特定端口的设备能发送 Router Advertisement |</p>
+<table>
+<tr><th>措施</th><th>说明</th></tr>
+<tr><td><strong>立即升级</strong></td><td>OpenWrt 升级到 24.10.8 或 25.12.5+</td></tr>
+<tr><td><strong>禁用 DHCPv6</strong></td><td>不需要的话，设置 <code>option dhcpv6 'disabled'</code></td></tr>
+<tr><td><strong>但仍注意 SLAAC</strong></td><td>即使禁用了 DHCPv6，SLAAC（RA）仍在工作，odhcpd 仍在运行</td></tr>
+<tr><td><strong>彻底关闭 odhcpd</strong></td><td>如果不需要任何 IPv6 地址分配，可以直接停用 <code>odhcpd</code> 服务</td></tr>
+<tr><td><strong>虚拟化平台专项检查</strong></td><td>KVM/Docker/Podman 宿主机的 dnsmasq 需同步关注 CVE-2026-4892 等漏洞</td></tr>
+<tr><td><strong>企业级 DHCPv6 升级</strong></td><td>RHEL/CentOS/Debian 等发行版的 ISC-DHCP 需跟进官方安全更新</td></tr>
+<tr><td><strong>网络分段</strong></td><td>将 DHCP/RA 服务器放在独立 VLAN</td></tr>
+<tr><td><strong>交换机端口过滤</strong></td><td>禁止 UDP 547 跨网段转发</td></tr>
+<tr><td><strong>DHCP Snooping</strong></td><td>交换机的 DHCP Snooping 功能阻止非法 DHCP/RA 响应</td></tr>
+<tr><td><strong>RA Guard</strong></td><td>在交换机上启用 RA Guard，限制只有特定端口的设备能发送 Router Advertisement</td></tr>
+</table>
 <p>---</p>
 <h2>六、深层思考</h2>
 <h3>我们到底需要什么样的 IPv6 地址分配？</h3>

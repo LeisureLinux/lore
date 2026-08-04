@@ -447,6 +447,37 @@ TAG_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
+
+def _convert_tables(html):
+    """把 GFM 风格 Markdown 表格（连续以 | 开头的行）转换为 HTML <table>"""
+    def _sep(ln):
+        return bool(re.match(r'^\|?[\s:|-]+\|?$', ln)) and '-' in ln
+
+    def _cells(ln):
+        ln = ln.strip()
+        if ln.startswith('|'): ln = ln[1:]
+        if ln.endswith('|'): ln = ln[:-1]
+        return [c.strip() for c in ln.split('|')]
+
+    def _convert(block):
+        lines = block.strip('\n').split('\n')
+        # 找出分隔行（---）索引
+        sep_idx = next((i for i, ln in enumerate(lines) if _sep(ln)), None)
+        rows = [ln for i, ln in enumerate(lines) if i != sep_idx]
+        out = ['<table>']
+        for ri, ln in enumerate(rows):
+            if not ln.strip():
+                continue
+            tag = 'th' if (sep_idx is not None and ri < sep_idx) else 'td'
+            cells_html = ''.join(f'<{tag}>{c}</{tag}>' for c in _cells(ln))
+            out.append(f'<tr>{cells_html}</tr>')
+        out.append('</table>')
+        return '\n'.join(out)
+
+    # 匹配连续以 | 开头的行组成的表格块
+    return re.sub(r'(?:^\|.*\n)+', lambda m: _convert(m.group(0)) + '\n', html, flags=re.MULTILINE)
+
+
 def markdown_to_html(md_content):
     """简单的 Markdown 转 HTML（支持基本语法）"""
     html = md_content
@@ -461,6 +492,9 @@ def markdown_to_html(md_content):
     html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
     html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
     html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
+    
+    # 表格（GFM 风格）
+    html = _convert_tables(html)
     
     # 粗体
     html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
@@ -484,6 +518,7 @@ def markdown_to_html(md_content):
     html = re.sub(r'<p>(<h[123]>.*?</h[123]>)</p>', r'\1', html)
     html = re.sub(r'<p>(<pre>.*?</pre>)</p>', r'\1', html, flags=re.DOTALL)
     html = re.sub(r'<p>(<ul>.*?</ul>)</p>', r'\1', html, flags=re.DOTALL)
+    html = re.sub(r'<p>(<table>.*?</table>)</p>', r'\1', html, flags=re.DOTALL)
     html = re.sub(r'<p>(<blockquote>.*?</blockquote>)</p>', r'\1', html, flags=re.DOTALL)
     
     return html
