@@ -9,6 +9,7 @@ import os
 import re
 import json
 import yaml
+from urllib.parse import quote
 from pathlib import Path
 from datetime import datetime
 
@@ -125,10 +126,11 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
       font-size: 14px; color: #6B7280; line-height: 1.7;
     }}
     .article-tags {{ margin-top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }}
-    .article-tags span {{
+    .article-tags a {{
       background: #ECFDF5; color: #059669; padding: 2px 8px;
-      border-radius: 4px; font-size: 11px; font-weight: 600;
+      border-radius: 4px; font-size: 11px; font-weight: 600; text-decoration: none;
     }}
+    .article-tags a:hover {{ background: #D1FAE5; }}
     
     footer {{
       text-align: center; padding: 32px 0; color: #9CA3AF;
@@ -238,16 +240,17 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     }}
     nav .container {{ display: flex; align-items: center; justify-content: space-between; }}
     nav a {{ color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }}
-    nav .brand {{ font-weight: 800; color: #111827; font-size: 15px; }}
+    nav .brand {{ font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }}
     
     .post-header {{ padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }}
     .post-date {{ font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }}
     .post-title {{ font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }}
     .post-tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
-    .post-tags span {{
+    .post-tags a {{
       background: #ECFDF5; color: #059669; padding: 3px 10px;
-      border-radius: 4px; font-size: 12px; font-weight: 600;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
     }}
+    .post-tags a:hover {{ background: #D1FAE5; }}
     
     .post-content {{ padding-bottom: 48px; }}
     .post-content h2 {{
@@ -307,8 +310,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 <body>
   <nav>
     <div class="container">
-      <span class="brand">📜 LeisureLinux Lore</span>
-      <a href="../../">← 返回列表</a>
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
     </div>
   </nav>
 
@@ -326,6 +328,62 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 {content}
       </div>
     </article>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+</body>
+</html>"""
+
+
+TAG_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>#{tag} — FreeLAMP.com 像风一样自由</title>
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <meta name="description" content="标签「{tag}」下的全部 FreeLAMP.com 技术文章">
+  <link rel="canonical" href="{SITE_URL}{tag_url}">
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #fff; color: #1F2937; line-height: 1.6; }}
+    .container {{ max-width: 860px; margin: 0 auto; padding: 0 20px; }}
+    nav {{ background: #fff; border-bottom: 1px solid #E5E7EB; padding: 12px 0; position: sticky; top: 0; z-index: 10; }}
+    nav .container {{ display: flex; align-items: center; }}
+    nav .brand {{ font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }}
+    .tag-header {{ padding: 40px 0 24px; border-bottom: 1px solid #E5E7EB; margin-bottom: 24px; }}
+    .tag-header h1 {{ font-size: 26px; font-weight: 900; color: #111827; }}
+    .tag-header p {{ color: #6B7280; font-size: 14px; margin-top: 8px; }}
+    .article-list {{ list-style: none; }}
+    .article-item {{ border-bottom: 1px solid #F3F4F6; padding: 16px 0; }}
+    .article-item a {{ text-decoration: none; color: inherit; display: block; }}
+    .article-date {{ font-size: 12px; color: #9CA3AF; font-weight: 600; margin-bottom: 4px; }}
+    .article-title {{ font-size: 17px; font-weight: 800; color: #111827; }}
+    .article-summary {{ font-size: 14px; color: #6B7280; margin-top: 6px; line-height: 1.7; }}
+    footer {{ text-align: center; padding: 32px 0; color: #9CA3AF; font-size: 13px; border-top: 1px solid #E5E7EB; margin-top: 40px; }}
+    footer a {{ color: #059669; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="tag-header">
+      <h1># {tag}</h1>
+      <p>共 {count} 篇文章</p>
+    </div>
+    <ul class="article-list">
+{articles}
+    </ul>
   </main>
 
   <footer>
@@ -475,15 +533,15 @@ def build_index(articles):
         
         article_url = f"{SITE_URL}/articles/{slug}/"
         
-        tags_html = ''.join([f'<span>{tag}</span>' for tag in tags])
+        tags_html = ''.join([f'<a href="/tags/{quote(tag)}/">{tag}</a>' for tag in tags])
         
         article_html = f"""      <li class="article-item">
         <a href="articles/{slug}/">
           <div class="article-date">{date}</div>
           <div class="article-title">{title}</div>
           <div class="article-summary">{summary}</div>
-          <div class="article-tags">{tags_html}</div>
         </a>
+        <div class="article-tags">{tags_html}</div>
       </li>"""
         articles_html.append(article_html)
         
@@ -525,7 +583,7 @@ def build_article_page(article):
     
     canonical_url = f"{SITE_URL}/articles/{article['slug']}/"
     
-    tags_html = ''.join([f'<span itemprop="keywords">{tag}</span>' for tag in tags])
+    tags_html = ''.join([f'<a itemprop="keywords" href="/tags/{quote(tag)}/">{tag}</a>' for tag in tags])
     content_html = markdown_to_html(article['content'])
     
     # 生成 JSON-LD
@@ -565,6 +623,47 @@ def build_article_page(article):
         article_section=article_section,
         og_tags=og_tags
     )
+
+
+def build_tag_pages(articles):
+    """为每个标签生成 docs/tags/<tag>/index.html 目录页，文章经标签相互关联"""
+    from collections import OrderedDict
+    tag_map = OrderedDict()
+    for article in articles:
+        for tag in (article['metadata'].get('tags') or []):
+            tag_map.setdefault(tag, []).append(article)
+
+    written = []
+    for tag, tagged_articles in tag_map.items():
+        tag_url = f"/tags/{quote(tag)}/"
+        items = []
+        for article in sorted(tagged_articles, key=lambda x: x['metadata'].get('date', ''), reverse=True):
+            meta = article['metadata']
+            slug = article['slug']
+            date = meta.get('date', '')
+            if isinstance(date, datetime):
+                date = date.strftime('%Y-%m-%d')
+            title = meta.get('title', slug)
+            summary = meta.get('summary', '')
+            items.append(f"""      <li class="article-item">
+        <a href="/articles/{slug}/">
+          <div class="article-date">{date}</div>
+          <div class="article-title">{title}</div>
+          <div class="article-summary">{summary}</div>
+        </a>
+      </li>""")
+        html = TAG_TEMPLATE.format(
+            tag=tag,
+            count=len(tagged_articles),
+            tag_url=tag_url,
+            articles='\n'.join(items),
+            SITE_URL=SITE_URL,
+        )
+        out_dir = DOCS_DIR / "tags" / quote(tag)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "index.html").write_text(html, encoding='utf-8')
+        written.append(tag_url)
+    return written
 
 
 def _xml_escape(text):
@@ -671,6 +770,18 @@ def generate_sitemap(articles):
             'priority': '0.8'
         })
     
+    # 标签目录页
+    seen_tags = set()
+    for article in articles:
+        for tag in (article['metadata'].get('tags') or []):
+            if tag not in seen_tags:
+                seen_tags.add(tag)
+                urls.append({
+                    'loc': f"{SITE_URL}/tags/{quote(tag)}/",
+                    'changefreq': 'weekly',
+                    'priority': '0.6'
+                })
+
     # 构建 XML
     xml_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -927,6 +1038,10 @@ def main():
         (article_output_dir / "index.html").write_text(article_html, encoding='utf-8')
         print(f"✅ 生成文章：docs/articles/{article['slug']}/index.html")
     
+    # 生成标签目录页
+    tag_urls = build_tag_pages(articles)
+    print(f"✅ 生成标签页：共 {len(tag_urls)} 个")
+
     # 生成 sitemap.xml
     sitemap_xml = generate_sitemap(articles)
     (DOCS_DIR / "sitemap.xml").write_text(sitemap_xml, encoding='utf-8')
