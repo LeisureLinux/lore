@@ -35,6 +35,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   <meta name="keywords" content="Linux, 内核, DevSecOps, TLS, PKI, 网络安全, CVE, eBPF, systemd, SRE, 基础架构, DevOps">
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{site_url}/">
+  <link rel="icon" type="image/x-icon" href="/lore/favicon.ico">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
@@ -175,6 +176,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   <meta name="author" content="{author}">
   <meta name="date" content="{date_iso}">
   <link rel="canonical" href="{canonical_url}">
+  <link rel="icon" type="image/x-icon" href="/lore/favicon.ico">
 
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
@@ -683,6 +685,7 @@ def main():
     # 复制静态验证文件到 docs 目录（Google/Bing 等搜索引擎验证）
     static_files = [
         "googlec29651f57d804644.html",  # Google Search Console 验证
+        "favicon.ico",  # 站点图标
         # 可在此添加其他验证文件，如：
         # "BingSiteAuth.xml",  # Bing 验证
     ]
@@ -691,8 +694,8 @@ def main():
     for filename in static_files:
         src_file = LORE_DIR / filename
         if src_file.exists():
-            (DOCS_DIR / filename).write_text(src_file.read_text(encoding='utf-8'), encoding='utf-8')
-            print(f"✅ 复制验证文件：docs/{filename}")
+            shutil.copy2(src_file, DOCS_DIR / filename)
+            print(f"✅ 复制静态文件：docs/{filename}")
             copied_static += 1
     
     total_files = len(articles) + 3 + copied_static  # 首页 + 文章 + sitemap + robots
