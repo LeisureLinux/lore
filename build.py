@@ -488,7 +488,10 @@ def markdown_to_html(md_content):
     # 行内代码
     html = re.sub(r'`([^`]+)`', r'<code>\1</code>', html)
     
-    # 标题
+    # 标题（h1-h6）
+    html = re.sub(r'^###### (.+)$', r'<h6>\1</h6>', html, flags=re.MULTILINE)
+    html = re.sub(r'^##### (.+)$', r'<h5>\1</h5>', html, flags=re.MULTILINE)
+    html = re.sub(r'^#### (.+)$', r'<h4>\1</h4>', html, flags=re.MULTILINE)
     html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
     html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
     html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
@@ -515,7 +518,7 @@ def markdown_to_html(md_content):
     
     # 清理空段落
     html = re.sub(r'<p>\s*</p>', '', html)
-    html = re.sub(r'<p>(<h[123]>.*?</h[123]>)</p>', r'\1', html)
+    html = re.sub(r'<p>(<h[1-6]>.*?</h[1-6]>)</p>', r'\1', html)
     html = re.sub(r'<p>(<pre>.*?</pre>)</p>', r'\1', html, flags=re.DOTALL)
     html = re.sub(r'<p>(<ul>.*?</ul>)</p>', r'\1', html, flags=re.DOTALL)
     html = re.sub(r'<p>(<table>.*?</table>)</p>', r'\1', html, flags=re.DOTALL)
