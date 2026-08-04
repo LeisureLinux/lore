@@ -606,6 +606,12 @@ def markdown_to_html(md_content):
     html = re.sub(r'^- (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
     html = re.sub(r'(<li>.*</li>\n?)+', lambda m: '<ul>\n' + m.group(0) + '</ul>', html)
     
+    # 引用块（支持连续多行，内容保留行内格式）
+    html = re.sub(
+        r'(?:^> (.+)$(?:\n|\Z))+',
+        lambda m: '<blockquote>' + '<br>\n'.join(re.sub(r'^> ', '', ln) for ln in m.group(0).strip().split('\n')) + '</blockquote>',
+        html, flags=re.MULTILINE)
+
     # 段落
     html = re.sub(r'\n\n', '</p>\n<p>', html)
     html = '<p>' + html + '</p>'
