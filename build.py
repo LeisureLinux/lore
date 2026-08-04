@@ -17,7 +17,7 @@ ARTICLES_DIR = LORE_DIR / "articles"
 DOCS_DIR = LORE_DIR / "docs"
 
 # 站点基础配置（SEO 用）
-SITE_URL = "https://leisurelinux.github.io/lore"
+SITE_URL = "https://freelamp.com"
 SITE_NAME = "LeisureLinux Lore"
 SITE_DESCRIPTION = "Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库"
 SITE_AUTHOR = "LeisureLinux"
@@ -35,8 +35,8 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   <meta name="keywords" content="Linux, 内核, DevSecOps, TLS, PKI, 网络安全, CVE, eBPF, systemd, SRE, 基础架构, DevOps">
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{site_url}/">
-  <link rel="icon" type="image/x-icon" href="/lore/favicon.ico">
-  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/lore/rss.xml">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/rss.xml">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
@@ -177,9 +177,9 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   <meta name="author" content="{author}">
   <meta name="date" content="{date_iso}">
   <link rel="canonical" href="{canonical_url}">
-  <link rel="icon" type="image/x-icon" href="/lore/favicon.ico">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
-  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/lore/rss.xml">
+  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/rss.xml">
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="{title}">
@@ -686,7 +686,7 @@ def generate_sitemap(articles):
 def generate_robots_txt():
     """生成 robots.txt"""
     return f"""# LeisureLinux Lore - Robots.txt
-# https://leisurelinux.github.io/lore/robots.txt
+# https://freelamp.com/robots.txt
 
 User-agent: *
 Allow: /
@@ -759,6 +759,10 @@ def main():
         (DOCS_DIR / "llms.txt").write_text(llms_src.read_text(encoding='utf-8'), encoding='utf-8')
         print("✅ 复制 LLM 索引：docs/llms.txt")
     
+    # 写入 CNAME：自定义域名 freelamp.com（GitHub Pages 保持绑定）
+    (DOCS_DIR / "CNAME").write_text("freelamp.com\n", encoding="utf-8")
+    print("✅ 生成 CNAME：docs/CNAME (freelamp.com)")
+
     # 复制静态验证文件到 docs 目录（Google/Bing 等搜索引擎验证）
     static_files = [
         "googlec29651f57d804644.html",  # Google Search Console 验证
