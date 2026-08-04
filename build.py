@@ -134,6 +134,18 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
       border-radius: 4px; font-size: 11px; font-weight: 600; text-decoration: none;
     }}
     .article-tags a:hover {{ background: #D1FAE5; }}
+    .article-meta {{
+      margin-top: 14px; padding-top: 14px;
+      border-top: 1px dashed #E5E7EB;
+      display: flex; align-items: center; justify-content: flex-end;
+    }}
+    .comment-link {{
+      font-size: 12px; font-weight: 700; color: #059669;
+      text-decoration: none; background: #ECFDF5;
+      padding: 5px 12px; border-radius: 999px;
+      transition: background .15s, transform .15s;
+    }}
+    .comment-link:hover {{ background: #D1FAE5; transform: translateY(-1px); }}
     
     footer {{
       text-align: center; padding: 32px 0; color: #9CA3AF;
@@ -329,9 +341,26 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     .ico-x {{ background: #000; }}
 
     .post-comments {{
-      padding: 16px 0 40px; border-top: 1px solid #E5E7EB; margin-top: 16px;
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
     }}
-    .comments-title {{ font-size: 18px; font-weight: 800; color: #111827; margin-bottom: 16px; }}
+    .comments-head {{
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }}
+    .comments-head .comments-badge {{
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }}
+    .comments-title {{
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }}
+    .comments-sub {{
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }}
+    .giscus {{ min-height: 320px; }}
 
     footer {{
       text-align: center; padding: 32px 0; color: #9CA3AF;
@@ -378,7 +407,11 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 
     <!-- giscus 点评（GitHub Discussions 驱动） -->
     <section class="post-comments" id="comments">
-      <h2 class="comments-title">点评与讨论</h2>
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
       <div class="giscus" id="giscus">
         <script src="https://giscus.app/client.js"
           data-repo="LeisureLinux/lore"
@@ -659,6 +692,9 @@ def build_index(articles):
           <div class="article-summary">{summary}</div>
         </a>
         <div class="article-tags">{tags_html}</div>
+        <div class="article-meta">
+          <a class="comment-link" href="articles/{slug}/#comments">💬 参与讨论</a>
+        </div>
       </li>"""
         articles_html.append(article_html)
         
