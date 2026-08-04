@@ -156,7 +156,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
-      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a></p>
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
     </div>
   </footer>
@@ -330,7 +330,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
-      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a></p>
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
     </div>
   </footer>
@@ -648,6 +648,13 @@ def generate_sitemap(articles):
         'priority': '1.0'
     })
     
+    # 关于 FreeLAMP 页
+    urls.append({
+        'loc': f"{SITE_URL}/about-freelamp.html",
+        'changefreq': 'monthly',
+        'priority': '0.5'
+    })
+
     # 文章页
     for article in sorted(articles, key=lambda x: x['metadata'].get('date', ''), reverse=True):
         meta = article['metadata']
@@ -701,6 +708,183 @@ LLMs: {SITE_URL}/llms.txt
 """.strip()
 
 
+# ============================================================
+# HTML 模板 — 关于 FreeLAMP（网站历史 + 作者）
+# ============================================================
+ABOUT_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>关于 FreeLAMP — LeisureLinux Lore</title>
+  <meta name="description" content="FreeLAMP.com 由徐永久（LeisureLinux）于 2001 年创立，是一个宣讲自由软件、供系统管理员和开放源码爱好者交流技术的网站。这里记录了这个域名二十多年的历史、作者介绍，以及重开博客的初心。">
+  <meta name="author" content="{site_author}">
+  <link rel="canonical" href="{site_url}/about-freelamp.html">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/rss.xml">
+  <!-- Open Graph -->
+  <meta property="og:type" content="profile">
+  <meta property="og:title" content="关于 FreeLAMP — 一个域名，二十多年的故事">
+  <meta property="og:description" content="FreeLAMP.com 的历史、作者介绍与重开博客的初心。">
+  <meta property="og:url" content="{site_url}/about-freelamp.html">
+  <meta property="og:site_name" content="{site_name}">
+  <meta property="og:locale" content="zh_CN">
+  <!-- JSON-LD -->
+  <script type="application/ld+json">
+  {{
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    "name": "关于 FreeLAMP",
+    "url": "{site_url}/about-freelamp.html",
+    "author": {{
+      "@type": "Person",
+      "name": "{site_author}",
+      "url": "https://github.com/LeisureLinux",
+      "email": "albertxu@freelamp.com",
+      "knowsAbout": ["Linux", "自由软件", "开源", "系统管理", "DevSecOps"]
+    }}
+  }}
+  </script>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.8;
+    }}
+    .container {{ max-width: 720px; margin: 0 auto; padding: 0 24px; }}
+    nav {{
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }}
+    nav .container {{ display: flex; align-items: center; justify-content: space-between; }}
+    nav a {{ color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }}
+    nav .brand {{ font-weight: 800; color: #111827; font-size: 15px; }}
+    .page-header {{
+      background: linear-gradient(135deg, #059669, #10B981);
+      padding: 56px 0 44px; color: #fff; text-align: center;
+    }}
+    .page-header h1 {{ font-size: 30px; font-weight: 900; letter-spacing: -1px; margin-bottom: 12px; }}
+    .page-header p {{ font-size: 15px; opacity: 0.9; max-width: 560px; margin: 0 auto; }}
+    main {{ padding: 40px 0 24px; }}
+    .post-content {{ padding-bottom: 24px; }}
+    .post-content h2 {{
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }}
+    .post-content h3 {{ font-size: 17px; font-weight: 700; color: #111827; margin: 24px 0 12px; }}
+    .post-content p {{ margin-bottom: 16px; font-size: 15px; line-height: 1.9; }}
+    .post-content strong {{ color: #059669; }}
+    .post-content blockquote {{
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+      font-size: 15px;
+    }}
+    .timeline {{ list-style: none; margin: 0 0 24px; }}
+    .timeline li {{
+      position: relative; padding: 0 0 18px 28px; font-size: 15px;
+    }}
+    .timeline li::before {{
+      content: ""; position: absolute; left: 4px; top: 8px;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #059669;
+    }}
+    .timeline .yr {{
+      font-weight: 800; color: #059669; margin-right: 6px; letter-spacing: 0.5px;
+    }}
+    .post-content ul {{ margin: 0 0 16px 24px; }}
+    .post-content li {{ margin-bottom: 8px; font-size: 15px; line-height: 1.8; }}
+    .post-content hr {{ border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }}
+    footer {{
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }}
+    footer a {{ color: #059669; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <span class="brand">📜 LeisureLinux Lore</span>
+      <a href="/">← 返回首页</a>
+    </div>
+  </nav>
+
+  <div class="page-header">
+    <div class="container">
+      <h1>关于 FreeLAMP</h1>
+      <p>一个注册于 2001 年的域名，和它背后的二十多年故事。</p>
+    </div>
+  </div>
+
+  <main class="container">
+    <article class="post-content">
+
+      <p>你好，我是 <strong>徐永久（LeisureLinux / Albert Xu）</strong>，系统管理员出身，自由软件的忠实信徒，爱折腾。这个网站叫 <strong>FreeLAMP.com</strong>，它比很多人的 QQ 号还老。借着这次用现代工具把它重新点亮，我想把这个域名的故事、我自己，以及为什么要重新开这个博客，好好写一写。</p>
+
+      <h2>一、这个网站的历史</h2>
+      <ul class="timeline">
+        <li><span class="yr">2001 年 3 月</span>我（徐永久）在宁波电信创立了 FreeLAMP.com，最初托管于宁波电信。它是系统管理员和开放源码爱好者交流技术的早期中文站点之一。</li>
+        <li><span class="yr">2001–2007</span>期间站点搬迁到北京网通。</li>
+        <li><span class="yr">2008 年底</span>托管于上海某电信机房。</li>
+        <li><span class="yr">2009 年</span>搬迁至上海浦东沈家弄机房。</li>
+        <li><span class="yr">2010 年 12 月</span>搬迁到 GoDaddy。</li>
+        <li><span class="yr">2016 年 11 月</span>搬迁到免费的 AWS 云端。</li>
+        <li><span class="yr">2020 年 1 月</span>以个人身份完成备案，搬迁到杭州阿里云服务器。</li>
+        <li><span class="yr">2026 年</span>迁移到 GitHub Pages，用静态站点 + 自定义域名 <strong>freelamp.com</strong> 重新上线，也就是你现在看到的这个站点。</li>
+      </ul>
+      <blockquote>旧版「关于本站」页面，因当年 GoDaddy 服务器不支持 Zope 而无法访问了。幸运的是，网站的核心精神——自由与分享——一直保留到了今天。</blockquote>
+
+      <h2>二、FreeLAMP 是什么意思？</h2>
+      <p>FreeLAMP 这个名字里，<strong>Free</strong> 是「自由」，不是「免费」；<strong>LAMP</strong> 是 Linux + Apache + MySQL + PHP/Perl/Python，但这里的 LAMP 也绝不是「灯」。</p>
+      <p>所以本站不是免费提供灯泡的地方（笑）。<strong>「FreeLAMP，像风一样自由」</strong>，是 FreeLAMP.com 作为宣传自由软件的口号。FreeLAMP.com 是一个宣讲计算机软件的网站，是系统管理员和开放源码爱好者学习和交流技术的场所。</p>
+
+      <h2>三、作者：一个爱折腾的系统管理员</h2>
+      <p>我在 IT 一线做了三十来年：管过大规模银行终端网络（几万台端点，当时只有三个工程师），写 Perl 和 Shell，研究 Linux 内核、DNS、TLS、虚拟化，也一路看着开源从一个「圈子」长成整个数字世界的基石。我写过不少代码，也踩过无数坑，而我很早就养成了一个习惯——<strong>把踩过的坑、想明白的道理，用文字沉淀下来。</strong></p>
+      <p>这也是为什么这些年我一直叫自己 LeisureLinux：闲下来，就折腾 Linux。</p>
+
+      <h2>四、为什么重新开这个博客？</h2>
+      <p>重开 FreeLAMP.com，不是为了流量，也不为别的什么——说到底，还是<strong>当年的初心</strong>。</p>
+      <ul>
+        <li>当年开站，是想给中文世界里的系统管理员一个交流技术、宣传自由软件的地方；</li>
+        <li>现在重新开，是希望用今天更好用的工具（GitHub Pages、静态站点、甚至 AI 写代码的搭档），继续把这份「像风一样自由」的折腾精神传下去；</li>
+        <li>这里写的每一篇，都是能拿去落地的真实经验与思考，而不是转述与搬运。</li>
+      </ul>
+      <p>时代变了，工具变了，但「把自己会的、懂的、踩过的坑，认真地讲给别人听」这件事，从来没有变过。</p>
+
+      <hr>
+      <h2>五、联系方式</h2>
+      <ul>
+        <li>邮箱：<a href="mailto:albertxu@freelamp.com">albertxu@freelamp.com</a></li>
+        <li>GitHub：<a href="https://github.com/LeisureLinux">LeisureLinux</a></li>
+        <li>博客：<a href="{site_url}/">https://freelamp.com/</a></li>
+        <li>RSS 订阅：<a href="{site_url}/rss.xml">rss.xml</a></li>
+      </ul>
+      <p>愿我们永远保持对技术的热爱与自由。🕊️</p>
+
+    </article>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+</body>
+</html>"""
+
+
+def build_about_page():
+    """生成「关于 FreeLAMP」页面（网站历史 + 作者介绍）"""
+    return ABOUT_TEMPLATE.format(
+        site_url=SITE_URL,
+        site_name=SITE_NAME,
+        site_author=SITE_AUTHOR,
+    )
+
+
+
 def main():
     print("🔨 开始构建 LeisureLinux Lore 静态站点...")
     
@@ -726,6 +910,11 @@ def main():
     index_html = build_index(articles)
     (DOCS_DIR / "index.html").write_text(index_html, encoding='utf-8')
     print("✅ 生成首页：docs/index.html")
+
+    # 生成「关于 FreeLAMP」页面
+    about_html = build_about_page()
+    (DOCS_DIR / "about-freelamp.html").write_text(about_html, encoding='utf-8')
+    print("✅ 生成关于页：docs/about-freelamp.html")
     
     # 生成文章页面
     articles_dir = DOCS_DIR / "articles"
