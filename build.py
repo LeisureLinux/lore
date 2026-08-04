@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LeisureLinux Lore 静态站点构建脚本
+FreeLAMP.com 静态站点构建脚本
 从 articles/ 目录读取 Markdown 文件，生成 docs/ 目录的 HTML 页面
 包含 SEO/GEO 优化：JSON-LD 结构化数据、Open Graph、Canonical URL、Sitemap、Robots.txt
 """
@@ -19,7 +19,7 @@ DOCS_DIR = LORE_DIR / "docs"
 
 # 站点基础配置（SEO 用）
 SITE_URL = "https://freelamp.com"
-SITE_NAME = "LeisureLinux Lore"
+SITE_NAME = "FreeLAMP.com"
 SITE_DESCRIPTION = "Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库"
 SITE_AUTHOR = "LeisureLinux"
 
@@ -31,17 +31,17 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LeisureLinux Lore — Linux 底层机制与 DevSecOps 深度技术知识库</title>
+  <title>FreeLAMP.com — Linux 底层机制与 DevSecOps 深度技术知识库</title>
   <meta name="description" content="{site_description}。涵盖 Linux 内核调优、TLS/PKI 信任链、网络协议安全、CVE 漏洞分析、DevOps 工具链。">
   <meta name="keywords" content="Linux, 内核, DevSecOps, TLS, PKI, 网络安全, CVE, eBPF, systemd, SRE, 基础架构, DevOps">
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{site_url}/">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/rss.xml">
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="LeisureLinux Lore — Linux 底层机制与 DevSecOps 深度技术知识库">
+  <meta property="og:title" content="FreeLAMP.com — Linux 底层机制与 DevSecOps 深度技术知识库">
   <meta property="og:description" content="{site_description}">
   <meta property="og:url" content="{site_url}/">
   <meta property="og:site_name" content="{site_name}">
@@ -49,7 +49,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="LeisureLinux Lore — 技术传说">
+  <meta name="twitter:title" content="FreeLAMP.com — 技术传说">
   <meta name="twitter:description" content="{site_description}">
 
   <!-- JSON-LD 结构化数据：WebSite + SearchAction -->
@@ -78,7 +78,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   {{
     "@context": "https://schema.org",
     "@type": "ItemList",
-    "name": "LeisureLinux Lore 技术文章",
+    "name": "FreeLAMP.com 技术文章",
     "itemListElement": {item_list_json}
   }}
   </script>
@@ -142,7 +142,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 <body>
   <header>
     <div class="container">
-      <h1><a href="/" style="color:#111827; text-decoration:none;">FreeLAMP.com 像风一样自由</a></h1>
+      <h1><a href="/" style="color:#fff; text-decoration:none;">FreeLAMP.com 像风一样自由</a></h1>
       <p>技术传说，记录于此。</p>
       <div class="tags">
         <span>Linux</span><span>内核</span><span>安全</span><span>开源</span>
@@ -173,7 +173,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title} — LeisureLinux Lore</title>
+  <title>{title} — FreeLAMP.com</title>
   <meta name="description" content="{meta_description}">
   <meta name="keywords" content="{meta_keywords}">
   <meta name="author" content="{author}">
@@ -181,7 +181,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   <link rel="canonical" href="{canonical_url}">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
-  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/rss.xml">
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="{title}">
@@ -213,7 +213,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
       {{
         "@type": "ListItem",
         "position": 1,
-        "name": "LeisureLinux Lore",
+        "name": "FreeLAMP.com",
         "item": "{site_url}/"
       }},
       {{
@@ -720,7 +720,7 @@ def generate_rss(articles):
 
     body = "\n\n".join(items)
     channel_lines = [
-        "    <title>LeisureLinux Lore — RSS 订阅</title>",
+        "    <title>FreeLAMP.com — RSS 订阅</title>",
         f"    <link>{SITE_URL}/</link>",
         f"    <description>{_xml_escape(SITE_DESCRIPTION)}</description>",
         "    <language>zh-CN</language>",
@@ -803,7 +803,7 @@ def generate_sitemap(articles):
 
 def generate_robots_txt():
     """生成 robots.txt"""
-    return f"""# LeisureLinux Lore - Robots.txt
+    return f"""# FreeLAMP.com - Robots.txt
 # https://freelamp.com/robots.txt
 
 User-agent: *
@@ -827,12 +827,12 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>关于 FreeLAMP — LeisureLinux Lore</title>
+  <title>关于 FreeLAMP — FreeLAMP.com</title>
   <meta name="description" content="FreeLAMP.com 于 2001 年创立，是一个宣讲自由软件、供系统管理员和开放源码爱好者交流技术的网站。这里记录了这个域名二十多年的历史、作者介绍，以及重开博客的初心。">
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{site_url}/about-freelamp.html">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/rss.xml">
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
   <!-- Open Graph -->
   <meta property="og:type" content="profile">
   <meta property="og:title" content="关于 FreeLAMP — 一个域名，二十多年的故事">
@@ -916,7 +916,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
 <body>
   <nav>
     <div class="container">
-      <span class="brand">📜 LeisureLinux Lore</span>
+      <span class="brand">📜 FreeLAMP.com</span>
       <a href="/">← 返回首页</a>
     </div>
   </nav>
@@ -997,7 +997,7 @@ def build_about_page():
 
 
 def main():
-    print("🔨 开始构建 LeisureLinux Lore 静态站点...")
+    print("🔨 开始构建 FreeLAMP.com 静态站点...")
     
     # 清理 docs 目录
     if DOCS_DIR.exists():
