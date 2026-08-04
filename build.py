@@ -326,11 +326,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     }}
     .ico-wx {{ background: #07C160; }}
     .ico-weibo {{ background: #E6162D; }}
-    .ico-zhihu {{ background: #0084FF; }}
-    .ico-xhs {{ background: #FF2442; }}
-    .ico-ins {{ background: radial-gradient(circle at 30% 110%, #FDF497 0%, #F58529 25%, #DD2A7B 55%, #8134AF 80%, #515BD4 100%); }}
     .ico-x {{ background: #000; }}
-    .ico-in {{ background: #0A66C2; }}
 
     footer {{
       text-align: center; padding: 32px 0; color: #9CA3AF;
@@ -365,20 +361,8 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
         <button type="button" class="share-btn" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博">
           <span class="share-ico ico-weibo">博</span><span>微博</span>
         </button>
-        <button type="button" class="share-btn" onclick="copyLink()" title="复制链接去知乎粘贴分享">
-          <span class="share-ico ico-zhihu">知</span><span>知乎</span>
-        </button>
-        <button type="button" class="share-btn" onclick="copyLink()" title="复制链接去小红书粘贴分享">
-          <span class="share-ico ico-xhs">红</span><span>小红书</span>
-        </button>
-        <button type="button" class="share-btn" onclick="copyLink()" title="复制链接去 Instagram 粘贴分享">
-          <span class="share-ico ico-ins">IG</span><span>Instagram</span>
-        </button>
         <button type="button" class="share-btn" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X (Twitter)">
           <span class="share-ico ico-x">X</span><span>X</span>
-        </button>
-        <button type="button" class="share-btn" onclick="openShare('https://www.linkedin.com/sharing/share-offsite/?url='+encodeURIComponent(SHARE.url))" title="分享到 LinkedIn">
-          <span class="share-ico ico-in">in</span><span>LinkedIn</span>
         </button>
       </div>
 
@@ -402,18 +386,6 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     }};
     function openShare(u) {{ window.open(u, '_blank', 'noopener,width=680,height=560'); }}
     function shareWechat() {{ window.open('https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=' + encodeURIComponent(SHARE.url), '_blank', 'noopener'); }}
-    function copyLink() {{
-      function done() {{ alert('链接已复制，请到对应 App 粘贴分享'); }}
-      if (navigator.clipboard && navigator.clipboard.writeText) {{
-        navigator.clipboard.writeText(SHARE.url).then(done, fallback);
-      }} else {{ fallback(); }}
-      function fallback() {{
-        var i = document.createElement('input');
-        i.value = SHARE.url; document.body.appendChild(i); i.select();
-        try {{ document.execCommand('copy'); done(); }} catch(e) {{ prompt('请手动复制链接：', SHARE.url); }}
-        i.remove();
-      }}
-    }}
   </script>
 </body>
 </html>"""
