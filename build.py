@@ -479,7 +479,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
       title: {share_title}
     }};
     function openShare(u) {{ window.open(u, '_blank', 'noopener,width=680,height=560'); }}
-    function shareWechat() {{ window.open('https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=' + encodeURIComponent(SHARE.url), '_blank', 'noopener'); }}
+    function shareWechat() {{ window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }}
   </script>
 </body>
 </html>"""
