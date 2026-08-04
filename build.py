@@ -36,6 +36,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{site_url}/">
   <link rel="icon" type="image/x-icon" href="/lore/favicon.ico">
+  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/lore/rss.xml">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
@@ -178,6 +179,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   <link rel="canonical" href="{canonical_url}">
   <link rel="icon" type="image/x-icon" href="/lore/favicon.ico">
 
+  <link rel="alternate" type="application/rss+xml" title="LeisureLinux Lore RSS 订阅" href="/lore/rss.xml">
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="{title}">
@@ -565,6 +567,76 @@ def build_article_page(article):
     )
 
 
+def _xml_escape(text):
+    """转义 XML 特殊字符"""
+    return (str(text)
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;')
+            .replace("'", '&apos;'))
+
+
+def _rfc822(date_val):
+    """转 RFC 822 格式（RSS pubDate），如 Thu, 04 Aug 2026 00:00:00 +0000"""
+    import datetime as _dt
+    from email.utils import format_datetime
+    if isinstance(date_val, _dt.datetime):
+        d = date_val
+    elif isinstance(date_val, _dt.date):
+        d = _dt.datetime(date_val.year, date_val.month, date_val.day)
+    else:
+        try:
+            d = _dt.datetime.strptime(str(date_val), '%Y-%m-%d')
+        except (ValueError, TypeError):
+            return ''
+    # format_datetime(usegmt=True) 要求 UTC-aware datetime
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=_dt.timezone.utc)
+    return format_datetime(d, usegmt=True)
+
+
+def generate_rss(articles):
+    """生成 rss.xml（RSS 2.0，含 Atom 自引用，便于 RSS 插件识别）"""
+    items = []
+    for article in sorted(articles, key=lambda x: str(x['metadata'].get('date', '')), reverse=True):
+        meta = article['metadata']
+        url = f"{SITE_URL}/articles/{article['slug']}/"
+        title = meta.get('title', article['slug'])
+        description = meta.get('description') or meta.get('summary') or title
+        author = meta.get('author', SITE_AUTHOR)
+        cat_lines = [f"      <category>{_xml_escape(c)}</category>" for c in (meta.get('tags') or [])]
+        lines = (
+            ["    <item>",
+             f"      <title>{_xml_escape(title)}</title>",
+             f"      <link>{url}</link>",
+             f'      <guid isPermaLink="true">{url}</guid>',
+             f"      <pubDate>{_rfc822(meta.get('date'))}</pubDate>",
+             f"      <author>{_xml_escape(author)}</author>",
+             f"      <description><![CDATA[{description}]]></description>"]
+            + cat_lines
+            + ["    </item>"]
+        )
+        items.append("\n".join(lines))
+
+    body = "\n\n".join(items)
+    channel_lines = [
+        "    <title>LeisureLinux Lore — RSS 订阅</title>",
+        f"    <link>{SITE_URL}/</link>",
+        f"    <description>{_xml_escape(SITE_DESCRIPTION)}</description>",
+        "    <language>zh-CN</language>",
+        f'    <atom:link href="{SITE_URL}/rss.xml" rel="self" type="application/rss+xml"/>',
+    ]
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n'
+        "  <channel>\n"
+        + "\n".join(channel_lines)
+        + "\n"
+        + body
+        + "\n  </channel>\n</rss>\n"
+    )
+
 def generate_sitemap(articles):
     """生成 sitemap.xml（SEO 核心文件）"""
     urls = []
@@ -671,6 +743,11 @@ def main():
     (DOCS_DIR / "sitemap.xml").write_text(sitemap_xml, encoding='utf-8')
     print("✅ 生成站点地图：docs/sitemap.xml")
     
+    # 生成 rss.xml
+    rss_xml = generate_rss(articles)
+    (DOCS_DIR / "rss.xml").write_text(rss_xml, encoding='utf-8')
+    print("✅ 生成 RSS 订阅：docs/rss.xml")
+    
     # 生成 robots.txt
     robots_txt = generate_robots_txt()
     (DOCS_DIR / "robots.txt").write_text(robots_txt, encoding='utf-8')
@@ -698,7 +775,7 @@ def main():
             print(f"✅ 复制静态文件：docs/{filename}")
             copied_static += 1
     
-    total_files = len(articles) + 3 + copied_static  # 首页 + 文章 + sitemap + robots
+    total_files = len(articles) + 4 + copied_static  # 首页 + 文章 + sitemap + robots + rss
     print(f"\n🎉 构建完成！共生成 {total_files} 个文件（含 SEO/GEO 优化）")
 
 
