@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-08-05 | [能力逼近前沿、护栏却可剥除：SaferAI 对 GLM-5.2 的独立风险评估解读](https://freelamp.com/articles/2026-08-05_glm52-saferai-risk-eval/) | AI 安全 · 开源权重模型 · 风险评估 |
 | 2026-08-05 | [Google 用 AI 修了 1072 个漏洞，还把 Chrome 改成每周更新——企业的变更管理还跟得上吗？](https://freelamp.com/articles/2026-08-05_chrome-ai-patch-1072/) | 变更管理 · Chrome · AI 安全 |
 | 2026-08-04 | [被遗忘的 DNS 记录，正在给骗局开路——Hazy Hawk 子域名劫持全拆解](https://freelamp.com/articles/2026-08-04_hazy-hawk-dns-subdomain-hijack/) | DNS · 子域名劫持 · 威胁情报 |
 | 2026-08-04 | [别急着给 AI 排岗位——读完麦肯锡《Rewired》我的一点不同意见](https://freelamp.com/articles/2026-08-04_rewired-dont-hire-agent-managers/) | AI · 组织管理 · 管理幅度 |
