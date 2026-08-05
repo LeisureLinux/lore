@@ -602,9 +602,11 @@ def markdown_to_html(md_content):
     # 链接
     html = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html)
     
-    # 列表
-    html = re.sub(r'^- (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
-    html = re.sub(r'(<li>.*</li>\n?)+', lambda m: '<ul>\n' + m.group(0) + '</ul>', html)
+    # 列表（无序 `- ` 与有序 `1. `）
+    html = re.sub(r'^- (.+)$', r'<U>\1</U>', html, flags=re.MULTILINE)
+    html = re.sub(r'^(\d+)\.\s+(.+)$', r'<O>\1. \2</O>', html, flags=re.MULTILINE)
+    html = re.sub(r'(<U>.*?</U>\n?)+', lambda m: '<ul>\n' + ''.join('<li>'+x+'</li>\n' for x in re.findall(r'<U>(.*?)</U>', m.group(0))) + '</ul>', html, flags=re.DOTALL)
+    html = re.sub(r'(<O>.*?</O>\n?)+', lambda m: '<ol>\n' + ''.join('<li>'+x+'</li>\n' for x in re.findall(r'<O>(.*?)</O>', m.group(0))) + '</ol>', html, flags=re.DOTALL)
     
     # 引用块（支持连续多行，内容保留行内格式）
     html = re.sub(
@@ -612,18 +614,14 @@ def markdown_to_html(md_content):
         lambda m: '<blockquote>' + '<br>\n'.join(re.sub(r'^> ', '', ln) for ln in m.group(0).strip().split('\n')) + '</blockquote>',
         html, flags=re.MULTILINE)
 
-    # 段落
-    html = re.sub(r'\n\n', '</p>\n<p>', html)
-    html = '<p>' + html + '</p>'
-    
-    # 清理空段落
+    # 段落：按空行切分，仅将纯文本块包裹为 <p>，块级元素不包裹
+    _BLOCK = ('<h1','<h2','<h3','<h4','<h5','<h6','<pre','<ul','<ol','<table','<blockquote')
+    html = '\n'.join(
+        (b if b.lstrip().startswith(_BLOCK) else '<p>' + b + '</p>')
+        for b in re.split(r'\n\s*\n', html) if b.strip()
+    )
     html = re.sub(r'<p>\s*</p>', '', html)
-    html = re.sub(r'<p>(<h[1-6]>.*?</h[1-6]>)</p>', r'\1', html)
-    html = re.sub(r'<p>(<pre>.*?</pre>)</p>', r'\1', html, flags=re.DOTALL)
-    html = re.sub(r'<p>(<ul>.*?</ul>)</p>', r'\1', html, flags=re.DOTALL)
-    html = re.sub(r'<p>(<table>.*?</table>)</p>', r'\1', html, flags=re.DOTALL)
-    html = re.sub(r'<p>(<blockquote>.*?</blockquote>)</p>', r'\1', html, flags=re.DOTALL)
-    
+
     return html
 
 
