@@ -1167,7 +1167,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
         <li>博客：<a href="{site_url}/">https://freelamp.com/</a></li>
         <li>RSS 订阅：<a href="{site_url}/rss.xml">rss.xml</a></li>
       </ul>
-      <p>愿我们永远保持对技术的热爱与自由。🕊️</p>
+      <p>自我的觉醒却是光阴偷不走，人拿不走的。愿我们永远保持对技术的热爱与自由。🕊️</p>
 
     </article>
   </main>
