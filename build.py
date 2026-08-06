@@ -36,7 +36,8 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   <meta name="description" content="{site_description}。涵盖 Linux 内核调优、TLS/PKI 信任链、网络协议安全、CVE 漏洞分析、DevOps 工具链。">
   <meta name="keywords" content="Linux, 内核, DevSecOps, TLS, PKI, 网络安全, CVE, eBPF, systemd, SRE, 基础架构, DevOps">
   <meta name="author" content="{site_author}">
-  <link rel="canonical" href="{site_url}/">
+  <link rel="canonical" href="{canonical_url}">
+  {rel_prev}{rel_next}
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
 
@@ -166,6 +167,28 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
       transition: background .15s, transform .15s;
     }}
     .comment-link:hover {{ background: #D1FAE5; transform: translateY(-1px); }}
+
+    .pagination {{
+      text-align: center; margin: 8px 0 16px;
+    }}
+    .load-more {{
+      display: inline-block; background: #059669; color: #fff;
+      border: none; padding: 12px 32px; border-radius: 999px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: background .15s, transform .15s; margin-bottom: 14px;
+    }}
+    .load-more:hover {{ background: #047857; transform: translateY(-1px); }}
+    .load-more:disabled {{ opacity: 0.6; cursor: default; transform: none; }}
+    .page-links {{ display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }}
+    .page-links .pg {{
+      color: #059669; text-decoration: none; font-weight: 600;
+      padding: 6px 12px; border: 1px solid #D1FAE5; border-radius: 8px;
+      background: #fff; font-size: 13px; min-width: 32px; text-align: center;
+    }}
+    .page-links .pg:hover {{ background: #ECFDF5; }}
+    .page-links .pg.current {{
+      background: #059669; color: #fff; border-color: #059669; cursor: default;
+    }}
     
     footer {{
       text-align: center; padding: 32px 0; color: #9CA3AF;
@@ -195,6 +218,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
     <ul class="article-list">
 {articles}
     </ul>
+    {pager_html}
   </main>
 
   <footer>
@@ -223,6 +247,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
           }}
         }});
       }}
+      window.__applyComments = apply;
       apply();
 
       fetch('https://api.github.com/repos/LeisureLinux/lore/discussions?per_page=100')
@@ -240,9 +265,34 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
         }})
         .catch(function () {{}});
     }})();
+  <script>
+    // 「加载更多」渐进增强：抓取下一页分页页的 .article-item 追加到列表
+    (function () {{
+      var btn = document.getElementById('load-more');
+      if (!btn) return;
+      var list = document.querySelector('.article-list');
+      btn.addEventListener('click', function () {{
+        var next = btn.getAttribute('data-next');
+        if (!next) {{ btn.remove(); return; }}
+        btn.disabled = true; btn.textContent = '加载中…';
+        fetch(next)
+          .then(function (r) {{ return r.text(); }})
+          .then(function (html) {{
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            doc.querySelectorAll('.article-item').forEach(function (li) {{ list.appendChild(li); }});
+            var nb = doc.getElementById('load-more');
+            var nn = nb ? nb.getAttribute('data-next') : '';
+            if (nn) {{ btn.setAttribute('data-next', nn); btn.textContent = '加载更多'; btn.disabled = false; }}
+            else {{ btn.remove(); }}
+            if (window.__applyComments) window.__applyComments();
+          }})
+          .catch(function () {{ btn.textContent = '加载失败，点击重试'; btn.disabled = false; }});
+      }});
+    }})();
   </script>
 </body>
 </html>"""
+
 
 # ============================================================
 # HTML 模板 — 文章页（含完整 SEO/GEO 结构化数据）
@@ -726,13 +776,21 @@ def build_json_ld(meta, canonical_url, content_plain):
     return json.dumps(schema, ensure_ascii=False, indent=2)
 
 
-def build_index(articles):
-    """生成首页 HTML（含 SEO 结构化数据）"""
+PAGE_SIZE = 12
+
+
+def page_url(n):
+    """返回第 n 页的绝对 URL（第 1 页即首页）"""
+    if n <= 1:
+        return f"{SITE_URL}/"
+    return f"{SITE_URL}/page/{n}/"
+
+
+def render_article_items(articles):
+    """渲染一页文章列表的 <li>，同时返回对应 ItemList 结构（position 从 1 起）"""
     articles_html = []
     item_list_elements = []
-    
     sorted_articles = sorted(articles, key=lambda x: x['metadata'].get('date', ''), reverse=True)
-    
     for idx, article in enumerate(sorted_articles, 1):
         meta = article['metadata']
         slug = article['slug']
@@ -740,14 +798,10 @@ def build_index(articles):
         date = meta.get('date', '')
         summary = meta.get('summary', '')
         tags = meta.get('tags', [])
-        
         if isinstance(date, datetime):
             date = date.strftime('%Y-%m-%d')
-        
         article_url = f"{SITE_URL}/articles/{slug}/"
-        
         tags_html = ''.join([f'<a href="/tags/{quote(tag)}/">{tag}</a>' for tag in tags])
-        
         article_html = f"""      <li class="article-item">
         <a href="articles/{slug}/">
           <div class="article-date">{date}</div>
@@ -760,26 +814,72 @@ def build_index(articles):
         </div>
       </li>"""
         articles_html.append(article_html)
-        
-        # 构建 ItemList JSON-LD 元素
         item_list_elements.append({
             "@type": "ListItem",
             "position": idx,
             "name": title,
             "url": article_url
         })
-    
-    # 格式化 ItemList JSON
-    item_list_json = json.dumps(item_list_elements, ensure_ascii=False, indent=6)
-    
-    return INDEX_TEMPLATE.format(
-        site_url=SITE_URL,
-        site_name=SITE_NAME,
-        site_description=SITE_DESCRIPTION,
-        site_author=SITE_AUTHOR,
-        articles='\n'.join(articles_html),
-        item_list_json=item_list_json
-    )
+    return articles_html, item_list_elements
+
+
+def render_pager(page_num, total_pages):
+    """渲染分页导航（含首页的「加载更多」渐进增强按钮）"""
+    if total_pages <= 1:
+        return ''
+    parts = []
+    if page_num > 1:
+        parts.append(f'<a class="pg" href="{page_url(page_num - 1)}">← 上一页</a>')
+    window = [p for p in range(page_num - 2, page_num + 3) if 1 <= p <= total_pages]
+    for p in window:
+        if p == page_num:
+            parts.append(f'<span class="pg current">{p}</span>')
+        else:
+            parts.append(f'<a class="pg" href="{page_url(p)}">{p}</a>')
+    if page_num < total_pages:
+        parts.append(f'<a class="pg" href="{page_url(page_num + 1)}">下一页 →</a>')
+    nav = f'<nav class="page-links">{" ".join(parts)}</nav>'
+    load_more = ''
+    if page_num == 1 and total_pages > 1:
+        load_more = f'<button id="load-more" class="load-more" data-next="{page_url(2)}">加载更多</button>'
+    return f'<div class="pagination">{load_more}{nav}</div>'
+
+
+def build_index_pages(articles):
+    """生成首页(index.html) + 分页页(page/N/index.html)，返回 [(相对路径, html), ...]"""
+    sorted_articles = sorted(articles, key=lambda x: x['metadata'].get('date', ''), reverse=True)
+    total_pages = max(1, (len(sorted_articles) + PAGE_SIZE - 1) // PAGE_SIZE)
+    pages = []
+    for page_num in range(1, total_pages + 1):
+        start = (page_num - 1) * PAGE_SIZE
+        slice_ = sorted_articles[start:start + PAGE_SIZE]
+        articles_html, item_list_elements = render_article_items(slice_)
+        item_list_json = json.dumps(item_list_elements, ensure_ascii=False, indent=6)
+        pager_html = render_pager(page_num, total_pages)
+        if page_num == 1:
+            canonical_url = f"{SITE_URL}/"
+            rel_prev = ''
+            rel_next = f'<link rel="next" href="{page_url(2)}">' if total_pages > 1 else ''
+            relpath = "index.html"
+        else:
+            canonical_url = page_url(page_num)
+            rel_prev = f'<link rel="prev" href="{page_url(page_num - 1)}">'
+            rel_next = f'<link rel="next" href="{page_url(page_num + 1)}">' if page_num < total_pages else ''
+            relpath = f"page/{page_num}/index.html"
+        html = INDEX_TEMPLATE.format(
+            site_url=SITE_URL,
+            site_name=SITE_NAME,
+            site_description=SITE_DESCRIPTION,
+            site_author=SITE_AUTHOR,
+            canonical_url=canonical_url,
+            rel_prev=rel_prev,
+            rel_next=rel_next,
+            articles='\n'.join(articles_html),
+            item_list_json=item_list_json,
+            pager_html=pager_html,
+        )
+        pages.append((relpath, html))
+    return pages
 
 
 def build_article_page(article):
@@ -991,6 +1091,15 @@ def generate_sitemap(articles):
             'priority': '0.8'
         })
     
+    # 分页页（首页已在上面，page/2/ 起）
+    num_pages = max(1, (len(articles) + PAGE_SIZE - 1) // PAGE_SIZE)
+    for p in range(2, num_pages + 1):
+        urls.append({
+            'loc': f"{SITE_URL}/page/{p}/",
+            'changefreq': 'weekly',
+            'priority': '0.6'
+        })
+
     # 标签目录页
     seen_tags = set()
     for article in articles:
@@ -1237,10 +1346,13 @@ def main():
     
     print(f"\n📊 共找到 {len(articles)} 篇文章")
     
-    # 生成首页
-    index_html = build_index(articles)
-    (DOCS_DIR / "index.html").write_text(index_html, encoding='utf-8')
-    print("✅ 生成首页：docs/index.html")
+    # 生成首页 + 分页页（page/2/ ...）
+    index_pages = build_index_pages(articles)
+    for relpath, html in index_pages:
+        out = DOCS_DIR / relpath
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html, encoding='utf-8')
+    print(f"✅ 生成首页及分页页：共 {len(index_pages)} 页")
 
     # 生成「关于 FreeLAMP」页面
     about_html = build_about_page()
