@@ -8,13 +8,13 @@
 
 ## 一、公告到底说了什么
 
-**公告编号**：DLA-4717-1
-**发布方**：Debian LTS（长期支持）团队
-**公告撰写**：Emilio Pozuelo Monfort，2026-08-05
-**受影响软件**：Linux Kernel
-**修复版本**：Debian 11 (Bullseye, LTS) → `5.10.262-1`
-**漏洞影响**：**提权（privilege escalation）、拒绝服务（DoS）、信息泄露（information leaks）**
-**附带内容**：除安全修复外，还合入了 stable 更新 `5.10.260` ~ `5.10.262` 的大量常规 bug fix
+- **公告编号**：DLA-4717-1
+- **发布方**：Debian LTS（长期支持）团队
+- **公告撰写**：Emilio Pozuelo Monfort，2026-08-05
+- **受影响软件**：Linux Kernel
+- **修复版本**：Debian 11 (Bullseye, LTS) → `5.10.262-1`
+- **漏洞影响**：**提权（privilege escalation）、拒绝服务（DoS）、信息泄露（information leaks）**
+- **附带内容**：除安全修复外，还合入了 stable 更新 `5.10.260` ~ `5.10.262` 的大量常规 bug fix
 
 先明确一个容易被误解的点：**5.10 是 Debian 11 bullseye 的内核版本，而这个版本早已不是「最新主线」**——它是 LTS 承诺的一部分，Debian 要在 bullseye 的整个支持周期里持续给它打补丁。这次 181 个 CVE 集中在一次发布里，恰恰是 LTS 工作的常态：安全修复和 stable 累积更新攒够了就统一发一版。
 
