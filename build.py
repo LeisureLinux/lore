@@ -105,6 +105,26 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
       background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px;
       font-size: 12px; font-weight: 600;
     }}
+
+    header .projects {{
+      margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;
+    }}
+    header .project-btn {{
+      display: flex; flex-direction: column; gap: 2px;
+      background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.35);
+      color: #fff; text-decoration: none; border-radius: 10px;
+      padding: 9px 14px; transition: background .15s, transform .15s;
+      min-width: 0;
+    }}
+    header .project-btn:hover {{
+      background: rgba(255,255,255,0.28); transform: translateY(-1px);
+    }}
+    header .project-btn b {{
+      font-size: 13px; font-weight: 800; letter-spacing: 0.3px;
+    }}
+    header .project-btn span {{
+      font-size: 11px; opacity: 0.85; font-weight: 500;
+    }}
     
     .article-list {{ list-style: none; }}
     .article-item {{
@@ -159,6 +179,12 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
     <div class="container">
       <h1><a href="/" style="color:#fff; text-decoration:none;">FreeLAMP.com 像风一样自由</a></h1>
       <p>禅道须在生活中修，在日常言语、形式里面契合、印证</p>
+      <div class="projects">
+        <a class="project-btn" href="https://github.com/LeisureLinux/ghdeb" target="_blank" rel="noopener"><b>ghdeb</b><span>从 GitHub 安装 deb 包</span></a>
+        <a class="project-btn" href="https://github.com/LeisureLinux/unbound-dashboard" target="_blank" rel="noopener"><b>unbound-dashboard</b><span>轻量的 unbound DNS 查询日志仪表板</span></a>
+        <a class="project-btn" href="https://github.com/LeisureLinux/adhole" target="_blank" rel="noopener"><b>adhole</b><span>用自建 DNS 阻拦广告</span></a>
+        <a class="project-btn" href="https://github.com/LeisureLinux/Readings" target="_blank" rel="noopener"><b>Readings</b><span>我的阅读人生</span></a>
+      </div>
       <div class="tags">
         <span>Linux</span><span>内核</span><span>安全</span><span>开源</span>
       </div>
