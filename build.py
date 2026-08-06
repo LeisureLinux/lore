@@ -183,7 +183,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
         <a class="project-btn" href="https://github.com/LeisureLinux/ghdeb" target="_blank" rel="noopener"><b>ghdeb</b><span>从 GitHub 安装 deb 包</span></a>
         <a class="project-btn" href="https://github.com/LeisureLinux/unbound-dashboard" target="_blank" rel="noopener"><b>unbound-dashboard</b><span>轻量的 unbound DNS 查询日志仪表板</span></a>
         <a class="project-btn" href="https://github.com/LeisureLinux/adhole" target="_blank" rel="noopener"><b>adhole</b><span>用自建 DNS 阻拦广告</span></a>
-        <a class="project-btn" href="https://github.com/LeisureLinux/Readings" target="_blank" rel="noopener"><b>Readings</b><span>我的阅读人生</span></a>
+        <a class="project-btn" href="https://read.freelamp.com/" target="_blank" rel="noopener"><b>Readings</b><span>我的阅读人生</span></a>
       </div>
       <div class="tags">
         <span>Linux</span><span>内核</span><span>安全</span><span>开源</span>
