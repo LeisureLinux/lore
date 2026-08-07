@@ -7,6 +7,7 @@ FreeLAMP.com 静态站点构建脚本
 """
 
 import os
+import html
 import re
 import json
 import yaml
@@ -29,13 +30,34 @@ SITE_AUTHOR = "LeisureLinux"
 # 2) 每篇文章 front-matter 可用 jd_url: 指定该文的京东推广链接（覆盖全局默认）。
 # 3) 未指定时回退到全局 JD_BUY_URL；两者都留空则该文不显示「京东购买」卡片。
 JD_BUY_URL = "https://union-click.jd.com/jdc?e=618%7Cpc%7C&p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY"
+JD_BUY_TITLE = "联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴"
+JD_BUY_IMG = "https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png"
 
-def jd_buy_html(url: str) -> str:
-    """生成文章底部「京东购买」CPS 推广卡片；url 为空时返回空串（不渲染）。"""
+
+def jd_buy_html(url: str, title: str = "", img: str = "") -> str:
+    """生成文章底部「京东购买」CPS 推广卡片；url 为空时返回空串（不渲染）。
+    提供 title+img 时渲染带商品图与标题的卡片，否则回退纯文字卡片。"""
     url = (url or "").strip()
     if not url:
         return ""
+    title = (title or "").strip()
+    img = (img or "").strip()
     href = url.replace('&', '&amp;')
+    if title and img:
+        t = html.escape(title)
+        im = html.escape(img)
+        return (
+            '\n    <!-- 京东购买卡片（CPS 推广，带商品图） -->\n'
+            '    <div class="buy-card buy-card-prod">\n'
+            f'      <a class="buy-prod-img" href="{href}" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="{im}" alt="{t}" loading="lazy" decoding="async"></a>\n'
+            '      <div class="buy-info">\n'
+            '        <span class="buy-label">支持作者</span>\n'
+            '        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>\n'
+            f'        <div class="buy-prod-title">{t}</div>\n'
+            '      </div>\n'
+            f'      <a class="buy-btn" href="{href}" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>\n'
+            '    </div>\n'
+        )
     return (
         '\n    <!-- 京东购买卡片（CPS 推广） -->\n'
         '    <div class="buy-card">\n'
@@ -498,6 +520,23 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
       text-decoration: none; white-space: nowrap;
     }}
     .buy-card .buy-btn:hover {{ background: #cf2c2f; }}
+    .buy-card.buy-card-prod {{ align-items: stretch; }}
+    .buy-prod-img {{
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }}
+    .buy-prod-img img {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
+    .buy-info {{ flex: 1; min-width: 0; }}
+    .buy-card .buy-prod-title {{
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }}
+    @media (max-width: 520px) {{
+      .buy-card.buy-card-prod {{ flex-wrap: wrap; }}
+      .buy-card.buy-card-prod .buy-btn {{ width: 100%; text-align: center; }}
+    }}
     .share-bar {{
       display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
       padding: 22px 0 26px; margin-top: 8px;
@@ -995,12 +1034,15 @@ def build_article_page(article):
     # meta keywords
     meta_keywords = ", ".join(tags) if tags else "Linux, DevOps, 技术"
     
-    # 京东购买卡片：优先文章 front-matter 的 jd_url，否则用全局默认 JD_BUY_URL
+    # 京东购买卡片：优先文章 front-matter 的 jd_url/jd_title/jd_img，
+    # 否则用全局默认 JD_BUY_URL/JD_BUY_TITLE/JD_BUY_IMG（均可留空）
     jd_url = (meta.get('jd_url') or JD_BUY_URL or '').strip()
+    jd_title = (meta.get('jd_title') or JD_BUY_TITLE or '').strip()
+    jd_img = (meta.get('jd_img') or JD_BUY_IMG or '').strip()
 
     return ARTICLE_TEMPLATE.format(
         analytics_snippet=analytics_html(),
-        jd_buy_html=jd_buy_html(jd_url),
+        jd_buy_html=jd_buy_html(jd_url, jd_title, jd_img),
         title=title,
         date=date_display,
         date_iso=date_iso,
