@@ -24,6 +24,35 @@ SITE_NAME = "FreeLAMP.com"
 SITE_DESCRIPTION = "Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库"
 SITE_AUTHOR = "LeisureLinux"
 
+# ================= 友盟+ 网站统计 (U-Web) 配置 =================
+# 1) 打开 https://www.umeng.com/ 注册登录，进入「网站统计 / U-Web」新增一个站点，
+#    站点信息填：网站名称 + URL（https://freelamp.com 或 https://read.freelamp.com）。
+# 2) 友盟会生成一段统计代码，形如：
+#      <script src="https://s4.cnzz.com/z_stat.php?id=125XXXXXXX&web_id=125XXXXXXX"></script>
+# 3) 把其中那串数字 ID（125XXXXXXX）填到下面的 UMENG_SITE_ID。
+#    留空（""）时不会输出任何统计脚本，站点保持纯净、不引入额外请求。
+UMENG_SITE_ID = ""
+
+def analytics_html() -> str:
+    """返回注入到每页 </head> 前的友盟统计脚本（异步加载，不阻塞渲染）。
+    未配置 UMENG_SITE_ID 时返回空串。"""
+    sid = (UMENG_SITE_ID or "").strip()
+    if not sid:
+        return ""
+    return (
+        '  <!-- 友盟+ 网站统计 U-Web（异步加载，不阻塞渲染） -->\n'
+        '  <script>\n'
+        '  (function() {\n'
+        f'    var sid = "{sid}";\n'
+        '    var s = document.createElement("script");\n'
+        '    s.async = true;\n'
+        '    s.src = "https://s4.cnzz.com/z_stat.php?id=" + sid + "&web_id=" + sid;\n'
+        '    document.getElementsByTagName("head")[0].appendChild(s);\n'
+        '  })();\n'
+        '  </script>\n'
+    )
+
+
 # ============================================================
 # HTML 模板 — 首页（含 SEO meta）
 # ============================================================
@@ -191,7 +220,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
     }}
     footer a {{ color: #059669; text-decoration: none; }}
   </style>
-</head>
+{analytics_snippet}</head>
 <body>
   <header>
     <div class="container">
@@ -473,7 +502,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     }}
     footer a {{ color: #059669; text-decoration: none; }}
   </style>
-</head>
+{analytics_snippet}</head>
 <body>
   <nav>
     <div class="container">
@@ -584,7 +613,7 @@ TAG_TEMPLATE = """<!DOCTYPE html>
     footer {{ text-align: center; padding: 32px 0; color: #9CA3AF; font-size: 13px; border-top: 1px solid #E5E7EB; margin-top: 40px; }}
     footer a {{ color: #059669; text-decoration: none; }}
   </style>
-</head>
+{analytics_snippet}</head>
 <body>
   <nav>
     <div class="container">
@@ -862,6 +891,7 @@ def build_index_pages(articles):
             rel_next = f'<link rel="next" href="{page_url(page_num + 1)}">' if page_num < total_pages else ''
             relpath = f"page/{page_num}/index.html"
         html = INDEX_TEMPLATE.format(
+            analytics_snippet=analytics_html(),
             site_url=SITE_URL,
             site_name=SITE_NAME,
             site_description=SITE_DESCRIPTION,
@@ -922,6 +952,7 @@ def build_article_page(article):
     meta_keywords = ", ".join(tags) if tags else "Linux, DevOps, 技术"
     
     return ARTICLE_TEMPLATE.format(
+        analytics_snippet=analytics_html(),
         title=title,
         date=date_display,
         date_iso=date_iso,
@@ -969,6 +1000,7 @@ def build_tag_pages(articles):
         </a>
       </li>""")
         html = TAG_TEMPLATE.format(
+            analytics_snippet=analytics_html(),
             tag=tag,
             count=len(tagged_articles),
             tag_url=tag_url,
@@ -1240,7 +1272,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
     }}
     footer a {{ color: #059669; text-decoration: none; }}
   </style>
-</head>
+{analytics_snippet}</head>
 <body>
   <nav>
     <div class="container">
@@ -1316,6 +1348,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
 def build_about_page():
     """生成「关于 FreeLAMP」页面（网站历史 + 作者介绍）"""
     return ABOUT_TEMPLATE.format(
+        analytics_snippet=analytics_html(),
         site_url=SITE_URL,
         site_name=SITE_NAME,
         site_author=SITE_AUTHOR,
