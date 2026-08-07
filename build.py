@@ -38,7 +38,7 @@ SITE_AUTHOR = "LeisureLinux"
 #      </script>
 # 3) 把 hm.js? 后面那串哈希值（HM 代码）填到下面的 BAIDU_TONGJI_ID。
 #    留空（""）时不会输出任何统计脚本，站点保持纯净、不引入额外请求。
-BAIDU_TONGJI_ID = ""
+BAIDU_TONGJI_ID = "aa427f018a2cbb4f12e8b81eda96de51"
 
 def analytics_html() -> str:
     """返回注入到每页 </head> 前的百度统计脚本（异步加载，不阻塞渲染）。
