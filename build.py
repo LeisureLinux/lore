@@ -24,34 +24,40 @@ SITE_NAME = "FreeLAMP.com"
 SITE_DESCRIPTION = "Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库"
 SITE_AUTHOR = "LeisureLinux"
 
-# ================= 友盟+ 网站统计 (U-Web) 配置 =================
-# 1) 打开 https://www.umeng.com/ 注册登录，进入「网站统计 / U-Web」新增一个站点，
+# ================= 百度统计 (Baidu Tongji) 配置 =================
+# 1) 打开 https://tongji.baidu.com/ 用百度账号登录，新增一个站点，
 #    站点信息填：网站名称 + URL（https://freelamp.com 或 https://read.freelamp.com）。
-# 2) 友盟会生成一段统计代码，形如：
-#      <script src="https://s4.cnzz.com/z_stat.php?id=125XXXXXXX&web_id=125XXXXXXX"></script>
-# 3) 把其中那串数字 ID（125XXXXXXX）填到下面的 UMENG_SITE_ID。
+# 2) 百度会生成一段统计代码，形如：
+#      <script>
+#      var _hmt = _hmt || [];
+#      (function() {
+#        var hm = document.createElement("script");
+#        hm.src = "https://hm.baidu.com/hm.js?5c5bxxxxxxxxxxxxxxxxxxxxxxx";
+#        ...
+#      })();
+#      </script>
+# 3) 把 hm.js? 后面那串哈希值（HM 代码）填到下面的 BAIDU_TONGJI_ID。
 #    留空（""）时不会输出任何统计脚本，站点保持纯净、不引入额外请求。
-UMENG_SITE_ID = ""
+BAIDU_TONGJI_ID = ""
 
 def analytics_html() -> str:
-    """返回注入到每页 </head> 前的友盟统计脚本（异步加载，不阻塞渲染）。
-    未配置 UMENG_SITE_ID 时返回空串。"""
-    sid = (UMENG_SITE_ID or "").strip()
-    if not sid:
+    """返回注入到每页 </head> 前的百度统计脚本（异步加载，不阻塞渲染）。
+    未配置 BAIDU_TONGJI_ID 时返回空串。"""
+    tid = (BAIDU_TONGJI_ID or "").strip()
+    if not tid:
         return ""
     return (
-        '  <!-- 友盟+ 网站统计 U-Web（异步加载，不阻塞渲染） -->\n'
+        '  <!-- 百度统计（异步加载，不阻塞渲染） -->\n'
         '  <script>\n'
+        '  var _hmt = _hmt || [];\n'
         '  (function() {\n'
-        f'    var sid = "{sid}";\n'
-        '    var s = document.createElement("script");\n'
-        '    s.async = true;\n'
-        '    s.src = "https://s4.cnzz.com/z_stat.php?id=" + sid + "&web_id=" + sid;\n'
-        '    document.getElementsByTagName("head")[0].appendChild(s);\n'
+        f'    var hm = document.createElement("script");\n'
+        f'    hm.src = "https://hm.baidu.com/hm.js?{tid}";\n'
+        '    var s = document.getElementsByTagName("script")[0];\n'
+        '    s.parentNode.insertBefore(hm, s);\n'
         '  })();\n'
         '  </script>\n'
     )
-
 
 # ============================================================
 # HTML 模板 — 首页（含 SEO meta）
