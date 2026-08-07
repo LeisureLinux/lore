@@ -64,11 +64,6 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
     "name": "{site_name}",
     "url": "{site_url}/",
     "description": "{site_description}",
-    "author": {{
-      "@type": "Person",
-      "name": "{site_author}",
-      "url": "https://github.com/LeisureLinux"
-    }},
     "potentialAction": {{
       "@type": "SearchAction",
       "target": "{site_url}/?q={{search_term_string}}",
@@ -1177,12 +1172,15 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
     "@type": "ProfilePage",
     "name": "关于 FreeLAMP",
     "url": "{site_url}/about-freelamp.html",
-    "author": {{
+    "mainEntity": {{
       "@type": "Person",
       "name": "{site_author}",
       "url": "https://github.com/LeisureLinux",
       "email": "albertxu@freelamp.com",
-      "knowsAbout": ["Linux", "自由软件", "开源", "系统管理", "DevSecOps"]
+      "knowsAbout": ["Linux", "自由软件", "开源", "系统管理", "DevSecOps"],
+      "sameAs": [
+        "https://github.com/LeisureLinux"
+      ]
     }}
   }}
   </script>
