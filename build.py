@@ -24,6 +24,30 @@ SITE_NAME = "FreeLAMP.com"
 SITE_DESCRIPTION = "Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库"
 SITE_AUTHOR = "LeisureLinux"
 
+# ================= 京东联盟 CPS 推广（可选） =================
+# 1) 在 https://union.jd.com/ 登录联盟后台，选商品「获取推广链接」得到 jdc 长链。
+# 2) 每篇文章 front-matter 可用 jd_url: 指定该文的京东推广链接（覆盖全局默认）。
+# 3) 未指定时回退到全局 JD_BUY_URL；两者都留空则该文不显示「京东购买」卡片。
+JD_BUY_URL = "https://union-click.jd.com/jdc?e=618%7Cpc%7C&p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY"
+
+def jd_buy_html(url: str) -> str:
+    """生成文章底部「京东购买」CPS 推广卡片；url 为空时返回空串（不渲染）。"""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    href = url.replace('&', '&amp;')
+    return (
+        '\n    <!-- 京东购买卡片（CPS 推广） -->\n'
+        '    <div class="buy-card">\n'
+        '      <div class="buy-info">\n'
+        '        <span class="buy-label">支持作者</span>\n'
+        '        <div class="buy-text">本文有帮助？可通过京东下单相关书籍或商品，给作者一点小支持。</div>\n'
+        '      </div>\n'
+        f'      <a class="buy-btn" href="{href}" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>\n'
+        '    </div>\n'
+    )
+
+
 # ================= 百度统计 (Baidu Tongji) 配置 =================
 # 1) 打开 https://tongji.baidu.com/ 用百度账号登录，新增一个站点，
 #    站点信息填：网站名称 + URL（https://freelamp.com 或 https://read.freelamp.com）。
@@ -461,6 +485,19 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     }}
     .post-content hr {{ border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }}
     
+    .buy-card {{
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }}
+    .buy-card .buy-label {{ color: #E6373A; font-weight: 600; font-size: 13px; }}
+    .buy-card .buy-text {{ color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }}
+    .buy-card .buy-btn {{
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }}
+    .buy-card .buy-btn:hover {{ background: #cf2c2f; }}
     .share-bar {{
       display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
       padding: 22px 0 26px; margin-top: 8px;
@@ -530,6 +567,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 {content}
       </div>
     </article>
+{jd_buy_html}
 
     <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
     <div class="share-bar">
@@ -957,8 +995,12 @@ def build_article_page(article):
     # meta keywords
     meta_keywords = ", ".join(tags) if tags else "Linux, DevOps, 技术"
     
+    # 京东购买卡片：优先文章 front-matter 的 jd_url，否则用全局默认 JD_BUY_URL
+    jd_url = (meta.get('jd_url') or JD_BUY_URL or '').strip()
+
     return ARTICLE_TEMPLATE.format(
         analytics_snippet=analytics_html(),
+        jd_buy_html=jd_buy_html(jd_url),
         title=title,
         date=date_display,
         date_iso=date_iso,
