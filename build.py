@@ -247,14 +247,6 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
     .pagination {{
       text-align: center; margin: 8px 0 16px;
     }}
-    .load-more {{
-      display: inline-block; background: #059669; color: #fff;
-      border: none; padding: 12px 32px; border-radius: 999px;
-      font-size: 14px; font-weight: 700; cursor: pointer;
-      transition: background .15s, transform .15s; margin-bottom: 14px;
-    }}
-    .load-more:hover {{ background: #047857; transform: translateY(-1px); }}
-    .load-more:disabled {{ opacity: 0.6; cursor: default; transform: none; }}
     .page-links {{ display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }}
     .page-links .pg {{
       color: #059669; text-decoration: none; font-weight: 600;
@@ -341,31 +333,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
         }})
         .catch(function () {{}});
     }})();
-  <script>
-    // 「加载更多」渐进增强：抓取下一页分页页的 .article-item 追加到列表
-    (function () {{
-      var btn = document.getElementById('load-more');
-      if (!btn) return;
-      var list = document.querySelector('.article-list');
-      btn.addEventListener('click', function () {{
-        var next = btn.getAttribute('data-next');
-        if (!next) {{ btn.remove(); return; }}
-        btn.disabled = true; btn.textContent = '加载中…';
-        fetch(next)
-          .then(function (r) {{ return r.text(); }})
-          .then(function (html) {{
-            var doc = new DOMParser().parseFromString(html, 'text/html');
-            doc.querySelectorAll('.article-item').forEach(function (li) {{ list.appendChild(li); }});
-            var nb = doc.getElementById('load-more');
-            var nn = nb ? nb.getAttribute('data-next') : '';
-            if (nn) {{ btn.setAttribute('data-next', nn); btn.textContent = '加载更多'; btn.disabled = false; }}
-            else {{ btn.remove(); }}
-            if (window.__applyComments) window.__applyComments();
-          }})
-          .catch(function () {{ btn.textContent = '加载失败，点击重试'; btn.disabled = false; }});
-      }});
-    }})();
-  </script>
+
 </body>
 </html>"""
 
@@ -931,7 +899,7 @@ def render_article_items(articles):
 
 
 def render_pager(page_num, total_pages):
-    """渲染分页导航（含首页的「加载更多」渐进增强按钮）"""
+    """渲染分页导航"""
     if total_pages <= 1:
         return ''
     parts = []
@@ -945,11 +913,7 @@ def render_pager(page_num, total_pages):
             parts.append(f'<a class="pg" href="{page_url(p)}">{p}</a>')
     if page_num < total_pages:
         parts.append(f'<a class="pg" href="{page_url(page_num + 1)}">下一页 →</a>')
-    nav = f'<nav class="page-links">{" ".join(parts)}</nav>'
-    load_more = ''
-    if page_num == 1 and total_pages > 1:
-        load_more = f'<button id="load-more" class="load-more" data-next="{page_url(2)}">加载更多</button>'
-    return f'<div class="pagination">{load_more}{nav}</div>'
+    return f'<nav class="page-links">{" ".join(parts)}</nav>'
 
 
 def build_index_pages(articles):
