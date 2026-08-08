@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-08-08 | [GRR：谷歌开源的远程取证与应急响应框架——Flow / Hunt / osquery 一篇讲清](https://freelamp.com/articles/2026-08-08_grr-rapid-response/) | 应急响应 · 取证 · osquery · 开源 |
 | 2026-08-06 | [181 个 CVE 一起修：Debian LTS 的 Linux 5.10.262-1 更新，和它告诉我们的内核稳定性真相](https://freelamp.com/articles/2026-08-06_dla-4717-1-linux-kernel-5.10/) | CVE · Linux Kernel · LTS |
 | 2026-08-06 | [被放弃的 p7zip，终于换上了官方 7-Zip：Debian LTS 的 DLA-4719-1 安全公告解读](https://freelamp.com/articles/2026-08-06_dla-4719-1-p7zip-7zip/) | CVE · Debian LTS · 供应链安全 |
 | 2026-08-05 | [能力逼近前沿、护栏却可剥除：SaferAI 对 GLM-5.2 的独立风险评估解读](https://freelamp.com/articles/2026-08-05_glm52-saferai-risk-eval/) | AI 安全 · 开源权重模型 · 风险评估 |
