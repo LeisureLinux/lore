@@ -294,21 +294,33 @@ tags:
 <tr><td><strong>受影响处理器</strong></td><td>部分批次 3A5000、3A6000、3C5000、3C6000</td></tr>
 <tr><td><strong>风险等级</strong></td><td>中低（仅限本地访问，无法远程）</td></tr>
 <tr><td><strong>修复状态</strong></td><td>已推送补丁，新款芯片硬件级修复</td></tr>
+<tr><td><strong>CVE 编号</strong></td><td>CVE-2026-68435</td></tr>
 <tr><td><strong>报告时间</strong></td><td>2025 年 7 月 23 日（龙芯已接收）</td></tr>
 </table>
 <p>---</p>
 <h2>一、漏洞原理：何为「CPU 残留数据」？</h2>
-<h3>1.1 本质是微结构隔离不足</h3>
+<h3>1.1 论文披露的技术细节</h3>
+<p>2026 年 8 月，德国 <strong>CISPA 亥姆霍兹信息安全中心</strong> 的研究人员 <a href="https://www.cispa.de/en/people/hetterich">Lorenz Hetterich</a> 等在<strong>USENIX Security 2026</strong>上发表了题为 <strong>《Loongleak: Architectural Cross-Privilege-Boundary Data Leakage on LoongArch CPUs》</strong> 的论文，披露了一个架构级数据泄露漏洞。</p>
+<p><strong>核心攻击机制</strong>：</p>
+<ul>
+<li><strong>触发指令</strong>：LoongArch 芯片处理 <strong>4 字节浮点数加载</strong>或<strong>向量指令加载（LSX/LASX）</strong>时</li>
+<li><strong>漏洞根源</strong>：<strong>L1 Data Cache 资源隔离不充分</strong></li>
+<li><strong>攻击效果</strong>：可能向未授权域泄露同一物理核心上残留的少量数据</li>
+<li><strong>独特之处</strong>：<strong>无需时间测量等传统侧信道手段</strong>，直接利用缓存架构缺陷</li>
+</ul>
+<blockquote><strong>原始论文</strong>：<a href="https://www.usenix.org/conference/usenixsecurity26/presentation/hetterich-lorenz-2">USENIX Security 2026 - LoongLeak</a></blockquote>
+<h3>1.2 本质是微结构隔离不足</h3>
 <p>LoongLeak 并非 LoongArch 指令集架构的<strong>设计缺陷</strong>，而是与英特尔 Spectre/Meltdown、AMD Zen2 微结构泄露属于同一类问题——<strong>处理器内部不同程序之间的微结构资源隔离不够充分</strong>。</p>
-<p>当应用调用 <strong>LSX/LASX 向量指令</strong> 或 <strong>浮点加载指令</strong> 时，处理器在高速缓存、执行单元等微结构中会暂时保留前序指令的处理结果。理论上，这些残留数据应当被严格隔离，但某些特定条件下，同一物理核心上并行的恶意程序能够读取到少量残留值。</p>
-<h3>1.2 与 Spectre/Meltdown 的异同</h3>
+<p>当应用调用 <strong>LSX/LASX 向量指令</strong> 或 <strong>浮点加载指令</strong> 时，处理器在 L1 Data Cache、执行单元等微结构中会暂时保留前序指令的处理结果。理论上，这些残留数据应当被严格隔离，但某些特定条件下，同一物理核心上并行的恶意程序能够读取到少量残留值。</p>
+<h3>1.3 与 Spectre/Meltdown 的异同</h3>
 <table>
 <tr><th>特性</th><th>Spectre/Meltdown</th><th>LoongLeak</th></tr>
 <tr><td><strong>触发方式</strong></td><td>分支预测、乱序执行</td><td>向量指令、浮点加载</td></tr>
-<tr><td><strong>隔离层次</strong></td><td>推测执行状态</td><td>微结构资源池</td></tr>
+<tr><td><strong>隔离层次</strong></td><td>推测执行状态</td><td>L1 Data Cache 缓存</td></tr>
 <tr><td><strong>数据量</strong></td><td>字节级，可构造</td><td>少量残留，难控制</td></tr>
 <tr><td><strong>权限需求</strong></td><td>本地用户</td><td>本地用户</td></tr>
 <tr><td><strong>远程攻击</strong></td><td>无法直接远程</td><td>无法直接远程</td></tr>
+<tr><td><strong>辅助手段</strong></td><td>需要 timing 测量</td><td>无需 timing，直接读取</td></tr>
 </table>
 <p>---</p>
 <h2>二、攻击场景与局限性</h2>
@@ -327,37 +339,68 @@ tags:
 <tr><td><strong>无法指定地址</strong></td><td>无法像普通内存读取那样指定任意地址获取数据</td></tr>
 <tr><td><strong>数据量小</strong></td><td>仅读取少量残留数据，需配合其他漏洞才能形成完整攻击链</td></tr>
 <tr><td><strong>需特定指令</strong></td><td>必须调用 LSX/LASX 或浮点加载指令触发</td></tr>
+<tr><td><strong>仅影响 L1 缓存</strong></td><td>不涉及更高级缓存或主存</td></tr>
 </table>
 <blockquote><strong>安全评估结论</strong>：漏洞整体风险较低，适用于多用户服务器环境的常规防护策略。</blockquote>
 ---
 <h2>三、龙芯的响应与修复策略</h2>
 <h3>3.1 响应时间线</h3>
+<pre><code class="mermaid">graph LR
+    A[2025-07-23<br/>漏洞报告] --> B[2025-07~2026-08<br/>修复周期]
+    B --> C[2026-08<br/>USENIX Security 公开]
+</code></pre>
 <ol>
 <li>1. <strong>2025 年 7 月 23 日</strong>：CISPA 研究团队向龙芯提交漏洞报告</li>
 <li>2. <strong>2025-2026 年</strong>：龙芯复现问题，与合作厂商共同开发补丁，并要求研究团队保密一年</li>
 <li>3. <strong>2026 年 8 月</strong>：研究团队在 USENIX Security 2026 上正式公开 LoongLeak</li>
 </ol>
-<h3>3.2 软件修复</h3>
-<p>龙芯已在漏洞公开披露前向操作系统合作厂商推送安全修复补丁：</p>
+<h3>3.2 官方回应重点</h3>
+<p><strong>核心结论与影响范围</strong>：</p>
 <ul>
-<li><strong>服务器/多用户环境</strong>：强烈建议及时升级</li>
-<li><strong>桌面/单用户环境</strong>：风险相对较低，但仍推荐更新</li>
+<li><strong>漏洞性质</strong>：属于特定 CPU 微结构实现层面的问题，<strong>非 LoongArch 指令集架构（ISA）设计缺陷</strong></li>
+<li><strong>波及型号</strong>：部分版本的龙芯 <strong>3A5000 / 3A6000</strong> 及 <strong>3C5000 / 3C6000</strong> 系列处理器</li>
+<li><strong>不受影响型号</strong>：其余芯片（如 2K 系列等）不受影响</li>
 </ul>
-<h3>3.3 硬件级解决</h3>
-<p>对于<strong>新版 3A6000 和 3C6000 及后续迭代芯片</strong>：</p>
+<strong>风险定级</strong>：
+<blockquote>中低风险。仅涉及同一物理核心内一阶段缓存残留数据的侧信道泄露，不存在越权写入数据或任意代码执行的风险，且<strong>无法指定攻击任意物理/虚拟内存地址</strong>。</blockquote>
+<h3>3.3 修复进展</h3>
+<p><strong>软件与操作系统层</strong>：</p>
 <ul>
-<li>✅ 已修改微结构设计方案</li>
-<li>✅ 经过流片验证</li>
-<li>✅ 从硬件层面彻底消除漏洞风险</li>
+<li>龙芯已在论文公开前完成根因定位与修复</li>
+<li>向各 Linux 发行版及操作系统合作厂商推送了安全修复补丁</li>
+<li>在服务器等多用户/多租户场景下，建议升级系统补丁</li>
+<li><strong>实测性能损耗极小</strong></li>
+</ul>
+<strong>硬件微结构层</strong>：
+<ul>
+<li>新版批次的 <strong>3A6000、3C6000</strong> 及后续迭代芯片</li>
+<li>已在硬件微结构上完成加固流片</li>
+<li><strong>硬件层面已彻底消除该风险</strong></li>
 </ul>
 ---
-<h2>四、市场影响与安全建议</h2>
-<h3>4.1 龙芯装机规模</h3>
+<h2>四、Linux Kernel 补丁与 CVE 追踪</h2>
+<h3>4.1 CVE 编号</h3>
+<ul>
+<li><strong>CVE-2026-68435</strong>：涉及 LoongArch 内核地址空间校验等修补</li>
+</ul>
+<h3>4.2 NVD 详情</h3>
+<ul>
+<li><strong>NVD 链接</strong>：<a href="https://nvd.nist.gov/vuln/detail/CVE-2026-68435">https://nvd.nist.gov/vuln/detail/CVE-2026-68435</a></li>
+</ul>
+<h3>4.3 内核相关补丁</h3>
+<p>相关的内核修正与漏洞追溯可参考以下资源：</p>
+<ul>
+<li><strong>kernel.org</strong>：官方 Linux 内核源代码和补丁</li>
+<li><strong>NVD（National Vulnerability Database）</strong>：美国国家标准技术研究院漏洞数据库</li>
+</ul>
+---
+<h2>五、市场影响与安全建议</h2>
+<h3>5.1 龙芯装机规模</h3>
 <ul>
 <li><strong>2026 年 5 月</strong>：3A6000 桌面处理器累计出货量突破 <strong>100 万片</strong></li>
 <li><strong>主要领域</strong>：党政办公、税务、教育等信创领域</li>
 </ul>
-<h3>4.2 政府采购占比</h3>
+<h3>5.2 政府采购占比</h3>
 <p>北京市 2025 年终端设备集中带量采购：</p>
 <table>
 <tr><th>指标</th><th>数量</th><th>占比</th></tr>
@@ -368,7 +411,7 @@ tags:
 <tr><td>其中笔记本</td><td>1,549 台</td><td>-</td></tr>
 </table>
 <blockquote><strong>占比优势</strong>：LoongArch 技术路线在北京市信创采购中占据主流地位，安全响应速度至关重要。</blockquote>
-<h3>4.3 安全建议</h3>
+<h3>5.3 安全建议</h3>
 <h4>对于服务器/多用户环境：</h4>
 <ol>
 <li>1. <strong>立即升级</strong>：联系操作系统厂商获取最新安全补丁</li>
@@ -382,15 +425,16 @@ tags:
 <li>3. <strong>风险认知</strong>：当前风险等级可控，无需恐慌</li>
 </ol>
 ---
-<h2>五、深度思考：国产芯片安全生态</h2>
+<h2>六、深度思考：国产芯片安全生态</h2>
 <p>LoongLeak 事件反映了中国自主研发芯片在安全研究领域的活跃度：</p>
-<h3>5.1 积极信号</h3>
+<h3>6.1 积极信号</h3>
 <ul>
 <li>✅ <strong>快速响应</strong>：从漏洞报告到修复方案，6 个月内完成</li>
 <li>✅ <strong>透明沟通</strong>：龙芯主动发布官方说明，避免猜测</li>
 <li>✅ <strong>全球协作</strong>：与 CISPA 等国际研究机构良性互动</li>
+<li>✅ <strong>规范披露</strong>：遵循 CVE 和 NVD 标准流程</li>
 </ul>
-<h3>5.2 挑战与建议</h3>
+<h3>6.2 挑战与建议</h3>
 <table>
 <tr><th>挑战</th><th>建议</th></tr>
 <tr><td>安全研究依赖外部机构</td><td>建立本土漏洞研究团队</td></tr>
@@ -398,20 +442,65 @@ tags:
 <tr><td>多用户环境防护意识不足</td><td>加强操作系统安全加固</td></tr>
 </table>
 <p>---</p>
-<h2>六、参考资料</h2>
+<h2>七、参考资料</h2>
+<h3>7.1 官方文档</h3>
 <ol>
 <li>1. <strong>龙芯官方说明</strong>：<a href="https://www.loongson.cn/news/security.html">关于 USENIX Security 2026 会议论文中龙芯相关安全漏洞的说明</a></li>
-<li>2. <strong>研究论文</strong>：CISPA 团队 USENIX Security 2026 演示材料（LoongLeak）</li>
-<li>3. <strong>历史案例</strong>：</li>
-</ol>   - Intel Spectre/Meltdown (2018)
-   - AMD Zen2 微结构泄露 (2023)
+<li>2. <strong>CISPA 研究团队论文</strong>：<a href="https://www.usenix.org/conference/usenixsecurity26/presentation/hetterich-lorenz-2">Loongleak: Architectural Cross-Privilege-Boundary Data Leakage on LoongArch CPUs</a></li>
+</ol>
+<h3>7.2 漏洞追踪</h3>
 <ol>
-<li>4. <strong>相关术语</strong>：</li>
-</ol>   - <a href="https://en.wikipedia.org/wiki/Side-channel_attack#Microarchitectural_side_channels">微架构侧信道攻击</a>
-   - <a href="https://www.loongson.cn/Technology/InstructionSet.shtml">LSX/LASX 指令集</a>
-<p>---</p>
+<li>3. <strong>CVE-2026-68435</strong>：<a href="https://nvd.nist.gov/vuln/detail/CVE-2026-68435">NVD 漏洞详情</a></li>
+<li>4. <strong>kernel.org</strong>：<a href="https://kernel.org">官方 Linux 内核源代码与补丁</a></li>
+</ol>
+<h3>7.3 历史案例</h3>
+<ol>
+<li>5. <strong>Intel Spectre/Meltdown (2018)</strong>：</li>
+</ol>   - <a href="https://meltdownattack.com">Meltdown (CVE-2017-5754)</a>
+   - <a href="https://spectreattack.com">Spectre (CVE-2017-5753/5715)</a>
+<ol>
+<li>6. <strong>AMD Zen2 微结构泄露 (2023)</strong>：</li>
+</ol>   - <a href="https://www.amd.com/en/corporate/security">AMD 官方安全公告</a>
+<h3>7.4 相关术语</h3>
+<ol>
+<li>7. <strong><a href="https://en.wikipedia.org/wiki/Side-channel_attack#Microarchitectural_side_channels">微架构侧信道攻击</a></strong> - Wikipedia</li>
+<li>8. <strong><a href="https://www.loongson.cn/Technology/InstructionSet.shtml">LSX/LASX 指令集</a></strong> - 龙芯官方</li>
+<li>9. <strong><a href="https://www.loongson.cn/en/Technology/LoongArch.html">LoongArch 架构文档</a></strong> - 龙芯官方</li>
+<li>10. <strong><a href="https://www.cispa.de/en">CISPA 亥姆霍兹信息安全中心</a></strong> - 德国研究机构</li>
+</ol>
+---
+<h2>附：LoongLeak 漏洞示意图说明</h2>
+<p><strong>图注</strong>：微结构残留数据泄露流程</p>
+<pre><code class="">┌─────────────────────────────────────────────────────────┐
+│          物理 CPU 核心（L1 Data Cache）                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │  程序 A      │  │  程序 B      │  │  程序 C      │ │
+│  │ (合法应用)    │  │ (攻击者代码)  │  │  系统进程    │ │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │
+│         │                  │                  │         │
+│         ▼                  ▼                  ▼         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │   L1 Data Cache 微结构状态                         │  │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │  │
+│  │  │ AES 密钥│ │root 哈希│ │ 内核数据│ │ 其他敏感│   │  │
+│  │  │ 残留值  │ │ 残留值  │ │ 残留值  │ │ 值     │   │  │
+│  │  └────────┘ └────────┘ └────────┘ └────────┘   │  │
+│  └──────────────────────────────────────────────────┘  │
+│         ▲                            ▲                 │
+│         └───────── LoongLeak 攻击 ├───┘               │
+└─────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>关键点</strong>：
+<ul>
+<li>同一物理核心上并行运行的程序可访问共享 L1 Data Cache</li>
+<li>残留数据泄露局限于已处理数据的缓存窗口</li>
+<li>漏洞利用需要向量指令/浮点指令触发条件</li>
+<li>无法实现任意内存地址读取，攻击面有限</li>
+<li><strong>无需 timing 测量</strong>，不同于传统侧信道攻击</li>
+</ul>
+---</p>
 <blockquote><strong>作者简介</strong>：FreeLamp 社区致力于深度解读信息安全、开源技术和国产芯片生态，提供中立、专业的技术分析。</blockquote>> 
-<blockquote><strong>版权声明</strong>：本文基于公开资料解读，转载请注明出处。</blockquote>
+<blockquote><strong>版权声明</strong>：本文基于公开资料解读，转载请注明出处。本文采用 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议授权。</blockquote>
       </div>
     </article>
 
