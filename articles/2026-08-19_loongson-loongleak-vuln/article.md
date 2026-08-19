@@ -16,6 +16,12 @@ tags:
 # LoongLeak 侧信道漏洞深度解读：龙芯处理器如何应对 CPU 残留数据泄露风险
 
 > **原文出处**：[龙芯中科官方说明](https://www.loongson.cn/news/security.html)（回应 USENIX Security 2026 披露的 CPU 微结构侧信道漏洞）
+>
+> **发布日期**：2026 年 8 月 19 日 | **解读作者**：FreeLamp 社区
+
+## 关键事实摘要
+
+> **原文出处**：[龙芯中科官方说明](https://www.loongson.cn/news/security.html)（回应 USENIX Security 2026 披露的 CPU 微结构侧信道漏洞）
 > 
 > **发布日期**：2026 年 8 月 19 日 | **解读作者**：FreeLamp 社区
 
