@@ -406,9 +406,9 @@ Linux 7.2 虽然包含多次大规模重开，但它是一个**维护性发布**
 
 **参考资料**：
 
-1. LWN.net: https://lwn.net/Articles/1089033/
-2. Linux Kernel Mailing List: https://lore.kernel.org/lkml/
-3. Linux 7.2 官方源码：https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+1. LWN.net: <a href="https://lwn.net/Articles/1089033/" target="_blank" rel="noopener noreferrer">LWN.net</a>
+2. Linux Kernel Mailing List: <a href="https://lore.kernel.org/lkml/" target="_blank" rel="noopener noreferrer">LKML</a>
+3. Linux 7.2 官方源码：<a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git" target="_blank" rel="noopener noreferrer">Linux 源码</a>
 4. Cache-Aware Scheduling 技术文档：Documentation/scheduler/cache-aware-sched.rst（待添加）
 
 ---
