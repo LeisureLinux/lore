@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>交叉编译 toybox：从 x86_64 静态 musl 到 ARM64 工具链的完整实战 — FreeLAMP.com</title>
+  <meta name="description" content="一次 toybox 交叉编译的完整实战实录。目标：在 Debian 13 x86_64 主机上，分别产出指向 x86_64 与 ARM64 的、完全不依赖目标机 C 库的静态 toybox（0.8.14，defconfig 约 237 个 applet，multicall 单文件）。x86_64 直接用 landley">
+  <meta name="keywords" content="toybox, musl, 交叉编译, ARM64, 嵌入式, 工具链, 静态链接">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-08-21">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-08-21_cross-compiling-toybox-musl/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="交叉编译 toybox：从 x86_64 静态 musl 到 ARM64 工具链的完整实战">
+  <meta property="og:description" content="一次 toybox 交叉编译的完整实战实录。目标：在 Debian 13 x86_64 主机上，分别产出指向 x86_64 与 ARM64 的、完全不依赖目标机 C 库的静态 toybox（0.8.14，defconfig 约 237 个 applet，multicall 单文件）。x86_64 直接用 landley">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-08-21_cross-compiling-toybox-musl/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-08-21">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="toybox">
+  <meta property="article:tag" content="toybox">
+  <meta property="article:tag" content="musl">
+  <meta property="article:tag" content="交叉编译">
+  <meta property="article:tag" content="ARM64">
+  <meta property="article:tag" content="嵌入式">
+  <meta property="article:tag" content="工具链">
+  <meta property="article:tag" content="静态链接">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="交叉编译 toybox：从 x86_64 静态 musl 到 ARM64 工具链的完整实战">
+  <meta name="twitter:description" content="一次 toybox 交叉编译的完整实战实录。目标：在 Debian 13 x86_64 主机上，分别产出指向 x86_64 与 ARM64 的、完全不依赖目标机 C 库的静态 toybox（0.8.14，defconfig 约 237 个 applet，multicall 单文件）。x86_64 直接用 landley">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "交叉编译 toybox：从 x86_64 静态 musl 到 ARM64 工具链的完整实战",
+  "description": "本文是一次真实交叉编译记录：在 Debian 13（x86_64）上产出两个 toybox 0.8.14 的完全静态 musl 可执行文件——本地 x86_64 版（用 landley.net 现成 linux-musl 工具链，GCC 15.1.0）和 ARM64 版（用 musl-cross-make 从源码现编一条 aarch64 工具链，GCC 9.4.0 / binutils 2.44 / musl 1.2.6 / linux-headers 4.19.88）。重点复盘了本次实际踩到的坑：host glibc 与 musl 头文件打架、Debian musl-tools 不是完整工具链、国内下载 GNU 源码包（代理 502、清华 403、阿里云可用）、git.savannah 拉 config.sub 超时，以及最坑的一个——musl 自己 configure 里 arm* 通配符把 aarch64-linux-musl 误判成 32 位 ARM，最终靠改用 TARGET=aarch64-linux-musl 一次通过。每个工具链组件（gcc/binutils/musl/linux-headers/gmp/mpfr/mpc/sysroot）各干什么也逐一讲清，附完整可复现命令。",
+  "datePublished": "2026-08-21",
+  "dateModified": "2026-08-21",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-08-21_cross-compiling-toybox-musl/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "toybox, musl, 交叉编译, ARM64, 嵌入式, 工具链, 静态链接"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "交叉编译 toybox：从 x86_64 静态 musl 到 ARM64 工具链的完整实战",
+        "item": "https://freelamp.com/articles/2026-08-21_cross-compiling-toybox-musl/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-08-21">2026-08-21</div>
+        <h1 class="post-title" itemprop="headline">交叉编译 toybox：从 x86_64 静态 musl 到 ARM64 工具链的完整实战</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/toybox/">toybox</a><a itemprop="keywords" href="/tags/musl/">musl</a><a itemprop="keywords" href="/tags/%E4%BA%A4%E5%8F%89%E7%BC%96%E8%AF%91/">交叉编译</a><a itemprop="keywords" href="/tags/ARM64/">ARM64</a><a itemprop="keywords" href="/tags/%E5%B5%8C%E5%85%A5%E5%BC%8F/">嵌入式</a><a itemprop="keywords" href="/tags/%E5%B7%A5%E5%85%B7%E9%93%BE/">工具链</a><a itemprop="keywords" href="/tags/%E9%9D%99%E6%80%81%E9%93%BE%E6%8E%A5/">静态链接</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>这篇是实操记录。我在 Debian 13（x86_64）上，先后产出了两个 <strong>toybox 0.8.14</strong> 的可执行文件：一个是本地 x86_64 的静态 musl 版本，一个是针对 ARM64（aarch64）的静态 musl 交叉编译版本。整个过程踩了几个实实在在的坑，尤其 ARM64 那条路，因为 musl 的 <code>configure</code> 脚本里一个 <code>arm*</code> 通配符匹配的 bug，折腾了挺久。下面把问题、解决、每个工具链组件的作用、以及可复现的步骤一五一十写出来。</blockquote>
+<h2>一、toybox 是什么</h2>
+<p>toybox 是 Landley 维护的一个「all-in-one Linux command line」项目，定位和 BusyBox 类似：把 <code>ls</code>、<code>cp</code>、<code>grep</code>、<code>tar</code> 这些 Unix 小工具合并进<strong>一个</strong>可执行文件（multicall binary），靠启动时读 <code>argv[0]</code> 或第一个参数来分发到对应的 applet。官方 README 的原话是：</p>
+<blockquote>Toybox: all-in-one Linux command line.</blockquote>
+官方仓库：<a href="https://codeberg.org/landley/toybox">codeberg.org/landley/toybox</a>（主仓库），GitHub 有镜像 <a href="https://github.com/landley/toybox">github.com/landley/toybox</a>。toybox 也提供预编译二进制（<code>http://landley.net/toybox/bin</code>），但那是给直接下载用的；<strong>要自己控制 C 库（musl）和是否静态，就得从源码构建</strong>，也就是本文要做的事。
+<p><code>defconfig</code> 默认配置会启用约 <strong>237 个 applet</strong>。我用裸命令（不带参数）跑一次 <code>toybox</code> 打印出的 applet 列表，数出来正好是 237 行。注意：<strong><code>toybox --list</code> 不是一个合法子命令</strong>，会报 <code>Unknown command --list</code>；想看列表直接裸跑 <code>toybox</code>，<code>--help</code> 打印头部信息，<code>--long</code> 打印安装路径。</p>
+<p>defconfig 这套工具里 <code>cat cp mv rm ls find grep sed xargs head tail wc sort uniq ps top free df du mount ifconfig ping wget tar dd</code> 都有，但<strong>不包含</strong> <code>sh</code>（shell）、<code>gzip</code>、<code>curl</code>、<code>umask</code>、<code>mkfs</code>、<code>fsck</code> 这些（它们要么默认没开，要么属于需要单独配置/链接额外库的玩具）。</p>
+<h2>二、为什么用 musl 静态构建</h2>
+<p>做嵌入式/最小启动盘（initramfs、容器基础镜像、路由器固件）时，通常要一个<strong>不依赖目标机 glibc</strong> 的单文件。musl 是个小巧、单 <code>.so</code>+静态方便的 C 库，<code>static</code> 链接之后产出一个完全不依赖任何共享库的 ELF。</p>
+<p>验证「完全静态」最可靠的方式不是看 <code>file</code> 的 <code>statically linked</code> 字样，而是看 ELF 动态段里有没有 <code>NEEDED</code> 项：</p>
+<pre><code class="sh">readelf -d toybox.x86_64 | grep NEEDED   # 空输出 = 全静态
+</code></pre>
+<p>两个产物 <code>readelf -d</code> 都没有 <code>NEEDED</code> 项，确认是<strong>完全静态</strong>的（<code>file</code> 也显示 <code>statically linked, stripped</code>）。</p>
+<p>本次两个产物：</p>
+<table>
+<tr><th>产物</th><th>大小</th><th>架构</th><th>状态</th></tr>
+<tr><td><code>toybox.x86_64</code></td><td>707,864 字节（692 KiB）</td><td>x86-64</td><td>静态 musl，已 strip</td></tr>
+<tr><td><code>toybox.aarch64</code></td><td>769,128 字节（752 KiB）</td><td>ARM aarch64</td><td>静态 musl，已 strip</td></tr>
+</table>
+<h2>三、两条构建路径概览</h2>
+<ul>
+<li><strong>x86_64</strong>：用 landley.net 提供的现成 <strong>x86_64 linux-musl 交叉工具链</strong>（GCC <strong>15.1.0</strong> + 完整 binutils + musl sysroot）。因为 host 本身就是 x86_64，这其实是「用独立的 musl 工具链盖宿主机的 glibc」，产本地可跑的静态二进制。</li>
+<li><strong>aarch64</strong>：landley.net <strong>没有</strong>提供 ARM64 的 musl 工具链（返回 404），所以用 <a href="https://git.alexdashboard.com/alexdatous/musl-cross-make">musl-cross-make</a> 从源码现场编一套 aarch64 交叉工具链（GCC <strong>9.4.0</strong> / binutils 2.44 / musl 1.2.6 / linux-headers 4.19.88），再拿它盖 toybox。</li>
+</ul>
+<h2>四、本次会话实际踩到的问题</h2>
+<p>按碰到的顺序列，只描述真实症状和解法，不复刻我没有逐字确认的错误堆栈。</p>
+<h3>1. host glibc 和 musl 头文件打架（x86_64）</h3>
+<p>一开始想直接用系统 <code>gcc</code>（14.2.0，glibc 2.41）加 <code>-static</code> 盖 musl，结果头文件互相污染、链接器找不到 musl 的符号。根因是：系统工具链是围着 glibc 建起来的，让它去盖一个 musl 目标不干净。</p>
+<p><strong>解法</strong>：不要用系统 gcc，改用一套<strong>自洽的 linux-musl 独立工具链</strong>（自带 musl 的头文件和 libc，<code>sysroot</code> 是 musl，不是 glibc）。x86_64 这条直接用 landley.net 预编译的那套。</p>
+<h3>2. Debian 的 <code>musl-tools</code> 不是完整交叉工具链</h3>
+<p>Debian 有个 <code>musl-tools</code> 包（我这是 <code>1.2.5-3.1~deb13u1</code>），但装上之后只有 <code>/usr/bin/x86_64-linux-musl-gcc</code> 一个编译入口，配套 binutils（as/ld/strip/objcopy）并不是以 <code>x86_64-linux-musl-</code> 前缀成套提供的。拿它当一套独立工具链用是不够的，所以 x86_64 我改用了 landley.net 那份完整的（<code>/tmp/x86_64-linux-musl-cross/bin/</code> 里 ar/as/elfedit/gcc 一应俱全）。</p>
+<h3>3. landley.net 从国内拉取不稳定</h3>
+<p>我这台机器在国内（IP <code>43.135.161.29</code>），到 landley.net 的连接很不稳，下载那个 ~76MB 的工具链包断了好几次，靠 <code>curl -C -</code> 断点续传重试才拉完。这纯属网络运气问题，跟构建无关，但值得提醒：国内访问 landley.net 要有心理准备多试几次。</p>
+<h3>4. ARM64 没有现成工具链 → 只能源码编</h3>
+<p>landley.net 只给 x86_64 的 linux-musl 工具链，ARM64 的是 404。于是要自己编。选了 <strong>musl-cross-make</strong>（一个专门用来从源码构建各类 linux-musl 交叉工具链的 Makefile 集合）。</p>
+<h3>5. 国内下载 GNU 源码包：代理 502、清华 403，阿里云能用</h3>
+<p>musl-cross-make 默认从 GNU 镜像（<code>ftpmirror.gnu.org</code> 之类）下载 gcc、binutils、musl、gmp、mpfr、mpc 的源码包。这台机：走代理（<code>http://wpad.lan:8888</code>）访问 GNU 镜像返回 <strong>502 Bad Gateway</strong>；清华镜像返回 <strong>403</strong>。最后用<strong>阿里云镜像 <code>mirrors.aliyun.com/gnu</code></strong>（无需代理）把 7 个 <code>.tar.xz</code> 全部下下来，并且<strong>7 个 SHA1 校验全部命中</strong>——版本号都是 musl-cross-make <code>Makefile</code> 里 pin 死的，见下节。</p>
+<h3>6. <code>git.savannah.gnu.org</code> 超时，config.sub 得自己补</h3>
+<p>构建过程中，musl-cross-make 会尝试去 <code>git.savannah.gnu.org</code> 拉一份更新的 <code>config.sub</code>，这台机直连超时。解决办法：把系统自带的较新 <code>config.sub</code>（Debian 13 的 <code>/usr/share/misc/config.sub</code>）替换进各个解开的源码树里。</p>
+<blockquote>这里要区分两个 <code>config.sub</code> 相关的事：一个是<strong>GCC 9.4.0 自带的 <code>config.sub</code> 太老</strong>，不认识/不会规范化较新的三元组，属于「工具链自带脚本过旧」；我换成系统那份较新的 <code>config.sub</code> 来解决。别和下面第 7 条 musl 自己的 <code>configure</code> 通配符 bug 混在一起——那是不同的脚本、不同的层。</blockquote>
+<h3>7. 关键坑：musl 自己的 <code>configure</code> 用 <code>arm*</code> 把 aarch64 误判成 32 位 ARM</h3>
+<p>这是 ARM64 那条路最坑、也是真正卡我最久的地方。musl 的 <code>src_musl/configure</code> 里有一段按目标名推断架构的 <code>case</code>，原文（<code>src_musl/configure</code> 第 324–325 行）：</p>
+<pre><code class="sh">324  arm*)        ARCH=arm ;;
+325  aarch64*)    ARCH=aarch64 ;;
+</code></pre>
+<p><code>case</code> 是<strong>从上往下</strong>第一个命中就生效。当我把目标设成 <code>arm64-linux-musl</code> 时，<code>arm64...</code> 会先被第 324 行的 <code>arm*)</code> 吃掉，于是 musl 把目标当成 <strong>32 位 arm</strong> 来 configure，后面的编译就因为架构/长 double 位宽不匹配报了一堆错。</p>
+<p><strong>解法</strong>：把目标三元组改成 <strong><code>aarch64-linux-musl</code></strong>（而不是 <code>arm64-linux-musl</code>）。<code>aarch64...</code> 不会命中第一行的 <code>arm<em>)</code>，会正确落到第 325 行 <code>aarch64</em>)</code>。用这个名字干净重编，一次通过。</p>
+<blockquote>说明一下走过的弯路：我当时先怀疑是 <code>__float128</code>/long double 的位宽问题，折腾过 musl-cross-make 的 <code>config.mak</code>，往 <code>GCC_CONFIG_FOR_TARGET</code> 里加 <code>--with-long-double-128</code>。<strong>那是错的——那不是根因，架构名才是。</strong> 真正原因就是上面这两行 <code>case</code> 的通配符顺序。</blockquote>
+<h2>五、工具链组件 & 每个工具干什么</h2>
+<h3>aarch64 工具链（musl-cross-make 产物）</h3>
+<p>版本号都来自 <code>musl-cross-make/Makefile</code> 第 5–11 行，是 pin 死的：</p>
+<pre><code class="make">BINUTILS_VER = 2.44
+GCC_VER      = 9.4.0
+MUSL_VER     = 1.2.6
+GMP_VER      = 6.3.0
+MPC_VER      = 1.3.1
+MPFR_VER     = 4.2.2
+LINUX_VER    = headers-4.19.88-2
+</code></pre>
+<p>逐组件说明它们在这次构建里各自的角色：</p>
+<ul>
+<li><strong>binutils 2.44</strong> —— 目标机工具集的前端：汇编器 <code>as</code>（<code>.s</code>→目标机器码 <code>.o</code>）、链接器 <code>ld</code>（把一堆 <code>.o</code> 拼成一个 ELF）、还有 <code>ar</code>（打包）、<code>strip</code>（去符号）、<code>objcopy</code>/<code>objdump</code>/<code>readelf</code>（查/转 ELF）。盖静态二进制时，<code>ld</code> 直接把所有目标文件 + libc.a 焊死进一个文件，没有运行时依赖。</li>
+<li><strong>gcc 9.4.0</strong>（<code>aarch64-linux-musl-gcc</code>）—— 交叉编译器本体，负责把 toybox 的 C 源码编译、优化、再调用上面的 <code>as</code>/<code>ld</code> 完成链接。它自己编译出来的可执行代码跑在 host（Linux x86_64）上，但产出是 aarch64 的目标代码。</li>
+<li><strong>musl 1.2.6</strong> —— <strong>C 库（libc）</strong>，这才是「musl 构建」的核心。它提供 <code>printf</code>、<code>malloc</code>、<code>open</code>、<code>close</code> 这类标准库函数，以及直接 <code>syscall</code> 进内核。静态链接时，gcc 把 musl 的 <code>libc.a</code> 整个链进去，于是产物不依赖任何 <code>libc.so</code>。</li>
+<li><strong>linux-headers (headers-4.19.88)</strong> —— Linux 内核头文件，提供 <code>open</code>/<code>read</code>/<code>futex</code> 等<strong>系统调用</strong>的声明和相关数据结构。musl 和 gcc 都需要它才能正确地 <code>syscall(2)</code> 进内核；它决定了二进制「认为自己在跟哪个版本的 ABI/内核说话」。</li>
+<li><strong>gmp 6.3.0 / mpfr 4.2.2 / mpc 1.3.1</strong> —— 这三个是 <strong>gcc 自己的构建期依赖</strong>，跟你最终盖的 toybox 没有运行期关系。gmp 是高精度整数运算库；mpfr 是「带正确舍入的浮点」库（依赖 gmp）；mpc 是复数库（依赖 gmp+mpfr）。gcc 处理 <code>long double</code>、浮点常量、复数时就靠这三个头，所以<strong>编工具链</strong>时要先把它们编好。</li>
+<li><strong>sysroot</strong> —— musl-cross-make 把上面的 musl 头文件 + libc.a + linux-headers 收拢成一个目录（<code>output/aarch64-linux-musl/...</code>）。gcc 盖目标代码时用它，而不是 host 的 glibc 目录，这就是「自洽工具链」区别于系统 gcc 的关键。</li>
+</ul>
+<h3>x86_64 工具链（landley.net 预编译）</h3>
+<ul>
+<li><code>x86_64-linux-musl-gcc (GCC) 15.1.0</code>，配完整 binutils 和 musl sysroot（sysroot 里能看到 <code>ld-musl-x86_64.so.1</code>）。</li>
+<li>注意：这套是 <strong>GCC 15.1.0</strong>，和 aarch64 那套的 <strong>9.4.0</strong> 是两个不同版本、来源也完全不同（一个是现成二进制，一个是我从源码编的）。所以两个产物 <code>file</code>/<code>readelf</code> 里体现的编译器特征可能不一致——这完全正常。</li>
+</ul>
+<h2>六、完整可复现步骤 —— x86_64 静态 musl</h2>
+<p><strong>Step 1.</strong> 拉源码（Codeberg 会 429 拒我这种国内 IP，用 GitHub 镜像；整仓 clone 会超时，用 shallow）：</p>
+<pre><code class="sh">git clone --depth 1 --single-branch https://github.com/landley/toybox.git
+cd toybox            # 此时为 0.8.14
+</code></pre>
+<p><strong>Step 2.</strong> 解包 landley.net 的 x86_64 linux-musl 工具链（国内拉取不稳，多试几次、用 <code>-C -</code> 续传）：</p>
+<pre><code class="sh">curl -C - -o x86_64-linux-musl-cross.tar.xz \
+  http://landley.net/toybox/x86_64-linux-musl-cross.tar.xz
+tar xf x86_64-linux-musl-cross.tar.xz   # 得到 x86_64-linux-musl-cross/
+</code></pre>
+<p><strong>Step 3.</strong> 盖玩具（toybox 尊重 <code>CROSS_COMPILE</code>，<code>LDFLAGS=--static</code> 强制静态）：</p>
+<pre><code class="sh">export PATH="/tmp/x86_64-linux-musl-cross/bin:$PATH"   # 按你解包位置改
+LDFLAGS=--static CROSS_COMPILE=x86_64-linux-musl- make defconfig toybox
+</code></pre>
+<p><code>defconfig</code> 生成 <code>.config</code>（开 ~237 个玩具），<code>toybox</code> 是产物目标。</p>
+<p><strong>Step 4.</strong> 移出构建树保存（toybox 的 <code>make clean</code>/<code>distclean</code> 会把产物清掉，一定先拷走）：</p>
+<pre><code class="sh">cp toybox /home/axu/github/toybox.x86_64
+</code></pre>
+<p><strong>Step 5.</strong> 验证：</p>
+<pre><code class="sh">file toybox.x86_64      # ELF 64-bit ... x86-64, statically linked, stripped
+./toybox.x86_64 --version
+readelf -d toybox.x86_64 | grep NEEDED   # 应为空
+./toybox.x86_64 ls        # 随手跑个 applet 冒烟测试
+</code></pre>
+<h2>七、完整可复现步骤 —— aarch64 (ARM64) 静态 musl</h2>
+<h3>Part A. 先编一条 aarch64 linux-musl 交叉工具链</h3>
+<p><strong>Step 1.</strong> 拉 musl-cross-make：</p>
+<pre><code class="sh">git clone https://git.alexdashboard.com/alexdatous/musl-cross-make
+cd musl-cross-make
+</code></pre>
+<p><strong>Step 2.</strong>（国内）预下 GNU 源码包。musl-cross-make 要 7 个包：<strong>binutils-2.44、gcc-9.4.0、musl-1.2.6、gmp-6.3.0、mpfr-4.2.2、mpc-1.3.1、linux-headers-4.19.88</strong>。从阿里云拉（无需代理），逐个核 SHA1：</p>
+<pre><code class="sh">base=https://mirrors.aliyun.com/gnu
+for f in binutils-2.44 gcc-9.4.0 gmp-6.3.0 mpfr-4.2.2 mpc-1.3.1; do
+  curl -O "$base/$f/$f.tar.xz"
+done
+curl -O "$base/musl/musl-1.2.6.tar.gz"
+<h1>linux-headers：headers-4.19.88-2（musl 的 kernel-headers 源）</h1>
+<h1>每个包都要核对 SHA1，别直接信，校验命中再喂给构建</h1>
+</code></pre>
+<p><strong>Step 3.</strong> 目标三元组<strong>一定用 <code>aarch64-linux-musl</code></strong>，不要用 <code>arm64-linux-musl</code>（第五节第 7 条那个 <code>case</code> 通配符 bug 会把 <code>arm64</code> 误判成 32 位 arm）：</p>
+<pre><code class="sh">make -j"$(nproc)" TARGET=aarch64-linux-musl
+</code></pre>
+<p>构建大约 8~9 分钟。若它卡在中途去 <code>git.savannah.gnu.org</code> 拉 <code>config.sub</code> 超时，就把系统较新的 <code>config.sub</code>（<code>/usr/share/misc/config.sub</code>）塞进解开的源码树再续编。</p>
+<p>构建完成时它会在 <code>output/</code> 里打印 <code>make ... install</code> 的提示。</p>
+<p><strong>Step 4.</strong> 装工具链：</p>
+<pre><code class="sh">make TARGET=aarch64-linux-musl install
+<h1>产物在 ./output/bin/，主编译器是 output/bin/aarch64-linux-musl-gcc (GCC 9.4.0)</h1>
+</code></pre>
+<blockquote>我中途往 <code>config.mak</code> 加过 <code>GCC_CONFIG_FOR_TARGET += --with-long-double-128</code> 试图修编译错误——那其实是<strong>红鲱鱼</strong>，真正的修复是 <code>TARGET=aarch64-linux-musl</code> 这个架构名。装好之后那条 <code>config.mak</code> 改动其实没必要，可留可删。</blockquote>
+<h3>Part B. 用这条工具链盖 ARM64 toybox</h3>
+<pre><code class="sh">cd /home/axu/github/toybox
+export PATH="/home/axu/github/musl-cross-make/output/bin:$PATH"
+LDFLAGS=--static CROSS_COMPILE=aarch64-linux-musl- make defconfig toybox
+cp toybox /home/axu/github/toybox.aarch64   # 先挪走，防 clean 误删
+</code></pre>
+<h3>Part C. 验证</h3>
+<pre><code class="sh">file toybox.aarch64
+<h1>ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, stripped</h1>
+readelf -d toybox.aarch64 | grep NEEDED   # 为空 = 全静态
+<h1>本机是 x86_64，直接跑会报 exec format error 属正常；真正验证要靠 qemu 或上真机：</h1>
+qemu-aarch64-static -L /path/to/rootfs ./toybox.aarch64 --version   # 若装了 qemu
+</code></pre>
+<h2>八、小结</h2>
+<ul>
+<li>x86_64：别硬用系统 glibc gcc 盖 musl，用 landley.net 那套独立 musl 工具链（GCC 15.1.0），<code>--static</code> 一盖就成一个 692 KiB 的自足二进制。</li>
+<li>aarch64：现成工具链没有，源码编一条（GCC 9.4.0）。<strong>记住那个 <code>case</code> 通配符的顺序</strong>——目标写 <code>aarch64-linux-musl</code>，别写 <code>arm64-linux-musl</code>，能省半天。</li>
+<li>验证「完全静态」看 <code>readelf -d</code> 的 <code>NEEDED</code> 是否为空，比看 <code>file</code> 文字更靠谱。</li>
+<li>产物务必<strong>移出构建树</strong>再保存，<code>make distclean</code> 会连产物一起删。</li>
+</ul>
+<h2>九、参考资料</h2>
+<ul>
+<li>toybox 官网 / 预编译二进制：<http://landley.net/toybox/></li>
+<li>toybox 主仓库（Codeberg）：<https://codeberg.org/landley/toybox></li>
+<li>toybox GitHub 镜像：<https://github.com/landley/toybox></li>
+<li>musl C 库：<https://musl.libc.org/></li>
+<li>musl-cross-make（构建 musl 交叉工具链）：<https://git.alexdashboard.com/alexdatous/musl-cross-make></li>
+<li>GCC 交叉编译指南：<https://gcc.gnu.org/install/cross.html></li>
+<li>GNU/Linux 交叉构建综述：<https://gcc.gnu.org/install/cross.html></li>
+<li>阿里云 GNU 镜像（国内下载源码包）：<https://mirrors.aliyun.com/gnu></li>
+</ul>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-08-21_cross-compiling-toybox-musl/",
+      title: "\u4ea4\u53c9\u7f16\u8bd1 toybox\uff1a\u4ece x86_64 \u9759\u6001 musl \u5230 ARM64 \u5de5\u5177\u94fe\u7684\u5b8c\u6574\u5b9e\u6218"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
