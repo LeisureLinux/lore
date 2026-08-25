@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>两行补丁换来 12% 性能：GCC 为 Zen 4 / Zen 5 校准分支预测成本表 — FreeLAMP.com</title>
+  <meta name="description" content="AMD 编译器工程师 Venkataramanan Kumar 向 GCC 提交两行补丁，将 Zen 4/Zen 5 成本表中的分支预测错误成本从 COSTS_N_INSNS(2) 上调到 COSTS_N_INSNS(2)+3，在 SPEC CPU 2017 的 544.nab_r 基准上给 Zen 5 带来 12%、">
+  <meta name="keywords" content="GCC, AMD Zen 5, 分支预测, 编译器优化, 性能调优, x86 微架构, SPEC CPU 2017">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-08-25">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-08-25_gcc-zen5-mispredict-cost/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="两行补丁换来 12% 性能：GCC 为 Zen 4 / Zen 5 校准分支预测成本表">
+  <meta property="og:description" content="AMD 编译器工程师 Venkataramanan Kumar 向 GCC 提交两行补丁，将 Zen 4/Zen 5 成本表中的分支预测错误成本从 COSTS_N_INSNS(2) 上调到 COSTS_N_INSNS(2)+3，在 SPEC CPU 2017 的 544.nab_r 基准上给 Zen 5 带来 12%、">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-08-25_gcc-zen5-mispredict-cost/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-08-25">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="GCC">
+  <meta property="article:tag" content="GCC">
+  <meta property="article:tag" content="AMD Zen 5">
+  <meta property="article:tag" content="分支预测">
+  <meta property="article:tag" content="编译器优化">
+  <meta property="article:tag" content="性能调优">
+  <meta property="article:tag" content="x86 微架构">
+  <meta property="article:tag" content="SPEC CPU 2017">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="两行补丁换来 12% 性能：GCC 为 Zen 4 / Zen 5 校准分支预测成本表">
+  <meta name="twitter:description" content="AMD 编译器工程师 Venkataramanan Kumar 向 GCC 提交两行补丁，将 Zen 4/Zen 5 成本表中的分支预测错误成本从 COSTS_N_INSNS(2) 上调到 COSTS_N_INSNS(2)+3，在 SPEC CPU 2017 的 544.nab_r 基准上给 Zen 5 带来 12%、">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "两行补丁换来 12% 性能：GCC 为 Zen 4 / Zen 5 校准分支预测成本表",
+  "description": "AMD 工程师向 GCC 提交两行补丁，把 Zen 4/Zen 5 分支预测错误成本上调 3 个单位，在 SPEC CPU 2017 的 544.nab_r 上带来 Zen 5 +12%、Zen 4 +9% 的增益。本文从编译器成本表、流水线深度与通用 x86 前例三个角度做技术解读。",
+  "datePublished": "2026-08-25",
+  "dateModified": "2026-08-25",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-08-25_gcc-zen5-mispredict-cost/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "GCC, AMD Zen 5, 分支预测, 编译器优化, 性能调优, x86 微架构, SPEC CPU 2017"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "两行补丁换来 12% 性能：GCC 为 Zen 4 / Zen 5 校准分支预测成本表",
+        "item": "https://freelamp.com/articles/2026-08-25_gcc-zen5-mispredict-cost/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-08-25">2026-08-25</div>
+        <h1 class="post-title" itemprop="headline">两行补丁换来 12% 性能：GCC 为 Zen 4 / Zen 5 校准分支预测成本表</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/GCC/">GCC</a><a itemprop="keywords" href="/tags/AMD%20Zen%205/">AMD Zen 5</a><a itemprop="keywords" href="/tags/%E5%88%86%E6%94%AF%E9%A2%84%E6%B5%8B/">分支预测</a><a itemprop="keywords" href="/tags/%E7%BC%96%E8%AF%91%E5%99%A8%E4%BC%98%E5%8C%96/">编译器优化</a><a itemprop="keywords" href="/tags/%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98/">性能调优</a><a itemprop="keywords" href="/tags/x86%20%E5%BE%AE%E6%9E%B6%E6%9E%84/">x86 微架构</a><a itemprop="keywords" href="/tags/SPEC%20CPU%202017/">SPEC CPU 2017</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote><strong>原文出处</strong>：<a href="https://www.phoronix.com/news/AMD-Zen-5-Mispredict-Cost">GCC Patch Adjusting AMD Zen 5 Misprediction Cost Nets 12% Win In Benchmark</a> — Michael Larabel, Phoronix, 2026-08-23<br>
+<strong>一手补丁</strong>：<a href="https://gcc.gnu.org/pipermail/gcc-patches/2026-August/728535.html">gcc-patches 邮件列表，Venkataramanan Kumar (AMD)，2026-08</a><br>
+本文为基于原始报道的二次解读，非逐字翻译。</blockquote>
+"改两行代码，性能提升 12%。"——这种话放在营销号里多半是标题党，但这次它是真的，而且出自 GCC 编译器本身。
+<p>AMD 编译器工程师 Venkataramanan Kumar 最近向 GCC 提交了一个只有两行的补丁，把 Zen 4 和 Zen 5 在 GCC 内部"成本表"里的<strong>分支预测错误成本</strong>上调了 3 个单位。结果在 SPEC CPU 2017 的 <code>544.nab_r</code> 基准上，Zen 5 涨了 12%，Zen 4 涨了 9%。</p>
+<p>这事儿有意思的地方，不在于"两行代码多神"，而在于它暴露了一个长期被忽视的事实：<strong>编译器对现代 CPU 分支预测代价的估计，早就过时了。</strong></p>
+<h2>一、编译器里的"成本表"到底是什么？</h2>
+<p>GCC 在生成代码时，并不是照着 C 代码逐句翻译。它对每一种 CPU 微架构都维护着一张<strong>成本表（cost table）</strong>，里面量化了各类操作的"代价"——加法、乘法、load/store、分支、cmov（条件传送）各值多少 cycles。</p>
+<p>为什么需要它？因为同一个语义，编译器可以写成不同的形态。最典型的就是"分支 vs 条件传送"：</p>
+<pre><code class="c">// 写法 A：普通分支
+if (a > b)
+    x = a;
+else
+    x = b;
+<p>// 写法 B：条件传送（无分支）
+x = (a > b) ? a : b;   // 通常编译为 cmov
+</code></pre></p>
+<p>写法 A 有分支：如果 CPU 预测错了，流水线要被冲刷（flush），白跑几十个周期。写法 B 用 <code>cmov</code>，没有分支，但会<strong>两条路都算一遍</strong>再挑一个结果，增加了一些数据依赖和吞吐量开销。</p>
+<p>那么编译器该选哪个？它看成本表：如果"分支预测失败一次的代价"被估得很低，编译器就觉得"赌一把分支也划算"，于是保留分支；如果这张表里分支失败的代价被估得足够高，编译器就会更积极地把分支改写成 <code>cmov</code>，从而避免预测失败带来的流水线停顿。</p>
+<p>GCC 里这个参数就叫 <strong>分支预测错误成本（branch misprediction cost）</strong>，在 x86 后端用 <code>COSTS_N_INSNS(n)</code> 来表示"相当于 n 条指令的代价"。</p>
+<h2>二、那两行代码到底改了什么</h2>
+<p>补丁的本质，就是把 Zen 4 / Zen 5 成本表里这个参数从 <code>COSTS_N_INSNS(2)</code> 抬到 <code>COSTS_N_INSNS(2) + 3</code>，也就是上调 3 个单位（约相当于多估了 3 条指令的代价）：</p>
+<pre><code class="diff"> // 概念性 diff（Zen 4 / Zen 5 成本表，节选自补丁意图）
+<ul>
+<li> /<em> Branch misprediction cost.  </em>/ COSTS_N_INSNS (2)</li>
+</ul>+  /<em> Branch misprediction cost.  </em>/ COSTS_N_INSNS (2) + 3
+</code></pre>
+<blockquote>注：上面是基于补丁说明与 Phoronix 报道还原的"意图性 diff"，精确的变量名、行号与上下文以 GCC 邮件列表里的原始提交为准。</blockquote>
+就这么一点改动，编译器在面向 Zen 4 / Zen 5 生成代码时，会<strong>更激进地把分支转换成条件传送</strong>，从而减少因预测失败导致的流水线清空。
+<h2>三、为什么是现在？因为流水线越来越深</h2>
+<p>分支预测是现代高性能 CPU 的命门。CPU 不能等 <code>if</code> 的条件算出来才去取下面的指令——那太慢了。它会在条件就绪之前就"赌"一个方向，提前把指令灌进流水线。赌对了，畅通无阻；赌错了，整条流水线里已经预取、译码、执行的指令全部作废，重新来过。</p>
+<p>这个"赌错"的代价，正比于流水线的深度。Zen 4 / Zen 5 的流水线比十年前的 CPU 深得多，一次预测失败的惩罚早已不是 GCC 成本表里那个老旧预设值能代表的。换句话说：<strong>硬件进化了，编译器里的那张表却还停留在老认知</strong>，于是编译器一直过度保留了本该被消除的分支。</p>
+<p>这次补丁等于给编译器"提了个醒"：在 Zen 4 / Zen 5 上，分支预测失败的代价比你想的高，所以别再那么爱用分支了。</p>
+<h2>四、12% 从哪来：544.nab_r 是个什么基准</h2>
+<p>成绩来自 SPEC CPU 2017 的 <code>544.nab_r</code>。NAB 是 <strong>Nucleic Acid Builder（核酸构建器）</strong> 的缩写，一个分子建模领域的科学计算程序。它是 SPEC 里出了名的<strong>分支密集、数据依赖复杂</strong>的用例——正好是"分支 vs cmov 权衡"最敏感的那类负载。</p>
+<p>测试条件也值得注意：补丁作者在 <code>-O3 -march=native -flto</code> 下测得 Zen 5 +12%、Zen 4 +9%。<code>-march=native</code> 让编译器针对本机微架构调优（也就是用上这张成本表），<code>-flto</code> 做全程序优化，给 if-conversion 这类跨函数变换留足空间。</p>
+<table>
+<tr><th>补丁 / 平台</th><th>基准</th><th>提升</th><th>调优方式</th></tr>
+<tr><td>AMD（Venkataramanan Kumar）Zen 5</td><td>544.nab_r</td><td><strong>+12%</strong></td><td><code>-O3 -march=native -flto</code></td></tr>
+<tr><td>AMD Zen 4</td><td>544.nab_r</td><td><strong>+9%</strong></td><td>同上</td></tr>
+<tr><td>Intel（Lili Cui）Granite Rapids</td><td>544.nab_r</td><td><strong>+12.7%</strong></td><td>通用 x86 调优</td></tr>
+<tr><td>Intel（Lili Cui）Zen 5</td><td>544.nab_r</td><td><strong>+12.1%</strong></td><td>通用 x86 调优</td></tr>
+</table>
+<p>需要泼盆冷水：这 12% 是<strong>单基准</strong>的成绩。编译器的成本表调优一向是"对着 SPEC 调"，其他负载未必都有这么夸张的增益；但 SPEC 本就是这类调优的事实标准基准，能在一个用例上白捡 12%，已经足够诱人。</p>
+<h2>五、这不是 AMD 独创，Intel 两个月前就干过</h2>
+<p>有意思的是，这次"上调 3 个单位"的思路并非 AMD 首创。早在 <strong>2026 年 6 月</strong>，Intel 软件工程师 <strong>Lili Cui</strong> 就向 GCC 的<strong>通用 x86 调优</strong>提交了一个一行改动，用了<strong>完全相同</strong>的理由：现代 CPU 流水线更深，分支预测失败更贵，所以把通用成本表里的分支预测成本也上调 3。</p>
+<p>那个补丁的战绩是：Granite Rapids <strong>+12.7%</strong>、Zen 5 <strong>+12.1%</strong>（同样在 544.nab_r 上）。而且它是改的<strong>通用 x86/x86-64 调优</strong>——也就是说，哪怕你没开 <code>-march=native</code>、只用通用调优，也能吃到这波红利。该补丁已合入 GCC Git，预计随明年的 <strong>GCC 17</strong> 稳定版发布。</p>
+<blockquote>参考：<a href="https://www.phoronix.com/news/GCC-x86-Generic-Mispredict">GCC's Generic x86 Tuning Change Begins Benefiting Modern Intel & AMD CPUs</a> — Michael Larabel, Phoronix, 2026-06-24</blockquote>
+一个 AMD 工程师、一个 Intel 工程师，分别在 CPU 专用成本表和通用成本表上，用同一种推理拿到了几乎一样的数字。这恰恰说明：<strong>问题不在某家 CPU，而在 GCC 那张成本表本身已经普遍低估了分支预测的代价。</strong>
+<h2>六、真正的故事：编译器调优，永远慢硬件半拍</h2>
+<p>把两件事放一起看，更有意思的是 Phoronix 在 AMD 那篇里的点评：</p>
+<blockquote>AMD 现在比过去更早地把新 CPU 目标送进 GCC/Clang（Zen 6 去年 12 月就进了 GCC 16），但<strong>成本表调优</strong>这块，仍然是他们可以做得更好的地方——Znver5 和 Znver6 在 GCC 里至今很大程度上还在沿用 Znver4 的成本表信息，各种微调往往要等硬件发布后好几个月才补上。考虑到 GCC 漫长的发布周期，这种时机常常很尴尬。</blockquote>
+这戳中了一个行业老问题：<strong>硬件出厂了，编译器还没学会怎么榨干它。</strong> GCC 一年一个大版本，一个成本表的校准从提交到进稳定版、再到被发行版打包默认采用，往往要跨好几个季度。等普通用户用上"正确"的成本表时，这块 CPU 都快退市了。
+<p>所以"两行代码换 12%"的爽文背后，是 AMD/Intel 工程师事后补课的身影——而且补的，还是上一个架构（Znver4）留下来的老表。</p>
+<h2>七、作为使用者，现在能做什么</h2>
+<ul>
+<li><strong>直接用 <code>-march=native</code></strong>：这么简单一行，就能让编译器针对你手头的 Zen 4/5 选用正确的成本表与指令集。很多"为什么我的程序没跑满 CPU"的谜题，答案就是忘了开它（当然要权衡可移植性）。</li>
+<li><strong>等 GCC 17（或 16.3 反向移植）</strong>：Venkataramanan Kumar 的这个补丁目前在邮件列表审核中，若无意外会进明年的 GCC 17 特性版，并可能<strong>反向移植到 GCC 16.3</strong> 小版本。</li>
+<li><strong>想自己验证？</strong> 可以对比 <code>gcc -O3 -march=native</code> 与加了 <code>-fno-if-conversion</code> / <code>-fno-if-conversion2</code> 的生成代码——后者会抑制分支到 cmov 的变换，你能直接看到"少做了多少 cmov"，以及它对应的性能差异。用 <code>-O2 -S</code> 把汇编码导出来，搜 <code>cmov</code> 看密度，是理解这件事最直观的方式。</li>
+<li><strong>别只盯 SPEC</strong>：12% 是 544.nab_r 一个用例。你的真实负载里分支密集、预测困难的热点，才更可能从这波调优里受益。</li>
+</ul>
+<h2>八、结语</h2>
+<p>一行成本表参数，撬动 12% 的基准成绩。这个故事最迷人的地方，不是"编译器好神"，而是它提醒我们：<strong>现代 CPU 的性能，有很大一部分是被软件"默认配置"白白浪费掉的。</strong> 当 Zen 5 的流水线已经深到分支预测失败的代价远超旧表预设时，只要有人把那个数字从 2 改成 2+3，被埋没的性能就自己浮出来了。</p>
+<p>对于爱折腾的人来说，这大概就是自由软件最好玩的地方：机器里藏着多少没被唤醒的算力，往往只差一个你能读、能改、能重编译的补丁。</p>
+<p>---</p>
+<h2>参考文献</h2>
+<ul>
+<li>Phoronix — <a href="https://www.phoronix.com/news/AMD-Zen-5-Mispredict-Cost">GCC Patch Adjusting AMD Zen 5 Misprediction Cost Nets 12% Win In Benchmark</a>（Michael Larabel, 2026-08-23）</li>
+<li>GCC 邮件列表 — <a href="https://gcc.gnu.org/pipermail/gcc-patches/2026-August/728535.html">Venkataramanan Kumar 的补丁提交（gcc-patches, 2026-08）</a></li>
+<li>Phoronix — <a href="https://www.phoronix.com/news/GCC-x86-Generic-Mispredict">GCC's Generic x86 Tuning Change Begins Benefiting Modern Intel & AMD CPUs</a>（Michael Larabel, 2026-06-24，Intel Lili Cui 的通用 x86 改动）</li>
+<li>SPEC CPU 2017 — <a href="https://www.spec.org/cpu2017/">544.nab_r（Nucleic Acid Builder）基准说明</a>（官方基准套件）</li>
+<li>GCC 手册 — <a href="https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html">x86 调优选项与 -march / -mtune</a>（成本表如何被 <code>-march</code>/<code>-mtune</code> 选择）</li>
+</ul>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-08-25_gcc-zen5-mispredict-cost/",
+      title: "\u4e24\u884c\u8865\u4e01\u6362\u6765 12% \u6027\u80fd\uff1aGCC \u4e3a Zen 4 / Zen 5 \u6821\u51c6\u5206\u652f\u9884\u6d4b\u6210\u672c\u8868"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
