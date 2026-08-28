@@ -168,39 +168,51 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <h4 id="一-核心侦探工具coredumpctl" path-to-node="5"><strong>一、 核心侦探工具：<code index-in-node="10" path-to-node="5">coredumpctl</code></strong></h4>
 <p>在排查此类崩溃时，盲目猜测是没用的。我们需要"抓现行"。<strong>注意：</strong>Debian 默认可能不记录核心转储，你需要手动安装工具：</p>
 <p>[Bash]{ngcontent-ng-c3068070706=""}</p>
-<div class="highlight"><pre><span></span><code>sudo apt update &amp;&amp; sudo apt install systemd-coredump
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>systemd-coredump
 </code></pre></div>
 
 <p>安装后，下次崩溃发生时，直接运行：</p>
 <p>[Bash]{ngcontent-ng-c3068070706=""}</p>
-<div class="highlight"><pre><span></span><code>sudo coredumpctl list | tail -n 10
+<div class="highlight"><pre><span></span><code><span class="n">sudo</span><span class="w"> </span><span class="n">coredumpctl</span><span class="w"> </span><span class="k">list</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="o">-</span><span class="n">n</span><span class="w"> </span><span class="mi">10</span>
+<span class="n n-Quoted">`</span><span class="n n-Quoted n-Quoted-Escape">``</span><span class="n n-Quoted">bash</span>
+
+<span class="n n-Quoted">如果看到`</span><span class="n">budgie</span><span class="o">-</span><span class="n">wm</span><span class="n n-Quoted">`{index-in-node=&quot;5&quot; path-to-node=&quot;10&quot;}或`</span><span class="n">mutter</span><span class="n n-Quoted">`{index-in-node=&quot;17&quot; path-to-node=&quot;10&quot;}出现`</span><span class="n">SIGSEGV</span><span class="n n-Quoted">`{index-in-node=&quot;27&quot; path-to-node=&quot;10&quot;}（段错误），说明窗口管理器崩了。</span>
+
+
+
+<span class="n n-Quoted">#### **二、 显卡驱动的跃迁：i915 vs Xe** {#二-显卡驱动的跃迁i915-vs-xe path-to-node=&quot;11&quot;}</span>
+
+<span class="n n-Quoted">在 Debian 13 中，针对 Intel 12代及以后的显卡（如 Iris Xe），内核提供了两套驱动。</span>
+
+<span class="n n-Quoted">-   **i915 驱动（传统派）：**极其成熟，稳定，是过去十年的标准。但在处理现代 GPU 加速应用的快速上下文切换时，电源管理逻辑有时会显得迟钝，导致&quot;GPU HANG&quot;。</span>
+
+<span class="n n-Quoted">-   **Xe 驱动（新锐派）：**专为 Intel Xe 架构（Alder Lake 及更新）从零编写。它摒弃了 i915 的历史包袱，支持更现代的 Vulkan 特性，在窗口合成和多任务切换上理论性能更强。</span>
+
+<span class="n n-Quoted">**如何强制开启 Xe 驱动？**编辑`</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="k">default</span><span class="o">/</span><span class="n">grub</span><span class="n n-Quoted">`{index-in-node=&quot;17&quot; path-to-node=&quot;14&quot;}，在启动参数中加入：`</span><span class="n">GRUB_CMDLINE_LINUX_DEFAULT</span><span class="o">=</span><span class="s2">&quot;... i915.force_probe=!46a6 xe.force_probe=46a6&quot;</span><span class="n n-Quoted">`{index-in-node=&quot;45&quot; path-to-node=&quot;14&quot;}*(注：46a6 为显卡 ID，可通过 lspci -n 查看)*修改后执行`</span><span class="n">sudo</span><span class="w"> </span><span class="k">update</span><span class="o">-</span><span class="n">grub</span><span class="n n-Quoted">`{index-in-node=&quot;159&quot; path-to-node=&quot;14&quot;}并重启。</span>
+
+
+
+
+
+<span class="n n-Quoted">#### **三、 真正的&quot;幕后黑手&quot;：D-Bus Broker** {#三-真正的幕后黑手d-bus-broker path-to-node=&quot;15&quot;}</span>
+
+<span class="n n-Quoted">即便换了驱动，如果问题依旧，请看 D-Bus。Debian 13 引入了`</span><span class="n">dbus</span><span class="o">-</span><span class="n">broker</span><span class="n n-Quoted">`{index-in-node=&quot;37&quot; path-to-node=&quot;16&quot;}作为`</span><span class="n">dbus</span><span class="o">-</span><span class="n">daemon</span><span class="n n-Quoted">`{index-in-node=&quot;52&quot; path-to-node=&quot;16&quot;}的高性能替代品。</span>
+
+<span class="n n-Quoted">-   **冲突点**：`</span><span class="n">dbus</span><span class="o">-</span><span class="n">broker</span><span class="n n-Quoted">`{index-in-node=&quot;4&quot; path-to-node=&quot;17,0,0&quot;}对协议规范要求极严。Ghostty 这种基于 Zig 编写的新锐终端在频繁切换焦点时会发送大量 D-Bus 消息，如果这些消息触发了`</span><span class="n">dbus</span><span class="o">-</span><span class="n">broker</span><span class="n n-Quoted">`{index-in-node=&quot;83&quot; path-to-node=&quot;17,0,0&quot;}的某种严格校验或导致其重置，整个 GUI 会话会因为失去&quot;神经中枢&quot;而崩溃。</span>
+
+
+
+<span class="n n-Quoted">#### **四、 终极解决方案：回归稳健** {#四-终极解决方案回归稳健 path-to-node=&quot;18&quot;}</span>
+
+<span class="n n-Quoted">如果`</span><span class="n">coredumpctl</span><span class="n n-Quoted">`{index-in-node=&quot;3&quot; path-to-node=&quot;19&quot;}显示崩溃与 D-Bus 通讯有关，最简单的修复方法是切回经典的`</span><span class="n">dbus</span><span class="o">-</span><span class="n">daemon</span><span class="n n-Quoted">`{index-in-node=&quot;47&quot; path-to-node=&quot;19&quot;}：</span>
+
+<span class="n n-Quoted">[Bash]{ngcontent-ng-c3068070706=&quot;&quot;}</span>
 </code></pre></div>
 
-<p>如果看到<code index-in-node="5" path-to-node="10">budgie-wm</code>或<code index-in-node="17" path-to-node="10">mutter</code>出现<code index-in-node="27" path-to-node="10">SIGSEGV</code>（段错误），说明窗口管理器崩了。</p>
-<h4 id="二-显卡驱动的跃迁i915-vs-xe" path-to-node="11"><strong>二、 显卡驱动的跃迁：i915 vs Xe</strong></h4>
-<p>在 Debian 13 中，针对 Intel 12代及以后的显卡（如 Iris Xe），内核提供了两套驱动。</p>
-<ul>
-<li>
-<p><strong>i915 驱动（传统派）：</strong>极其成熟，稳定，是过去十年的标准。但在处理现代 GPU 加速应用的快速上下文切换时，电源管理逻辑有时会显得迟钝，导致"GPU HANG"。</p>
-</li>
-<li>
-<p><strong>Xe 驱动（新锐派）：</strong>专为 Intel Xe 架构（Alder Lake 及更新）从零编写。它摒弃了 i915 的历史包袱，支持更现代的 Vulkan 特性，在窗口合成和多任务切换上理论性能更强。</p>
-</li>
-</ul>
-<p><strong>如何强制开启 Xe 驱动？</strong>编辑<code index-in-node="17" path-to-node="14">/etc/default/grub</code>，在启动参数中加入：<code index-in-node="45" path-to-node="14">GRUB_CMDLINE_LINUX_DEFAULT="... i915.force_probe=!46a6 xe.force_probe=46a6"</code><em>(注：46a6 为显卡 ID，可通过 lspci -n 查看)</em>修改后执行<code index-in-node="159" path-to-node="14">sudo update-grub</code>并重启。</p>
-<h4 id="三-真正的幕后黑手d-bus-broker" path-to-node="15"><strong>三、 真正的"幕后黑手"：D-Bus Broker</strong></h4>
-<p>即便换了驱动，如果问题依旧，请看 D-Bus。Debian 13 引入了<code index-in-node="37" path-to-node="16">dbus-broker</code>作为<code index-in-node="52" path-to-node="16">dbus-daemon</code>的高性能替代品。</p>
-<ul>
-<li><strong>冲突点</strong>：<code index-in-node="4" path-to-node="17,0,0">dbus-broker</code>对协议规范要求极严。Ghostty 这种基于 Zig 编写的新锐终端在频繁切换焦点时会发送大量 D-Bus 消息，如果这些消息触发了<code index-in-node="83" path-to-node="17,0,0">dbus-broker</code>的某种严格校验或导致其重置，整个 GUI 会话会因为失去"神经中枢"而崩溃。</li>
-</ul>
-<h4 id="四-终极解决方案回归稳健" path-to-node="18"><strong>四、 终极解决方案：回归稳健</strong></h4>
-<p>如果<code index-in-node="3" path-to-node="19">coredumpctl</code>显示崩溃与 D-Bus 通讯有关，最简单的修复方法是切回经典的<code index-in-node="47" path-to-node="19">dbus-daemon</code>：</p>
-<p>[Bash]{ngcontent-ng-c3068070706=""}</p>
-<div class="highlight"><pre><span></span><code>sudo apt install dbus-daemon
-# 该操作会自动移除 dbus-broker
-sudo reboot
-</code></pre></div>
-
+<p>sudo apt install dbus-daemon</p>
+<h1 id="dbus-broker">该操作会自动移除 dbus-broker</h1>
+<p>sudo reboot
+```</p>
 <p>经过实测，回归<code index-in-node="8" path-to-node="21">dbus-daemon</code>后，即便在高频切换 GPU 加速应用（如 Ghostty + Chromium）时，桌面依然稳如泰山。</p>
 <p><strong>结语：</strong>Linux 的魅力在于它的透明性。虽然遇到问题很烦，但通过<code index-in-node="34" path-to-node="23">systemd-coredump</code>锁定元凶，再到驱动和总线层的精准调优，这种掌控感正是 LeisureLinux 想带给大家的。</p>
     </div>
