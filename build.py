@@ -291,7 +291,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
-      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
     </div>
   </footer>
@@ -619,7 +619,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
-      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
     </div>
   </footer>
@@ -684,7 +684,7 @@ TAG_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
-      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
     </div>
   </footer>
@@ -1391,7 +1391,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
-      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a></p>
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
     </div>
   </footer>
@@ -1499,8 +1499,19 @@ def main():
             shutil.copy2(src_file, DOCS_DIR / filename)
             print(f"✅ 复制静态文件：docs/{filename}")
             copied_static += 1
-    
+
     total_files = len(articles) + 4 + copied_static  # 首页 + 文章 + sitemap + robots + rss
+
+    # 复制 LeisureLinux 公众号导航页（若存在）到 docs/，使其在站点中可访问
+    import shutil as _shutil
+    src_nav = LORE_DIR / "leisurelinux.html"
+    if src_nav.exists():
+        _shutil.copy2(src_nav, DOCS_DIR / "leisurelinux.html")
+        print("✅ 复制导航页：docs/leisurelinux.html")
+        total_files += 1
+    else:
+        print("ℹ️  未找到 lore/leisurelinux.html，跳过导航页复制（运行更新脚本后会生成）")
+
     print(f"\n🎉 构建完成！共生成 {total_files} 个文件（含 SEO/GEO 优化）")
 
 
