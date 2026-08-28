@@ -218,14 +218,17 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>Ubuntu、Debian、Red Hat、SUSE、Amazon Linux 全线受影响。<strong>只要安装了一个有漏洞的内核版本，且没有禁用非特权用户命名空间，攻击者就有一张通往 root 的船票。</strong></p>
 <p>多一个字符？少一个取反？我们来读代码</p>
 <p>漏洞的修复只有<strong>一行代码</strong>。我把修复前的关键逻辑翻译成伪代码展示给你看：</p>
-<p>// ❌ 有漏洞的版本（修复前）
-if (ops-&gt;flags &amp; NFT_SET_OBJECT) {
-// 如果设置了 NFT_SET_OBJECT 标志...
-}</p>
-<p>// ✅ 修复后的版本
-if (!(ops-&gt;flags &amp; NFT_SET_OBJECT)) {
-// 只有当标志位<strong>没有</strong>设置时...
-}</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// ❌ 有漏洞的版本（修复前）</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">flags</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">NFT_SET_OBJECT</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="c1">// 如果设置了 NFT_SET_OBJECT 标志...</span>
+<span class="p">}</span>
+
+<span class="c1">// ✅ 修复后的版本</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span>!<span class="p">(</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">flags</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">NFT_SET_OBJECT</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="c1">// 只有当标志位**没有**设置时...</span>
+<span class="p">}</span>
+</code></pre></div>
+
 <p>看到那个 <code>!</code> 感叹号了吗？一个逻辑非。</p>
 <p>原始代码忘记了对 <code>NFT_SET_OBJECT</code> 标志做取反检查，导致内核在<strong>错误的时机</strong>误判了一个 nftables 集合对象的状态。这个错误的判断埋下了 use-after-free 的种子：</p>
 <ol>
@@ -323,10 +326,13 @@ if (!(ops-&gt;flags &amp; NFT_SET_OBJECT)) {
 <div class="highlight"><pre><span></span><code>&lt;!-- --&gt;
 </code></pre></div>
 
-<h1 id="_1">运行时禁用</h1>
-<p>sysctl -w kernel.unprivileged_userns_clone=0</p>
-<h1 id="_2">永久禁用（大多数发行版）</h1>
-<p>echo "kernel.unprivileged_userns_clone=0" &gt;&gt; /etc/sysctl.d/99-disable-userns.conf</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> 运行时禁用
+sysctl -w kernel.unprivileged_userns_clone=0
+
+<span class="gh">#</span> 永久禁用（大多数发行版）
+echo &quot;kernel.unprivileged_userns_clone=0&quot; &gt;&gt; /etc/sysctl.d/99-disable-userns.conf
+</code></pre></div>
+
 <p><strong>容器环境加固</strong>：配置 Podman/Docker 的 seccomp 策略，限制用户命名空间的创建</p>
 <p><strong>监控告警</strong>：关注 dmesg 中与 nf_tables 相关的异常日志</p>
 <p>评估你的风险</p>

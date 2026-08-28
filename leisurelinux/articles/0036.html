@@ -183,42 +183,80 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>02 · BASICS</p>
 <h3 id="xfs-reflink-copy-on-write">先搞懂：XFS reflink 与 Copy-on-Write</h3>
 <p><strong>reflink</strong> 是 XFS 的块级共享机制，让两个文件共享同一组物理块。执行 cp \——reflink=always 几乎是瞬时完成，因为根本没有复制数据。</p>
-<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsvSpaQICYatzk6jCkWgBCUdIONCVORfYxn9t7DAmVA5ghWJr64m9rsf9bWOGW6XRIv1yj8ee14ekHLuEXHMPqWvNtR75zxUQIc/640?wx_fmt=jpeg" />——reflink：两个文件共享同一组物理块</p>
-<p>但两个文件共享块，对其中一个写入时怎么办？答案是 <strong>Copy-on-Write</strong>：内核分配新块，把数据复制过去，修改 inode 映射指向新块，源文件完全不受影响。</p>
-<p>关键背景：自 2019 年起，mkfs.xfs 默认开启 reflink。今天线上绝大多数 Linux 服务器，都在 RefluXFS 的攻击面上。</p>
-<p>03 · ROOT CAUSE</p>
-<h3 id="_1">那个致命的时间窗口</h3>
-<p>「等待日志空间时，内核临时释放了 inode 锁。」</p>
-<p>触发条件是三重奏：<strong>XFS 文件系统 + reflink 已启用 + 同一文件系统上有用户可写目录和高价值文件</strong>。第三点在多用户系统中默认成立。</p>
-<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMstkTXZ0pUQbYZqicbAdbHlrkLicn8WUviaSjkoibia6Y9LfqqBPBb8iaFn2kVfOtfaLOqANBdb3fibdL2pKfRgEib0o0Sdo7BVKBp30XZE/640?wx_fmt=jpeg" />——竞态时序：丢锁、陈旧地址、覆写源文件</p>
+<div class="highlight"><pre><span></span><code>![](https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsvSpaQICYatzk6jCkWgBCUdIONCVORfYxn9t7DAmVA5ghWJr64m9rsf9bWOGW6XRIv1yj8ee14ekHLuEXHMPqWvNtR75zxUQIc/640?wx_fmt=jpeg)
+
+```——reflink：两个文件共享同一组物理块
+
+但两个文件共享块，对其中一个写入时怎么办？答案是 **Copy-on-Write**：内核分配新块，把数据复制过去，修改 inode 映射指向新块，源文件完全不受影响。
+
+关键背景：自 2019 年起，mkfs.xfs 默认开启 reflink。今天线上绝大多数 Linux 服务器，都在 RefluXFS 的攻击面上。
+
+
+
+03 · ROOT CAUSE
+
+<span class="gu">##</span>#    那个致命的时间窗口
+
+
+
+「等待日志空间时，内核临时释放了 inode 锁。」
+
+触发条件是三重奏：**XFS 文件系统 + reflink 已启用 + 同一文件系统上有用户可写目录和高价值文件**。第三点在多用户系统中默认成立。
+</code></pre></div>
+
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMstkTXZ0pUQbYZqicbAdbHlrkLicn8WUviaSjkoibia6Y9LfqqBPBb8iaFn2kVfOtfaLOqANBdb3fibdL2pKfRgEib0o0Sdo7BVKBp30XZE/640?wx_fmt=jpeg" /></p>
+<p>```——竞态时序：丢锁、陈旧地址、覆写源文件</p>
 <p>进程 A 对 reflink 文件发起 O_DIRECT 写，内核走 CoW 路径；日志空间不够时，内核临时释放 inode 锁（ilock）；进程 B 在窗口内发起并发写入，改变块映射；进程 A 带着陈旧地址复活，把数据写到了源文件的物理块上。</p>
 <p>O_DIRECT 绕过 page cache，这次写入是永久的、不可逆的。</p>
 <p>攻击效果：把 /usr/bin/sudo reflink 出来做副本，发起竞态替换；或者在 /etc/passwd 里追加 hacker::0:0::/root:/bin/bash（第二列空即无密码）。</p>
 <p>为什么所有传统防护都失效？KASLR/SMEP/SMAP 是 CPU 特权级机制，对 块设备层覆写 无效；SELinux 看不到 reflink 的合法写权限；容器共享内核自然也失效；auditd 记录的 syscall 单独看都是正常的。</p>
 <p>04 · IMPACT</p>
 <h3 id="1640">影响面：1640 万台机器在射程内</h3>
-<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMss7F8ebsbads5l0K99ictStwp1pM5JIOTep9WWz6FCwdIEibEffYeh1SdHMxcbgK51QpkpX33yQmRwwc5Dw9wiacibd5k2icNC9ialib4/640?wx_fmt=jpeg" />——RefluXFS 影响面分布（Source: Qualys TRU, 2026）</p>
-<p>默认中招（XFS+reflink 是默认）：RHEL 8/9/10、Oracle Linux、Amazon Linux 2/2023、Fedora Server。默认安全（ext4 是默认）：Debian、Ubuntu、SUSE——但只要手工选过 XFS 就在射程内。</p>
-<p>如果你公司有跑了几年的服务器从未重启，恭喜，漏洞暴露窗口是满的。云厂商默认 Linux 镜像大多基于 RHEL 系，云上的暴露面比想象的大得多。</p>
-<p>05 · RESPONSE</p>
-<h3 id="5_1">检测、自查与修复：5 秒出结论</h3>
-<p>SELF-CHECK</p>
-<p>三项全中等于高危：内核不低于 4.11 且未打补丁；用了 XFS；reflink 已启用。</p>
-<p>执行以下命令排查。</p>
-<p>.    .    .    bash</p>
-<p>uname -r                       # 1. 内核版本（是否不低于 4.11）</p>
-<p>findmnt -t xfs                 # 2. 是否用了 XFS</p>
-<p>xfs_info / | grep -i reflink   # 3. reflink 是否启用</p>
+<div class="highlight"><pre><span></span><code>![](https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMss7F8ebsbads5l0K99ictStwp1pM5JIOTep9WWz6FCwdIEibEffYeh1SdHMxcbgK51QpkpX33yQmRwwc5Dw9wiacibd5k2icNC9ialib4/640?wx_fmt=jpeg)
+
+```——RefluXFS 影响面分布（Source: Qualys TRU, 2026）
+
+默认中招（XFS+reflink 是默认）：RHEL 8/9/10、Oracle Linux、Amazon Linux 2/2023、Fedora Server。默认安全（ext4 是默认）：Debian、Ubuntu、SUSE——但只要手工选过 XFS 就在射程内。
+
+如果你公司有跑了几年的服务器从未重启，恭喜，漏洞暴露窗口是满的。云厂商默认 Linux 镜像大多基于 RHEL 系，云上的暴露面比想象的大得多。
+
+
+
+05 · RESPONSE
+
+<span class="gu">##</span>#    检测、自查与修复：5 秒出结论
+
+
+
+SELF-CHECK
+
+三项全中等于高危：内核不低于 4.11 且未打补丁；用了 XFS；reflink 已启用。
+
+执行以下命令排查。
+
+```bash
+
+uname -r                       # 1. 内核版本（是否不低于 4.11）
+
+findmnt -t xfs                 # 2. 是否用了 XFS
+
+xfs_info / | grep -i reflink   # 3. reflink 是否启用
+</code></pre></div>
+
 <p>升级内核并重启，是唯一可靠的修复路径。</p>
-<p>.    .    .    bash</p>
-<p># RHEL / CentOS / Oracle / Fedora / Amazon Linux</p>
-<p>sudo yum update kernel &amp;&amp; sudo reboot</p>
-<p># Debian / Ubuntu</p>
-<p>sudo apt update &amp;&amp; sudo apt upgrade linux-image-generic &amp;&amp; sudo reboot</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># RHEL / CentOS / Oracle / Fedora / Amazon Linux</span>
+
+sudo<span class="w"> </span>yum<span class="w"> </span>update<span class="w"> </span>kernel<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>reboot
+
+<span class="c1"># Debian / Ubuntu</span>
+
+sudo<span class="w"> </span>apt<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>upgrade<span class="w"> </span>linux-image-generic<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>reboot
+</code></pre></div>
+
 <p>没有可靠的临时缓解。RefluXFS 攻击的是任意可读文件，不止 SUID 文件。chmod 0755 这种 Dirty Pipe 的招数对它无效。</p>
 <p>如果今天你只做一件事：在所有 Linux 服务器上跑一次自检三连。</p>
 <p>06 · REFLECTION</p>
-<h3 id="_2">对架构与运维的启示</h3>
+<h3 id="_1">对架构与运维的启示</h3>
 <p>RefluXFS 不只是一个漏洞，它是一个信号。它告诉我们三件事。</p>
 <p>01</p>
 <p>「默认安全」假设是脆弱的——任何一个发行版默认配置的变更都是一次安全债</p>
@@ -228,7 +266,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>容器与多租户场景下共享内核等于共享 root——9 年潜伏期值得整个生态反思</p>
 <p>长期加固：三件事写进团队 SOP——<strong>内核热补丁机制</strong>（kpatch/kgraft/livepatch）、<strong>关键二进制完整性监控</strong>（AIDE/Tripwire）、<strong>多租户共享最小化</strong>。</p>
 <p>∞ · POSTSCRIPT</p>
-<h3 id="_3">结语</h3>
+<h3 id="_2">结语</h3>
 <p>「云原生时代，内核漏洞等于全集群漏洞。」</p>
 <p>RefluXFS 提醒我们，纵深防御的边界不能止步于 CPU 和 syscall——必须延伸到块设备层、文件系统层、二进制完整性监控。安全运维不是一次性项目，而是和操作系统本身一起演进的长期工程。</p>
 <p>END</p>

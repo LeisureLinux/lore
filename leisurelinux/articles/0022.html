@@ -164,57 +164,112 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/h876nMuDucGScTjhWK-uqA" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>信任一个明文传输的      [流量决策文件]{b="b" solid="solid"}      ，本身就是信任链上最脆弱的一环——LeisureLinux</p>
-<p>公司/家里的终端要上网，几乎都绕不开一个叫      [PAC]{b="b" solid="solid"}      的文件。它替浏览器和系统决定"哪些直连、哪些走代理"。但这个文件默认裸奔在 HTTP 上——被劫持、被篡改，就是一次教科书级的中间人攻击。</p>
+<div class="highlight"><pre><span></span><code>信任一个明文传输的      [流量决策文件]{b=&quot;b&quot; solid=&quot;solid&quot;}      ，本身就是信任链上最脆弱的一环
+
+```——LeisureLinux
+</code></pre></div>
+
+<p>公司/家里的终端要上网，几乎都绕不开一个叫      [PAC]{b="b" solid="solid"}      的文件。它替浏览器和系统决定"哪些直连、哪些走代理"。但这个文件默认裸奔在 HTTP 上------被劫持、被篡改，就是一次教科书级的中间人攻击。</p>
 <p>今天我把      [wpad PAC 服务器搬上了 HTTPS]{b="b" solid="solid"}      ，用 Let\'s Encrypt 自动续期，还做到全程不把内网拓扑暴露给公网。这里有内网 DNS 和没有内网 DNS（家用路由器兜底）两条路都能落地，全过程复盘给你。</p>
-<p>本文看点</p>
-<p>01</p>
-<p>内网域名 + 公信 CA 证书的两全解法</p>
-<p>02</p>
-<p>DNS-01 验证为何是纯内网域名的利器</p>
-<p>03</p>
-<p>acme.sh 自动续期实现永久无人值守</p>
-<p>01</p>
-<p>WHAT IS PAC</p>
-<h3 id="pac">PAC 是什么？为什么它必须安全？</h3>
+<div class="highlight"><pre><span></span><code>本文看点
+
+01
+
+内网域名 + 公信 CA 证书的两全解法
+
+02
+
+DNS-01 验证为何是纯内网域名的利器
+
+03
+
+acme.sh 自动续期实现永久无人值守
+
+
+
+01
+
+WHAT IS PAC
+
+###          PAC 是什么？为什么它必须安全？
+</code></pre></div>
+
 <p>[PAC（Proxy Auto-Config）]{b="b" solid="solid"}      是一段 JavaScript，浏览器通过      [FindProxyForURL(url, host)]{mono="mono" px="px"}       返回 DIRECT 或 PROXY 决定流量走向。它通常由内网一台超轻量 nginx 提供，域名就叫      [wpad]{b="b" solid="solid"}      （配合自动发现协议，见第五章）。</p>
-<p>风险点：      <strong>PAC 是流量路径的"总开关"</strong>      。如果它被 MITM 篡改成      [PROXY attacker:8080]{mono="mono" px="px"}      ，整个内网流量都会被导进攻击者的隧道——密码、cookie、内网页面全裸奔。更阴险的是，篡改可以只针对特定目标（比如把某域名改成 DIRECT 再抓包）。</p>
-<p>「信任一个明文传输的信任决策文件，本身就是信任链上最脆弱的一环。」</p>
-<p>02</p>
-<p>THE DILEMMA</p>
-<h3 id="_1">经典困境：内网要安全，但又不想暴露内网</h3>
-<p>给 PAC 上 TLS 并不难，难在两件事：</p>
-<p>1</p>
-<p>[证书从哪来？]{b="b" solid="solid"}           内网没有合法 CA，自签证书会让每台终端弹警告、加例外——运维噩梦，等于没上。</p>
-<p>2</p>
+<p>风险点：      <strong>PAC 是流量路径的"总开关"</strong>      。如果它被 MITM 篡改成      [PROXY attacker:8080]{mono="mono" px="px"}      ，整个内网流量都会被导进攻击者的隧道------密码、cookie、内网页面全裸奔。更阴险的是，篡改可以只针对特定目标（比如把某域名改成 DIRECT 再抓包）。</p>
+<div class="highlight"><pre><span></span><code>「信任一个明文传输的信任决策文件，本身就是信任链上最脆弱的一环。」
+
+
+
+02
+
+THE DILEMMA
+
+###          经典困境：内网要安全，但又不想暴露内网
+
+给 PAC 上 TLS 并不难，难在两件事：
+
+1
+</code></pre></div>
+
+<p>[证书从哪来？]{b="b" solid="solid"}           内网没有合法 CA，自签证书会让每台终端弹警告、加例外------运维噩梦，等于没上。</p>
+<div class="highlight"><pre><span></span><code><span class="mf">2</span>
+</code></pre></div>
+
 <p>要不要把 wpad 绑到公网？完全不用。          [wpad.mydomain.com 是纯内网域名]{b="b" solid="solid"}          ：公网权威 DNS 上根本没有这条记录，只有内网 DNS 能解析到 192.168.x.x。</p>
-<p>于是我的解法很干脆：      <strong>内网域名 + 公信 CA 证书，两全其美。</strong></p>
-<p>[
-域名只在内网解析]{px="px"}</p>
-<p>公网看不到，天然"藏匿"。</p>
-<p>[
-DNS-01 签发公信证书]{px="px"}</p>
-<p>绑定这个内网域名，终端验证通过、零警告。</p>
-<p>[
-PAC 文件只在内网可达]{px="px"}</p>
-<p>文件确实明写着内网代理地址/IP/端口——"不暴露"靠的不是文件里没写，而是公网拿不到这份文件。</p>
-<p>证明给 CA 看的是"域名控制权"，喂给终端的是"内网地址"。两者并不冲突。</p>
-<p>03</p>
-<p>CERTIFICATE</p>
-<h3 id="acmesh-aliyun-dns">证书怎么申请：acme.sh + aliyun DNS 插件</h3>
+<div class="highlight"><pre><span></span><code>于是我的解法很干脆：      **内网域名 + 公信 CA 证书，两全其美。**
+
+[
+域名只在内网解析]{px=&quot;px&quot;}
+
+公网看不到，天然&quot;藏匿&quot;。
+
+[
+DNS-01 签发公信证书]{px=&quot;px&quot;}
+
+绑定这个内网域名，终端验证通过、零警告。
+
+[
+PAC 文件只在内网可达]{px=&quot;px&quot;}
+
+文件确实明写着内网代理地址/IP/端口——&quot;不暴露&quot;靠的不是文件里没写，而是公网拿不到这份文件。
+
+证明给 CA 看的是&quot;域名控制权&quot;，喂给终端的是&quot;内网地址&quot;。两者并不冲突。
+
+
+
+03
+
+CERTIFICATE
+
+<span class="gu">##</span>#          证书怎么申请：acme.sh + aliyun DNS 插件
+</code></pre></div>
+
 <p>先装      [acme.sh]{b="b" solid="solid"}      （会同时注册自动续签的 cron，见第六节）：</p>
-<p>.        .        .        bash</p>
-<p>curl https://get.acme.sh | sh -s email=you@example.com</p>
-<p>接着准备 DNS 验证需要的认证信息。acme.sh 用云厂商的凭证来操作 DNS、自动写 TXT 记录。以阿里云为例：把 AccessKey ID 和 AccessKey Secret 填进去（      [用只给 DNS 权限的最小化子账号更稳妥]{b="b" solid="solid"}      ）：</p>
-<p>.        .        .        bash</p>
-<p>export Ali_Key=\"你的AccessKeyID\"</p>
-<p>export Ali_Secret=\"你的AccessKeySecret\"</p>
-<p>我本机是直接复用已配置好的 aliyun CLI 凭证，从 \~/.aliyun/config.json 里把 AK/Secret 提取出来喂给 acme.sh 的 dns_ali 插件——一个凭证两处用，不用再手工拷一遍密钥。存凭证推荐放 \~/.acme.sh/ali.env 并 chmod 600，别写死在脚本里。</p>
-<p>然后申请，      [关键是用 \——dns dns_ali]{f97316="f97316" solid="solid"}      （走 DNS-01 验证，不是 HTTP-01）：</p>
-<p>.        .        .        bash</p>
-<p>acme.sh --issue --dns dns_ali -d wpad.mydomain.com</p>
-<p>dns_ali 插件会自动调阿里云 DNS API，在权威区加一条      [_acme-challenge.wpad.mydomain.com]{mono="mono" px="px"}       的 TXT 记录，等认证服务器验证通过后清理掉。全程不需要在公网放任何 A 记录，也不需要开 80/443 端口——<strong>这正是给纯内网域名签证书的关键。</strong></p>
-<p>签发结果：ZeroSSL ECC DV 证书，      [CN=wpad.mydomain.com]{b="b" solid="solid"}      ，有效期 90 天，由 ARI（ACME Renewal Information，续期信息扩展，见文末名词解释）自动安排续签窗口。</p>
+<div class="highlight"><pre><span></span><code><span class="err">```</span><span class="n">bash</span>
+
+<span class="n">curl</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">get</span><span class="o">.</span><span class="n">acme</span><span class="o">.</span><span class="n">sh</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sh</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="w"> </span><span class="n">email</span><span class="o">=</span><span class="n">you</span><span class="err">@</span><span class="n">example</span><span class="o">.</span><span class="n">com</span>
+
+<span class="w">     </span><span class="err">接着准备</span><span class="w"> </span><span class="n">DNS</span><span class="w"> </span><span class="err">验证需要的认证信息。</span><span class="n">acme</span><span class="o">.</span><span class="n">sh</span><span class="w"> </span><span class="err">用云厂商的凭证来操作</span><span class="w"> </span><span class="n">DNS</span><span class="err">、自动写</span><span class="w"> </span><span class="n">TXT</span><span class="w"> </span><span class="err">记录。以阿里云为例：把</span><span class="w"> </span><span class="n">AccessKey</span><span class="w"> </span><span class="n">ID</span><span class="w"> </span><span class="err">和</span><span class="w"> </span><span class="n">AccessKey</span><span class="w"> </span><span class="n">Secret</span><span class="w"> </span><span class="err">填进去（</span><span class="w">      </span><span class="p">[</span><span class="err">用只给</span><span class="w"> </span><span class="n">DNS</span><span class="w"> </span><span class="err">权限的最小化子账号更稳妥</span><span class="p">]{</span><span class="n">b</span><span class="o">=</span><span class="s2">&quot;b&quot;</span><span class="w"> </span><span class="n">solid</span><span class="o">=</span><span class="s2">&quot;solid&quot;</span><span class="p">}</span><span class="w">      </span><span class="err">）：</span>
+
+<span class="w">                     </span><span class="o">.</span><span class="w">        </span><span class="o">.</span><span class="w">        </span><span class="o">.</span><span class="w">        </span><span class="n">bash</span>
+
+<span class="k">export</span><span class="w"> </span><span class="n">Ali_Key</span><span class="o">=</span>\<span class="s2">&quot;你的AccessKeyID</span><span class="se">\&quot;</span>
+
+<span class="k">export</span><span class="w"> </span><span class="n">Ali_Secret</span><span class="o">=</span>\<span class="s2">&quot;你的AccessKeySecret</span><span class="se">\&quot;</span>
+
+<span class="w">       </span><span class="err">我本机是直接复用已配置好的</span><span class="w"> </span><span class="n">aliyun</span><span class="w"> </span><span class="n">CLI</span><span class="w"> </span><span class="err">凭证，从</span><span class="w"> </span>\<span class="o">~/.</span><span class="n">aliyun</span><span class="o">/</span><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="w"> </span><span class="err">里把</span><span class="w"> </span><span class="n">AK</span><span class="o">/</span><span class="n">Secret</span><span class="w"> </span><span class="err">提取出来喂给</span><span class="w"> </span><span class="n">acme</span><span class="o">.</span><span class="n">sh</span><span class="w"> </span><span class="err">的</span><span class="w"> </span><span class="n">dns_ali</span><span class="w"> </span><span class="err">插件</span><span class="o">------</span><span class="err">一个凭证两处用，不用再手工拷一遍密钥。存凭证推荐放</span><span class="w"> </span>\<span class="o">~/.</span><span class="n">acme</span><span class="o">.</span><span class="n">sh</span><span class="o">/</span><span class="n">ali</span><span class="o">.</span><span class="n">env</span><span class="w"> </span><span class="err">并</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="mi">600</span><span class="err">，别写死在脚本里。</span>
+
+<span class="w">     </span><span class="err">然后申请，</span><span class="w">      </span><span class="p">[</span><span class="err">关键是用</span><span class="w"> </span><span class="o">--</span><span class="n">dns</span><span class="w"> </span><span class="n">dns_ali</span><span class="p">]{</span><span class="n">f97316</span><span class="o">=</span><span class="s2">&quot;f97316&quot;</span><span class="w"> </span><span class="n">solid</span><span class="o">=</span><span class="s2">&quot;solid&quot;</span><span class="p">}</span><span class="w">      </span><span class="err">（走</span><span class="w"> </span><span class="n">DNS</span><span class="o">-</span><span class="mi">01</span><span class="w"> </span><span class="err">验证，不是</span><span class="w"> </span><span class="n">HTTP</span><span class="o">-</span><span class="mi">01</span><span class="err">）：</span>
+
+<span class="w">                     </span><span class="o">.</span><span class="w">        </span><span class="o">.</span><span class="w">        </span><span class="o">.</span><span class="w">        </span><span class="n">bash</span>
+
+<span class="n">acme</span><span class="o">.</span><span class="n">sh</span><span class="w"> </span><span class="o">--</span><span class="n">issue</span><span class="w"> </span><span class="o">--</span><span class="n">dns</span><span class="w"> </span><span class="n">dns_ali</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="w"> </span><span class="n">wpad</span><span class="o">.</span><span class="n">mydomain</span><span class="o">.</span><span class="n">com</span>
+
+<span class="w">     </span><span class="n">dns_ali</span><span class="w"> </span><span class="err">插件会自动调阿里云</span><span class="w"> </span><span class="n">DNS</span><span class="w"> </span><span class="n">API</span><span class="err">，在权威区加一条</span><span class="w">      </span><span class="p">[</span><span class="n">_acme</span><span class="o">-</span><span class="n">challenge</span><span class="o">.</span><span class="n">wpad</span><span class="o">.</span><span class="n">mydomain</span><span class="o">.</span><span class="n">com</span><span class="p">]{</span><span class="n">mono</span><span class="o">=</span><span class="s2">&quot;mono&quot;</span><span class="w"> </span><span class="n">px</span><span class="o">=</span><span class="s2">&quot;px&quot;</span><span class="p">}</span><span class="w">       </span><span class="err">的</span><span class="w"> </span><span class="n">TXT</span><span class="w"> </span><span class="err">记录，等认证服务器验证通过后清理掉。全程不需要在公网放任何</span><span class="w"> </span><span class="n">A</span><span class="w"> </span><span class="err">记录，也不需要开</span><span class="w"> </span><span class="mi">80</span><span class="o">/</span><span class="mi">443</span><span class="w"> </span><span class="err">端口</span><span class="o">------</span><span class="w">      </span><span class="o">**</span><span class="err">这正是给纯内网域名签证书的关键。</span><span class="o">**</span>
+
+<span class="w">     </span><span class="err">签发结果：</span><span class="n">ZeroSSL</span><span class="w"> </span><span class="n">ECC</span><span class="w"> </span><span class="n">DV</span><span class="w"> </span><span class="err">证书，</span><span class="w">      </span><span class="p">[</span><span class="n">CN</span><span class="o">=</span><span class="n">wpad</span><span class="o">.</span><span class="n">mydomain</span><span class="o">.</span><span class="n">com</span><span class="p">]{</span><span class="n">b</span><span class="o">=</span><span class="s2">&quot;b&quot;</span><span class="w"> </span><span class="n">solid</span><span class="o">=</span><span class="s2">&quot;solid&quot;</span><span class="p">}</span><span class="w">      </span><span class="err">，有效期</span><span class="w"> </span><span class="mi">90</span><span class="w"> </span><span class="err">天，由</span><span class="w"> </span><span class="n">ARI</span><span class="err">（</span><span class="n">ACME</span><span class="w"> </span><span class="n">Renewal</span><span class="w"> </span><span class="n">Information</span><span class="err">，续期信息扩展，见文末名词解释）自动安排续签窗口。</span>
+</code></pre></div>
+
 <p>为什么必须是 DNS-01？</p>
 <p>[
 HTTP-01]{px="px"}</p>
@@ -222,18 +277,25 @@ HTTP-01]{px="px"}</p>
 <p>[
 DNS-01]{px="px"}</p>
 <p>只需在持有该域名的权威 DNS（公共权威区，如云厂商）加一条 TXT 记录——不需要 wpad 在公网有 A 记录，也不需要开任何端口。</p>
-<p>一句话，      [签证书只需要域名的 DNS 控制权]{b="b" solid="solid"}      ，跟它是不是内网域名毫无冲突——这就是 DNS-01 的核心威力：能凭空为一条只在内网解析的域名签出合法公信证书。</p>
+<div class="highlight"><pre><span></span><code>一句话，      [签证书只需要域名的 DNS 控制权]{b=&quot;b&quot; solid=&quot;solid&quot;}      ，跟它是不是内网域名毫无冲突------这就是 DNS-01 的核心威力：能凭空为一条只在内网解析的域名签出合法公信证书。
+</code></pre></div>
+
 <p>04</p>
 <p>NGINX CONFIG</p>
 <h3 id="nginx-http-https">Nginx 双面配置：http 兼容 + https 主服务</h3>
-<p>nginx 这里的"双面"，      [不是公网/内网两套域名，而是内网主域名的 http 与 https 两个入口]{b="b" solid="solid"}      。核心原则：内网主域名走 HTTPS 强制，内网短名 wpad / wpad.lan 走 HTTP 豁免——短名没证书，挂到 443 会因证书不匹配直接  握手失败      。</p>
+<div class="highlight"><pre><span></span><code>nginx<span class="w"> </span>这里的<span class="s2">&quot;双面&quot;</span>，<span class="w">      </span><span class="o">[</span>不是公网/内网两套域名，而是内网主域名的<span class="w"> </span>http<span class="w"> </span>与<span class="w"> </span>https<span class="w"> </span>两个入口<span class="o">]{</span><span class="nv">b</span><span class="o">=</span><span class="s2">&quot;b&quot;</span><span class="w"> </span><span class="nv">solid</span><span class="o">=</span><span class="s2">&quot;solid&quot;</span><span class="o">}</span><span class="w">      </span>。核心原则：内网主域名走<span class="w"> </span>HTTPS<span class="w"> </span>强制，内网短名<span class="w"> </span>wpad<span class="w"> </span>/<span class="w"> </span>wpad.lan<span class="w"> </span>走<span class="w"> </span>HTTP<span class="w"> </span>豁免------短名没证书，挂到<span class="w"> </span><span class="m">443</span><span class="w"> </span>会因证书不匹配直接<span class="w">  </span>握手失败<span class="w">      </span>。
+</code></pre></div>
+
 <p>.        .        .        nginx · 80</p>
 <p>server {</p>
 <p>listen 80;</p>
 <p>server_name wpad wpad.lan wpad.mydomain.com;</p>
 <p>location = /wpad.dat {</p>
-<p>default_type application/x-ns-proxy-autoconfig;</p>
-<p>charset utf-8; expires 30m;</p>
+<div class="highlight"><pre><span></span><code><span class="nx">default_type</span><span class="w"> </span><span class="nx">application</span><span class="o">/</span><span class="nx">x</span><span class="o">-</span><span class="nx">ns</span><span class="o">-</span><span class="nx">proxy</span><span class="o">-</span><span class="nx">autoconfig</span><span class="p">;</span>
+
+<span class="nx">charset</span><span class="w"> </span><span class="nx">utf</span><span class="o">-</span><span class="mi">8</span><span class="p">;</span><span class="w"> </span><span class="nx">expires</span><span class="w"> </span><span class="mi">30</span><span class="nx">m</span><span class="p">;</span>
+</code></pre></div>
+
 <p>}</p>
 <p>location / { return 301 https://\$host\$request_uri; }</p>
 <p>}</p>
@@ -244,7 +306,9 @@ DNS-01]{px="px"}</p>
 <p>ssl_certificate     /etc/nginx/ssl/wpad.crt;</p>
 <p>ssl_certificate_key /etc/nginx/ssl/wpad.key;</p>
 <p>location = /wpad.dat {</p>
-<p>default_type application/x-ns-proxy-autoconfig;</p>
+<div class="highlight"><pre><span></span><code><span class="nx">default_type</span><span class="w"> </span><span class="nx">application</span><span class="o">/</span><span class="nx">x</span><span class="o">-</span><span class="nx">ns</span><span class="o">-</span><span class="nx">proxy</span><span class="o">-</span><span class="nx">autoconfig</span><span class="p">;</span>
+</code></pre></div>
+
 <p>}</p>
 <p>}</p>
 <p>那些 application/x-ns-proxy-autoconfig 是 PAC 的关键 MIME——类型不对很多客户端直接拒绝解析，这是最容易踩的坑。</p>
@@ -253,9 +317,13 @@ DNS-01]{px="px"}</p>
 <h3 id="wpad">wpad 是怎么被自动发现的？</h3>
 <p>终端拿到 PAC 有两种方式：</p>
 <p>1</p>
-<p>[显式配置]{b="b" solid="solid"}          ：在浏览器/系统代理设置里填 wpad.lan/wpad.dat 或 wpad.mydomain.com/wpad.dat。最可控。</p>
+<div class="highlight"><pre><span></span><code>[显式配置]{b=&quot;b&quot; solid=&quot;solid&quot;}          ：在浏览器/系统代理设置里填 wpad.lan/wpad.dat 或 wpad.mydomain.com/wpad.dat。最可控。
+</code></pre></div>
+
 <p>2</p>
-<p>[自动发现（WPAD 协议）]{b="b" solid="solid"}          ：终端按 DNS 后缀或 DHCP 选项自动去猜 PAC 地址。这也是为什么服务器名必须叫 wpad、文件必须叫 wpad.dat——协议是硬编码的，改名就失灵。</p>
+<div class="highlight"><pre><span></span><code>[自动发现（WPAD 协议）]{b=&quot;b&quot; solid=&quot;solid&quot;}          ：终端按 DNS 后缀或 DHCP 选项自动去猜 PAC 地址。这也是为什么服务器名必须叫 wpad、文件必须叫 wpad.dat------协议是硬编码的，改名就失灵。
+</code></pre></div>
+
 <p><strong>要让自动发现生效，还必须满足两个前提：</strong></p>
 <p>[
 DHCP 下发搜索后缀]{px="px"}</p>
@@ -263,24 +331,35 @@ DHCP 下发搜索后缀]{px="px"}</p>
 <p>[
 内网能解析 wpad 域名]{px="px"}</p>
 <p>有自建 Unbound 加一条本地记录；没内网 DNS 时，在家用路由器的 DHCP 设置里写静态 DNS/Hosts 条目即可，路由器对内网统一下发。</p>
-<p>三者咬合成一条链路：      [DHCP 给搜索域 → 终端拼出 wpad 域名 → 内网解析到 192.168.x.x → 就近加密取 PAC]{b="b" solid="solid"}      。少一环，自动发现就断。</p>
+<div class="highlight"><pre><span></span><code>三者咬合成一条链路：      [DHCP 给搜索域 → 终端拼出 wpad 域名 → 内网解析到 192.168.x.x → 就近加密取 PAC]{b=&quot;b&quot; solid=&quot;solid&quot;}      。少一环，自动发现就断。
+</code></pre></div>
+
 <p>自动发现的具体握手细节可另开一篇。记住结论：名字、MIME、搜索域是 WPAD 的生命线，内网解析是它的地基。</p>
 <p>06</p>
 <p>AUTO RENEW</p>
-<h3 id="_2">证书自动续期：装一次，永久自愈</h3>
-<p>acme.sh 安装时自动注册 cron，定时调用      [acme.sh \——cron]{mono="mono" px="px"}      。它      [不是每次都申请]{b="b" solid="solid"}      ，而是先检查距到期还剩多少天（默认提前 30 天，靠 ARI 定位精确窗口），没到就静默退出；到点才真正发起 DNS-01 申请，成功后自动安装：</p>
-<p>.        .        .        bash</p>
-<p>acme.sh --install-cert -d wpad.mydomain.com</p>
-<p>--key-file       /etc/nginx/ssl/wpad.key</p>
-<p>--fullchain-file /etc/nginx/ssl/wpad.crt</p>
-<p>--reloadcmd      \"systemctl reload nginx\"</p>
-<p>\——reloadcmd 是关键——[续签成功那一刻自动 reload nginx]{b="b" solid="solid"}      ，证书无缝切换，全程无人值守。cron 设成一天两次、工作日即可；以 90 天有效期算，一天一次都绰绰有余。别照抄"每 6 小时申请"的教程——那只是空跑检查，纯属浪费。</p>
+<h3 id="_1">证书自动续期：装一次，永久自愈</h3>
+<div class="highlight"><pre><span></span><code>acme.sh 安装时自动注册 cron，定时调用      [acme.sh --cron]{mono=&quot;mono&quot; px=&quot;px&quot;}      。它      [不是每次都申请]{b=&quot;b&quot; solid=&quot;solid&quot;}      ，而是先检查距到期还剩多少天（默认提前 30 天，靠 ARI 定位精确窗口），没到就静默退出；到点才真正发起 DNS-01 申请，成功后自动安装：
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>acme.sh<span class="w"> </span>--install-cert<span class="w"> </span>-d<span class="w"> </span>wpad.mydomain.com<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--key-file<span class="w">       </span>/etc/nginx/ssl/wpad.key<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--fullchain-file<span class="w"> </span>/etc/nginx/ssl/wpad.crt<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--reloadcmd<span class="w">      </span><span class="se">\&quot;</span>systemctl<span class="w"> </span>reload<span class="w"> </span>nginx<span class="se">\&quot;</span>
+
+<span class="w">     </span>--reloadcmd<span class="w"> </span>是关键------<span class="w">      </span><span class="o">[</span>续签成功那一刻自动<span class="w"> </span>reload<span class="w"> </span>nginx<span class="o">]{</span><span class="nv">b</span><span class="o">=</span><span class="s2">&quot;b&quot;</span><span class="w"> </span><span class="nv">solid</span><span class="o">=</span><span class="s2">&quot;solid&quot;</span><span class="o">}</span><span class="w">      </span>，证书无缝切换，全程无人值守。cron<span class="w"> </span>设成一天两次、工作日即可；以<span class="w"> </span><span class="m">90</span><span class="w"> </span>天有效期算，一天一次都绰绰有余。别照抄<span class="s2">&quot;每 6 小时申请&quot;</span>的教程------那只是空跑检查，纯属浪费。
+</code></pre></div>
+
 <p>07</p>
 <p>GLOSSARY</p>
-<h3 id="_3">名词解释</h3>
+<h3 id="_2">名词解释</h3>
 <p>[
 PAC / wpad]{px="px"}</p>
-<p>Proxy Auto-Config，一段 JavaScript，浏览器通过 FindProxyForURL(url, host) 决定每个域名是直连还是走代理。wpad 是这套协议约定俗成的服务器主机名。</p>
+<div class="highlight"><pre><span></span><code>Proxy Auto-Config，一段 JavaScript，浏览器通过 FindProxyForURL(url, host) 决定每个域名是直连还是走代理。wpad 是这套协议约定俗成的服务器主机名。
+</code></pre></div>
+
 <p>[
 MITM 中间人攻击]{px="px"}</p>
 <p>攻击者插入在客户端与服务器之间，截获甚至篡改双向流量。明文传输的 PAC 一旦被 MITM，等于把整个代理路径交给攻击者。</p>
@@ -295,8 +374,10 @@ DNS 分离 / Split-Horizon]{px="px"}</p>
 <p>同一域名在不同 DNS 视角下解析到不同地址。wpad.mydomain.com 只在内网解析到 192.168.x.x，公网权威区没有这条记录——既拿得到证书，又不暴露内网。</p>
 <p>∞</p>
 <p>EPILOGUE</p>
-<h3 id="_4">写在最后</h3>
-<p>内网安全不是非黑即白：      [既要可信，又不想暴露]{b="b" solid="solid"}      。HTTPS PAC 这套思路——纯内网域名 + DNS-01 公信证书 + PAC 敏感清单只在内网可达——在"信任"与"藏匿"之间找到了平衡。</p>
+<h3 id="_3">写在最后</h3>
+<div class="highlight"><pre><span></span><code>内网安全不是非黑即白：      [既要可信，又不想暴露]{b=&quot;b&quot; solid=&quot;solid&quot;}      。HTTPS PAC 这套思路------纯内网域名 + DNS-01 公信证书 + PAC 敏感清单只在内网可达------在&quot;信任&quot;与&quot;藏匿&quot;之间找到了平衡。
+</code></pre></div>
+
 <p>「安全的内网，是被信任但读不穿的。」</p>
 <p>END</p>
 <p>我是 LeisureLinux，热衷于分享 Linux 底层架构与内网安全的实战观察。</p>

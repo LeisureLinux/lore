@@ -174,12 +174,14 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>为什么一个号称\"高危\"的漏洞，修复了这么久才公开？因为它触及了 Linux 内核最核心、最敏感的组件之一——<strong>epoll</strong>。而真正令人不寒而栗的是：这篇代码里藏着一个陷阱，即使是最先进的 AI 安全分析工具也只找到了其中一个。</p>
 <p>二、前置知识：epoll 是什么，为什么人人都怕动它</p>
 <p>如果你是后端工程师，大概率每天都在用 epoll——只是你不知道。</p>
-<p>int epfd = epoll_create1(0);
+<div class="highlight"><pre><span></span><code>int epfd = epoll_create1(0);
 struct epoll_event ev;
 ev.events = EPOLLIN;
 ev.data.fd = sockfd;
 epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
-// 然后可以 epoll_wait 等待事件</p>
+// 然后可以 epoll_wait 等待事件
+</code></pre></div>
+
 <p>Nginx、Redis、Node.js、Netty......几乎所有高并发框架的底层都有一个 epoll 实例在工作。epoll 是 Linux 高性能 I/O 的基石。</p>
 <p>它的内核实现（<code>fs/eventpoll.c</code>，约 2500 行）维护了两个关键结构：</p>
 <ul>
@@ -193,22 +195,26 @@ epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
 <p>2023 年 4 月 8 日，提交 <code>58c9b016e128</code> 合并进了主线。它试图优化 epoll 的清理路径——具体来说，是 <code>ep_remove()</code> 函数中 <code>file-&gt;f_ep</code> 指针的清理逻辑。</p>
 <p>改动意图是好的：减少锁持有时间，提高并发性能。</p>
 <p>问题在于，这段代码在 <code>file-&gt;f_lock</code> 下清除了 <code>file-&gt;f_ep</code> 指针后，<strong>仍然继续使用 <code>file</code> 对象</strong>去完成后续操作——做 <code>hlist_del_rcu()</code> 链表操作，然后才释放锁。</p>
-<p>// 简化后的漏洞代码
-static void ep_remove(struct eventpoll <em>ep, struct epitem </em>epi)
-{
-struct file *file = epi-&gt;ffd.file;</p>
-<p>ep_unregister_pollwait(ep, epi);
-if (unlikely(READ_ONCE(epi-&gt;dying)))
-return;</p>
-<p>spin_lock(&amp;file-&gt;f_lock);
-// 🔴 这里清除了 f_ep 指针！
-ep_remove_file(ep, epi, file);
-// 但 file 对象还在继续使用...
-if (ep_remove_epi(ep, epi))
-// ...
-spin_unlock(&amp;file-&gt;f_lock);
-// ... 之后才返回
-}</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 简化后的漏洞代码</span>
+<span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">ep_remove</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">eventpoll</span><span class="w"> </span><span class="o">*</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="nb">struct</span><span class="w"> </span><span class="n">epitem</span><span class="w"> </span><span class="o">*</span><span class="n">epi</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="nb">struct</span><span class="w"> </span><span class="nb">file</span><span class="w"> </span><span class="o">*</span><span class="nb">file</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">epi</span><span class="o">-&gt;</span><span class="n">ffd</span><span class="p">.</span><span class="nb">file</span><span class="p">;</span>
+
+<span class="n">ep_unregister_pollwait</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">unlikely</span><span class="p">(</span><span class="n">READ_ONCE</span><span class="p">(</span><span class="n">epi</span><span class="o">-&gt;</span><span class="n">dying</span><span class="p">)))</span>
+<span class="k">return</span><span class="p">;</span>
+
+<span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
+<span class="c1">// 🔴 这里清除了 f_ep 指针！</span>
+<span class="n">ep_remove_file</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">,</span><span class="w"> </span><span class="nb">file</span><span class="p">);</span>
+<span class="c1">// 但 file 对象还在继续使用...</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ep_remove_epi</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">))</span>
+<span class="c1">// ...</span>
+<span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
+<span class="c1">// ... 之后才返回</span>
+<span class="p">}</span>
+</code></pre></div>
+
 <p>这段代码看起来没什么大问题——确实，90% 的情况下它工作得很好。<strong>99.999% 的情况下都工作得很好。</strong></p>
 <p>但那 0.001% 的情况，恰好是一条潜在的 root 权限。</p>
 <p>四、漏洞解剖：六条指令宽的竞态窗口</p>
@@ -269,33 +275,39 @@ spin_unlock(&amp;file-&gt;f_lock);
 <p>这提醒我们：<strong>AI 辅助安全分析虽然强大，但仍然是\"找已知模式\"——真正的 0-day 常常藏在\"已知模式\"之外。</strong></p>
 <p>七、修复方案：一条微妙的 guard</p>
 <p>修复补丁 <code>a6dc643c6931</code> 的改动不大，但非常关键：</p>
-<p>// 修复前
-static void ep_remove(struct eventpoll <em>ep, struct epitem </em>epi)
-{
-struct file *file = epi-&gt;ffd.file;  // 直接拿指针</p>
-<p>spin_lock(&amp;file-&gt;f_lock);
-ep_remove_file(ep, epi, file);
-// 🔴 窗口：f_ep 已清，但 file 还在用
-if (ep_remove_epi(ep, epi))
-// ...
-spin_unlock(&amp;file-&gt;f_lock);
-}</p>
-<p>// 修复后
-static void ep_remove(struct eventpoll <em>ep, struct epitem </em>epi)
-{
-struct file *file __free(fput) = NULL;</p>
-<p>// ✅ 关键：用 epi_fget() 增加 file 引用计数
-file = epi_fget(epi);
-if (!file)
-return;  // 如果拿不到引用，说明 eventpoll_release_file 已接手</p>
-<p>spin_lock(&amp;file-&gt;f_lock);
-ep_remove_file(ep, epi, file);
-// ✅ 现在 file 的引用计数保证了 __fput() 不会提前触发
-if (ep_remove_epi(ep, epi))
-// ...
-spin_unlock(&amp;file-&gt;f_lock);
-// __free(fput) 自动释放引用
-}</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// 修复前</span>
+<span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">ep_remove</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">eventpoll</span><span class="w"> </span><span class="o">*</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="nb">struct</span><span class="w"> </span><span class="n">epitem</span><span class="w"> </span><span class="o">*</span><span class="n">epi</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="nb">struct</span><span class="w"> </span><span class="nb">file</span><span class="w"> </span><span class="o">*</span><span class="nb">file</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">epi</span><span class="o">-&gt;</span><span class="n">ffd</span><span class="p">.</span><span class="nb">file</span><span class="p">;</span><span class="w">  </span><span class="c1">// 直接拿指针</span>
+
+<span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
+<span class="n">ep_remove_file</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">,</span><span class="w"> </span><span class="nb">file</span><span class="p">);</span>
+<span class="c1">// 🔴 窗口：f_ep 已清，但 file 还在用</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ep_remove_epi</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">))</span>
+<span class="c1">// ...</span>
+<span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// 修复后</span>
+<span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">ep_remove</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">eventpoll</span><span class="w"> </span><span class="o">*</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="nb">struct</span><span class="w"> </span><span class="n">epitem</span><span class="w"> </span><span class="o">*</span><span class="n">epi</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="nb">struct</span><span class="w"> </span><span class="nb">file</span><span class="w"> </span><span class="o">*</span><span class="nb">file</span><span class="w"> </span><span class="n">__free</span><span class="p">(</span><span class="n">fput</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">NULL</span><span class="p">;</span>
+
+<span class="c1">// ✅ 关键：用 epi_fget() 增加 file 引用计数</span>
+<span class="nb">file</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">epi_fget</span><span class="p">(</span><span class="n">epi</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span>!<span class="nb">file</span><span class="p">)</span>
+<span class="k">return</span><span class="p">;</span><span class="w">  </span><span class="c1">// 如果拿不到引用，说明 eventpoll_release_file 已接手</span>
+
+<span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
+<span class="n">ep_remove_file</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">,</span><span class="w"> </span><span class="nb">file</span><span class="p">);</span>
+<span class="c1">// ✅ 现在 file 的引用计数保证了 __fput() 不会提前触发</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ep_remove_epi</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">))</span>
+<span class="c1">// ...</span>
+<span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
+<span class="c1">// __free(fput) 自动释放引用</span>
+<span class="p">}</span>
+</code></pre></div>
+
 <p>修复的核心思想是<strong>引用计数保护</strong>：在操作开始时，通过 <code>epi_fget()</code> 获取 <code>file</code> 对象的一个额外引用。这样：</p>
 <ul>
 <li>如果 <code>__fput()</code> 并发执行，它看到引用计数 > 1，不会释放对象</li>

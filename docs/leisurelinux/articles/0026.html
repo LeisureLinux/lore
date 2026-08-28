@@ -166,7 +166,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     <div class="content" itemprop="articleBody">
 <p>Codex 升级到下一代协议，国内大模型集体      404 Not Found——不是能力问题，是接口代差——LeisureLinux</p>
 <p>如果你使用 Codex CLI（v0.122+）搭配 DeepSeek 或阿里百炼等国内大模型，可能会遇到一个令人困惑的错误：</p>
-<p>unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/v1/responses</p>
+<div class="highlight"><pre><span></span><code>unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/v1/responses
+</code></pre></div>
+
 <p>这不是模型的能力问题，也不是 API Key 的问题——这是 Codex 项目架构演进中的一个重大断层变动（Breaking Change）。本文复盘整个排查过程与解决方案。</p>
 <p>本文看点</p>
 <p>01</p>
@@ -195,31 +197,49 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>FLOW</p>
 <p>[ Codex CLI ] ─── /v1/responses ───→ [ 本地 Proxy ]</p>
 <p>↓ 协议转换桥接</p>
-<p>[ 国内平台 (DeepSeek / 百炼) ] ←── /v1/chat/completions</p>
+<div class="highlight"><pre><span></span><code>[ 国内平台 (DeepSeek / 百炼) ] ←── /v1/chat/completions
+</code></pre></div>
+
 <p>TOOL 1          CC Switch</p>
 <p>提供本地路由服务，专为 Codex 这种强绑定 Responses API 的 CLI 工具设计。自动把 Codex 发出的          /v1/responses           请求实时拦截，重写映射回 DeepSeek 的          /chat/completions           格式。</p>
 <p>TOOL 2          codeproxy-ai/cli</p>
 <p>基于 Node.js 的轻量级通用本地代理。支持请求体转化、SSE 流式输出转译、Thinking/Reasoning 思考过程回传以及 Tool Calling 的拦截映射。安装方式：</p>
-<p>.          .          .          bash</p>
-<p>npm install -g \@codeproxy/cli</p>
-<p>codeproxy</p>
-<p>--base-url https://api.deepseek.com/v1</p>
-<p>--model deepseek-v4-flash</p>
-<p>--apikey \\"\$DEEPSEEK_API_KEY\\"</p>
-<p>--upstream-format openai-chat</p>
-<p>proxy 默认监听        127.0.0.1:8787        。然后在 Codex 的        \~/.codex/config.toml         中，将        base_url         改为指向本地 proxy：</p>
-<p>CONFIG</p>
-<p>[model_providers.deepseek]</p>
-<p>name = \"DeepSeek\"</p>
-<p>base_url = \"http://127.0.0.1:8787/v1\"</p>
-<p>env_key = \"DEEPSEEK_API_KEY\"</p>
-<p>TOOL 3          openai/codex-responses-api-proxy</p>
-<p>官方/社区针对 Node/NPM 分发的轻量级转译工具，安装后本地跑一个服务，Codex 的          base_url           直接指向          http://127.0.0.1:3000/v1           即可正常工作。</p>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span><span class="se">\@</span>codeproxy/cli
+
+codeproxy<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--base-url<span class="w"> </span>https://api.deepseek.com/v1<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--model<span class="w"> </span>deepseek-v4-flash<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--apikey<span class="w"> </span><span class="se">\\\&quot;\$</span>DEEPSEEK_API_KEY<span class="se">\\\&quot;</span><span class="w"> </span><span class="se">\\</span>
+
+<span class="w">  </span>--upstream-format<span class="w"> </span>openai-chat
+
+<span class="w">       </span>proxy<span class="w"> </span>默认监听<span class="w">        </span><span class="m">127</span>.0.0.1:8787<span class="w">        </span>。然后在<span class="w"> </span>Codex<span class="w"> </span>的<span class="w">        </span><span class="se">\~</span>/.codex/config.toml<span class="w">         </span>中，将<span class="w">        </span>base_url<span class="w">         </span>改为指向本地<span class="w"> </span>proxy：
+
+<span class="w">         </span>CONFIG
+
+<span class="w">         </span><span class="o">[</span>model_providers.deepseek<span class="o">]</span>
+
+<span class="w">         </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="se">\&quot;</span>DeepSeek<span class="se">\&quot;</span>
+
+<span class="w">         </span><span class="nv">base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="se">\&quot;</span>http://127.0.0.1:8787/v1<span class="se">\&quot;</span>
+
+<span class="w">         </span><span class="nv">env_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="se">\&quot;</span>DEEPSEEK_API_KEY<span class="se">\&quot;</span>
+
+<span class="w">                             </span>TOOL<span class="w"> </span><span class="m">3</span><span class="w">          </span>openai/codex-responses-api-proxy
+
+<span class="w">         </span>官方/社区针对<span class="w"> </span>Node/NPM<span class="w"> </span>分发的轻量级转译工具，安装后本地跑一个服务，Codex<span class="w"> </span>的<span class="w">          </span>base_url<span class="w">           </span>直接指向<span class="w">          </span>http://127.0.0.1:3000/v1<span class="w">           </span>即可正常工作。
+</code></pre></div>
+
 <p>「这属于技术栈升级带来的标准不兼容——Codex 升级到了下一代协议（Responses API），而大多数第三方 API 平台目前依然暴露的是上一代标准协议（Chat Completions API）。挂一层轻量级的本地 Proxy 是目前体验最稳、无需修改客户端代码的标准解法。」</p>
 <p>END</p>
 <p>如果你觉得今天这篇有收获，欢迎        <strong>点赞、在看、转发</strong>        三连，我们下篇见。</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318903&amp;idx=1&amp;sn=d2769dd5a5b29cf05ccd9032f57845ef&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1vkfzcefnglxpn0agw" target="_blank" textvalue="【OpenClaw 实操】OpenClaw Dreaming：AI 智能体的梦境记忆系统">【OpenClaw 实操】OpenClaw Dreaming：AI 智能体的梦境记忆系统</a><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318894&amp;idx=1&amp;sn=453816ea657e4234b022509f5d4cb398&amp;scene=21#wechat_redirect" linktype="2" localeditorid="k1ixwlxapvnfqsny0w" target="_blank" textvalue="【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路">【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路</a>
-<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318947&amp;idx=1&amp;sn=dc1876be1ff3241f0dd0556b862f00b9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5zsa3a7antlf1ee90cg" target="_blank" textvalue="从OpenClaw到Codex：52个AI Agent技能的搬家实战">从OpenClaw到Codex：52个AI Agent技能的搬家实战</a></p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span><span class="err">【</span><span class="nx">OpenClaw</span><span class="w"> </span><span class="nx">实操</span><span class="err">】</span><span class="nx">OpenClaw</span><span class="w"> </span><span class="nx">Dreaming</span><span class="err">：</span><span class="nx">AI</span><span class="w"> </span><span class="nx">智能体的梦境记忆系统</span><span class="p">](</span><span class="nx">https</span><span class="p">:</span><span class="c1">//mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318903&amp;idx=1&amp;sn=d2769dd5a5b29cf05ccd9032f57845ef&amp;scene=21#wechat_redirect){linktype=&quot;2&quot; localeditorid=&quot;1vkfzcefnglxpn0agw&quot; target=&quot;_blank&quot; textvalue=&quot;【OpenClaw 实操】OpenClaw Dreaming：AI 智能体的梦境记忆系统&quot;}[【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路](https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318894&amp;idx=1&amp;sn=453816ea657e4234b022509f5d4cb398&amp;scene=21#wechat_redirect){linktype=&quot;2&quot; localeditorid=&quot;k1ixwlxapvnfqsny0w&quot; target=&quot;_blank&quot; textvalue=&quot;【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路&quot;}\</span>
+</code></pre></div>
+
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318947&amp;idx=1&amp;sn=dc1876be1ff3241f0dd0556b862f00b9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5zsa3a7antlf1ee90cg" target="_blank" textvalue="从OpenClaw到Codex：52个AI Agent技能的搬家实战">从OpenClaw到Codex：52个AI Agent技能的搬家实战</a></p>
     </div>
     <div class="src">
       <div class="txt">

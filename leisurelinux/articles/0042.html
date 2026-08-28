@@ -164,135 +164,161 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/EFadOjO52tx9NeGFhHa8sQ" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>Linux kernel 主线的 ACPI WMI driver，      [终于支持 ARM64 了]{f97316="f97316" solid="solid"}      。这条短新闻背后，是 Windows on ARM 笔记本跑 Linux 能不能「用起来」的关键一环。——解读 Phoronix 2026-07 报道</p>
-<p>Phoronix 这周那条新闻很短——[Linux 的 ACPI WMI driver 加上 ARM64 支持了]{px="px"}——但讲清楚它在动什么，先得把 WMI 这个东西拆开来。这次解读按「      [是什么 / 为什么 / 怎么改 / 对谁有用]{b="b" solid="solid"}      」四段铺开，基础概念部分按「只讲读者需要的最低限度」来写，不去复述 ACPI 整套规范。</p>
-<p>本文看点</p>
-<p>01</p>
-<p>基础概念</p>
-<p>02</p>
-<p>为什么重要</p>
-<p>03</p>
-<p>改动 + 清单</p>
-<p>01</p>
-<p>FUNDAMENTALS</p>
-<h3 id="_1">基础概念：把这一坨先讲明白</h3>
-<p>什么是 ACPI</p>
+<div class="highlight"><pre><span></span><code>Linux kernel 主线的 ACPI WMI driver，      [终于支持 ARM64 了]{f97316=&quot;f97316&quot; solid=&quot;solid&quot;}      。这条短新闻背后，是 Windows on ARM 笔记本跑 Linux 能不能「用起来」的关键一环。
+
+```——解读 Phoronix 2026-07 报道
+</code></pre></div>
+
+<p>Phoronix 这周那条新闻很短------      [Linux 的 ACPI WMI driver 加上 ARM64 支持了]{px="px"}      ------但讲清楚它在动什么，先得把 WMI 这个东西拆开来。这次解读按「      [是什么 / 为什么 / 怎么改 / 对谁有用]{b="b" solid="solid"}      」四段铺开，基础概念部分按「只讲读者需要的最低限度」来写，不去复述 ACPI 整套规范。</p>
+<div class="highlight"><pre><span></span><code>本文看点
+
+01
+
+基础概念
+
+02
+
+为什么重要
+
+03
+
+改动 + 清单
+
+
+
+01
+
+FUNDAMENTALS
+
+###          基础概念：把这一坨先讲明白
+
+什么是 ACPI
+</code></pre></div>
+
 <p>ACPI（Advanced Configuration and Power Interface）是 Intel + Microsoft + 几家 OEM 1990 年代一起搞出来的一套      [电源管理 + 硬件配置规范]{b="b" solid="solid"}      。到今天它几乎成了所有现代 PC / 服务器的固件接口事实标准。</p>
-<ul>
-<li>
-<p>BIOS / UEFI 固件通过 <strong>ACPI tables</strong> 把硬件信息告诉 OS</p>
-</li>
-<li>
-<p>OS 通过 <strong>ACPI methods</strong>（本质是跑在固件上的字节码）操控硬件</p>
-</li>
-<li>
-<p>电源按钮、笔记本合盖、CPU 频率调节——全走 ACPI</p>
-</li>
-</ul>
-<p>Linux kernel 里有个独立子系统叫 <strong>ACPI subsystem</strong>（drivers/acpi/），负责把 ACPI 翻译成 Linux 内部能用的电源、thermal、button 等子系统。</p>
-<p>什么是 WMI</p>
+<div class="highlight"><pre><span></span><code><span class="k">-</span> BIOS / UEFI 固件通过 **ACPI tables** 把硬件信息告诉 OS
+
+<span class="k">-</span> OS 通过 **ACPI methods**（本质是跑在固件上的字节码）操控硬件
+
+<span class="k">-</span> 电源按钮、笔记本合盖、CPU 频率调节——全走 ACPI
+
+Linux kernel 里有个独立子系统叫 **ACPI subsystem**（drivers/acpi/），负责把 ACPI 翻译成 Linux 内部能用的电源、thermal、button 等子系统。
+
+什么是 WMI
+</code></pre></div>
+
 <p>WMI（Windows Management Instrumentation）是 Microsoft 在 Windows 里做的一套      [统一管理接口]{b="b" solid="solid"}      ：</p>
 <ul>
-<li>
-<p>它是 <strong>Web-Based Enterprise Management (WBEM)</strong> + <strong>Common Information Model (CIM)</strong> 的 Microsoft 实现（DMTF 标准）</p>
-</li>
-<li>
-<p>早期 Windows 时代，IT 管理员靠它远程查询硬件信息、改 BIOS 设置、做脚本自动化</p>
-</li>
-<li>
-<p>在笔记本上，绝大多数热键（Fn + F1/F2/F3...）、切换显卡模式、控制风扇曲线——这些「      [vendor-specific]{b="b" solid="solid"}      」的功能都被 OEM 用 WMI 暴露出来</p>
-</li>
+<li>它是 <strong>Web-Based Enterprise Management (WBEM)</strong> + <strong>Common Information Model (CIM)</strong> 的 Microsoft 实现（DMTF 标准）</li>
 </ul>
-<p>什么是 ACPI WMI</p>
-<p>ACPI WMI 是 WMI 的「ACPI 实现版本」——把 WMI object 嵌进 ACPI 固件里：</p>
+<div class="highlight"><pre><span></span><code>- 早期 Windows 时代，IT 管理员靠它远程查询硬件信息、改 BIOS 设置、做脚本自动化
+</code></pre></div>
+
 <ul>
-<li>
-<p>硬件厂商在主板 ACPI 固件里塞入 WMI objects</p>
-</li>
-<li>
-<p>ACPI 用一个特殊设备 ID [PNP0C14]{mono="mono" px="px"} 标识「这是一个 WMI 设备」</p>
-</li>
-<li>
-<p>操作系统读到 PNP0C14 设备 → 加载 WMI driver → 通过 ACPI methods 与固件里的 WMI object 通信</p>
-</li>
+<li>在笔记本上，绝大多数热键（Fn + F1/F2/F3...）、切换显卡模式、控制风扇曲线------这些「      [vendor-specific]{b="b" solid="solid"}      」的功能都被 OEM 用 WMI 暴露出来</li>
 </ul>
+<div class="highlight"><pre><span></span><code>什么是 ACPI WMI
+
+ACPI WMI 是 WMI 的「ACPI 实现版本」——把 WMI object 嵌进 ACPI 固件里：
+
+- 硬件厂商在主板 ACPI 固件里塞入 WMI objects
+</code></pre></div>
+
+<ul>
+<li>ACPI 用一个特殊设备 ID [PNP0C14]{mono="mono" px="px"} 标识「这是一个 WMI 设备」</li>
+</ul>
+<div class="highlight"><pre><span></span><code>- 操作系统读到 PNP0C14 设备 → 加载 WMI driver → 通过 ACPI methods 与固件里的 WMI object 通信
+</code></pre></div>
+
 <p>Linux 内核里 [drivers/platform/x86/wmi.c]{mono="mono" px="px"}（以及相关的 [wmi-bmof.c]{mono="mono" px="px"} 之类）就是这套的实现。</p>
-<p>这次 ARM64 化在动什么</p>
-<p>原来 [drivers/platform/x86/wmi.c]{mono="mono" px="px"} 编译期就锁了 CONFIG_X86 / CONFIG_ACPI_WMI 依赖关系——只在 x86 / x86_64 平台构建。      [Windows-on-ARM 笔记本（Qualcomm Snapdragon X Elite、Surface Pro X 后续机型）出货后]{b="b" solid="solid"}      ，硬件厂商写 ACPI 固件的工程师发现：WMI-ACPI 映射代码在 x86 和 ARM64 上几乎一模一样——区别只在 OS 那一端能否解析 PNP0C14 + 调用 WMI 方法。</p>
-<p>Armin Wolf 的 patch series <strong>把 WMI driver 跟架构解耦</strong>——CONFIG_ACPI_WMI 现在不再依赖 CONFIG_X86，但保留 CONFIG_X86 这条线（因为某些厂商用 wmidata + len 字段做特殊优化，x86 上仍走原路径；其它架构走 generic 路径）。这条改动合并进了 Linux 6.16 左右的 merge window。</p>
-<p>02</p>
-<p>WHY IT MATTERS</p>
-<h3 id="_2">为什么这件事重要</h3>
-<p>直接受益：Windows on ARM 笔记本</p>
+<div class="highlight"><pre><span></span><code>这次 ARM64 化在动什么
+</code></pre></div>
+
+<p>原来 [drivers/platform/x86/wmi.c]{mono="mono" px="px"} 编译期就锁了 CONFIG_X86 / CONFIG_ACPI_WMI 依赖关系------只在 x86 / x86_64 平台构建。      [Windows-on-ARM 笔记本（Qualcomm Snapdragon X Elite、Surface Pro X 后续机型）出货后]{b="b" solid="solid"}      ，硬件厂商写 ACPI 固件的工程师发现：WMI-ACPI 映射代码在 x86 和 ARM64 上几乎一模一样------区别只在 OS 那一端能否解析 PNP0C14 + 调用 WMI 方法。</p>
+<div class="highlight"><pre><span></span><code>Armin Wolf 的 patch series **把 WMI driver 跟架构解耦**——CONFIG_ACPI_WMI 现在不再依赖 CONFIG_X86，但保留 CONFIG_X86 这条线（因为某些厂商用 wmidata + len 字段做特殊优化，x86 上仍走原路径；其它架构走 generic 路径）。这条改动合并进了 Linux 6.16 左右的 merge window。
+
+
+
+02
+
+WHY IT MATTERS
+
+<span class="gu">##</span>#          为什么这件事重要
+
+直接受益：Windows on ARM 笔记本
+</code></pre></div>
+
 <p>Surface Pro 11、Snapdragon X Elite 系列笔记本这些 ARM64 PC 出货时，绝大多数都带 ACPI WMI 接口。Linux 跑在上面（Asahi、Fedora Asahi Remix、Ubuntu ARM）      [之前没法识别 WMI device]{b="b" solid="solid"}      ，后果：</p>
-<p>1</p>
-<p><strong>Fn 亮度/音量键</strong> 没反应（需要 WMI 热键）</p>
-<p>2</p>
-<p><strong>BIOS 选项</strong>（boot mode、secure boot 切换）改不了</p>
-<p>3</p>
-<p><strong>OEM 诊断</strong>接口读不出来</p>
-<p>4</p>
-<p>风扇策略只能走 CPU 温度的简单曲线，没法读 OEM 自定义温度档位</p>
-<p>把 WMI driver 推到 ARM64 后，这些功能理论上能跟上 x86 Linux 的成熟度。</p>
-<p>间接意义：ACPI 在 ARM 上的「承认」</p>
-<p>ACPI 在 ARM64 上其实不是默认配置——CONFIG_ACPI 在 ARM64 上是可选的，很多 server 平台仍然用 device tree。但      [消费笔记本领域]{b="b" solid="solid"}      ，ACPI 是事实标准（因为 Windows on ARM 也跑 ACPI）。</p>
-<p>这次 WMI driver 上 ARM64，相当于 ACPI 子系统在 ARM64 笔记本场景下的又一块拼图——跟之前 [drivers/acpi/arm64]{mono="mono" px="px"} 下的 IORT、PPTT 一类支持一起，构成「      [ARM64 笔记本也能跑 ACPI 标准生态]{b="b" solid="solid"}      」的完整链。</p>
-<p>给内核开发者带的东西</p>
-<ul>
-<li>
-<p>WMI driver 改成「generic + arch-specific 后端」——架构耦合的代码该抽离了</p>
-</li>
-<li>
-<p>一系列 typecheck / 不必要的 arch 假设被清理</p>
-</li>
-<li>
-<p>测试面：之前 WMI 测试只能在 x86 上做，现在 ARM64 平台上也能跑</p>
-</li>
-</ul>
-<p>Windows on ARM 笔记本跑 Linux 能不能「用起来」，这一环是基础设施。</p>
-<p>03</p>
-<p>CHANGES</p>
-<h3 id="patch-series">改动细节：patch series 大致做了什么</h3>
-<p>以下按公开 patch 描述还原（具体 commit 编号以原文 / lore.kernel.org 为准）。</p>
-<table>
-<thead>
-<tr>
-<th>阶段</th>
-<th>内容</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>把 wmi.c 里所有 ACPI_MAX_INSTANCE、WMI_MGMT_GUID、wmi_module_count 之类状态机的 arch 假设去掉</td>
-</tr>
-<tr>
-<td>2</td>
-<td>CONFIG_ACPI_WMI 解除对 CONFIG_X86 的硬依赖，改成 depends on ACPI</td>
-</tr>
-<tr>
-<td>3</td>
-<td>WMI 核心层抽象得更 generic（没有真正新增 drivers/acpi/arm64/wmi_arm64.c），调用方都在同一文件里</td>
-</tr>
-<tr>
-<td>4</td>
-<td>设备 probe 时用 ACPI 标准的 _UID、_HID 路径，不再依赖 x86-specific ACPI quirks</td>
-</tr>
-<tr>
-<td>5</td>
-<td>测试用例 tools/testing/selftests/wmi/ 增加 ARM64 编译路径</td>
-</tr>
-</tbody>
-</table>
+<div class="highlight"><pre><span></span><code><span class="mf">1</span>
+
+<span class="o">**</span><span class="kd">Fn</span><span class="w"> </span><span class="n">亮度</span><span class="o">/</span><span class="n">音量键</span><span class="o">**</span><span class="w"> </span><span class="n">没反应</span><span class="err">（</span><span class="n">需要</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="n">热键</span><span class="err">）</span>
+
+<span class="mf">2</span>
+
+<span class="o">**</span><span class="n">BIOS</span><span class="w"> </span><span class="n">选项</span><span class="o">**</span><span class="err">（</span><span class="n">boot</span><span class="w"> </span><span class="n">mode</span><span class="err">、</span><span class="n">secure</span><span class="w"> </span><span class="n">boot</span><span class="w"> </span><span class="n">切换</span><span class="err">）</span><span class="n">改不了</span>
+
+<span class="mf">3</span>
+
+<span class="o">**</span><span class="n">OEM</span><span class="w"> </span><span class="n">诊断</span><span class="o">**</span><span class="n">接口读不出来</span>
+
+<span class="mf">4</span>
+
+<span class="n">风扇策略只能走</span><span class="w"> </span><span class="n">CPU</span><span class="w"> </span><span class="n">温度的简单曲线</span><span class="err">，</span><span class="n">没法读</span><span class="w"> </span><span class="n">OEM</span><span class="w"> </span><span class="n">自定义温度档位</span>
+
+<span class="n">把</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="n">driver</span><span class="w"> </span><span class="n">推到</span><span class="w"> </span><span class="n">ARM64</span><span class="w"> </span><span class="n">后</span><span class="err">，</span><span class="n">这些功能理论上能跟上</span><span class="w"> </span><span class="n">x86</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="n">的成熟度</span><span class="err">。</span>
+
+<span class="n">间接意义</span><span class="err">：</span><span class="n">ACPI</span><span class="w"> </span><span class="n">在</span><span class="w"> </span><span class="n">ARM</span><span class="w"> </span><span class="n">上的</span><span class="err">「</span><span class="n">承认</span><span class="err">」</span>
+</code></pre></div>
+
+<p>ACPI 在 ARM64 上其实不是默认配置------CONFIG_ACPI 在 ARM64 上是可选的，很多 server 平台仍然用 device tree。但      [消费笔记本领域]{b="b" solid="solid"}      ，ACPI 是事实标准（因为 Windows on ARM 也跑 ACPI）。</p>
+<p>这次 WMI driver 上 ARM64，相当于 ACPI 子系统在 ARM64 笔记本场景下的又一块拼图------跟之前 [drivers/acpi/arm64]{mono="mono" px="px"} 下的 IORT、PPTT 一类支持一起，构成「      [ARM64 笔记本也能跑 ACPI 标准生态]{b="b" solid="solid"}      」的完整链。</p>
+<div class="highlight"><pre><span></span><code><span class="err">给内核开发者带的东西</span>
+
+<span class="o">-</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="n">driver</span><span class="w"> </span><span class="err">改成「</span><span class="n">generic</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">arch</span><span class="o">-</span><span class="n">specific</span><span class="w"> </span><span class="err">后端」——架构耦合的代码该抽离了</span>
+
+<span class="o">-</span><span class="w"> </span><span class="err">一系列</span><span class="w"> </span><span class="n">typecheck</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="err">不必要的</span><span class="w"> </span><span class="n">arch</span><span class="w"> </span><span class="err">假设被清理</span>
+
+<span class="o">-</span><span class="w"> </span><span class="err">测试面：之前</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="err">测试只能在</span><span class="w"> </span><span class="n">x86</span><span class="w"> </span><span class="err">上做，现在</span><span class="w"> </span><span class="n">ARM64</span><span class="w"> </span><span class="err">平台上也能跑</span>
+
+<span class="n">Windows</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="n">ARM</span><span class="w"> </span><span class="err">笔记本跑</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="err">能不能「用起来」，这一环是基础设施。</span>
+
+
+
+<span class="mi">03</span>
+
+<span class="n">CHANGES</span>
+
+<span class="c1">###          改动细节：patch series 大致做了什么</span>
+
+<span class="err">以下按公开</span><span class="w"> </span><span class="n">patch</span><span class="w"> </span><span class="err">描述还原（具体</span><span class="w"> </span><span class="n">commit</span><span class="w"> </span><span class="err">编号以原文</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">lore</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">org</span><span class="w"> </span><span class="err">为准）。</span>
+
+<span class="o">|</span><span class="w"> </span><span class="err">阶段</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="err">内容</span><span class="w"> </span><span class="o">|</span>
+<span class="o">|</span><span class="w"> </span><span class="o">---</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="o">---</span><span class="w"> </span><span class="o">|</span>
+<span class="o">|</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="err">把</span><span class="w"> </span><span class="n">wmi</span><span class="o">.</span><span class="n">c</span><span class="w"> </span><span class="err">里所有</span><span class="w"> </span><span class="n">ACPI_MAX_INSTANCE</span><span class="err">、</span><span class="n">WMI_MGMT_GUID</span><span class="err">、</span><span class="n">wmi_module_count</span><span class="w"> </span><span class="err">之类状态机的</span><span class="w"> </span><span class="n">arch</span><span class="w"> </span><span class="err">假设去掉</span><span class="w"> </span><span class="o">|</span>
+<span class="o">|</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">CONFIG_ACPI_WMI</span><span class="w"> </span><span class="err">解除对</span><span class="w"> </span><span class="n">CONFIG_X86</span><span class="w"> </span><span class="err">的硬依赖，改成</span><span class="w"> </span><span class="n">depends</span><span class="w"> </span><span class="n">on</span><span class="w"> </span><span class="n">ACPI</span><span class="w"> </span><span class="o">|</span>
+<span class="o">|</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="err">核心层抽象得更</span><span class="w"> </span><span class="n">generic</span><span class="err">（没有真正新增</span><span class="w"> </span><span class="n">drivers</span><span class="o">/</span><span class="n">acpi</span><span class="o">/</span><span class="n">arm64</span><span class="o">/</span><span class="n">wmi_arm64</span><span class="o">.</span><span class="n">c</span><span class="err">），调用方都在同一文件里</span><span class="w"> </span><span class="o">|</span>
+<span class="o">|</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="err">设备</span><span class="w"> </span><span class="n">probe</span><span class="w"> </span><span class="err">时用</span><span class="w"> </span><span class="n">ACPI</span><span class="w"> </span><span class="err">标准的</span><span class="w"> </span>\<span class="n">_UID</span><span class="err">、</span>\<span class="n">_HID</span><span class="w"> </span><span class="err">路径，不再依赖</span><span class="w"> </span><span class="n">x86</span><span class="o">-</span><span class="n">specific</span><span class="w"> </span><span class="n">ACPI</span><span class="w"> </span><span class="n">quirks</span><span class="w"> </span><span class="o">|</span>
+<span class="o">|</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="err">测试用例</span><span class="w"> </span><span class="n">tools</span><span class="o">/</span><span class="n">testing</span><span class="o">/</span><span class="n">selftests</span><span class="o">/</span><span class="n">wmi</span><span class="o">/</span><span class="w"> </span><span class="err">增加</span><span class="w"> </span><span class="n">ARM64</span><span class="w"> </span><span class="err">编译路径</span><span class="w"> </span><span class="o">|</span>
+</code></pre></div>
+
 <p>源代码上 merge 进 [drivers/platform/x86/wmi.c]{mono="mono" px="px"} 主体 + [drivers/acpi/bus.c]{mono="mono" px="px"} 配合改 platform glue。</p>
-<p>04</p>
-<p>CHECKLIST</p>
-<h3 id="_3">给读者的最低限度清单</h3>
-<p>你是 ARM64 Linux 笔记本用户</p>
-<p>.        .        .        bash</p>
+<div class="highlight"><pre><span></span><code><span class="mf">04</span>
+
+<span class="n">CHECKLIST</span>
+
+<span class="err">###</span><span class="w">          </span><span class="n">给读者的最低限度清单</span>
+
+<span class="n">你是</span><span class="w"> </span><span class="n">ARM64</span><span class="w"> </span><span class="n">Linux</span><span class="w"> </span><span class="n">笔记本用户</span>
+
+<span class="err">```</span><span class="n">bash</span>
+</code></pre></div>
+
 <p># 验证机器上有没有 WMI 设备（先装 acpica 工具）</p>
-<p>sudo acpidump > /tmp/dump.txt</p>
-<p>grep -A 3 「PNP0C14」 /tmp/dump.txt</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>acpidump<span class="w"> </span>&gt;<span class="w"> </span>/tmp/dump.txt
+
+grep<span class="w"> </span>-A<span class="w"> </span><span class="m">3</span><span class="w"> </span>「PNP0C14」<span class="w"> </span>/tmp/dump.txt
+</code></pre></div>
+
 <p>输出有 _HID 包含 PNP0C14 → 你的固件有 WMI device，新 kernel 上应该能识别。</p>
 <p>你是开发者 / OEM</p>
 <ul>
@@ -302,15 +328,15 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>
 <p>用 ACPI ASL 写 WMI objects 时用标准 WBEM / CIM 数据类型</p>
 </li>
-<li>
-<p>测试时用 [fwts]{mono="mono" px="px"}（Firmware Test Suite）跑 WMI 子系统</p>
-</li>
 </ul>
+<div class="highlight"><pre><span></span><code><span class="o">-</span><span class="w"> </span><span class="n">测试时用</span><span class="w"> </span><span class="o">[</span><span class="n">fwts</span><span class="o">]</span><span class="err">{</span><span class="n">mono</span><span class="o">=</span><span class="ss">&quot;mono&quot;</span><span class="w"> </span><span class="n">px</span><span class="o">=</span><span class="ss">&quot;px&quot;</span><span class="err">}（</span><span class="n">Firmware</span><span class="w"> </span><span class="n">Test</span><span class="w"> </span><span class="n">Suite</span><span class="err">）</span><span class="n">跑</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="n">子系统</span>
+</code></pre></div>
+
 <p>你是安全研究者</p>
+<div class="highlight"><pre><span></span><code><span class="o">-</span><span class="w"> </span><span class="n">WMI</span><span class="w"> </span><span class="n">设备暴露在用户态能通过</span><span class="w"> </span><span class="o">[</span><span class="n">wmi_scan</span><span class="o">]</span><span class="err">{</span><span class="n">mono</span><span class="o">=</span><span class="ss">&quot;mono&quot;</span><span class="w"> </span><span class="n">px</span><span class="o">=</span><span class="ss">&quot;px&quot;</span><span class="err">}</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="o">[</span><span class="n">/sys/bus/wmi/devices/.../guid</span><span class="o">]</span><span class="err">{</span><span class="n">mono</span><span class="o">=</span><span class="ss">&quot;mono&quot;</span><span class="w"> </span><span class="n">px</span><span class="o">=</span><span class="ss">&quot;px&quot;</span><span class="err">}</span><span class="w"> </span><span class="n">看到</span>
+</code></pre></div>
+
 <ul>
-<li>
-<p>WMI 设备暴露在用户态能通过 [wmi_scan]{mono="mono" px="px"} / [/sys/bus/wmi/devices/.../guid]{mono="mono" px="px"} 看到</p>
-</li>
 <li>
 <p>任何 WMI method 都可以被 root 调用——<strong>内核 WMI core 不会做权限检查</strong>，那是用户态的事</p>
 </li>
@@ -320,14 +346,17 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </ul>
 <p>05</p>
 <p>VERDICT</p>
-<h3 id="_4">写在最后</h3>
-<p>WMI 上 ARM64 听起来像「又一条内核 patch」，但      [它是 Windows on ARM 笔记本跑 Linux 能「用起来」的关键一环]{b="b" solid="solid"}      。</p>
-<p>之前 ARM64 Linux 笔记本最大的痛点不是 kernel 主线合不合并——是「      [kernel 启动起来了但你的硬件只能用到 30%]{e4e4e7="e4e4e7" font-weight:700="font-weight:700"}      」。WMI 这种「系统外设接口层」被补齐后，Snapdragon X Elite / Surface Pro X 这类机器才会真正「开箱即用」。</p>
+<h3 id="_1">写在最后</h3>
+<div class="highlight"><pre><span></span><code>WMI 上 ARM64 听起来像「又一条内核 patch」，但      [它是 Windows on ARM 笔记本跑 Linux 能「用起来」的关键一环]{b=&quot;b&quot; solid=&quot;solid&quot;}      。
+
+之前 ARM64 Linux 笔记本最大的痛点不是 kernel 主线合不合并------是「      [kernel 启动起来了但你的硬件只能用到 30%]{e4e4e7=&quot;e4e4e7&quot; font-weight:700=&quot;font-weight:700&quot;}      」。WMI 这种「系统外设接口层」被补齐后，Snapdragon X Elite / Surface Pro X 这类机器才会真正「开箱即用」。
+</code></pre></div>
+
 <p>⚠️ 最终落地还要看 OEM 固件跟进——ACPI WMI driver 在 OS 这边准备好了，<strong>ACPI tables 里没写就没用</strong>。这条 patch 的真正价值，要在 2026 年下半年几款 ARM64 笔记本固件更新后才能显现。</p>
 <p>内核 ready 不等于设备 ready——WMI 这件事的最后一公里在 OEM 固件里。</p>
 <p>∞</p>
 <p>REFERENCES &amp; POSTSCRIPT</p>
-<h3 id="_5">参考文献 &amp; 写在最后</h3>
+<h3 id="_2">参考文献 &amp; 写在最后</h3>
 <p>参考文献</p>
 <p>[1] Phoronix. <em>Linux ACPI WMI Driver ARM64</em>. https://www.phoronix.com/news/Linux-ACPI-WMI-Driver-ARM64（原文报道）</p>
 <p>[2] Armin Wolf. <em>ACPI WMI driver ARM64 support patch series</em>. lore.kernel.org, LKML.（patch 详情，编号以原文为准）</p>

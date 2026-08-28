@@ -231,13 +231,15 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>根因分析</p>
 <p>漏洞出在 Dashboard 的 <code>fallbackToFrontend</code> 函数中。这个函数的设计初衷是：当用户访问 <code>/dashboard/xxx</code> 路径时，如果这个路径没有对应的 API handler，就退回到前端静态文件，返回前端的 <code>index.html</code>——这是单页应用的常规做法。</p>
 <p>但实现上的问题是一个经典错误：</p>
-<p>if strings.HasPrefix(url, "/dashboard") {
-trimmed := strings.TrimPrefix(url, "/dashboard")  // "/dashboard../data/config.yaml"
-filePath := path.Join("admin-dist", trimmed)      // → "admin-dist/../data/config.yaml"
-// path.Join 会规范化 → "data/config.yaml"
-os.Stat(filePath)     // ✅ 找到了
-http.ServeFile(w, r, filePath) // 「给我吧」
-}</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">HasPrefix</span><span class="p">(</span><span class="n">url</span><span class="o">,</span><span class="w"> </span><span class="s">&quot;/dashboard&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="n">trimmed</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">TrimPrefix</span><span class="p">(</span><span class="n">url</span><span class="o">,</span><span class="w"> </span><span class="s">&quot;/dashboard&quot;</span><span class="p">)</span><span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="s">&quot;/dashboard../data/config.yaml&quot;</span>
+<span class="n">filePath</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">path</span><span class="o">.</span><span class="n">Join</span><span class="p">(</span><span class="s">&quot;admin-dist&quot;</span><span class="o">,</span><span class="w"> </span><span class="n">trimmed</span><span class="p">)</span><span class="w">      </span><span class="o">//</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="s">&quot;admin-dist/../data/config.yaml&quot;</span>
+<span class="o">//</span><span class="w"> </span><span class="n">path</span><span class="o">.</span><span class="n">Join</span><span class="w"> </span><span class="err">会规范化</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="s">&quot;data/config.yaml&quot;</span>
+<span class="n">os</span><span class="o">.</span><span class="n">Stat</span><span class="p">(</span><span class="n">filePath</span><span class="p">)</span><span class="w">     </span><span class="o">//</span><span class="w"> </span><span class="err">✅</span><span class="w"> </span><span class="err">找到了</span>
+<span class="n">http</span><span class="o">.</span><span class="n">ServeFile</span><span class="p">(</span><span class="n">w</span><span class="o">,</span><span class="w"> </span><span class="n">r</span><span class="o">,</span><span class="w"> </span><span class="n">filePath</span><span class="p">)</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="err">「给我吧」</span>
+<span class="p">}</span>
+</code></pre></div>
+
 <p>关键漏洞点：<strong><code>strings.HasPrefix</code> 检查的是字符串前缀，不是路径段匹配。</strong></p>
 <p><code>/dashboard../data/config.yaml</code> 确实以 <code>/dashboard</code> 开头，检查通过。<code>TrimPrefix</code> 得到 <code>../data/config.yaml</code>，<code>path.Join</code> 将其规范化。最终返回了服务器上的任意文件。</p>
 <p>攻击链</p>
@@ -281,10 +283,13 @@ http.ServeFile(w, r, filePath) // 「给我吧」
 <p>这是一个更有趣的漏洞。如果 Dashboard 上有一个不存在的 <code>ddns_profiles</code> ID 被持久化了，之后其他用户创建了相同 ID 的 DDNS 配置文件，那么原来的任务就会被劫持到攻击者的服务器上更新 DNS。</p>
 <p>这不是传统意义上的\"提权\"，但它属于<strong>业务逻辑漏洞</strong>——利用系统设计中的隐式信任关系。这类漏洞在复杂应用（特别是涉及 cron、webhook、第三方集成功能）中非常常见，但很难通过自动化扫描发现，需要人工审计。</p>
 <p>如果跑的是哪吒监控，现在该做什么？第一步：确认版本</p>
-<h1 id="docker">Docker 部署</h1>
-<p>docker exec -it nezha-dashboard ./dashboard --version</p>
-<h1 id="_1">或者查看容器镜像标签</h1>
-<p>docker inspect nezha-dashboard | jq '.[].Config.Image'</p>
+<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">Docker</span><span class="w"> </span>部署
+<span class="nv">docker</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="o">-</span><span class="nv">it</span><span class="w"> </span><span class="nv">nezha</span><span class="o">-</span><span class="nv">dashboard</span><span class="w"> </span>.<span class="o">/</span><span class="nv">dashboard</span><span class="w"> </span><span class="o">--</span><span class="nv">version</span>
+
+#<span class="w"> </span>或者查看容器镜像标签
+<span class="nv">docker</span><span class="w"> </span><span class="nv">inspect</span><span class="w"> </span><span class="nv">nezha</span><span class="o">-</span><span class="nv">dashboard</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nv">jq</span><span class="w"> </span><span class="s1">&#39;.[].Config.Image&#39;</span>
+</code></pre></div>
+
 <p>第二步：根据版本决定升级策略</p>
 <table>
 <thead>
@@ -319,23 +324,31 @@ http.ServeFile(w, r, filePath) // 「给我吧」
 </table>
 <p><strong>建议：直接升级到最新的 2.2.0+。</strong></p>
 <p>第三步：升级操作</p>
-<h1 id="docker-compose">Docker Compose 部署</h1>
-<p>docker compose pull
-docker compose up -d</p>
-<h1 id="_2">手动部署</h1>
-<h1 id="release">下载最新 Release</h1>
-<p>wget https://github.com/nezhahq/nezha/releases/download/v2.2.0/dashboard-linux-amd64.zip</p>
-<h1 id="_3">... 按官方文档替换二进制并重启</h1>
+<div class="highlight"><pre><span></span><code><span class="c1"># Docker Compose 部署</span>
+<span class="n">docker</span><span class="w"> </span><span class="n">compose</span><span class="w"> </span><span class="n">pull</span>
+<span class="n">docker</span><span class="w"> </span><span class="n">compose</span><span class="w"> </span><span class="n">up</span><span class="w"> </span><span class="o">-</span><span class="n">d</span>
+
+<span class="c1"># 手动部署</span>
+<span class="c1"># 下载最新 Release</span>
+<span class="n">wget</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">nezhahq</span><span class="o">/</span><span class="n">nezha</span><span class="o">/</span><span class="n">releases</span><span class="o">/</span><span class="n">download</span><span class="o">/</span><span class="n">v2</span><span class="o">.</span><span class="mf">2.0</span><span class="o">/</span><span class="n">dashboard</span><span class="o">-</span><span class="n">linux</span><span class="o">-</span><span class="n">amd64</span><span class="o">.</span><span class="n">zip</span>
+<span class="c1"># ... 按官方文档替换二进制并重启</span>
+</code></pre></div>
+
 <p>第四步：升级后的安全检查</p>
 <p>即使升级了，也要确认关键配置没有被泄露过：</p>
-<h1 id="jwt">检查 JWT 密钥是否已被替换</h1>
-<p>grep jwt_secret_key config.yaml</p>
-<h1 id="_4">检查审计日志（如果有）</h1>
-<h1 id="dashboarddataconfigyaml">查看 /dashboard../data/config.yaml 的访问记录</h1>
-<h1 id="jwt_1">替换 JWT 密钥（重要！如果已经被读取过，旧密钥已不安全）</h1>
-<h1 id="configyaml-jwt_secret_key-dashboard">修改 config.yaml，重新生成 jwt_secret_key 并重启 Dashboard</h1>
-<h1 id="agent-secret">重置所有 Agent Secret</h1>
-<h1 id="dashboard-agent-agent-secret">在 Dashboard 的 agent 管理页面重新生成每个 agent 的 secret</h1>
+<div class="highlight"><pre><span></span><code><span class="gh">#</span> 检查 JWT 密钥是否已被替换
+grep jwt_secret_key config.yaml
+
+<span class="gh">#</span> 检查审计日志（如果有）
+<span class="gh">#</span> 查看 /dashboard../data/config.yaml 的访问记录
+
+<span class="gh">#</span> 替换 JWT 密钥（重要！如果已经被读取过，旧密钥已不安全）
+<span class="gh">#</span> 修改 config.yaml，重新生成 jwt_secret_key 并重启 Dashboard
+
+<span class="gh">#</span> 重置所有 Agent Secret
+<span class="gh">#</span> 在 Dashboard 的 agent 管理页面重新生成每个 agent 的 secret
+</code></pre></div>
+
 <p>第五步：长期安全建议</p>
 <ol>
 <li><strong>永远不要将 Dashboard 直接暴露在公网。</strong> 在前面套一层 Nginx / Caddy 做反向代理，顺便加一个简单的 Basic Auth 或 Cloudflare Access。</li>

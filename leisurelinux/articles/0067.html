@@ -179,14 +179,23 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>Bun 现在的 CLI 每月下载量超过 2200 万次，      Claude Code 和 OpenCode 把 Bun 当成默认 runtime      ，Vercel / Railway / DigitalOcean 都已经把 Bun 列为 first-party 支持。</p>
 <p>但 Bun 的 scope 一直是      <strong>稳定性问题</strong>      的根源。Bun v1.3.14 这次修的 bug 列表非常典型，几乎全是      使用后释放（use-after-free）、双重释放（double-free）、忘记释放      这类内存安全问题：</p>
 <p>BUG LIST · BUN V1.3.14</p>
-<p>· <code>node:zlib</code> 在异步 <code>.write()</code> 还没跑完时调用 <code>.reset()</code> 触发 heap-use-after-free</p>
+<div class="highlight"><pre><span></span><code>· `node:zlib` 在异步 `.write()` 还没跑完时调用 `.reset()` 触发 heap-use-after-free
+</code></pre></div>
+
 <p>· <code>node:http2</code> 在 hashmap 扩容时让回调拿到失效的 stream 指针</p>
-<p>· <code>UDPSocket.send()</code> 在 <code>valueOf()</code> 回调里 detach ArrayBuffer 导致 payload 失效</p>
-<p>· <code>Buffer#copy</code> / <code>Buffer#fill</code> 在 <code>valueOf()</code> 回调里 resizes 底层 buffer</p>
+<div class="highlight"><pre><span></span><code><span class="err">·</span><span class="w"> </span><span class="err">`</span><span class="n">UDPSocket</span><span class="o">.</span><span class="n">send</span><span class="p">()</span><span class="err">`</span><span class="w"> </span><span class="err">在</span><span class="w"> </span><span class="err">`</span><span class="n">valueOf</span><span class="p">()</span><span class="err">`</span><span class="w"> </span><span class="err">回调里</span><span class="w"> </span><span class="n">detach</span><span class="w"> </span><span class="n">ArrayBuffer</span><span class="w"> </span><span class="err">导致</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="err">失效</span>
+
+<span class="err">·</span><span class="w"> </span><span class="err">`</span><span class="n">Buffer</span><span class="c1">#copy` / `Buffer#fill` 在 `valueOf()` 回调里 resizes 底层 buffer</span>
+</code></pre></div>
+
 <p>· <code>crypto.scrypt</code> 在分配失败时既不释放回调也不释放 password/salt buffer</p>
-<p>· <code>tlsSocket.setSession()</code> 每次泄漏一个 \~6.5 KB 的 SSL_SESSION</p>
-<p>· <code>fs.watch()</code> 的 watcher 引用计数下溢后被永久 pin 在 GC root 上</p>
-<p>· <code>tls.connect({ socket: duplex })</code> 的 DuplexUpgradeContext 永远不释放</p>
+<div class="highlight"><pre><span></span><code>· <span class="sb">`tlsSocket.setSession()`</span> 每次泄漏一个 \~6.5 KB 的 SSL_SESSION
+
+· <span class="sb">`fs.watch()`</span> 的 watcher 引用计数下溢后被永久 pin 在 GC root 上
+
+· <span class="sb">`tls.connect({ socket: duplex })`</span> 的 DuplexUpgradeContext 永远不释放
+</code></pre></div>
+
 <p>这些问题在 Bun v1.3 的 14 个 changelog 里有 11 个。Bug 列表越修越长，Sumner 自己都说"晚上睡觉都在担心 Bun 什么时候 crash"。</p>
 <p>Bun 已经在做的稳定性防御</p>
 <p>给 Zig 编译器打补丁加上 Address Sanitizer（ASAN），每个 commit 跑一遍测试套件；Windows ReleaseSafe build 默认开启 Zig safety 检查；      24/7 用 Fuzzilli fuzz runtime API      （Fuzzilli 是 Google Project Zero 用来 fuzz V8 和 JavaScriptCore 的工具）；一大堆端到端的内存泄漏测试。</p>
@@ -275,7 +284,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>他用      50 个动态 workflow      （dynamic workflows），在      11 天      内不间断地跑 Claude Code。</p>
 <p>工作流循环</p>
 <p>PSEUDOCODE</p>
-<p>let task; while ((task = todoList.pop())) {    const result = task();    const feedback = await Promise.all([review(result), review(result)]);    await apply(feedback, result); }</p>
+<div class="highlight"><pre><span></span><code><span class="n">let</span><span class="w"> </span><span class="n">task</span><span class="p">;</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">((</span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">todoList</span><span class="o">.</span><span class="n">pop</span><span class="p">()))</span><span class="w"> </span><span class="p">{</span><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">task</span><span class="p">();</span><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">feedback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="w"> </span><span class="n">Promise</span><span class="o">.</span><span class="n">all</span><span class="p">([</span><span class="n">review</span><span class="p">(</span><span class="n">result</span><span class="p">),</span><span class="w"> </span><span class="n">review</span><span class="p">(</span><span class="n">result</span><span class="p">)]);</span><span class="w">    </span><span class="n">await</span><span class="w"> </span><span class="n">apply</span><span class="p">(</span><span class="n">feedback</span><span class="p">,</span><span class="w"> </span><span class="n">result</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+
 <p>这本质上就是把"软件工程师的日常工作"——写代码、提 PR、收 review、改反馈——<strong>程序化成了一个可以并行跑的循环</strong>      。</p>
 <p>05</p>
 <p>ADVERSARIAL REVIEW</p>

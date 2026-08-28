@@ -195,17 +195,24 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </ul>
 <p>二、SLUB 核心数据结构：三个足够</p>
 <p>SLUB 之所以简练，是因为它只用三个核心数据结构就描述了全部状态：</p>
-<p>struct kmem_cache {      ← 一种类型的 slab 缓存
-struct slab <em>cpu_slab;  ← 当前 CPU 正在用的 slab
-struct kmem_cache_node </em>node[MAX_NUMNODES]; ← 每 NUMA 节点的管理结构
-...
-};</p>
-<p>struct slab {             ← 一组连续的物理页面
+<div class="highlight"><pre><span></span><code><span class="n">struct</span><span class="w"> </span><span class="n">kmem_cache</span><span class="w"> </span><span class="err">{</span><span class="w">      </span><span class="err">←</span><span class="w"> </span><span class="n">一种类型的</span><span class="w"> </span><span class="n">slab</span><span class="w"> </span><span class="n">缓存</span>
+<span class="n">struct</span><span class="w"> </span><span class="n">slab</span><span class="w"> </span><span class="o">*</span><span class="n">cpu_slab</span><span class="p">;</span><span class="w">  </span><span class="err">←</span><span class="w"> </span><span class="n">当前</span><span class="w"> </span><span class="n">CPU</span><span class="w"> </span><span class="n">正在用的</span><span class="w"> </span><span class="n">slab</span>
+<span class="n">struct</span><span class="w"> </span><span class="n">kmem_cache_node</span><span class="w"> </span><span class="o">*</span><span class="n">node</span><span class="o">[</span><span class="n">MAX_NUMNODES</span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">每</span><span class="w"> </span><span class="n">NUMA</span><span class="w"> </span><span class="n">节点的管理结构</span>
+</code></pre></div>
+
+<p>...</p>
+<div class="highlight"><pre><span></span><code>};
+
+struct slab {             ← 一组连续的物理页面
 struct list_head list;  ← 在 partial/full 链表中
 unsigned long objects;  ← slab 中的对象总数
 void *freelist;         ← 指向第一个空闲对象的指针
-...
-};</p>
+</code></pre></div>
+
+<p>...</p>
+<div class="highlight"><pre><span></span><code>};
+</code></pre></div>
+
 <p>关键的概念只有一个指针：<strong>freelist</strong>。</p>
 <p>每个 slab 的空闲对象通过 freelist 指针串成一个单向链表。分配时，取 freelist 头部的对象，freelist 指向下一个空闲对象。释放时，把对象放回 freelist 头部。</p>
 <p>就这么简单。没有 SLAB 里复杂的每 CPU 对象队列、没有着色数组。</p>
@@ -215,9 +222,11 @@ void *freelist;         ← 指向第一个空闲对象的指针
 │  kmem_cache                                       │
 │                                                   │
 │  partial  ──→ [slab] → [slab] → [slab]  ← 快分配 │
-│  full     ──→ [slab] → [slab]           ← 不能分 │
-│  (partial)└── 只有部分 object 被占用               │
-└─────────────────────────────────────────────────┘</p>
+│  full     ──→ [slab] → [slab]           ← 不能分 │</p>
+<div class="highlight"><pre><span></span><code>│  (partial)└── 只有部分 object 被占用               │
+</code></pre></div>
+
+<p>└─────────────────────────────────────────────────┘</p>
 <ul>
 <li><strong>full</strong>：所有 object 已被占用，不能分配新对象</li>
 <li><strong>partial</strong>：部分 object 空闲，可分配——这是分配性能的命脉</li>
@@ -227,28 +236,37 @@ void *freelist;         ← 指向第一个空闲对象的指针
 </ul>
 <p>三、分配路径：kmem_cache_alloc() 源码级追踪</p>
 <p>当你调用 <code>kmalloc(64, GFP_KERNEL)</code> 时，内核从 <code>kmalloc-64</code> 这个 cache 里分配。让我们追踪 <code>kmem_cache_alloc()</code> 的完整路径（简化版）：</p>
-<p>// mm/slub.c - 极度简化，保留核心逻辑</p>
-<p>void <em>kmem_cache_alloc(struct kmem_cache </em>s, gfp_t gfpflags)
-{
-void <em>object;
-struct slab </em>slab;
-unsigned long flags;</p>
-<p>local_irq_save(flags);          // 关中断，防抢占</p>
-<p>slab = s-&gt;cpu_slab;             // 1. 拿当前 CPU 正在用的 slab</p>
-<p>if (unlikely(!slab || !slab-&gt;freelist)) {
-// 2. 当前 slab 满了 → 从 partial 链表拿一个新的
-slab = get_partial(s, node);
-if (!slab) {
-// 3. partial 也空了 → 从 buddy 系统申请新页
-slab = new_slab(s, gfpflags);
-}
-s-&gt;cpu_slab = slab;
-}</p>
-<p>object = slab-&gt;freelist;                // 4. 取出 freelist 头部对象
-slab-&gt;freelist = get_freepointer(s, object); // 5. freelist 指向下一个</p>
-<p>local_irq_restore(flags);</p>
-<p>return object;
-}</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// mm/slub.c - 极度简化，保留核心逻辑</span>
+
+<span class="n">void</span><span class="w"> </span><span class="o">*</span><span class="n">kmem_cache_alloc</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">kmem_cache</span><span class="w"> </span><span class="o">*</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">gfp_t</span><span class="w"> </span><span class="n">gfpflags</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="n">void</span><span class="w"> </span><span class="o">*</span><span class="n">object</span><span class="p">;</span>
+<span class="nb">struct</span><span class="w"> </span><span class="n">slab</span><span class="w"> </span><span class="o">*</span><span class="n">slab</span><span class="p">;</span>
+<span class="n">unsigned</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="n">flags</span><span class="p">;</span>
+
+<span class="n">local_irq_save</span><span class="p">(</span><span class="n">flags</span><span class="p">);</span><span class="w">          </span><span class="c1">// 关中断，防抢占</span>
+
+<span class="n">slab</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">s</span><span class="o">-&gt;</span><span class="n">cpu_slab</span><span class="p">;</span><span class="w">             </span><span class="c1">// 1. 拿当前 CPU 正在用的 slab</span>
+
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">unlikely</span><span class="p">(</span>!<span class="n">slab</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>!<span class="n">slab</span><span class="o">-&gt;</span><span class="n">freelist</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="c1">// 2. 当前 slab 满了 → 从 partial 链表拿一个新的</span>
+<span class="n">slab</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">get_partial</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">node</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span>!<span class="n">slab</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="c1">// 3. partial 也空了 → 从 buddy 系统申请新页</span>
+<span class="n">slab</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">new_slab</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">gfpflags</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">s</span><span class="o">-&gt;</span><span class="n">cpu_slab</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">slab</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">object</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">slab</span><span class="o">-&gt;</span><span class="n">freelist</span><span class="p">;</span><span class="w">                </span><span class="c1">// 4. 取出 freelist 头部对象</span>
+<span class="n">slab</span><span class="o">-&gt;</span><span class="n">freelist</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">get_freepointer</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">object</span><span class="p">);</span><span class="w"> </span><span class="c1">// 5. freelist 指向下一个</span>
+
+<span class="n">local_irq_restore</span><span class="p">(</span><span class="n">flags</span><span class="p">);</span>
+
+<span class="k">return</span><span class="w"> </span><span class="n">object</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
 <p><strong>性能关键路径只有 4 步：</strong></p>
 <ol>
 <li><strong>读 <code>cpu_slab</code></strong>——当前 CPU 正在用的 slab，这个 slab 大概率在 L1 cache 里</li>
@@ -258,32 +276,42 @@ slab-&gt;freelist = get_freepointer(s, object); // 5. freelist 指向下一个</
 </ol>
 <p>在热路径上，这只需要 \~50-80 条 CPU 指令。这就是为什么 <code>kmalloc()</code> 在内核态如此之快——大多数情况下不涉及加锁，不涉及链表遍历，甚至不走 buddy system。</p>
 <p>#### 关键函数：get_partial()</p>
-<p>static struct slab <em>get_partial(struct kmem_cache </em>s, int node)
-{
-struct slab *slab;</p>
-<p>// 先看当前 NUMA 节点的 partial 链表
-slab = get_partial_node(s, &amp;s-&gt;node[node]);
-if (slab)
-return slab;</p>
-<p>// 当前节点没有 → 从其他节点偷（内存访问代价高但可接受）
-return get_any_partial(s, node);
-}</p>
+<div class="highlight"><pre><span></span><code><span class="k">static</span><span class="w"> </span><span class="n">struct</span><span class="w"> </span><span class="n">slab</span><span class="w"> </span><span class="o">*</span><span class="n">get_partial</span><span class="p">(</span><span class="n">struct</span><span class="w"> </span><span class="n">kmem_cache</span><span class="w"> </span><span class="o">*</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="nc">int</span><span class="w"> </span><span class="n">node</span><span class="p">)</span>
+<span class="err">{</span>
+<span class="n">struct</span><span class="w"> </span><span class="n">slab</span><span class="w"> </span><span class="o">*</span><span class="n">slab</span><span class="p">;</span>
+
+<span class="o">//</span><span class="w"> </span><span class="n">先看当前</span><span class="w"> </span><span class="n">NUMA</span><span class="w"> </span><span class="n">节点的</span><span class="w"> </span><span class="k">partial</span><span class="w"> </span><span class="n">链表</span>
+<span class="n">slab</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">get_partial_node</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">s</span><span class="o">-&gt;</span><span class="n">node</span><span class="o">[</span><span class="n">node</span><span class="o">]</span><span class="p">);</span>
+<span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">slab</span><span class="p">)</span>
+<span class="k">return</span><span class="w"> </span><span class="n">slab</span><span class="p">;</span>
+
+<span class="o">//</span><span class="w"> </span><span class="n">当前节点没有</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="n">从其他节点偷</span><span class="err">（</span><span class="n">内存访问代价高但可接受</span><span class="err">）</span>
+<span class="k">return</span><span class="w"> </span><span class="n">get_any_partial</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">node</span><span class="p">);</span>
+<span class="err">}</span>
+</code></pre></div>
+
 <p>这个「先本节点，再远程节点」的策略保证了 NUMA 亲和性——进程在哪颗 CPU 上跑，就从哪个 NUMA 节点分配内存，避免跨节点访问的延迟惩罚。</p>
 <p>四、释放路径：对象归还 freelist</p>
 <p>释放比分配更简单：</p>
-<p>void kmem_cache_free(struct kmem_cache <em>s, void </em>object)
+<div class="highlight"><pre><span></span><code>void kmem_cache_free(struct kmem_cache *s, void *object)
 {
 struct slab *slab;
-unsigned long flags;</p>
-<p>local_irq_save(flags);</p>
-<p>slab = virt_to_slab(object);            // 1. 从虚拟地址反查 slab
+unsigned long flags;
+
+local_irq_save(flags);
+
+slab = virt_to_slab(object);            // 1. 从虚拟地址反查 slab
 set_freepointer(s, object, slab-&gt;freelist); // 2. 指向当前 fre
-slab-&gt;freelist = object;                // 3. 对象成为新的 freelist 头</p>
-<p>// 4. 如果 slab 从 full 变成 partial，移入 partial 链表
+slab-&gt;freelist = object;                // 3. 对象成为新的 freelist 头
+
+// 4. 如果 slab 从 full 变成 partial，移入 partial 链表
 if (unlikely(slab_free_hook(s, slab, object)))
-discard_slab(s, slab);</p>
-<p>local_irq_restore(flags);
-}</p>
+discard_slab(s, slab);
+
+local_irq_restore(flags);
+}
+</code></pre></div>
+
 <p>唯一的「重量级」操作是第一步 <code>virt_to_slab()</code>——需要通过 <code>struct page</code> 的 <code>slab_cache</code> 字段反查。但因为内核页表是直接映射的，<code>virt_to_page()</code> 只是一次数组索引查找，开销极小。</p>
 <p>五、性能对比：为什么 SLUB 赢了</p>
 <table>
@@ -337,7 +365,9 @@ discard_slab(s, slab);</p>
 <p>这就是为什么从 2007 年起，所有主流 Linux 发行版都默认使用 SLUB。它的设计哲学非常马斯克——质疑每一步存在的必要性，然后删掉所有不必要的东西。</p>
 <p>六、实战：用 slabtop 诊断问题</p>
 <p>你可以用 <code>slabtop</code> 命令实时查看系统 slab 使用情况：</p>
-<p>$ slabtop -o</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>slabtop<span class="w"> </span>-o
+</code></pre></div>
+
 <p>重点关注这几列：</p>
 <ul>
 <li><strong>ACTIVE</strong>：正在使用的对象数</li>

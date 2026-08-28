@@ -183,9 +183,11 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>skb 是 Linux 网络栈中一切数据包的基本载体。它是一个内核对象，包含：</p>
 <p>┌─────────────────────────────┐
 │  sk_buff 元数据              │ ← head, data, tail, end 指针
-├─────────────────────────────┤
-│  线性数据区域 (linear area)   │ ← skb-&gt;head ~ skb-&gt;end
-├─────────────────────────────┤
+├─────────────────────────────┤</p>
+<div class="highlight"><pre><span></span><code><span class="err">│</span><span class="w">  </span><span class="err">线性数据区域</span><span class="w"> </span><span class="p">(</span><span class="n">linear</span><span class="w"> </span><span class="n">area</span><span class="p">)</span><span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">skb</span><span class="o">-&gt;</span><span class="n">head</span><span class="w"> </span><span class="o">~</span><span class="w"> </span><span class="n">skb</span><span class="o">-&gt;</span><span class="kd">end</span>
+</code></pre></div>
+
+<p>├─────────────────────────────┤
 │  skb_shared_info             │ ← frags[] 页散射数组
 │  ┌────────────────────────┐  │
 │  │  nr_frags, frags[]     │  │
@@ -199,8 +201,10 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>漏洞发生在 <code>net/ipv6/ip6_output.c</code> 的 <code>__ip6_append_data()</code> 函数中。</p>
 <p>有问题的代码</p>
 <p>当内核走 <strong>paged-allocation 分支</strong>（即数据量大到需要使用 <code>MSG_MORE</code> + <code>NETIF_F_SG</code> + page 散射机制）时，alloclen 和 pagedlen 的计算为：</p>
-<p>alloclen = fragheaderlen + transhdrlen;
-pagedlen = datalen - transhdrlen;</p>
+<div class="highlight"><pre><span></span><code>alloclen = fragheaderlen + transhdrlen;
+pagedlen = datalen - transhdrlen;
+</code></pre></div>
+
 <p><strong>问题出在哪里？</strong></p>
 <p><code>datalen</code> 本身已经包含了 <code>fraggap</code>（因为 <code>datalen = length + fraggap</code>）。但在 paged 分支中：</p>
 <ul>
@@ -219,9 +223,11 @@ pagedlen = datalen - transhdrlen;</p>
 <p><strong>转折点</strong>出现在 commit ce650a166335（\"udp6: Fix __ip6_append_data()\'s handling of MSG_SPLICE_PAGES\"）。这个补丁允许 <code>MSG_SPLICE_PAGES</code> 在 <code>copy &lt; 0</code> 时继续执行，使得本应被拦下的路径变成了可触发的漏洞。</p>
 <p>触发路径：攻击者怎么做？</p>
 <p>攻击者只需要在容器内具备基本的网络能力（<code>CAP_NET_RAW</code> 或 <code>net.ipv6.ping_group_range</code> 配置允许），<strong>无需 root 权限</strong>：</p>
-<p>int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+<div class="highlight"><pre><span></span><code>int fd = socket(AF_INET6, SOCK_DGRAM, 0);
 // 关键组合：MSG_MORE + MSG_SPLICE_PAGES
-// 构造多个 sendmsg 调用触发分片和 fraggap</p>
+// 构造多个 sendmsg 调用触发分片和 fraggap
+</code></pre></div>
+
 <p>关键触发条件：</p>
 <ol>
 <li>✅ <strong>UDPv6 socket</strong>（TCPv6 走不同路径）</li>
@@ -232,16 +238,18 @@ pagedlen = datalen - transhdrlen;</p>
 <p>当这些条件满足时，<code>__ip6_append_data()</code> 在 paged 分支上计算出错误的 alloclen，memcpy 写入 <code>skb-&gt;end</code> 之后的 <code>skb_shared_info</code>。</p>
 <p>为什么是容器逃逸？</p>
 <p><code>skb_shared_info</code> 结构包含的关键字段：</p>
-<p>struct skb_shared_info {
-__u8       __unused;
-__u8       meta_len;
-__u8       nr_frags;      // ← 可以被覆盖！
-__u16      dataref;
-struct skb_shared_hwtstamps hwtstamps;
-unsigned short   gso_type;
-u32          gso_size;
-struct page *frags[MAX_SKB_FRAGS];  // ← 页指针数组！
-};</p>
+<div class="highlight"><pre><span></span><code><span class="n">struct</span><span class="w"> </span><span class="n">skb_shared_info</span><span class="w"> </span><span class="err">{</span>
+<span class="n">__u8</span><span class="w">       </span><span class="n">__unused</span><span class="p">;</span>
+<span class="n">__u8</span><span class="w">       </span><span class="n">meta_len</span><span class="p">;</span>
+<span class="n">__u8</span><span class="w">       </span><span class="n">nr_frags</span><span class="p">;</span><span class="w">      </span><span class="o">//</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">可以被覆盖</span><span class="err">！</span>
+<span class="n">__u16</span><span class="w">      </span><span class="n">dataref</span><span class="p">;</span>
+<span class="n">struct</span><span class="w"> </span><span class="n">skb_shared_hwtstamps</span><span class="w"> </span><span class="n">hwtstamps</span><span class="p">;</span>
+<span class="n">unsigned</span><span class="w"> </span><span class="n">short</span><span class="w">   </span><span class="n">gso_type</span><span class="p">;</span>
+<span class="n">u32</span><span class="w">          </span><span class="n">gso_size</span><span class="p">;</span>
+<span class="n">struct</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="o">*</span><span class="n">frags</span><span class="o">[</span><span class="n">MAX_SKB_FRAGS</span><span class="o">]</span><span class="p">;</span><span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">页指针数组</span><span class="err">！</span>
+<span class="err">}</span><span class="p">;</span>
+</code></pre></div>
+
 <p>越界写入 fraggap 字节（通常 1-7 字节）覆盖的是 <code>nr_frags</code>、<code>dataref</code> 等字段的上半部分。精心构造的 payload 可以：</p>
 <ol>
 <li><strong>篡改 <code>nr_frags</code></strong> 让内核解析出非法数量的页片段</li>
@@ -252,17 +260,21 @@ struct page *frags[MAX_SKB_FRAGS];  // ← 页指针数组！
 <p>这本质上是一个典型的<strong>堆越界写入 → 结构覆写 → 提权</strong>的漏洞链路。</p>
 <p>修复补丁分析</p>
 <p>修复极其简洁——<strong>只改了 3 行代码</strong>：</p>
-<p>// paged 分支
--alloclen = fragheaderlen + transhdrlen;
--pagedlen = datalen - transhdrlen;
-+alloclen = fragheaderlen + transhdrlen + fraggap;
-+pagedlen = datalen - transhdrlen - fraggap;</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// paged 分支</span>
+<span class="o">-</span><span class="n">alloclen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">fragheaderlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">transhdrlen</span><span class="p">;</span>
+<span class="o">-</span><span class="n">pagedlen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">datalen</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">transhdrlen</span><span class="p">;</span>
+<span class="o">+</span><span class="n">alloclen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">fragheaderlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">transhdrlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">fraggap</span><span class="p">;</span>
+<span class="o">+</span><span class="n">pagedlen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">datalen</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">transhdrlen</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">fraggap</span><span class="p">;</span>
+</code></pre></div>
+
 <p><strong>加上 fraggap：</strong> <code>alloclen</code> 正确计入 fraggap 字节，线性区长度正确。</p>
 <p><strong>减去 fraggap：</strong> <code>pagedlen</code> 相应减少，避免重复计账。</p>
 <p>同时移除了 <code>copy &lt; 0</code> 时的 <code>MSG_SPLICE_PAGES</code> 例外：</p>
-<p>-if (copy &lt; 0 &amp;&amp; !(flags &amp; MSG_SPLICE_PAGES)) {
+<div class="highlight"><pre><span></span><code>-if (copy &lt; 0 &amp;&amp; !(flags &amp; MSG_SPLICE_PAGES)) {
 +if (copy &lt; 0) {
-err = -EINVAL;</p>
+err = -EINVAL;
+</code></pre></div>
+
 <p>现在 paged 分支中的 <code>copy</code> 不会再变成负数，MSG_SPLICE_PAGES 也不再需要特殊豁免。</p>
 <p>受影响版本与修复</p>
 <table>

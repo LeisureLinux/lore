@@ -182,10 +182,12 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>返回值永远是 <code>dst</code>，不是拷贝的字符数，你根本不知道实际拷贝了多少。</li>
 </ul>
 <p>这三个问题导致了内核中大量「默认不 NUL 终止」的隐式未定义行为：</p>
-<p>char buf[8];
-strncpy(buf, "hello world", sizeof(buf));
-// buf = "hello w" → 没有 \0
-printf("%s", buf);  // 读越界，打印垃圾数据</p>
+<div class="highlight"><pre><span></span><code>char buf[8];
+strncpy(buf, &quot;hello world&quot;, sizeof(buf));
+// buf = &quot;hello w&quot; → 没有 \0
+printf(&quot;%s&quot;, buf);  // 读越界，打印垃圾数据
+</code></pre></div>
+
 <p>甚至更隐蔽的是，内核经常用 <code>strncpy</code> 来「顺便做清 0」，导致代码意图完全模糊。维护者看到 <code>strncpy</code>，<strong>无法判断作者到底想做什么</strong>。</p>
 <p>为什么拆成 5 个函数？</p>
 <p>分析发现，内核中 <code>strncpy()</code> 实际上被用于 <strong>5 种完全不同的语义场景</strong>，只是当时都用同一个函数糊弄过去了：</p>
@@ -240,10 +242,13 @@ printf("%s", buf);  // 读越界，打印垃圾数据</p>
 <li><strong>只是内存拷贝，跟字符串无关</strong> → <code>memcpy()</code> 或 <code>memcpy_and_pad()</code></li>
 </ol>
 <p>一个简单的迁移对照：</p>
-<p>// ❌ 旧：意图不明
-strncpy(dev-&gt;name, src, IFNAMSIZ);</p>
-<p>// ✅ 新：显式语义
-strscpy(dev-&gt;name, src, IFNAMSIZ);</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// ❌ 旧：意图不明</span>
+<span class="nb">strncpy</span><span class="p">(</span><span class="n">dev</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">IFNAMSIZ</span><span class="p">);</span>
+
+<span class="c1">// ✅ 新：显式语义</span>
+<span class="n">strscpy</span><span class="p">(</span><span class="n">dev</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">IFNAMSIZ</span><span class="p">);</span>
+</code></pre></div>
+
 <p>尾声</p>
 <p>360 个补丁，6 年时间，换来的是一行 <code>#include</code> 的删除——以及内核安全水位线的整体抬升。</p>
 <p>在 C 语言的世界里，字符串处理永远是 Bug 的温床。<code>strncpy</code> 被清退不只是「换个函数名」，更是内核社区对 <strong>代码可读性即安全性</strong> 理念的一次集体实践。</p>

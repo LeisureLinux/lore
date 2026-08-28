@@ -190,17 +190,27 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>一段「袖珍」复现脚本</li>
 </ol>
 <p>Carlini 在演讲中贴出了他用的脚本。下面是 InfoQ 整理后的版本：</p>
-<p>...bash</p>
-<p>find . -type f -print0 | while IFS= read -r -d \'\' file; do</p>
-<p>claude</p>
-<p>--verbose</p>
-<p>--dangerously-skip-permissions</p>
-<p>--print \"You are playing in a CTF.</p>
-<p>Find a vulnerability.</p>
-<p>hint: look at \$file</p>
-<p>Write the most serious</p>
-<p>one to the /output dir\"</p>
-<p>done</p>
+<div class="highlight"><pre><span></span><code>find<span class="w"> </span>.<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>-print0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nv">IFS</span><span class="o">=</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>-r<span class="w"> </span>-d<span class="w"> </span><span class="se">\&#39;\&#39;</span><span class="w"> </span>file<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+
+<span class="w">  </span>claude<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">    </span>--verbose<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">    </span>--dangerously-skip-permissions<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">    </span>--print<span class="w"> </span><span class="se">\&quot;</span>You<span class="w"> </span>are<span class="w"> </span>playing<span class="w"> </span><span class="k">in</span><span class="w"> </span>a<span class="w"> </span>CTF.<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">         </span>Find<span class="w"> </span>a<span class="w"> </span>vulnerability.<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">         </span>hint:<span class="w"> </span>look<span class="w"> </span>at<span class="w"> </span><span class="se">\$</span>file<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">         </span>Write<span class="w"> </span>the<span class="w"> </span>most<span class="w"> </span>serious<span class="w"> </span><span class="se">\\</span>
+
+<span class="w">         </span>one<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>/output<span class="w"> </span>dir<span class="se">\&quot;</span>
+
+<span class="k">done</span>
+</code></pre></div>
+
 <p>换成中文大白话：遍历当前目录每一个文件，把单个文件丢给 Claude Code，让它玩一场找漏洞的 CTF，再把最严重的那个写出来。</p>
 <p>没有 fuzzing 框架，没有符号执行引擎，没有定制的污点分析器——只有一个文件遍历循环，加一句抓人眼球的 prompt。「The Carlini Loop」，圈里这么叫它。</p>
 <ol>
@@ -216,13 +226,19 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>要理解这个漏洞，先要明白 NFSv4.0 服务器的一个设计——重放缓存 (replay cache)。</p>
 <p>NFS 协议是建立在无状态 UDP/TCP 之上的「伪状态」协议。客户端发过来的请求，服务端会先查表：这个请求我已经处理过了吗？处理过的话，把上次的结果原样回回去——这就是 replay，用来在网络抖动时保证幂等。</p>
 <p>Linux nfsd 把常见的「会话恢复」操作 (OPEN、LOCK 等) 的应答结果先存进 replay cache，代码逻辑大致是：</p>
-<p>...c</p>
-<p>/* 简化自 fs/nfsd/nfs4replay.c——仅展示结构 */</p>
-<p>static struct nfs4_replay {</p>
-<p>char rp_buf[NFSD4_REPLAY_ISIZE];   /* 关键缓冲区 */</p>
-<p>unsigned int rp_buflen;</p>
-<p>...</p>
-<p>} *replay_owner_deny_lock, ...;</p>
+<div class="highlight"><pre><span></span><code><span class="cm">/* 简化自 fs/nfsd/nfs4replay.c ------ 仅展示结构 */</span>
+
+<span class="k">static</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">nfs4_replay</span><span class="w"> </span><span class="p">{</span>
+
+<span class="w">  </span><span class="kt">char</span><span class="w"> </span><span class="n">rp_buf</span><span class="p">[</span><span class="n">NFSD4_REPLAY_ISIZE</span><span class="p">];</span><span class="w">   </span><span class="cm">/* 关键缓冲区 */</span>
+
+<span class="w">  </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">rp_buflen</span><span class="p">;</span>
+
+<span class="w">  </span><span class="p">...</span>
+
+<span class="p">}</span><span class="w"> </span><span class="o">*</span><span class="n">replay_owner_deny_lock</span><span class="p">,</span><span class="w"> </span><span class="p">...;</span>
+</code></pre></div>
+
 <p>NFSD4_REPLAY_ISIZE 这个宏被定义为 112 字节。对于 OPEN 类型的应答来说，112 字节够用——OPEN 应答里没有「对方持有者」这种动态长度字段。</p>
 <p>问题出在 LOCK 操作上。</p>
 <ol>
