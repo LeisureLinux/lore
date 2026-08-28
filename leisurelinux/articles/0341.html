@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>【译】Kubernetes 之美，止于有状态负载（Stateful Workloads） | LeisureLinux 公众号</title>
+<meta name="description" content="【译】Kubernetes 之美，止于有状态负载（Stateful Workloads）">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/M8aJfskcRBH3ktyYyUx6sQ">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "【译】Kubernetes 之美，止于有状态负载（Stateful Workloads）", "datePublished": null, "articleSection": "AI/Agent", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0341.html", "sameAs": "https://mp.weixin.qq.com/s/M8aJfskcRBH3ktyYyUx6sQ", "isBasedOn": "https://mp.weixin.qq.com/s/M8aJfskcRBH3ktyYyUx6sQ", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">【译】Kubernetes 之美，止于有状态负载（Stateful Workloads）</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<p><strong>作者：Akhilesh Mishra (@livingdevops)</strong></p>
+<p>\</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMst8k0DwRNVtDxp3lMzsbJNbRPYF27O1kzbnEsdAM3Tic2zF32NibYacOHfnAbiab0iaWNnWiciahiaaRekBPpmggZOicedic0Qy7iaiaIibc2g/640?wx_fmt=jpeg" /></p>
+<p>你的 Leader 刚刚要求你在 Kubernetes (K8s) 上运行 Postgres 数据库。</p>
+<p>起初，这听起来完全合情合理。你的应用程序已经运行在 K8s 上，部署已经自动化，团队也习惯了使用 <code index-in-node="49" path-to-node="5">kubectl</code> (Kubernetes Control)。在同一个环境中运行数据库似乎是顺理成章的下一步。</p>
+<p>但正是从这里开始，Kubernetes 变得复杂起来。</p>
+<h3 id="临时存储ephemeral-storage的陷阱" path-to-node="7">1. 临时存储（Ephemeral Storage）的陷阱</h3>
+<p><strong>你将 Postgres 作为 Deployment（部署）运行。</strong>\
+设置三个副本（Replicas），执行 Apply，Postgres 启动了。你连接数据库，插入了几行数据，一切表现如预期。接着，Pod 崩溃并重启。当你重新连接时，发现数据全丢了。</p>
+<p>容器的文件系统是<strong>临时的（Ephemeral）</strong>。它仅在 Pod 的生命周期内存在，当 Pod 死亡时，文件系统也随之销毁。每次重启都丢失数据库不是极端情况，而是其默认行为。</p>
+<blockquote>
+<p><strong>解决方案：</strong> 引入 <strong>PersistentVolume (PV，持久化卷)</strong>。\
+PV 是独立于 Pod 存在的存储。它可以是 EBS (Elastic Block Store) 卷、云硬盘或 NFS (Network File System) 共享。当 Pod 崩溃且新 Pod 启动时，它会重新挂载到同一个卷上，数据得以保留。</p>
+</blockquote>
+<h3 id="管理规模的挑战" path-to-node="11">2. 管理规模的挑战</h3>
+<p><strong>手动配置存储无法扩展。</strong>\
+每当有人需要存储时，都必须手动创建 PV。无论是 AWS 里的 EBS 还是其他存储，总需要人工干预。如果你有一个 DevOps 工程师、四个环境和六个服务，这很快就会变成一个以"Slack 账号"为瓶颈的流程。</p>
+<blockquote>
+<p><strong>解决方案：</strong> 转向 <strong>PersistentVolumeClaim (PVC，持久化卷声明)</strong> 和 <strong>StorageClass (SC，存储类)</strong>。\
+开发者现在只需声明他们的需求（例如：10GB，ReadWriteOnce/单节点读写访问），Kubernetes 就会通过 StorageClass 自动配置实际的卷。基础设施层实现了<strong>自服务化（Self-service）</strong>。无需工单，无需等待，无需操作 AWS 控制台。</p>
+</blockquote>
+<h3 id="deployment-的局限性" path-to-node="14">3. Deployment 的局限性</h3>
+<p><strong>存储持久化了，但数据库依然是破碎的。</strong>\
+你将一个 PVC 挂载到具有三个副本的 Postgres Deployment 上，期望实现高可用。结果你得到了<strong>数据损坏（Corruption）</strong>。三个 Pod 试图同时写入同一个磁盘，没有协调机制，没有角色感知，也没有顺序性。它们冲突、损坏，数据库崩溃。</p>
+<p>问题不在于存储，而在于 Deployment 本身。Deployment 将每个 Pod 视为<strong>完全相同且可互换的</strong>。它们可以以任何顺序启动或关闭。但 Postgres 不支持这种模式：Pod 0 是 Primary（主节点）负责写入，Pod 1 和 Pod 2 是 Replicas（副本节点）负责读取并跟随主节点。它们有严格的启动顺序和不同的角色。如果 Pod 0 崩溃并以随机名称重启，Postgres 将无法识别谁才是主节点。</p>
+<blockquote>
+<p><strong>解决方案：</strong> 使用 <strong>StatefulSet (STS，有状态副本集)</strong> 替代 Deployment。\
+StatefulSet 为每个 Pod 提供稳定的<strong>永久标识</strong>。Pod 0 永远是 Pod 0。它最先启动，最后关闭。当它重启时，会带着相同的名称、角色和网络标识回归。</p>
+<p>StatefulSet 还使用 <strong>volumeClaimTemplates (卷声明模板)</strong>。你只需定义一次模板，它就会为每个 Pod 自动创建独立的卷。Pod 0 拥有自己的磁盘，Pod 1 和 Pod 2 亦然。没有共享，没有冲突，没有损坏。</p>
+</blockquote>
+<h3 id="环境漂移environment-drift" path-to-node="18">4. 环境漂移（Environment Drift）</h3>
+<p><strong>数据库稳定了，但你现在面临多个环境。</strong>\
+开发（Dev）、测试（Staging）和生产（Production）环境各需要不同的配置：不同的副本数、存储大小和资源限制。于是你复制了 YAML 文件，修改数值并应用。</p>
+<p>随着时间推移，这些文件会产生<strong>偏差（Diverge）</strong>。有人更新了生产环境的 StatefulSet 却忘了测试环境。开发环境的变更从未同步。微小的差异不断累积，直到调试变成"盲猜"，测试环境不再是生产环境的可靠镜像。</p>
+<blockquote>
+<p><strong>解决方案：</strong> 引入 <strong>Helm (Kubernetes 包管理器)</strong>。\
+你只需编写一次 YAML 模板，将环境间变化的值设为<strong>变量（Variables）</strong>。每个环境拥有独立的数值文件（如 <code index-in-node="89" path-to-node="21,0">values-prod.yaml</code>），但底层模板保持一致。Helm 将模板与数值合并生成最终的 YAML，确保了<strong>单一真理源（Single Source of Truth）</strong>。当升级出错时，一条命令即可回滚。</p>
+</blockquote>
+<h3 id="安全与资源争夺" path-to-node="22">5. 安全与资源争夺</h3>
+<p><strong>团队在壮大，新问题出现了。</strong>\
+多个团队部署各自的服务，且每个人都有集群访问权限。如果没有严格的界限，错误不可避免：一个团队读取了另一个团队的 <strong>Secrets (机密信息)</strong>；一个写得烂的查询耗尽了节点的所有 CPU，导致旁边的所有工作负载"饿死"。没人设置限制，也没人划分权限。</p>
+<blockquote>
+<p><strong>解决方案：</strong> 实施 <strong>RBAC (Role-Based Access Control，基于角色的访问控制)</strong>。\
+访问权限现在被限定在角色和 <strong>Namespace (命名空间)</strong> 中。支付团队只能操作支付命名空间，订单团队操作订单。双方无法触碰对方的资源，消除了意外干扰。</p>
+<p><strong>以及：</strong> 引入 <strong>ResourceQuotas (资源配额)</strong> 和 <strong>LimitRanges (限制范围)</strong>。\
+ResourceQuota 为每个命名空间设定了"硬上限"（例如：最高 8 核 CPU，16GB 内存）。LimitRange 设置了默认值，未声明限制的 Pod 会自动获取。从此，没有任何单个工作负载能垄断整个集群。</p>
+</blockquote>
+<hr />
+<h3 id="总结kubernetes-的进化逻辑" path-to-node="26">总结：Kubernetes 的进化逻辑</h3>
+<ul>
+<li>
+<p><strong>临时存储</strong>导致重启丢数据 -> <strong>PersistentVolume</strong> 解决了它。</p>
+</li>
+<li>
+<p><strong>手动配置存储</strong>无法扩展 -> <strong>PVC</strong> 与 <strong>StorageClass</strong> 解决了它。</p>
+</li>
+<li>
+<p><strong>Deployments</strong> 损坏了有状态负载 -> <strong>StatefulSet</strong> 解决了它。</p>
+</li>
+<li>
+<p><strong>重复的 YAML</strong> 导致环境漂移 -> <strong>Helm</strong> 解决了它。</p>
+</li>
+<li>
+<p><strong>无限制的访问</strong>带来安全风险 -> <strong>RBAC</strong> 解决了它。</p>
+</li>
+<li>
+<p><strong>无约束的命名空间</strong>耗尽资源 -> <strong>Quotas</strong> 与 <strong>LimitRanges</strong> 解决了它。</p>
+</li>
+</ul>
+<p>Kubernetes 并非特性的堆砌，而是一系列你在生产环境中必然会遇到的问题的解决方案。</p>
+<hr />
+<p><strong>提示：</strong> 如果你想在真实的 EKS (Elastic Kubernetes Service) 集群上实践这些内容，可以关注我的 bootcamp 课程。</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315399&amp;idx=1&amp;sn=b4483e9d679cc335a2b4509450122d2e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3uki0115s96r4ycge8" target="_blank" textvalue="原版电子书免费下载：Ansible for DevOps &amp; Kubenetes">原版电子书免费下载：Ansible for DevOps &amp; Kubenetes</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315892&amp;idx=1&amp;sn=fbe010b283f1114b15c66cfab06f47c4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="78zbb0377082ko675z4" target="_blank" textvalue="AI 时代的“容器化时刻”：CNCF 祭出大招，要终结 AI 基础设施乱象！">AI 时代的"容器化时刻"：CNCF 祭出大招，要终结 AI 基础设施乱象！</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317005&amp;idx=1&amp;sn=cf949832a55124d3f7dc36c239e2140a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="c5ygb369h7wld4m96o" target="_blank" textvalue="【技术白皮书】基于 Podman + Kata Containers 构建免费商用 AI 代理安全沙箱">【技术白皮书】基于 Podman + Kata Containers 构建免费商用 AI 代理安全沙箱</a>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/M8aJfskcRBH3ktyYyUx6sQ" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

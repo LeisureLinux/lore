@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JMAP 协议与 Stalwart Mail Server：现代邮件基础设施的 Rust 革命 | LeisureLinux 公众号</title>
+<meta name="description" content="后记：本文带你从一个全新角度理解邮件基础设施——当古老的SMTP/IMAP协议遇上Rust语言和JMAP现代协议，会擦出">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/SpihAkLM2Ni-i85huU64CQ">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "JMAP 协议与 Stalwart Mail Server：现代邮件基础设施的 Rust 革命", "datePublished": "2026-06-28T08:51:00+08:00", "articleSection": "Linux/运维", "description": "后记：本文带你从一个全新角度理解邮件基础设施——当古老的SMTP/IMAP协议遇上Rust语言和JMAP现代协议，会擦出", "url": "https://freelamp.com/leisurelinux/articles/0110.html", "sameAs": "https://mp.weixin.qq.com/s/SpihAkLM2Ni-i85huU64CQ", "isBasedOn": "https://mp.weixin.qq.com/s/SpihAkLM2Ni-i85huU64CQ", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">JMAP 协议与 Stalwart Mail Server：现代邮件基础设施的 Rust 革命</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-06-28T08:51:00+08:00">2026-06-28 08:51</time> · 分类 Linux/运维</div>
+    <div class="content" itemprop="articleBody">
+<blockquote>
+<p><strong>后记：</strong> 本文带你从一个全新角度理解邮件基础设施------当古老的 SMTP/IMAP 协议遇上 Rust 语言和 JMAP 现代协议，会擦出怎样的火花。</p>
+</blockquote>
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsu2XFUFatdWiapILLFCBnbJmDH5H39r17wiaZcaByjfvdwHf2jP2kIGiaqPE8kPXQUxatAHC4DOGL5FpIMVK5n7wq0x0mrygOHXR4/640?wx_fmt=jpeg" /></p>
+<p>━━━ ━━━ ━━━</p>
+<p>一、邮件协议进化史：为什么我们需要 JMAP？</p>
+<p>邮件协议的历史，几乎和互联网一样长。</p>
+<ul>
+<li><strong>1982 年</strong>：SMTP（简单邮件传输协议）诞生------至今仍是邮件发送的基石</li>
+<li><strong>1985 年</strong>：POP3 协议------把你的邮件下载到本地</li>
+<li><strong>1986 年</strong>：IMAP 协议------让你在服务器上管理邮件</li>
+</ul>
+<p>这三个协议是<strong>80 年代的技术</strong>。它们的设计前提是：网络带宽稀缺、设备是台式机、收邮件是\"下载完离线处理\"。</p>
+<p>但 2026 年的现实是：我们在手机上随时收发、跨设备同步、需要实时推送通知。IMAP 的核心设计------维持长连接、反复轮询、同步整个文件夹而不是增量变更------在移动互联网时代暴露了致命短板：</p>
+<ul>
+<li><strong>带宽浪费</strong>：每次同步都要拉取元数据，而不是只拿变更</li>
+<li><strong>电池杀手</strong>：手机不断轮询检查新邮件</li>
+<li><strong>延迟高</strong>：没有推送机制</li>
+<li><strong>数据模型碎片化</strong>：邮件走 IMAP/SMTP，通讯录走 CardDAV，日历走 CalDAV------三个协议，三个数据模型，三个实现</li>
+</ul>
+<p><strong>JMAP（JSON Meta Application Protocol）就是为这个时代重新设计的。</strong></p>
+<p>━━━ ━━━ ━━━</p>
+<p>二、JMAP 协议详解：JSON 之上的邮件革命</p>
+<p>2019 年 7 月，IETF 发布了 JMAP 的两个核心 RFC：</p>
+<ul>
+<li><strong>RFC 8620</strong>：JMAP 核心协议</li>
+<li><strong>RFC 8621</strong>：JMAP for Mail</li>
+</ul>
+<p>此后 JMAP 标准持续演进，2024 年又发布了 JMAP 联系人（RFC 9610）和共享（RFC 9670）标准，日历标准也在 2025 年进入 RFC 编辑器队列。</p>
+<p>JMAP 的核心设计理念</p>
+<p>#### ① JSON over HTTPS------现代 API 模式</p>
+<p>JMAP 用 JSON 作为数据格式，通过 HTTPS 通信。这意味着：</p>
+<pre><code>// 传统 IMAP 请求
+a001 FETCH 1:50 (FLAGS BODY[HEADER.FIELDS (FROM SUBJECT)])
+
+// JMAP 等效请求
+POST /jmap HTTP/1.1
+Authorization: Bearer &lt;token&gt;
+Content-Type: application/json
+
+{
+  "using": ["urn:ietf:params:jmap:mail"],
+  "methodCalls": [
+    ["Email/query", {"accountId": "abc", "limit": 50}],
+    ["Email/get", {"accountId": "abc", "#ids": { "resultOf": "c0", "name": "Email/query", "path": "/ids" }}]
+  ]
+}
+</code></pre>
+<p><strong>关键差异</strong>：JMAP 的 API 是 RESTful 风格，对前端开发者极其友好。不需要学习 IMAP 那套晦涩的命令协议。</p>
+<p>#### ② 批量操作------一次请求完成 N 件事</p>
+<p>JMAP 允许在单个 HTTP 请求中发送多个方法调用，Pipeline 式执行。上面的例子一次请求完成了\"查询邮件列表 + 获取邮件详情\"两个操作。这在慢网络（如移动端）上节省了大量往返开销。</p>
+<p>#### ③ Delta 同步（增量同步）------只拿变化</p>
+<p>这是 JMAP 最大的亮点。IMAP 每次同步都要遍历整个文件夹，而 JMAP 只需提供上次同步的 state 值：</p>
+<pre><code>// 客户端：给我从 state "abc123" 以来的变更
+["Email/changes", {
+  "accountId": "abc",
+  "sinceState": "abc123"
+}]
+// 服务端：只返回变更
+{
+  "changed": ["msg456", "msg789"],
+  "removed": ["msg123"],
+  "newState": "def456"
+}
+</code></pre>
+<p><strong>带宽节省量</strong>：在典型场景下，JMAP 的同步流量是 IMAP 的 1/5 到 1/10。</p>
+<p>#### ④ 内置推送通知------不再轮询</p>
+<p>JMAP 原生支持 EventSource（SSE）和 WebSocket 推送，新邮件到了服务器直接推送到客户端。</p>
+<p>而 IMAP 的 IDLE 命令虽然能实现类似效果，但需要维持常连接、在 NAT 环境下不稳定、实现复杂。</p>
+<p>#### ⑤ 统一数据模型------一个 API 管全部</p>
+<pre><code>JMAP 数据模型：
+├── 邮件（Email/Mailbox/Thread/EmailSubmission）
+├── 通讯录（AddressBook/Contact/CardGroup）
+├── 日历（Calendar/CalendarEvent）
+├── 文件（Blob/FileStorage）
+└── 配额（Quota）
+</code></pre>
+<p>以前至少需要 SMTP（发）+ IMAP（收/管）+ CardDAV（通讯录）+ CalDAV（日历）+ WebDAV（文件）五个协议栈，JMAP 一个全包了。</p>
+<p>JMAP vs IMAP：一张表看懂差异</p>
+<p>对比维度             IMAP                               JMAP</p>
+<hr />
+<p><strong>传输协议</strong>         自定义 TCP 命令流                  JSON over HTTPS
+  <strong>数据格式</strong>         自定义线格式（MIME + IMAP 命令）   标准 JSON
+  <strong>推送机制</strong>         IDLE（需常连接）                   EventSource / WebSocket
+  <strong>同步策略</strong>         全量同步或 UID 增量                Delta 状态同步
+  <strong>批量操作</strong>         支持但有限                         原生 Pipeline 批量
+  <strong>数据模型</strong>         仅邮件                             邮件+通讯录+日历+文件
+  <strong>认证方式</strong>         SASL 系列                          OAuth 2.0 / OIDC
+  <strong>移动端友好</strong>       较差（轮询耗电）                   优秀（增量+推送）
+  <strong>开发者学习成本</strong>   高（专有协议）                     低（标准 Web API）</p>
+<p>━━━ ━━━ ━━━</p>
+<p>三、Stalwart Mail Server：Rust 打造的一体化邮件舰队</p>
+<p>如果说 JMAP 是新引擎，那 Stalwart 就是为这个引擎量身打造的全新船体。</p>
+<p>Stalwart 是什么？</p>
+<p>Stalwart Mail Server 是一个用 <strong>Rust 语言</strong>编写的全功能邮件服务器，目标是 <strong>\"一站式替代 Postfix + Dovecot + Roundcube + Rspamd + 各种额外组件\"</strong>。</p>
+<p>它一个二进制文件就提供了：</p>
+<p>功能               替代方案                  说明</p>
+<hr />
+<p>SMTP 服务器        Postfix, Exim, Sendmail   发信和收信中继
+  IMAP/POP3 服务器   Dovecot, Courier          传统客户端访问
+  JMAP 服务器        （极少数支持）            现代 API 访问
+  反垃圾引擎         Rspamd, SpamAssassin      内置基于规则 + 统计 + LLM 过滤
+  Web 管理界面       ---                       开箱即用
+  Sieve 脚本引擎     ManageSieve               服务端邮件过滤
+  日历/通讯录同步    CalDAV/CardDAV 服务器     一站式管理
+  文件存储           WebDAV                    邮件附件 + 文件管理</p>
+<p>为什么用 Rust？</p>
+<p>Stalwart 的作者选择 Rust 是有深意的。邮件服务器历史上最危险的安全问题------Postfix 和 Dovecot CVE 里大量都是<strong>内存安全漏洞</strong>：缓冲区溢出、释放后使用、整数溢出。</p>
+<p>Rust 的所有权系统和借用检查器从编译器层面消除了这类漏洞。<strong>这不是\"更安全\"的问题，而是\"从根上不可能出现某类漏洞\"的问题。</strong></p>
+<p>Stalwart 的架构亮点</p>
+<pre><code>                    ┌─────────────────────┐
+                    │     Stalwart Core    │
+                    │    (Rust 单体)       │
+                    ├─────────────────────┤
+                    │  SMTP │ IMAP │ JMAP  │
+                    │  POP3 │ Sieve │ HTTP │
+                    ├─────────────────────┤
+                    │ 存储抽象层           │
+                    ├──────┬──────┬───────┤
+                    │RocksDB│PG/MySQL│ S3  │
+                    │SQLite │FoundationDB │
+                    └──────┴──────┴───────┘
+</code></pre>
+<p>#### ① 可插拔存储后端</p>
+<p>不像 Dovecot 只能用文件系统 + 特定索引格式，Stalwart 支持多种后端：</p>
+<ul>
+<li><strong>单机轻量</strong>：RocksDB / SQLite</li>
+<li><strong>分布式强一致性</strong>：FoundationDB</li>
+<li><strong>传统数据库</strong>：PostgreSQL / MySQL</li>
+<li><strong>对象存储</strong>：S3 / Azure Blob</li>
+</ul>
+<p>这意味着你可以从 Raspberry Pi 到数千节点的集群，用同一套软件。</p>
+<p>#### ② 原生分布式与多租户</p>
+<p>Stalwart 从一开始就设计了集群模式和精细的多租户支持。这在企业场景中极其重要------一个 Stalwart 实例可以为上百个域名提供独立的邮件服务。</p>
+<p>#### ③ LLM 驱动反垃圾</p>
+<p>这是 2025-2026 年才出现的玩法。Stalwart 内置了 AI 反垃圾引擎，<strong>可以用大语言模型分析邮件内容来判断是否垃圾邮件</strong>。这是对传统贝叶斯过滤和规则引擎的降维打击------不再依赖静态规则，而是理解邮件的语义。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>四、Stalwart 的部署体验</p>
+<p>安装 Stalwart 非常简单（以 Linux 为例）：</p>
+<pre><code># 从官方仓库下载二进制
+curl -sL https://stalw.art/install.sh | bash
+
+# 或者用 Docker
+docker run -d \
+  --name stalwart \
+  -p 25:25 -p 587:587 -p 993:993 \
+  -p 443:443 -p 8080:8080 \
+  -v /opt/stalwart-data:/data \
+  stalwartlabs/stalwart-mail:latest
+</code></pre>
+<p>配置文件是 TOML 格式，结构清晰：</p>
+<pre><code>[server]
+hostname = "mail.example.com"
+
+[auth]
+type = "internal"
+hash = "argon2"
+
+[storage]
+type = "sqlite"
+path = "/data/stalwart.db"
+
+[smtp]
+hostname = "mx.example.com"
+</code></pre>
+<p>做完 DNS 配置（SPF/DKIM/DMARC），启动服务，你就可以：</p>
+<ol>
+<li>用任意 JMAP 客户端（Thunderbird 已原生支持，Fastmail 也支持）连接</li>
+<li>用网页浏览器访问管理界面 <code>https://mail.example.com/admin</code></li>
+<li>用 <code>stalwart-cli</code> 命令行管理</li>
+</ol>
+<p>stalwart-cli：自动化运维利器</p>
+<pre><code># 创建用户
+stalwart-cli account create user@example.com
+
+# 导出服务器状态（备份）
+stalwart-cli export /backup/stalwart-$(date +%Y%m%d).json
+
+# 导入状态（恢复）
+stalwart-cli import /backup/stalwart-20260627.json
+
+# 查看队列状态
+stalwart-cli queue stats
+</code></pre>
+<p>━━━ ━━━ ━━━</p>
+<p>五、生态现状：谁在用 JMAP？</p>
+<p>JMAP 的生态正在迅速扩展：</p>
+<p><strong>服务器端支持：</strong></p>
+<ul>
+<li>✅ <strong>Stalwart Mail Server</strong>（一等公民支持，最早的 JMAP 全栈实现）</li>
+<li>✅ <strong>Fastmail</strong>（JMAP 的原创者和主要推动者）</li>
+<li>✅ <strong>Cyrus IMAP</strong>（老牌 IMAP 服务器，支持 JMAP 扩展）</li>
+<li>✅ <strong>Apache James</strong>（Java 邮件服务器，支持 JMAP）</li>
+<li>✅ <strong>Linagora 的 JMAP 项目</strong>（专注于 JMAP 开源实现）</li>
+</ul>
+<p><strong>客户端支持：</strong></p>
+<ul>
+<li>✅ <strong>Thunderbird</strong>（从 128 版本开始逐步集成 JMAP，目前是 Opt-in）</li>
+<li>✅ <strong>Fastmail Web 客户端</strong>（原生 JMAP）</li>
+<li>✅ <strong>Cyrus 的 JMAP 代理</strong>（可以让不支持 JMAP 的客户端通过代理访问）</li>
+</ul>
+<p><strong>认证标准进展：</strong></p>
+<ul>
+<li>📜 RFC 8620（核心协议，2019）------ 已发布</li>
+<li>📜 RFC 8621（邮件扩展，2019）------ 已发布</li>
+<li>📜 RFC 9610（联系人，2024）------ 已发布</li>
+<li>📜 RFC 9670（共享，2024）------ 已发布</li>
+<li>📜 RFC 即将发布（日历，2025）------ 最终阶段</li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>六、Stalwart 的未来路线图</p>
+<p>截至 2026 年，Stalwart 已发布到 v0.16.x 版本，正在向 <strong>1.0 里程碑</strong>冲刺。</p>
+<pre><code>Stalwart Roadmap（按规划路线）
+
+v0.16.x ──► 1.0 ──► 企业版 ──► 未来探索
+ 当前版本    核心稳定    多租户+监控   QUIC+AI
+
+1.0 核心目标：
+├── 数据库架构稳定（API 不再大改）
+├── 性能极致优化
+│   ├── 零拷贝数据路径
+│   ├── 增量缓存
+│   └── 分布式锁
+├── 安全强化
+│   ├── 自动 TLS 管理
+│   └── 攻击防护增强
+
+企业级特性：
+├── 多租户与精细权限
+├── 品牌定制
+├── OpenTelemetry 监控
+└── Webhook 集成
+
+未来探索：
+├── QUIC 协议支持（HTTP/3 邮件传输）
+└── AI 驱动反垃圾邮件
+</code></pre>
+<p>其中 <strong>2026 年计划</strong>里还包括一个内置 WebMail 客户端，这将让 Stalwart 成为真正的一站式邮件解决方案------无需再部署 Roundcube。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>七、Stalwart vs 传统方案：什么时候选它？Stalwart 适合的场景</p>
+<p>✅ <strong>中小团队</strong>：希望一套服务搞定全部邮件需求，不想维护 Postfix + Dovecot + Rspamd + Roundcube 四个组件</p>
+<p>✅ <strong>技术创业者</strong>：需要快速搭建邮件服务，Rust 带来的低资源消耗可以在小 VPS 上服务数百用户</p>
+<p>✅ <strong>JMAP 先行者</strong>：想要在 Thunderbird 等客户端中体验 JMAP 的效率优势</p>
+<p>✅ <strong>多租户邮件服务</strong>：需要为多个域名提供服务的企业</p>
+<p>✅ <strong>安全意识强</strong>：Rust 内存安全 + 自动 TLS + DMARC/DKIM/SPF 全栈支持</p>
+<p>传统方案仍然适合的场景</p>
+<p>❌ <strong>大型企业存量环境</strong>：团队已经熟练维护 Postfix/Dovecot，迁移成本高</p>
+<p>❌ <strong>极其边缘的定制场景</strong>：需要某种 Postfix 独有策略的深度定制</p>
+<p>❌ <strong>只信任\"时间检验\"的团队</strong>：Stalwart 虽然代码质量高，但生产案例相对有限</p>
+<p>━━━ ━━━ ━━━</p>
+<p>八、结语：邮件基础设施的 Rust 时刻</p>
+<p>过去二十年，邮件服务器几乎没有突破性的创新。Postfix 诞生于 1999 年，Dovecot 诞生于 2002 年------两代人的技术遗产至今占据主导。</p>
+<p>JMAP 协议打破了\"邮件服务器只能通过 IMAP 访问\"的思维定势，Stalwart 则用 Rust 语言和一体的架构设计证明了：<strong>邮件服务器可以更安全、更高效、更易于运维</strong>。</p>
+<p>正如 CMU 的《计算机系统》课程中所强调的：<strong>\"如果你可以用一个简单而正确的方案替代复杂的方案，那就去做。\"</strong> Stalwart 正是这种哲学在邮件领域的实践------一个二进制替代 Postfix + Dovecot + Rspamd + CalDAV/CardDAV + 管理界面。</p>
+<p>对于技术团队来说，2026 年也许是评估 Stalwart 的最佳时机------不是因为它已经完美无缺，而是因为它在安全性和现代化方面已经领先传统方案一个时代，而且 1.0 已经近在眼前。</p>
+<blockquote>
+<p><strong>后记：</strong> 本文部分内容参考了 GitHub 开源项目 Stalwart Mail Server 的官方文档、IETF JMAP 工作组 RFC 标准（RFC 8620/8621）以及社区分析资料。JMAP 已逐步获得 Thunderbird 等主流客户端支持，值得邮件运维人员跟进关注。</p>
+</blockquote>
+<p>━━━ ━━━ ━━━</p>
+<p>*欢迎关注 LeisureLinux，获取更多深度技术与架构解读。*</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317621&amp;idx=1&amp;sn=aa996dc577c70ef26a2749098cff30a6&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1hi2bup28pu2ob5qf4" target="_blank" textvalue="MTA（邮件传输代理）核心架构与工作原理解析">MTA（邮件传输代理）核心架构与工作原理解析</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316503&amp;idx=1&amp;sn=c14bc9a95b9d993dce78ed680451b6a4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8z4sowtk4jkmx3yjuo0" target="_blank" textvalue="精进：Ubuntu Server 下的 UFW 深度加固与 SSH 零失误防御">精进：Ubuntu Server 下的 UFW 深度加固与 SSH 零失误防御</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316226&amp;idx=1&amp;sn=59d71f404fd1aaa692a684852fcae9da&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5pyga1z80lofu2naps" target="_blank" textvalue="技术深度解析：微软 Authenticator 移除“密码”管理器的底层逻辑">技术深度解析：微软 Authenticator 移除"密码"管理器的底层逻辑</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317273&amp;idx=1&amp;sn=695e4c67413d5f12f109bc55e56402cc&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3bjtj7i95rmt10baww" target="_blank" textvalue="当 PHP 的老兵退休时，谁来维护这个互联网？">当 PHP 的老兵退休时，谁来维护这个互联网？</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317979&amp;idx=1&amp;sn=71205ccd7edc8473ba65cbb7a318104b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="iet76qmird7660z5s0" target="_blank" textvalue="不写代码、全靠「聊天」：Meta AI客服反成黑客帮凶，奥巴马白宫账号遭劫">不写代码、全靠「聊天」：Meta AI客服反成黑客帮凶，奥巴马白宫账号遭劫</a>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/SpihAkLM2Ni-i85huU64CQ" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

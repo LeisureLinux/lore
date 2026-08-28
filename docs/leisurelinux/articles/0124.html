@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amazon Bedrock AgentCore 深度解析：AWS 的生产级 AI Agent 平台 | LeisureLinux 公众号</title>
+<meta name="description" content="两行API调用，一个生产级AIAgent就诞生了。这不是科幻，是2026年6月刚GA的AmazonBedrockAgen">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/QvXYtMTa3d_X5wvVMbtz6g">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Amazon Bedrock AgentCore 深度解析：AWS 的生产级 AI Agent 平台", "datePublished": null, "articleSection": "AI/Agent", "description": "两行API调用，一个生产级AIAgent就诞生了。这不是科幻，是2026年6月刚GA的AmazonBedrockAgen", "url": "https://freelamp.com/leisurelinux/articles/0124.html", "sameAs": "https://mp.weixin.qq.com/s/QvXYtMTa3d_X5wvVMbtz6g", "isBasedOn": "https://mp.weixin.qq.com/s/QvXYtMTa3d_X5wvVMbtz6g", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Amazon Bedrock AgentCore 深度解析：AWS 的生产级 AI Agent 平台</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<blockquote>
+<p><strong>两行 API 调用，一个生产级 AI Agent 就诞生了。这不是科幻，是 2026 年 6 月刚 GA 的 Amazon Bedrock AgentCore Harness。</strong></p>
+</blockquote>
+<p>2026 年 6 月 23 日，亚马逊云科技峰会（AWS Summit China 2026）在上海如火如荼地进行。峰会的主题 <strong>\"Agentic Now, Go Build\"</strong> 在两天前还是口号，今天已经有了坚实的落地平台。</p>
+<p>就在上周，AWS 宣布 <strong>Amazon Bedrock AgentCore Harness 正式可用（GA）</strong>。这是一个令人振奋的消息------它意味着构建企业级 AI Agent 的门槛，从\"写几百行基础设施代码\"降低到了 <strong>两个 API 调用</strong>：<code>CreateHarness</code> 和 <code>InvokeHarness</code>。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>一、AgentCore 是什么？</p>
+<p>Amazon Bedrock AgentCore 是 AWS 推出的一个<strong>端到端托管平台</strong>，专门用于构建、部署和运维生产级 AI Agent。它于 2025 年 7 月预览，2025 年 10 月正式可用，并在 2026 年 6 月的 Harness GA 中走向成熟。</p>
+<blockquote>
+<p><strong>一句话概括</strong>：AgentCore 让开发者专注于\"Agent 的智能\"，而不必操心\"Agent 的基础设施\"。</p>
+</blockquote>
+<p>它不是一个简单的 API 包装器，而是一整套<strong>模块化服务套件</strong>，包含：</p>
+<p>组件                功能</p>
+<hr />
+<p><strong>Runtime</strong>         基于 Firecracker microVM 的无服务器执行环境
+  <strong>Gateway</strong>         将 API、Lambda、MCP Server 统一转化为 Agent 可调用的工具
+  <strong>Memory</strong>          短期 + 长期记忆，支持 Episodic Memory（最长 8 小时上下文）
+  <strong>Identity</strong>        入站/出站认证和授权管理
+  <strong>Policy</strong>          基于 Cedar 的策略引擎，用自然语言定义 Agent 行为边界
+  <strong>Observability</strong>   原生 CloudWatch 集成，深度追踪、日志和评估
+  <strong>Tools</strong>           内置代码解释器、浏览器、Web Search 等</p>
+<p>━━━ ━━━ ━━━</p>
+<p>二、为什么需要 AgentCore？</p>
+<p>讲 AgentCore 之前，先说说 2025-2026 年 AI Agent 发展的一个尴尬现象：</p>
+<blockquote>
+<p><strong>PoC（概念验证）多如牛毛，生产级部署凤毛麟角。</strong></p>
+</blockquote>
+<p>原因很简单：从一两个 Demo Agent 到生产环境规模化部署，中间隔着巨大的鸿沟------</p>
+<ul>
+<li><strong>基础设施</strong>：Agent 需要执行环境、沙箱隔离、自动扩缩</li>
+<li><strong>工具集成</strong>：每个 Agent 要对接不同的 API，身份认证、OAuth 轮换繁琐</li>
+<li><strong>记忆管理</strong>：对话上下文如何持久化？长期记忆如何维护？</li>
+<li><strong>治理安全</strong>：如何确保 Agent 不越权？如何审计它的每一步行为？</li>
+<li><strong>可观测性</strong>：Agent 的\"思考过程\"怎么追踪？效果怎么评估？</li>
+</ul>
+<p>AgentCore 一次性回答了所有这些问题。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>三、AgentCore Harness：两行代码部署 Agent</p>
+<p><strong>这是 2026 年 6 月最值得关注的功能。</strong></p>
+<p>传统上，部署一个生产级 AI Agent 需要：配置计算资源、搭建沙箱环境、编写工具连接代码、实现错误处理、配置上下文管理......少则几天，多则数周。</p>
+<p>AgentCore Harness 把这一切变成了<strong>托管服务</strong>：</p>
+<pre><code># 第一步：定义 Agent
+response = client.create_harness(
+    modelId="anthropic.claude-sonnet-4-20250515",
+    tools=[{"name": "web_search", "type": "BUILT_IN"}],
+    instructions="你是一个专业的金融分析师助手",
+)
+harness_id = response["harnessId"]
+
+# 第二步：运行 Agent
+response = client.invoke_harness(
+    harnessId=harness_id,
+    inputText="分析今天美股三大指数的走势",
+)
+</code></pre>
+<p><strong>CreateHarness</strong> 定义 Agent 的模型、工具、能力和指令。</p>
+<p><strong>InvokeHarness</strong> 运行 Agent，支持实时交互和参数覆盖。</p>
+<p>更厉害的是：</p>
+<ul>
+<li><strong>模型可替换</strong>：甚至可以在一段对话中切换模型</li>
+<li><strong>工具可动态添加</strong>：不需要重新部署代码</li>
+<li><strong>多版本可对比</strong>：调整参数即时测试不同的 Agent 配置</li>
+<li><strong>按量付费</strong>：只用 Runtime、浏览器、Code Interpreter 时付费</li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>四、核心能力详解4.1 Runtime：安全的无服务器执行环境</p>
+<p>AgentCore Runtime 使用 <strong>Firecracker microVM</strong>（AWS Lambda 同款技术）在 EC2 Bare Metal 上为每个 Agent 会话分配<strong>专用的隔离环境</strong>。这意味着：</p>
+<ul>
+<li>不同 Agent 之间完全隔离</li>
+<li>支持实时和长时间运行的 Agent 任务</li>
+<li>兼容 LangChain、LangGraph、CrewAI、AutoGen 等主流框架</li>
+<li>同时支持自定义 Agent------<strong>没有框架锁定</strong></li>
+</ul>
+<p>4.2 Gateway：工具集成不再痛苦</p>
+<p>Gateway 是 AgentCore 的\"万能适配器\"。它可以把任何 API、Lambda 函数或 <strong>MCP（Model Context Protocol）</strong> Server 自动转化为 Agent 可调用的工具。它还自动处理：</p>
+<ul>
+<li>OAuth 流程和 Token 轮换</li>
+<li>安全凭证存储</li>
+<li>入站和出站认证</li>
+</ul>
+<p>4.3 Memory：让 Agent 有记忆</p>
+<p>AgentCore 提供三种记忆模式：</p>
+<ol>
+<li><strong>短期记忆</strong>：同一会话内的上下文保持</li>
+<li><strong>长期记忆</strong>：跨会话持久化，Agent 记住你是谁</li>
+<li><strong>Episodic Memory</strong>：可回溯最近 8 小时的交互历史</li>
+</ol>
+<p>这让 Agent 不再是\"每次对话都是第一次见面\"的失忆症患者。</p>
+<p>4.4 Policy：自然语言定义安全边界</p>
+<p>这是 re:Invent 2025 上发布并在 2026 年 3 月 GA 的重要功能。AgentCore Policy 允许你用<strong>自然语言</strong>定义 Agent 的行为边界：</p>
+<pre><code>允许助手查询客户的账户余额
+禁止助手执行转账操作
+要求所有金融建议标注风险提示
+</code></pre>
+<p>AgentCore Gateway 会自动将这些策略转换为 <strong>Cedar</strong> 策略语言（AWS 自家的开源策略引擎），强制执行<strong>独立于模型概率输出的确定性规则</strong>。</p>
+<p>同时，13 个内置 Evaluator 会持续评估 Agent 行为的正确性、有用性、安全性和工具选择准确性。</p>
+<p>4.5 Observability：看得见的 Agent</p>
+<p>AgentCore 原生集成 CloudWatch，提供：</p>
+<ul>
+<li><strong>深度追踪</strong>：Agent 的每一步思考过程都可追溯</li>
+<li><strong>完整视图</strong>：调用链、工具使用、Token 消耗</li>
+<li><strong>内置评估</strong>：对 Agent 输出进行基准测试</li>
+</ul>
+<p>2026 年 6 月新预览的 <strong>AgentCore Insights</strong> 更进一步------跨会话交叉分析，自动提取失败模式和用户行为趋势，包括\"静默失败\"（Agent 看似成功但实际输出有问题的场景）。</p>
+<p>4.6 Web Search：让 Agent 获取实时知识</p>
+<p>2026 年 6 月 17 日 GA 的 <strong>Web Search</strong> 是 AgentCore 的又一里程碑。</p>
+<p>它让 Agent 能够通过 <strong>AWS 内部搜索基础设施</strong> 获取实时网络知识，而不需要将数据传出 AWS 环境------这对金融、医疗等合规要求严格的行业至关重要。</p>
+<ul>
+<li>索引覆盖<strong>数百亿文档</strong>，刷新频率<strong>分钟级</strong></li>
+<li>结合网页索引 + 结构化知识图谱</li>
+<li>通过 MCP 标准协议调用</li>
+<li>价格：\$7/1,000 次查询</li>
+</ul>
+<p>4.7 多 Agent 协作</p>
+<p>AgentCore 原生支持<strong>多 Agent 协作架构</strong>，其中 Supervisor Agent 负责：</p>
+<ol>
+<li>理解复杂任务</li>
+<li>分解为子任务分配给专门的 Agent</li>
+<li>汇总结果并输出</li>
+</ol>
+<p>每个子 Agent 专注于自己的领域，由 Supervisor 协调，形成一个<strong>专业的 Agent 团队</strong>。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>五、与 Kiro 的关系</p>
+<p>在之前的文章中我们介绍了 AWS Kiro------面向开发者的 Agentic IDE。它与 AgentCore 的关系可以这样理解：</p>
+<p><strong>Kiro</strong>   <strong>AgentCore</strong></p>
+<hr />
+<p>定位       开发者 IDE         企业级 Agent 平台
+  目标用户   软件开发人员       企业架构师、AI 工程师
+  核心能力   编码、设计、测试   部署、运维、治理、规模化
+  底层       Amazon Bedrock     Amazon Bedrock
+  交付形式   桌面应用 + CLI     托管服务 + API
+  场景       写代码             运行 Agent</p>
+<p>Kiro 是 AgentCore 的一个<strong>超级用户</strong>------它用 AgentCore 来运行自己的 Agent。二者构成\"写 Agent 的平台 + 跑 Agent 的平台\"的完整闭环。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>六、实战场景场景一：智能客服 + 实时搜索</p>
+<pre><code>用户提问 → Supervisor Agent
+  ├── 情感分析 Agent（理解用户情绪）
+  ├── 知识库检索 Agent（查询内部文档）
+  ├── Web Search Agent（获取最新政策）
+  └── 响应生成 Agent（整合回复）
+</code></pre>
+<p>AgentCore 的 Policy 确保客服 Agent 不会越权操作，Guardrails 过滤不当内容，Observability 追踪每一次交互。</p>
+<p>场景二：供应链异常检测</p>
+<p>Agent 每小时检查供应链数据，发现异常时：</p>
+<ol>
+<li>调用内部 API 获取库存信息</li>
+<li>搜索网络了解外部影响因素（天气、地缘政治）</li>
+<li>生成分析报告</li>
+<li>通过 Slack 或邮件通知相关人员</li>
+</ol>
+<p>场景三：代码安全审查</p>
+<p>结合 AWS Kiro 和 AgentCore，开发者在 IDE 中写完代码后触发安全 Agent，AgentCore 运行独立的沙箱环境进行代码分析和威胁建模，结果返回 IDE 侧边栏。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>七、值得关注的问题</p>
+<p><strong>1. 定价模型</strong>：AgentCore Harness 的按量付费（Runtime + 工具 + 记忆 + 可观测性）在高并发场景下成本需要仔细评估。</p>
+<p><strong>2. 模型依赖</strong>：AgentCore 虽然是模型无关的，但 Agent 的智能水平上限仍然取决于底层模型的能力。</p>
+<p><strong>3. 多 Agent 复杂度</strong>：Supervisor + 子 Agent 架构在企业落地时，需要考虑 Agent 间的协调机制、故障转移和降级策略。</p>
+<p><strong>4. Harness 的成熟度</strong>：Harness 2026 年 6 月才 GA，生态系统还在快速迭代中，部分高级功能可能仍在预览阶段。</p>
+<p><strong>5. 中国区可用性</strong>：AgentCore 的核心服务在中国区域（北京、宁夏）的支持情况，以及 Web Search 功能的合规性，需要联系 AWS 中国团队确认。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>结语</p>
+<p>回到今天 AWS 峰会的现场------\"Agentic Now, Go Build\"。</p>
+<p>Amazon Bedrock AgentCore 的成熟，特别是 Harness 的 GA，标志着 AI Agent 从<strong>实验阶段正式迈入生产阶段</strong>。当构建一个生产级 Agent 只需要两个 API 调用时，我们可以期待 Agent 将从少数公司的高端实验，变成所有行业的标配实践。</p>
+<p>Kiro 帮我们<strong>写</strong>更好的 AI 应用，AgentCore 帮我们<strong>跑</strong>更可靠的 AI Agent。开发者写 Agent 的平台 + 企业跑 Agent 的平台，AWS 正在完成 Agentic AI 的全面拼图。</p>
+<blockquote>
+<p><strong>后记：</strong> 笔者已在使用 Bedrock AgentCore 搭建一个代码安全审查 Agent。最深的两个感受：一是 Policy 用自然语言定义安全边界的设计非常优雅，适合非技术背景的安全团队参与；二是 Harness 的\"模型可替换\"特性让 A/B 测试不同模型变得极其简单------改一行配置，换一个模型，效果立见。</p>
+</blockquote>
+<p>━━━ ━━━ ━━━</p>
+<p>*本文首发于《LeisureLinux》公众号。欢迎关注，获取更多深度技术解读。*</p>
+<p>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318246&amp;idx=1&amp;sn=a3e7a95488d91d7898d6fc8b71bcf71c&amp;scene=21#wechat_redirect" linktype="2" localeditorid="hd08wszmt24vu5knb4" target="_blank" textvalue="AWS Kiro 深度解析：亚马逊的 Agentic IDE 如何重新定义软件开发？">AWS Kiro 深度解析：亚马逊的 Agentic IDE 如何重新定义软件开发？</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318130&amp;idx=1&amp;sn=a8b11fab9e3c3f13e18521c5a6f06be5&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4irnm01curg3ev4uwhs" target="_blank" textvalue="ToolLoop 解读：当你的 AI Agent 不再被一个模型绑架">ToolLoop 解读：当你的 AI Agent 不再被一个模型绑架</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318167&amp;idx=1&amp;sn=61305ec12901ab7452c121ca87950213&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xxj6gsoe5ps61gtdz4" target="_blank" textvalue="从相关到因果：因果世界模型如何重塑物理智能的下一个范式">从相关到因果：因果世界模型如何重塑物理智能的下一个范式</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317415&amp;idx=1&amp;sn=a019b990da63e083fc8125d83af67a60&amp;scene=21#wechat_redirect" linktype="2" localeditorid="46314j1it6qkytttkw" target="_blank" textvalue="27B 战胜 397B！Qwen3.6 架构深度解构：稠密模型的“智能密度”逆袭">27B 战胜 397B！Qwen3.6 架构深度解构：稠密模型的"智能密度"逆袭</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317450&amp;idx=7&amp;sn=d486693797aeb5c7b1ceb82fc983ccff&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3rlcayy7lv0vqdy1a8" target="_blank" textvalue="从结对编程到工业化编排：深度拆解 OpenAI Symphony 规范">从结对编程到工业化编排：深度拆解 OpenAI Symphony 规范</a>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/QvXYtMTa3d_X5wvVMbtz6g" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

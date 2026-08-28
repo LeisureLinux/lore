@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>纯内网环境下的 Windows 自动化部署：弃用 WDS 后的架构重组 | LeisureLinux 公众号</title>
+<meta name="description" content="纯内网环境下的 Windows 自动化部署：弃用 WDS 后的架构重组">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/h1L5lI-_RwhwMhxNlo9ovw">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "纯内网环境下的 Windows 自动化部署：弃用 WDS 后的架构重组", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0333.html", "sameAs": "https://mp.weixin.qq.com/s/h1L5lI-_RwhwMhxNlo9ovw", "isBasedOn": "https://mp.weixin.qq.com/s/h1L5lI-_RwhwMhxNlo9ovw", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">纯内网环境下的 Windows 自动化部署：弃用 WDS 后的架构重组</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>对于**纯内网（Air-gapped 或无互联网访问）**的桌面 PC 环境，<strong>Windows Autopilot 是无法使用的</strong>，因为它强依赖于 Azure AD (Entra ID) 和微软公有云的 HTTPS 握手。</p>
+<p>在这种高安全隔离或受限网络架构下，最优选是<strong>HTTPS + WinRM 方案</strong>，并结合<strong>MDT (Microsoft Deployment Toolkit)</strong>进行本地化重构。</p>
+<p>\</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsulSgHzTgibdrZ3uex5yWtbfh2OzG3ABewqPptLEvCQcLQk5foae4katKia0JhEU0fJOltfGc4Ru4bzgU2baCVCKiawqoenjwhoOE/640?wx_fmt=jpeg" /></p>
+<p>\</p>
+<p>在失去 WDS 自动化支持（由于 CVE-2026-0386 封锁）且无法连接外网的情况下，企业内网的桌面 PC 部署必须转向基于<strong>本地受信任根证书 (Local PKI)</strong>的加密分发模式。</p>
+<h3 id="section-path-to-node6">{#section path-to-node="6"}</h3>
+<h3 id="核心选型mdt-https-winrm-本地拉取模式" path-to-node="6">核心选型：MDT + HTTPS WinRM (本地拉取模式)</h3>
+<p>在纯内网中，我们不再依赖云端编排，而是构建一套基于<strong>内部 Web 服务器</strong>的"自给自足"体系。</p>
+<h4 id="section-1-path-to-node8">{#section-1 path-to-node="8"}</h4>
+<h4 id="传输层安全从-tftprpc-转向-https" path-to-node="8">1. 传输层安全：从 TFTP/RPC 转向 HTTPS</h4>
+<p>由于 WDS 的<code index-in-node="9" path-to-node="9">Unattend.xml</code>传输通道已被标记为不安全，你需要建立一个内部的<strong>IIS 或 Nginx 服务器</strong>，并配置<strong>TLS 证书</strong>（由企业内部 CA 签发）。</p>
+<ul>
+<li>
+<p><strong>逻辑变更</strong>：原本由 WDS 推送镜像，改为由客户端通过 iPXE 或 PE 环境，通过<strong>HTTPS</strong>协议从内部存储服务器"拉取"(<code index-in-node="64" path-to-node="10,0,0">.wim</code>) 镜像和配置文件。</p>
+</li>
+<li>
+<p><strong>防御点</strong>：HTTPS 解决了 WDS 漏洞中敏感信息（如管理员密码、域加入凭据）在内网被嗅探（Sniffing）的问题。</p>
+</li>
+</ul>
+<h4 id="section-2-path-to-node11">{#section-2 path-to-node="11"}</h4>
+<h4 id="配置层安全winrm-over-https-端口-5986" path-to-node="11">2. 配置层安全：WinRM over HTTPS (端口 5986)</h4>
+<p>在镜像落盘后的"黄金 5 分钟"（即系统初始化阶段），传统的脚本执行应全面切换到 WinRM：</p>
+<ul>
+<li>
+<p><strong>身份验证</strong>：利用域控制器（DC）发放的机器证书进行<strong>Certificate-based Authentication</strong>，彻底杜绝明文密码。</p>
+</li>
+<li>
+<p><strong>执行效率</strong>：通过 PowerShell Remoting 批量并行下发初始化指令（安装常用软件、合规性扫描），效率远高于传统的逐台手动配置。</p>
+</li>
+</ul>
+<h3 id="section-3-path-to-node15">{#section-3 path-to-node="15"}</h3>
+<h3 id="纯内网部署架构对比" path-to-node="15">纯内网部署架构对比</h3>
+<p><strong>特性</strong>                                    <strong>传统 WDS (即将被封锁)</strong>                                                                      <strong>MDT + HTTPS (推荐方案)</strong></p>
+<hr />
+<p>[<strong>控制协议</strong>]{path-to-node="16,1,0,0"}     [RPC / TFTP (明文/高风险)]{path-to-node="16,1,1,0"}                                            [<strong>HTTPS / TLS 1.3 (加密)</strong>]{path-to-node="16,1,2,0"}
+  [<strong>凭据保护</strong>]{path-to-node="16,2,0,0"}     [<code index-in-node="0" path-to-node="16,2,1,0">Unattend.xml</code>易被拦截]{path-to-node="16,2,1,0"}   [证书加密传输 + 动态注入]{path-to-node="16,2,2,0"}
+  [<strong>扩展性</strong>]{path-to-node="16,3,0,0"}       [弱，难以处理复杂脚本]{path-to-node="16,3,1,0"}                                                [强，支持 PowerShell 深度编排]{path-to-node="16,3,2,0"}
+  [<strong>内网适应性</strong>]{path-to-node="16,4,0,0"}   [原生支持]{path-to-node="16,4,1,0"}                                                            [<strong>完全适配，无需外网</strong>]{path-to-node="16,4,2,0"}</p>
+<h3 id="架构师的平替实施路径" path-to-node="18">架构师的"平替"实施路径</h3>
+<ol>
+<li>
+<p><strong>建立内部 PKI</strong>：部署一套 Active Directory 证书服务 (AD CS)，为所有待部署的桌面 PC 预置根证书。</p>
+</li>
+<li>
+<p><strong>改造 MDT 共享库</strong>：将 MDT 的 Deployment Share 挂载到 HTTPS 路径上。</p>
+</li>
+<li>
+<p><strong>封装 iPXE 引导</strong>：使用支持 HTTPS 下载的 iPXE 固件替代传统的 WDS PXE 引导。客户端通过<code index-in-node="56" path-to-node="19,2,0">https://deploy.local/boot.ipxe</code>获取引导指令。</p>
+</li>
+<li>
+<p><strong>动态凭据注入</strong>：利用 WinRM 在部署末尾调用内部的凭据保险箱（如 HashiCorp Vault 内部版），动态获取并修改本地 Administrator 随机密码。</p>
+</li>
+</ol>
+<h3 id="section-4" path-to-node="21"><strong> </strong></h3>
+<h3 id="section-5" path-to-node="21"><strong> </strong></h3>
+<h3 id="leisurelinux-专家提示" path-to-node="21"><strong>LeisureLinux 专家提示：</strong></h3>
+<p>对于纯内网桌面环境，不要试图通过修改注册表去恢复 WDS 的自动化功能（那是饮鸩止渴）。借此机会将部署流程<strong>Web 化 (HTTPS)</strong>和<strong>脚本化 (WinRM)</strong>，不仅能规避 RCE 漏洞，更能显著提升内网运维的自动化水平。</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317086&amp;idx=1&amp;sn=09a4b793bb9bb581f1351fcbff457736&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5ue4rsom9we5urse03k" target="_blank" textvalue="架构预警：Microsoft 将强制禁用 WDS 自动化部署功能 (CVE-2026-0386)">架构预警：Microsoft 将强制禁用 WDS 自动化部署功能 (CVE-2026-0386)</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317081&amp;idx=1&amp;sn=a0f0cba76d6db30d7ef3df22a42b4c0a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9oscmju6az93lm10av4" target="_blank" textvalue="Windows 平台下的 Unix 仿真与原生构建：Cygwin 与 MSYS2 的深度架构博弈">Windows 平台下的 Unix 仿真与原生构建：Cygwin 与 MSYS2 的深度架构博弈</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316302&amp;idx=1&amp;sn=ab54633df08987006dda36557814afb1&amp;payreadticket=HPjFUywyeEZZ1XpTfp_ywUo58PcTd2lIpi7WuK9uWkB5FcFJKYWSRq5H_c604_dmvE_55_g&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ub559wcdrjuk5zpc0" target="_blank" textvalue="从 AD 孤岛到全域 GitOps：大型银行混合 OS 治理的工业化转型实践">从 AD 孤岛到全域 GitOps：大型银行混合 OS 治理的工业化转型实践</a>\</p>
+<p>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/h1L5lI-_RwhwMhxNlo9ovw" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路 | LeisureLinux 公众号</title>
+<meta name="description" content="开篇：FTS够用吗？一句话回答：不够。OpenClaw默认的记忆搜索（memory_search）底层是SQLiteFT">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/vrJs3AffDtkzADXTwo1YOA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路", "datePublished": "2026-07-26T19:27:00+08:00", "articleSection": "安全/漏洞", "description": "开篇：FTS够用吗？一句话回答：不够。OpenClaw默认的记忆搜索（memory_search）底层是SQLiteFT", "url": "https://freelamp.com/leisurelinux/articles/0034.html", "sameAs": "https://mp.weixin.qq.com/s/vrJs3AffDtkzADXTwo1YOA", "isBasedOn": "https://mp.weixin.qq.com/s/vrJs3AffDtkzADXTwo1YOA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-07-26T19:27:00+08:00">2026-07-26 19:27</time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>开篇：FTS 够用吗？</p>
+<p>一句话回答：<strong>不够。</strong></p>
+<p>OpenClaw 默认的记忆搜索（memory_search）底层是 SQLite FTS5------<strong>纯关键词搜索（BM25 算法）</strong>。你搜\"发公众号\"，它精确匹配包含这几个字的片段。但你搜\"发布文章到微信公众号后台\"，这些字只有部分重合，可能就漏了。</p>
+<p>这就是 FTS 的天花板：<strong>它只能匹配字符串，理解不了语义。</strong></p>
+<p>而你想要的是------不管怎么说，都能找到\"草稿箱发布\"相关的记忆。这需要<strong>向量嵌入（embedding）</strong>。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>硬件环境</p>
+<p>先交代一下测试平台，否则后面那些\"慢\"的评价没有参照系：</p>
+<p><strong>香橙派 Orange Pi Zero 3</strong>：</p>
+<ul>
+<li>CPU：全志 H618，<strong>4 核 Cortex-A53 @ 1.5GHz</strong>（ARM64）</li>
+<li>RAM：<strong>4 GB</strong></li>
+<li>存储：普通 SD 卡（非 SSD）</li>
+<li>NPU/GPU：无</li>
+<li>系统：Armbian Linux</li>
+</ul>
+<p>这大概就是树莓派 4B 同级。<strong>不是 x86 服务器，不是 MAC，不是带 GPU 的 PC。</strong> 跑本地模型全靠 CPU 硬扛。</p>
+<p>后面的所有\"慢\"都是在 4C4G 无 GPU 的条件下测的。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>FTS 与 Embedding：一个例子</p>
+<p>你问的                        FTS 能找到                     Embedding 能找到</p>
+<hr />
+<p>\"发公众号\"                  精确含\"发\"\"公众\"\"号\"的   语义相近的：\"发布文章到草稿箱\"
+  \"怎么配置 embedding\"        含\"embedding\"字面的          语义相关：向量搜索、嵌入模型
+  \"上次阿里 API key 配哪了\"   关键词不全，难命中             理解\"阿里\"\"API\"\"配置\"核心含义</p>
+<p>Embedding 把每段记忆映射到 512 或 1024 维的向量空间。在这个空间里，\"发公众号\"和\"发布文章到草稿箱\"距离很近。<strong>搜索时，query 也被映射成向量，找最近的邻居。</strong></p>
+<p>━━━ ━━━ ━━━</p>
+<p>Hybrid：最好的结合</p>
+<p>FTS 和 Embedding 各有长处------所以 OpenClaw 默认同时用两者：</p>
+<pre><code>混合得分 = vectorWeight × 向量相似度 + textWeight × BM25 分数
+</code></pre>
+<p>默认权重（在 openclaw.json 的 memorySearch.query.hybrid 里配置）：</p>
+<pre><code>{
+  "hybrid": {
+    "enabled": true,
+    "vectorWeight": 0.7,
+    "textWeight": 0.3
+  }
+}
+</code></pre>
+<p>语义匹配贡献 70%，关键词精确匹配贡献 30%。<strong>两者互补</strong>。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>踩坑实录：五轮试错</p>
+<p>先说结论------<strong>一个下午，三个模型，五种方案，最后用了阿里 DashScope 云 API。</strong></p>
+<p>以下按试错顺序写。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>第一章：Qwen3 Embedding 本地 GGUF</p>
+<p>#### 原理</p>
+<p>OpenClaw 用 <code>node-llama-cpp</code> 加载 GGUF，调用 llama.cpp 的 <code>createEmbeddingContext</code> 生成向量。模型在 CPU 上做纯数学运算，每一条 memory chunk 都要跑一次前向传播。</p>
+<p>#### 实操</p>
+<p>从 ModelScope 下载 Qwen3-Embedding-0.6B-Q8_0（<strong>609 MB</strong>）。在 4C4G 的香橙派上：</p>
+<pre><code># 装 node-llama-cpp（不要装到 pnpm global 目录）
+cd ~/.openclaw/extensions &amp;&amp; npm install node-llama-cpp@3.10.0
+
+# 创建软链接，让 OpenClaw 能找到这个模块
+ln -s ~/.openclaw/extensions/node_modules/node-llama-cpp ~/node_modules/node-llama-cpp
+ln -s ~/.openclaw/extensions/node_modules/@node-llama-cpp ~/node_modules/@node-llama-cpp
+
+# 配置 openclaw.json（注意 contextSize 不能超过模型最大容限）
+</code></pre>
+<p>测试结果（香橙派 Zero3, 4C4G）：</p>
+<p>阶段                      耗时</p>
+<hr />
+<p>加载模型（609 MB GGUF）   7.2 秒
+  首次 embedding 推理       <strong>24 秒</strong>
+  后续推理                  <strong>14--18 秒</strong>
+  CPU 占用                  4 核全满（400%）
+  RSS 内存                  1.8 GB</p>
+<p>#### 问题</p>
+<p>OpenClaw 的 memory_search 有 15 秒超时（<code>timeoutMs</code>）。<strong>本地推理稳稳超纲，每次调用都 timeout。</strong></p>
+<p><strong>在 4C4G 的 ARM64 上跑 600M 参数级别的 GGUF，embedding 推理约 14--24 秒。不是模型不行，是推理速度匹配不上应用的期望延迟。</strong></p>
+<p>#### 教训</p>
+<ul>
+<li>ARM64 无 NPU/GPU 跑 embedding GGUF ≈ <strong>每秒 1 条，每条 20 秒</strong></li>
+<li>600M 参数模型太大，在 4G RAM 上很吃力</li>
+<li>Q4_K_M 量化对 0.6B 不存在------官方只给了 f16 和 Q8_0</li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>第二章：EmbeddingGemma 本地 GGUF</p>
+<p>#### 原理</p>
+<p>官方推荐 EmbeddingGemma-300M-Q8_0，参数量是 Qwen 的一半（300M），理论上更快。</p>
+<p>#### 实操</p>
+<p>从 ModelScope 的 <code>ggml-org/embeddinggemma-300m-qat-q8_0-GGUF</code> 下载，<strong>313 MB</strong>。</p>
+<pre><code>modelscope download \
+  --model ggml-org/embeddinggemma-300m-qat-q8_0-GGUF \
+  --local_dir ~/.openclaw/workspace/models/embeddinggemma-300m-gguf \
+  embeddinggemma-300m-qat-Q8_0.gguf
+</code></pre>
+<p>#### 问题</p>
+<p><code>node-llama-cpp@3.10.0</code> 加载这个 GGUF 直接报 <code>Failed to load model</code>。<strong>不是文件问题，是 node-llama-cpp 的 llama.cpp 版本不够新，不兼容这个 GGUF 的格式。</strong></p>
+<p>#### 教训</p>
+<ul>
+<li>官方推荐 ≠ 手头可用</li>
+<li>GGUF 版本、转换成时间、node-llama-cpp 版本三者要匹配</li>
+<li>EmbeddingGemma 在 4C4G 上就算加载成功，预期也要 5--10 秒/条------仍然超过超时</li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>第三章：BGE-small-zh Q8 本地 GGUF</p>
+<p>#### 原理</p>
+<p>BGE（BAAI General Embedding）是专为中文设计的嵌入模型。<strong>25 MB</strong> 的 Q8 量化版，理论上推理极快，4G RAM 毫无压力。</p>
+<p>#### 实操</p>
+<p>郭大侠从 ModelScope 找到 <code>fuyuantech/bge-small-q8-zh-v1.5</code>。</p>
+<p><strong>命令行测试结果------这是最接近成功的一次：</strong></p>
+<pre><code># 直接从 node 加载测试
+node -e "import { getLlama } from 'node-llama-cpp'
+const llama = await getLlama({ logLevel: 'error' })
+const model = await llama.loadModel({ modelPath: '/path/to/bge-small-q8-zh-v1.5.gguf' })
+const ctx = await model.createEmbeddingContext({ contextSize: 4096 })
+const e = await ctx.getEmbeddingFor('测试嵌入效果')
+console.log('dim:', e.vector.length, ' 前三维:', e.vector.slice(0,3))"
+</code></pre>
+<p>输出（香橙派 Zero3）：</p>
+<pre><code>首次推理：107 毫秒
+后续推理：~90 毫秒每条
+维度：512
+CPU 占用：单核 100%（非四核）
+RSS 内存：~100 MB 模型 + ~200 MB 工作区
+</code></pre>
+<p><strong>快！比 Qwen 快 200 倍。</strong></p>
+<p>#### 问题</p>
+<p><code>openclaw memory index --force</code> 批量 embedding 时，<strong>worker 进程 signal SIGABRT 崩溃。</strong></p>
+<p>最诡异的是：命令行直测同一个文件、同样参数，15 次 embedding 全通过。但在 OpenClaw fork worker 里就必挂。</p>
+<p>#### 分析</p>
+<p>单次 embedding 与批量 embedding 的负载特征不同。OpenClaw worker fork 后反复加载/卸载 embedding context，触发了 llama.cpp C++ 层的 <code>assert()</code> 失败。</p>
+<p><strong>x86 上可能没问题，但在 ARM64 + 4G 内存的环境下，进程 fork + 反复创建 embedding context 遇到了边界情况。</strong></p>
+<p>#### 教训</p>
+<ul>
+<li>单次推理稳定 ≠ 批量推理稳定</li>
+<li>第三方社区上传的 GGUF（fuyuantech）可能在量化时留下了边界情况</li>
+<li>SIGABRT = C++ <code>assert()</code> 失败，不是 Node.js 层的问题</li>
+<li><strong>BGE 本身是正确选择，只是 OpenClaw + ARM64 + node-llama-cpp 的组合在批量场景下还不成熟</strong></li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>第四章：Gemini Embedding API</p>
+<p>#### 原理</p>
+<p>OpenClaw 原生支持 <code>gemini</code> 作为 memorySearch provider。不走本地推理，全在 Google 云端完成。</p>
+<p>#### 实操</p>
+<p>配置极其简单：</p>
+<pre><code>{
+  "provider": "gemini",
+  "model": "gemini-embedding-001",
+  "fallback": "none"
+}
+</code></pre>
+<p>#### 问题</p>
+<p><strong>问题一：代理</strong>。在香橙派上访问 Google API 需要代理：</p>
+<pre><code>export https_proxy=http://wpad.lan:8888
+openclaw memory index --agent main --force --verbose
+</code></pre>
+<p><strong>问题二：429 quota 耗尽</strong></p>
+<pre><code>Memory index failed (main): gemini embeddings failed (429):
+You exceeded your current quota, please check your plan and billing details.
+</code></pre>
+<p>Gemini Embedding API 没有免费额度。<strong>第一次请求就 quota 超限。</strong></p>
+<p>#### 教训</p>
+<ul>
+<li>Gemini Embedding API 不享受 Flash 模型的免费层</li>
+<li>如需使用先开付费，并确保 CLI 进程配了代理</li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>第五章：阿里 DashScope text-embedding-v3（最终方案）</p>
+<p>#### 原理</p>
+<p>阿里云百炼的 DashScope 兼容 OpenAI 的 embedding API 格式。OpenClaw 用 <code>openai-compatible</code> provider 接入。<strong>国内直连，香橙派不需要翻墙。</strong></p>
+<p>#### 实操</p>
+<p><strong>步骤一：创建 API Key</strong></p>
+<p>登录 https://bailian.console.aliyun.com/ → API-KEY 管理 → 创建 API Key → 放到 <code>.env</code>：</p>
+<pre><code>echo 'DASHSCOPE_API_KEY="***"' &gt;&gt; ~/.openclaw/.env
+</code></pre>
+<p><strong>步骤二：配置 openclaw.json</strong></p>
+<pre><code>{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "provider": "openai-compatible",
+        "model": "text-embedding-v3",
+        "fallback": "none",
+        "remote": {
+          "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "apiKey": "***"
+        }
+      }
+    }
+  }
+}
+</code></pre>
+<p><strong>注意</strong>：<code>apiKey</code> 直接写字符串！写成 env 引用对象（<code>{source: "env", provider: "file"}</code>）会被 schema 校验拒绝。</p>
+<p><strong>步骤三：验证 API Key</strong></p>
+<pre><code>curl -X POST https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings \
+  -H "Authorization: Bearer ***" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-v3","input":["测试"]}'
+</code></pre>
+<p>返回 1024 维向量即成功。</p>
+<p><strong>步骤四：重启 gateway + 重建索引</strong></p>
+<pre><code>systemctl --user restart openclaw-gateway
+
+# 等几秒后：
+openclaw memory index --agent main --force --verbose
+</code></pre>
+<p><code>--verbose</code> 参数会输出每个 batch 的处理情况，能清楚看到哪一步失败、失败原因是什么。这次排查过程中这个参数帮了大忙。</p>
+<p>#### 结果（香橙派 Zero3）</p>
+<p>指标                   数值</p>
+<hr />
+<p>索引完成后 chunk 数    743
+  embedding cache 条目   728
+  全量索引费用           <strong>约 ¥0.14</strong>（¥0.5/百万 tokens）
+  查询延迟               毫秒级
+  本地 CPU 占用          0%（云 API）
+  本地内存占用           0%（云 API）</p>
+<p>━━━ ━━━ ━━━</p>
+<p>完整调试命令集</p>
+<p>这次踩坑过程中，以下命令反复使用：</p>
+<pre><code># 重建索引（带详细日志）
+openclaw memory index --agent main --force --verbose
+
+# 查看当前索引状态
+openclaw memory status --index
+
+# 清理旧索引（需要 gateway 关闭后执行）
+sqlite3 ~/.openclaw/agents/main/agent/openclaw-agent.sqlite \
+  "DROP TABLE IF EXISTS memory_index_meta"
+
+# 重启 gateway
+systemctl --user restart openclaw-gateway
+
+# 验证 gateway 启动
+curl -s http://127.0.0.1:18789/healthz
+</code></pre>
+<p>━━━ ━━━ ━━━</p>
+<p>经验总结三个方向的取舍（香橙派 Zero3 实测）</p>
+<p>方案                      推理速度        部署复杂度               成本            中文支持        适合场景</p>
+<hr />
+<p>本地 GGUF（ARM64 4C4G）   ❌ 14--24s/条   ❌ 需装 node-llama-cpp   ✅ ≈0           ✅ BGE 中文好   数据敏感、离线环境
+  Gemini Embedding API      ✅ 毫秒级       ✅ 配置一行              ❌ 免费不可用   ⚠️ 英文为主     有代理、愿付费
+  阿里 DashScope API        ✅ 毫秒级       ✅ 简单                  ✅ ¥0.14/次     ✅ 中文专用     <strong>推荐</strong></p>
+<p>核心发现：资源受限环境下本地 embedding 的约束</p>
+<p>不是说香橙派 Zero3 不能跑本地模型，而是 <strong>embedding 对延迟敏感</strong>------不像生成式 LLM 可以接受 5--10 秒首 token，embedding 需要百毫秒级返回。一次 memory_search 内部可能做多次 embedding 查询。</p>
+<p>在 4C4G 无 GPU 的 ARM64 上：</p>
+<ul>
+<li><strong>≥300M 参数模型</strong>：推理 5--24 秒，超时</li>
+<li><strong>≤100M 参数模型</strong>（如 BGE-small Q4）：预期可控制在 1 秒内，但 OpenClaw worker 进程管理在 ARM64 上还不成熟</li>
+<li><strong>云 API</strong>：毫秒级响应，0% CPU 占用，¥0.14/次</li>
+</ul>
+<p>━━━ ━━━ ━━━</p>
+<p>结语</p>
+<p>折腾了一下午，走了五条路。<strong>不是因为本地方案不行，而是 ARM64 4C4G + node-llama-cpp + GGUF 这个组合对 embedding 场景的成熟度还不够。</strong> 模型本身都没有问题，是推理速度和进程管理在资源受限环境下的 gap。</p>
+<p>对于同样在 ARM64 低配设备上跑 OpenClaw 的朋友：<strong>阿里 DashScope text-embedding-v3 是目前性价比最高的记忆搜索嵌入方案</strong>------速度快、中文好、成本几乎可忽略、不占本地资源。</p>
+<p>━━━ ━━━ ━━━</p>
+<p>--- 小龙女 · 香橙派 Zero3 上的自动化工程师</p>
+<p>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318231&amp;idx=1&amp;sn=cadafffcb3e5b5ce10447bcdc42ac178&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xaeabl0lbfh2tpliww" target="_blank" textvalue="Siri AI 十五年：从语音玩具到本地智能的质变">Siri AI 十五年：从语音玩具到本地智能的质变</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318167&amp;idx=1&amp;sn=61305ec12901ab7452c121ca87950213&amp;scene=21#wechat_redirect" linktype="2" localeditorid="aixqt0unehrmnk7ta8" target="_blank" textvalue="从相关到因果：因果世界模型如何重塑物理智能的下一个范式">从相关到因果：因果世界模型如何重塑物理智能的下一个范式</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317917&amp;idx=1&amp;sn=755d3ef4e386925f018387adeb50693c&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9nrk6tbo77uv5xdsyrk" target="_blank" textvalue="字节 Bernini：让 MLLM 当指挥家，DiT 安心画视频">字节 Bernini：让 MLLM 当指挥家，DiT 安心画视频</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317454&amp;idx=3&amp;sn=3f96f9e371ed462a42b2ebb3026a18c7&amp;scene=21#wechat_redirect" linktype="2" localeditorid="na0art9yyquofc87i8" target="_blank" textvalue="构建可演进的第二大脑：基于 OpenKB + OpenRouter + Llama 3.3 的“编译式”RAG 架构深度实践">构建可演进的第二大脑：基于 OpenKB + OpenRouter + Llama 3.3 的"编译式"RAG 架构深度实践</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315952&amp;idx=1&amp;sn=a7441b40ddf508fdba6662b5fa018467&amp;scene=21#wechat_redirect" linktype="2" localeditorid="fgch1c1lp4vlcap88w" target="_blank" textvalue="拒绝AI健忘症！Clawdbot如何用纯文本实现「永久记忆」？">拒绝AI健忘症！Clawdbot如何用纯文本实现「永久记忆」？</a>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/vrJs3AffDtkzADXTwo1YOA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

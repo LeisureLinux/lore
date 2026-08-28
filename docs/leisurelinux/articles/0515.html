@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的“静默解密” | LeisureLinux 公众号</title>
+<meta name="description" content="进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的“静默解密”">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/bfEY8v2uIkHel6RGW0IwdA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的“静默解密”", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0515.html", "sameAs": "https://mp.weixin.qq.com/s/bfEY8v2uIkHel6RGW0IwdA", "isBasedOn": "https://mp.weixin.qq.com/s/bfEY8v2uIkHel6RGW0IwdA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的“静默解密”</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<h3 id="引言" path-to-node="3">引言</h3>
+<p>在 Linux 安全架构中，LUKS 全盘加密是保护隐私的底线。但传统方案中，每次开机繁琐的密码输入往往让人望而却步。本文将演示如何利用 <strong>TPM 2.0 (Trusted Platform Module)</strong> 硬件模块，结合 <code index-in-node="111" path-to-node="4">systemd-cryptenroll</code> 实现 Arch Linux 在 Btrfs 架构下的自动安全解密。为了方便读者实践，我们同步提供在 <strong>Debian 13 (Trixie)</strong> 宿主机下利用虚拟 TPM 进行实验的完整流程。</p>
+<hr />
+<h3 id="section-path-to-node6">{#section path-to-node="6"}</h3>
+<h3 id="一-环境准备debian-13-虚拟实验室" path-to-node="6">一、 环境准备：Debian 13 虚拟实验室</h3>
+<p>在物理机部署前，强烈建议在虚拟机中复现。Debian 13 提供的 <code index-in-node="34" path-to-node="7">swtpm</code> 能够完美模拟硬件行为。</p>
+<p><strong>1. 宿主机安装模拟器：</strong></p>
+<p>[Bash]{ngcontent-ng-c1474045893=""}</p>
+<pre><code ngcontent-ng-c1474045893="">sudo apt update &amp;&amp; sudo apt install qemu-system-x86 libvirt-daemon-system \
+virt-manager swtpm swtpm-tools ovmf
+</code></pre>
+<p><strong>2. 虚拟机配置要点：</strong></p>
+<ul>
+<li>
+<p><strong>固件 (Firmware)</strong>：必须选择 <strong>UEFI</strong> (<code index-in-node="25" path-to-node="11,0,0">OVMF_CODE.fd</code>)。</p>
+</li>
+<li>
+<p><strong>添加 TPM</strong>：在 Virt-Manager 中添加硬件，类型选择 <strong>Emulated</strong>，型号 <strong>TIS</strong>，版本 <strong>2.0</strong>。</p>
+</li>
+</ul>
+<hr />
+<h3 id="section-1-path-to-node13">{#section-1 path-to-node="13"}</h3>
+<h3 id="二-基础安装btrfs-luks" path-to-node="13">二、 基础安装：Btrfs + LUKS</h3>
+<p>通过 Arch Linux 官方 <code index-in-node="17" path-to-node="14">archinstall</code> 脚本快速建立原型。</p>
+<ol>
+<li>
+<p><strong>启动安装程序</strong>：执行 <code index-in-node="10" path-to-node="15,0,0">archinstall</code>。</p>
+</li>
+<li>
+<p><strong>磁盘配置</strong>：</p>
+<ul>
+<li>
+<p><strong>分区方案</strong>：选择 <code index-in-node="8" path-to-node="15,1,1,0,0">Best-effort default partition layout</code>。</p>
+</li>
+<li>
+<p><strong>文件系统</strong>：指定 <strong>Btrfs</strong>，建议开启 <strong>Zstd 压缩</strong>。</p>
+</li>
+<li>
+<p><strong>磁盘加密</strong>：选择 <strong>LUKS</strong>，并设置一个强健的初始密码（该密码将作为 TPM 失效时的保底恢复手段）。</p>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>关键组件</strong>：</p>
+<ul>
+<li>
+<p><strong>网络</strong>：选择 <code index-in-node="6" path-to-node="15,2,1,0,0">NetworkManager</code>。</p>
+</li>
+<li>
+<p><strong>引导</strong>：建议选择 <code index-in-node="8" path-to-node="15,2,1,1,0">systemd-boot</code> 以获得更好的 TPM 原生集成。</p>
+</li>
+</ul>
+</li>
+</ol>
+<hr />
+<h3 id="section-2-path-to-node17">{#section-2 path-to-node="17"}</h3>
+<h3 id="三-核心演进绑定-tpm-2.0" path-to-node="17">三、 核心演进：绑定 TPM 2.0</h3>
+<p>系统安装完成并重启进入后，开始将加密密钥"封印"到 TPM 芯片中。</p>
+<p><strong>1. 确认硬件识别：</strong></p>
+<p>[Bash]{ngcontent-ng-c1474045893=""}</p>
+<pre><code ngcontent-ng-c1474045893=""># 检查是否存在 TPM 资源管理器设备
+ls /dev/tpmrm0
+</code></pre>
+<p><strong>2. 执行密钥绑定：</strong>\
+使用 <code index-in-node="14" path-to-node="21">systemd-cryptenroll</code>。我们将密钥绑定到 <strong>PCR 7</strong>（代表 Secure Boot 状态）。这意味着如果黑客篡改了安全启动协议或更换了硬件，TPM 将拒绝释放密钥。</p>
+<p>[Bash]{ngcontent-ng-c1474045893=""}</p>
+<pre><code ngcontent-ng-c1474045893=""># 请将 /dev/vda2 替换为你的 LUKS 实际分区
+sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/vda2
+</code></pre>
+<p><strong>3. 配置 initramfs 钩子：</strong>\
+编辑 <code index-in-node="23" path-to-node="23">/etc/mkinitcpio.conf</code>，将传统的 <code index-in-node="49" path-to-node="23">encrypt</code> 替换为 systemd 架构的 <strong><code index-in-node="73" path-to-node="23">sd-encrypt</code></strong>。</p>
+<p>[Bash]{ngcontent-ng-c1474045893=""}</p>
+<pre><code ngcontent-ng-c1474045893="">HOOKS=(base systemd autodetect modconf kms keyboard sd-vconsole sd-encrypt filesystems)
+</code></pre>
+<p><strong>重新生成镜像：</strong> <code index-in-node="8" path-to-node="25">sudo mkinitcpio -P</code></p>
+<hr />
+<h3 id="section-3-path-to-node27">{#section-3 path-to-node="27"}</h3>
+<h3 id="四-安全闭环验证加密有效性" path-to-node="27">四、 安全闭环：验证加密有效性</h3>
+<p>这是最关键的一步，确保你的系统不是在"裸奔"。</p>
+<p><strong>1. 元数据验证：</strong>\
+通过 <code index-in-node="13" path-to-node="29">cryptsetup</code> 查看 LUKS2 槽位状态。</p>
+<p>[Bash]{ngcontent-ng-c1474045893=""}</p>
+<pre><code ngcontent-ng-c1474045893="">sudo cryptsetup luksDump /dev/vda2
+</code></pre>
+<blockquote>
+<p><strong>确认项</strong>：在 <code index-in-node="6" path-to-node="31,0">Tokens</code> 段落中应出现 <code index-in-node="20" path-to-node="31,0">systemd-tpm2</code>；在 <code index-in-node="35" path-to-node="31,0">Keyslots</code> 中应看到一个由该 Token 关联的新槽位。</p>
+</blockquote>
+<p><strong>2. 行为验证（静默解密）：</strong>\
+重启虚拟机。如果系统直接进入登录界面而未弹出密码输入框，说明 TPM 已成功接管解密流程。</p>
+<p><strong>3. 引导日志审计：</strong></p>
+<p>[Bash]{ngcontent-ng-c1474045893=""}</p>
+<pre><code ngcontent-ng-c1474045893="">journalctl -b 0 | grep &quot;unsealed&quot;
+</code></pre>
+<p>如果输出 <code index-in-node="5" path-to-node="35">Successfully unsealed key from TPM2 device</code>，则标志着硬件级信任链已完整建立。</p>
+<hr />
+<h3 id="section-4-path-to-node37">{#section-4 path-to-node="37"}</h3>
+<h3 id="五-专家笔记关于-pcr-的生存策略" path-to-node="37">五、 专家笔记：关于 PCR 的生存策略</h3>
+<p>在物理机部署时，PCR 策略的选择至关重要：</p>
+<ul>
+<li>
+<p><strong>PCR 7 (Recommended)</strong>：仅绑定安全启动状态。更新 BIOS 设置会触发密码回退。</p>
+</li>
+<li>
+<p><strong>PCR 0/1</strong>：绑定固件代码。这意味着<strong>每次更新主板 BIOS</strong>，自动解密都会失效。</p>
+</li>
+<li>
+<p><strong>应对方案</strong>：在更新 BIOS 前，建议先执行 <code index-in-node="22" path-to-node="39,2,0">systemd-cryptenroll --wipe-slots=tpm2</code> 清除旧绑定，更新完成后重新绑定。</p>
+</li>
+</ul>
+<hr />
+<h3 id="section-5-path-to-node41">{#section-5 path-to-node="41"}</h3>
+<h3 id="结语" path-to-node="41">结语</h3>
+<p>通过 Btrfs 提供的文件系统灵活性与 TPM 2.0 提供的硬件级安全性，我们成功构建了一个既安全又易用的 Linux 工作站环境。这不仅是配置的叠加，更是对现代安全架构的一次深度实践。</p>
+<p>\</p>
+<p>\</p>
+<hr />
+<p><strong>更多关于 Linux 内核加固与底层技术的硬核干货，请关注 B 站同名频道：LeisureLinux。</strong></p>
+<p><strong>\
+</strong></p>
+<p><strong>\
+</strong></p>
+<hr />
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/bfEY8v2uIkHel6RGW0IwdA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sudo 核心变更：从“静默”到“反馈”的逻辑转变 | LeisureLinux 公众号</title>
+<meta name="description" content="sudo 核心变更：从“静默”到“反馈”的逻辑转变">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/SWXGzDmp_iUoQkCd11-RxQ">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "sudo 核心变更：从“静默”到“反馈”的逻辑转变", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0385.html", "sameAs": "https://mp.weixin.qq.com/s/SWXGzDmp_iUoQkCd11-RxQ", "isBasedOn": "https://mp.weixin.qq.com/s/SWXGzDmp_iUoQkCd11-RxQ", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">sudo 核心变更：从“静默”到“反馈”的逻辑转变</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>在传统的 <code index-in-node="5" path-to-node="3">sudo</code> (C 语言版) 中，输入密码时终端不显示任何字符（即"静默模式"），这曾被视为一种基础的安全防范，旨在防止旁路窥视者获知密码长度。</p>
+<p>然而，由 <strong>Prossimo</strong> 项目推动、基于 <strong>Rust</strong> 语言重写的 <strong>sudo-rs</strong>，在最新版本中决定默认启用 <code index-in-node="54" path-to-node="4">pwfeedback</code> 选项。这意味着用户在输入密码时，终端将显示星号（<code index-in-node="89" path-to-node="4">*</code>）。</p>
+<h3 id="section-path-to-node5">{#section path-to-node="5"}</h3>
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMss0rXicOlgzmAOodr9EQwE6fiaXiaZyknKetVWcOS1c2READTDRzWWcic4hGbiaXIv2gmUyOp1TCws1JiaJtJcWcuiatAeIGrx3DQruKE/640?wx_fmt=jpeg" /></p>
+<h3 id="内存安全重写的核心诉求" path-to-node="5">1. 内存安全：重写的核心诉求</h3>
+<p><code index-in-node="0" path-to-node="6">sudo</code> 是系统权限控制的"单点故障"源。传统的 C 版 <code index-in-node="29" path-to-node="6">sudo</code> 多年来饱受缓冲区溢出（如 CVE-2021-3156）等内存安全漏洞的困扰。</p>
+<ul>
+<li>
+<p><strong>Rust 的安全原语</strong>：<code index-in-node="11" path-to-node="7,0,0">sudo-rs</code> 利用 Rust 的所有权（Ownership）和借用检查（Borrow Checker）机制，从编译器层面消除了<strong>内存溢出</strong>和<strong>悬垂指针</strong>风险。</p>
+</li>
+<li>
+<p><strong>权限最小化</strong>：在架构设计上，<code index-in-node="13" path-to-node="7,1,0">sudo-rs</code> 尽可能减少了以 root 身份运行的代码行数，将特权操作与常规逻辑进行了严格解耦。</p>
+</li>
+</ul>
+<h3 id="section-1-path-to-node8">{#section-1 path-to-node="8"}</h3>
+<h3 id="用户体验ux与安全性的博弈" path-to-node="8">2. 用户体验（UX）与安全性的博弈</h3>
+<p>默认开启星号反馈并非心血来潮，而是基于现代办公 IT 环境的考量：</p>
+<ul>
+<li>
+<p><strong>减少误操作</strong>：静默模式常导致用户因不确定是否触发输入框而反复尝试，增加触发锁定机制的概率。</p>
+</li>
+<li>
+<p><strong>防御弱化</strong>：在现代安全威胁模型中，通过星号判断密码长度的"旁路攻击"威胁等级，远低于由于软件漏洞导致的本地提权风险。</p>
+</li>
+</ul>
+<hr />
+<h2 id="技术深度分析sudo-rs-的执行流程" path-to-node="12">技术深度分析：sudo-rs 的执行流程</h2>
+<p><code index-in-node="0" path-to-node="13">sudo-rs</code> 的设计不仅是语言的更替，更是对权限转换逻辑的模块化重构。</p>
+<h3 id="section-2-path-to-node14">{#section-2 path-to-node="14"}</h3>
+<h3 id="关键组件" path-to-node="14">关键组件：</h3>
+<ul>
+<li>
+<p><strong>PAM (Pluggable Authentication Modules)</strong>：<code index-in-node="39" path-to-node="15,0,0">sudo-rs</code> 通过标准接口调用 PAM 栈，确保与现有系统的认证机制（如 LDAP, 生物识别）无缝兼容。</p>
+</li>
+<li>
+<p><strong>Policy Engine</strong>：采用更严谨的语法解析器处理 <code index-in-node="28" path-to-node="15,1,0">/etc/sudoers</code>，避免因解析歧义导致的权限绕过。</p>
+</li>
+<li>
+<p><strong>Secure Exec</strong>：在执行目标命令前，严格清理环境变量（Environment Sanitization），防止通过 <code index-in-node="61" path-to-node="15,2,0">LD_PRELOAD</code> 等手段进行的攻击。</p>
+</li>
+</ul>
+<hr />
+<h2 id="section-3-path-to-node17">{#section-3 path-to-node="17"}</h2>
+<h2 id="专家视角的安全建议" path-to-node="17">专家视角的安全建议</h2>
+<p>虽然 <code index-in-node="3" path-to-node="18">sudo-rs</code> 在内存安全性上实现了质的飞跃，但作为 IT 咨询顾问，建议在生产环境中部署时注意以下几点：</p>
+<ol>
+<li>
+<p><strong>配置兼容性验证</strong>：<code index-in-node="8" path-to-node="19,0,0">sudo-rs</code> 目前并未完全覆盖 C 版 <code index-in-node="29" path-to-node="19,0,0">sudo</code> 的所有复杂插件功能，切换前需审计现有的 <code index-in-node="54" path-to-node="19,0,0">sudoers</code> 配置是否涉及非标插件。</p>
+</li>
+<li>
+<p><strong>星号反馈策略</strong>：若所在的行业安全合规标准（如某些极高密级的金融或军事环境）明确禁止密码长度回显，应通过配置显式关闭：</p>
+<p>[Plaintext]{ngcontent-ng-c729129205=""}</p>
+<p><code>{ngcontent-ng-c729129205=""}
+Defaults !pwfeedback</code></p>
+</li>
+<li>
+<p><strong>供应链审计</strong>：鉴于 Rust 项目依赖 Cargo 生态，需定期使用 <code index-in-node="34" path-to-node="19,2,0">cargo-audit</code> 扫描依赖库的安全性，防止上游供应链污染。</p>
+</li>
+</ol>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316350&amp;idx=1&amp;sn=f6d87383975a6dee0e76a2fa7a0114a9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="uw7sq925ukh0cit4w0" target="_blank" textvalue="Sudo 告急：30年守护者求援，C 时代的权力基石何去何从？">Sudo 告急：30年守护者求援，C 时代的权力基石何去何从？</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316326&amp;idx=1&amp;sn=33a667ab309b4ad3af8b2fcd41068854&amp;scene=21#wechat_redirect" linktype="2" localeditorid="iz4sluurtgrgawgglc" target="_blank" textvalue="进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的“静默解密”">进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的"静默解密"</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316491&amp;idx=1&amp;sn=935c6328e293f935cc0594bdfc8add90&amp;scene=21#wechat_redirect" linktype="2" localeditorid="911e18ru0volxtgny0w" target="_blank" textvalue="Linus 的大招：Linux 7.0 正式登场，这几个 VFS 底层改进你必须知道">Linus 的大招：Linux 7.0 正式登场，这几个 VFS 底层改进你必须知道</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315597&amp;idx=1&amp;sn=774220c1cb5b2705b038b98e2db69f9f&amp;scene=21#wechat_redirect" linktype="2" localeditorid="nx6fkfdlf3vhiuw0e8" target="_blank" textvalue="AI 程序员独立开发 160 万行代码？Cursor 官方揭秘：多 Agent 协同的数周“长跑”实验">AI 程序员独立开发 160 万行代码？Cursor 官方揭秘：多 Agent 协同的数周"长跑"实验</a>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/SWXGzDmp_iUoQkCd11-RxQ" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

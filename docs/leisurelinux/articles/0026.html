@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex 404 之谜：Responses API 协议断层与本地 Proxy 桥接方案 | LeisureLinux 公众号</title>
+<meta name="description" content="QUOTECodex升级到下一代协议，国内大模型集体404NotFound——不是能力问题，是接口代差——Leisure">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/TLJ3AXLtufG7ftzNBtHn8w">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Codex 404 之谜：Responses API 协议断层与本地 Proxy 桥接方案", "datePublished": null, "articleSection": "AI/Agent", "description": "QUOTECodex升级到下一代协议，国内大模型集体404NotFound——不是能力问题，是接口代差——Leisure", "url": "https://freelamp.com/leisurelinux/articles/0026.html", "sameAs": "https://mp.weixin.qq.com/s/TLJ3AXLtufG7ftzNBtHn8w", "isBasedOn": "https://mp.weixin.qq.com/s/TLJ3AXLtufG7ftzNBtHn8w", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Codex 404 之谜：Responses API 协议断层与本地 Proxy 桥接方案</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<p>QUOTE</p>
+<p>Codex 升级到下一代协议，国内大模型集体      404 Not Found      ------不是能力问题，是接口代差</p>
+<p>------ LeisureLinux</p>
+<p>如果你使用 Codex CLI（v0.122+）搭配 DeepSeek 或阿里百炼等国内大模型，可能会遇到一个令人困惑的错误：</p>
+<p>unexpected status 404 Not Found: Unknown error, url: https://api.deepseek.com/v1/responses</p>
+<p>这不是模型的能力问题，也不是 API Key 的问题------这是 Codex 项目架构演进中的一个重大断层变动（Breaking Change）。本文复盘整个排查过程与解决方案。</p>
+<p>本文看点</p>
+<p>01</p>
+<p>为什么 Codex 强制废弃 Chat Completions？</p>
+<p>02</p>
+<p>为什么国内大模型无法直连？</p>
+<p>本地 Proxy 桥接转换方案</p>
+<p>01</p>
+<p>BREAKING CHANGE</p>
+<h3 id="codex-chat-completions">为什么 Codex 强制废弃 Chat Completions？</h3>
+<p>OpenAI 在升级 Codex CLI 时，彻底将底层交互规范由传统 Chat API 迁移到了全新的        Responses API（/v1/responses）        ，并硬编码锁死了        wire_api = \"responses\"        。核心技术原因包括：</p>
+<p>原因 01          旧协议无法承载 Agentic 交互</p>
+<p>旧的          chat/completions           诞生于 GPT-3.5 时代，本质上是「一问一答」的模型。而现代 Agent 级编程工具需要频繁进行          Tool Calling          （本地执行命令、修改文件、读写 Git）、多轮 Reasoning/Thinking 思考过程交织、以及长连接 SSE/WebSocket 双向控制。这些能力在简陋的 Chat 协议上做扩展，越堆越臃肿。</p>
+<p>原因 02          状态管理下沉到协议层</p>
+<p>在 Responses API 下，上下文管理、Thinking 过程的暂存、Tool 回调的 ID 匹配全都在协议层标准化了。OpenAI 官方团队在 GitHub 上明确表示：为了维持兼容旧的 Chat 协议，导致代码库膨胀且极易引入 Regression（功能退化），因此          决定彻底砍掉对          wire_api = \"chat\"           的支持          ，强制仅支持 Responses 协议。</p>
+<p>\</p>
+<p>02</p>
+<p>PROTOCOL GAP</p>
+<h3 id="_1">为什么国内大模型无法直连？</h3>
+<p>这        <strong>不是 DeepSeek 等模型的能力问题</strong>        ，而是        「协议规范接口（Protocol Endpoint）」的代差        ：</p>
+<p>「不是连不上，是鸡同鸭讲------Codex 说 Responses 语，DeepSeek 只会 Chat 语。」</p>
+<p>DeepSeek、百炼等平台目前提供的仍然是        <strong>OpenAI 兼容规范的 Chat Completions 接口</strong>        （包含        messages        、        /v1/chat/completions         的标准 JSON 格式）。而 Codex CLI 当前发出的却是结构完全不同的        Responses API 请求        （包含        input        、        instructions        、        reasoning_effort        等字段，路由为        /v1/responses        ）。当 Codex CLI 把 Responses 协议的 Payload 发给 DeepSeek 时，服务端的 Gateway 识别不到对应的接口，直接抛出        404 Not Found        。</p>
+<p>\</p>
+<p>03</p>
+<p>SOLUTION</p>
+<h3 id="proxy">社区的解决方案：本地 Proxy 桥接转换</h3>
+<p>因为 Codex 在客户端代码层面做死了硬编码，        唯一的解法就是通过本地中间件（Proxy）完成双向协议转换        ：</p>
+<p>FLOW</p>
+<p>[ Codex CLI ] ─── /v1/responses ───→ [ 本地 Proxy ]</p>
+<p>↓ 协议转换桥接</p>
+<p>[ 国内平台 (DeepSeek / 百炼) ] ←── /v1/chat/completions</p>
+<p>TOOL 1          CC Switch</p>
+<p>提供本地路由服务，专为 Codex 这种强绑定 Responses API 的 CLI 工具设计。自动把 Codex 发出的          /v1/responses           请求实时拦截，重写映射回 DeepSeek 的          /chat/completions           格式。</p>
+<p>TOOL 2          codeproxy-ai/cli</p>
+<p>基于 Node.js 的轻量级通用本地代理。支持请求体转化、SSE 流式输出转译、Thinking/Reasoning 思考过程回传以及 Tool Calling 的拦截映射。安装方式：</p>
+<p>.          .          .          bash</p>
+<p>npm install -g \@codeproxy/cli</p>
+<p>codeproxy \</p>
+<p>--base-url https://api.deepseek.com/v1 \</p>
+<p>--model deepseek-v4-flash \</p>
+<p>--apikey \\"\$DEEPSEEK_API_KEY\\" \</p>
+<p>--upstream-format openai-chat</p>
+<p>proxy 默认监听        127.0.0.1:8787        。然后在 Codex 的        \~/.codex/config.toml         中，将        base_url         改为指向本地 proxy：</p>
+<p>CONFIG</p>
+<p>[model_providers.deepseek]</p>
+<p>name = \"DeepSeek\"</p>
+<p>base_url = \"http://127.0.0.1:8787/v1\"</p>
+<p>env_key = \"DEEPSEEK_API_KEY\"</p>
+<p>TOOL 3          openai/codex-responses-api-proxy</p>
+<p>官方/社区针对 Node/NPM 分发的轻量级转译工具，安装后本地跑一个服务，Codex 的          base_url           直接指向          http://127.0.0.1:3000/v1           即可正常工作。</p>
+<p>「这属于技术栈升级带来的标准不兼容------Codex 升级到了下一代协议（Responses API），而大多数第三方 API 平台目前依然暴露的是上一代标准协议（Chat Completions API）。挂一层轻量级的本地 Proxy 是目前体验最稳、无需修改客户端代码的标准解法。」</p>
+<p>\
+       END        \</p>
+<p>如果你觉得今天这篇有收获，欢迎        <strong>点赞、在看、转发</strong>        三连，我们下篇见。</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318903&amp;idx=1&amp;sn=d2769dd5a5b29cf05ccd9032f57845ef&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1vkfzcefnglxpn0agw" target="_blank" textvalue="【OpenClaw 实操】OpenClaw Dreaming：AI 智能体的梦境记忆系统">【OpenClaw 实操】OpenClaw Dreaming：AI 智能体的梦境记忆系统</a><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318894&amp;idx=1&amp;sn=453816ea657e4234b022509f5d4cb398&amp;scene=21#wechat_redirect" linktype="2" localeditorid="k1ixwlxapvnfqsny0w" target="_blank" textvalue="【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路">【OpenClaw 实操】本地嵌入模型踩坑记：从 FTS 到向量嵌入的五条路</a>\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318947&amp;idx=1&amp;sn=dc1876be1ff3241f0dd0556b862f00b9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5zsa3a7antlf1ee90cg" target="_blank" textvalue="从OpenClaw到Codex：52个AI Agent技能的搬家实战">从OpenClaw到Codex：52个AI Agent技能的搬家实战</a>\
+\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/TLJ3AXLtufG7ftzNBtHn8w" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

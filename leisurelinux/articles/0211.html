@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！ | LeisureLinux 公众号</title>
+<meta name="description" content="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/DTMHTV4mRScTkmPcTMsrOA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！", "datePublished": "2026-05-04T05:13:00+08:00", "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0211.html", "sameAs": "https://mp.weixin.qq.com/s/DTMHTV4mRScTkmPcTMsrOA", "isBasedOn": "https://mp.weixin.qq.com/s/DTMHTV4mRScTkmPcTMsrOA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-05-04T05:13:00+08:00">2026-05-04 05:13</time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<blockquote>
+<p>这是一份针对 Copy Fail (CVE-2026-31431) Linux 内核漏洞的深度技术解读。该漏洞于 2026 年 4 月 29 日公开披露，因其确定性极高、不依赖竞态条件以及跨发行版通用性，被安全界视为继 Dirty Pipe 之后近十年来最危险的 Linux 本地提权漏洞。</p>
+</blockquote>
+<h2 heading="true" id="核心技术原理从页缓存到幽灵写入">1. 核心技术原理：从"页缓存"到"幽灵写入"</h2>
+<p>Copy Fail 的根源在于内核加密子系统（Crypto Subsystem）中的<strong>AEAD（Authenticated Encryption with Associated Data）</strong>实现逻辑。</p>
+<ul>
+<li>•<strong>逻辑漏洞点</strong>：漏洞源于 2017 年的一个性能优化提交（Commit 72548b0）。在处理带有扩展序列号（ESN）的加密请求时，内核为了节省内存拷贝开销，采用了"原地处理（In-place processing）"机制。</li>
+<li>•<strong>越界写入</strong>：当攻击者通过 AF_ALG 接口触发特定的加密操作时，内核会在预期的输出缓冲区之外，"顺带"将 4 字节的序列号（seqno）写入到相邻的内存页中。</li>
+<li>•<strong>页缓存污染</strong>：通过 splice() 系统调用，攻击者可以将只读文件（如 /usr/bin/su 或 /etc/ld.so.preload）映射到内核的页缓存中。内核本应只在该文件的缓存页上进行只读操作，但由于前述逻辑漏洞，那 4 字节的越界写入会直接作用于内存中的文件数据。</li>
+</ul>
+<blockquote>
+<p><strong>后果</strong>：由于写入发生在<strong>Page Cache（页缓存）</strong>层级，文件的物理磁盘数据并未改变，因此传统的<strong>文件完整性检查工具（如 AIDE 或 Tripwire）在静态扫描时无法发现异常</strong>。但当系统执行该文件时，由于 CPU 直接从污染的内存页加载代码，攻击者注入的恶意指令（如 Shellcode）便会以 root 权限运行。</p>
+</blockquote>
+<h2 heading="true" id="漏洞特性为什么它如此危险">2. 漏洞特性：为什么它如此危险？</h2>
+<p>特性           详细描述</p>
+<hr />
+<p><strong>高稳定性</strong>   与 Dirty COW 等依赖"竞态条件"的漏洞不同，Copy Fail 是<strong>直线逻辑错误</strong>。攻击不需要反复尝试，100% 触发成功，不会导致系统崩溃。
+  <strong>通用性强</strong>   攻击代码（PoC）不依赖特定的内核偏移量（Offsets）。同一段 Python 脚本即可在 Ubuntu、Debian、RHEL、Amazon Linux 等多个发行版上直接提权。
+  <strong>隐蔽性高</strong>   属于"内存污染"而非"磁盘修改"。重启或内存压力导致页面换出后，痕迹会随之消失，给数字取证带来极大挑战。
+  <strong>容器穿透</strong>   由于页缓存在宿主机内核空间是全局共享的，容器内的攻击者可以通过此漏洞污染宿主机的二进制文件，实现<strong>容器逃逸</strong>或对同宿主机其他租户的跨站攻击。</p>
+<h2 heading="true" id="影响范围与现状-2026年5月">3. 影响范围与现状 (2026年5月)</h2>
+<p>该漏洞影响自<strong>2017 年</strong>以来发布的所有主流 Linux 内核版本（4.14 及以上，至 7.0-rc）。</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMssv39IFjk4R19qpz7ZBibk3U3FMJh0WDA8egQicVqiazuTK3TEChyDQFNBLUGNmsFJYpj9GLxwQXLqtRO8D6uvgBWEV3bs6l0hwBc/640?wx_fmt=jpeg" /></p>
+<h3 heading="true" id="受影响版本">受影响版本：</h3>
+<ul>
+<li>•<strong>Linux Kernel</strong>: 4.14 \~ 7.0-rc</li>
+<li>•<strong>各发行版</strong>: Debian 11/12/13, Ubuntu 20.04/22.04/24.04/26.04, RHEL 8/9/10, Amazon Linux 2023 等。</li>
+</ul>
+<h3 heading="true" id="修复版本">修复版本：</h3>
+<ul>
+<li>•<strong>官方主线修复</strong>: 7.0, 6.19.12, 6.18.22。</li>
+<li>•<strong>Debian/Ubuntu</strong>: 已发布紧急安全补丁。<strong>Debian 13 (Trixie)</strong>的补丁已在最新仓库更新。</li>
+</ul>
+<h2 heading="true" id="系统架构师管理员的应对建议">4. 系统架构师/管理员的应对建议</h2>
+<p>作为经验丰富的 IT 专家，建议您按以下优先级采取行动：</p>
+<h3 heading="true" id="立即修补并重启">1. 立即修补并重启</h3>
+<p>内核补丁必须在<strong>重启</strong>后才能生效。</p>
+<pre><code># Debian/Ubuntu 常用更新命令
+sudo apt update &amp;&amp; sudo apt upgrade -y
+# 检查当前运行的内核版本
+uname -a
+</code></pre>
+<p><em>注：请务必核对您的自定义内核（如 CachyOS 或自己编译的 7.0.x）是否已合入对应的补丁。</em></p>
+<h3 heading="true" id="临时缓解措施-无法立即重启时">2. 临时缓解措施 (无法立即重启时)</h3>
+<p>如果业务系统暂时无法重启，可以尝试禁用受影响的内核模块：</p>
+<pre><code># 禁用 algif_aead 模块
+sudo modprobe -r algif_aead
+# 或者通过 sysctl/blacklist 彻底封禁
+echo "install algif_aead /bin/true" | sudo tee /etc/modprobe.d/disable-copy-fail.conf
+</code></pre>
+<p><em>警告：这可能会导致 IPsec、kTLS 或其他依赖内核硬件加速加密的应用失效。</em></p>
+<h3 heading="true" id="运行时监控">3. 运行时监控</h3>
+<p>利用<strong>eBPF (Falco/Tracee)</strong>监控非预期的 AF_ALG 套接字创建行为。正常的应用极少直接通过 SOCK_SEQPACKET 类型调用 AF_ALG 接口，这通常是攻击尝试的"红旗"信号。</p>
+<h3 heading="true" id="架构审计">4. 架构审计</h3>
+<p>针对多租户环境（Kubernetes、CI/CD 运行环境），应启用更严格的<strong>seccomp</strong>配置文件，默认拦截 socket(AF_ALG, ...) 调用，从源头上切断攻击路径。\
+<strong>LeisureLinux 频道提醒：</strong>\
+由于此漏洞由 AI 辅助发现（据报导 Theori 实验室利用其内部 LLM 在一小时内定位了该逻辑漏洞），这预示着未来"深层逻辑漏洞"的发现频率将大幅提升。在信创迁移或金融级架构设计中，建议将"内核零信任"和"运行时内存保护"纳入核心考量。</p>
+<blockquote>
+<p>本文由 AI 生成，仅供参考，请仔细甄别，谨慎操作。</p>
+</blockquote>
+<p>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315565&amp;idx=1&amp;sn=2f24b738c5ca3b790ccdbb10e86b84d0&amp;scene=21#wechat_redirect" linktype="2" localeditorid="iex24wjvwm97bpet4w" target="_blank" textvalue="比“脏牛”更丝滑？深度解析 Linux 提权核弹：DirtyPipe (CVE-2022-0847)">比"脏牛"更丝滑？深度解析 Linux 提权核弹：DirtyPipe (CVE-2022-0847)</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="jbkg313zv4c866qiv4" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="sn146f5inet2fl14w" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317225&amp;idx=1&amp;sn=3e7154ee58f80b8b6e5ce4102f419e1e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="289u1xwm21b4uyae4g" target="_blank" textvalue="解析 Linux AI 新规：从 Assisted-by 标签看内核开发的责任追溯与供应链安全">解析 Linux AI 新规：从 Assisted-by 标签看内核开发的责任追溯与供应链安全</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317155&amp;idx=1&amp;sn=2017b2a48cab6b84e36ff39b3953a102&amp;scene=21#wechat_redirect" linktype="2" localeditorid="74vw741yd9ddw8l67eo" target="_blank" textvalue="深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备">深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317101&amp;idx=1&amp;sn=598d37ce1972a4e36a04ea5db1976ade&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9g0q1msp8k14c2fg7b4" target="_blank" textvalue="这不是演习！Anthropic 最强模型 Mythos 泄露：自主攻破 Linux 内核，程序员或成“稀缺物种”。">这不是演习！Anthropic 最强模型 Mythos 泄露：自主攻破 Linux 内核，程序员或成"稀缺物种"。</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315739&amp;idx=1&amp;sn=836947169f7af19d3dd97c0c692c2d29&amp;scene=21#wechat_redirect" linktype="2" localeditorid="tj1hzx1y1h407ymnsw" target="_blank" textvalue="Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具">Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315727&amp;idx=1&amp;sn=887e067a83a3f6cdd133341e4fce5545&amp;scene=21#wechat_redirect" linktype="2" localeditorid="c0emo5k9bdomti58g0" target="_blank" textvalue="【硬核】Singularity：Linux 内核里的“最终 BOSS”级 Rootkit 是如何炼成的？">【硬核】Singularity：Linux 内核里的"最终 BOSS"级 Rootkit 是如何炼成的？</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="33e209c70r3yv9zytc" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a>\
+\
+\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/DTMHTV4mRScTkmPcTMsrOA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

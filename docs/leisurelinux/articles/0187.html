@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exim BDAT 缓冲区溢出漏洞 (CVE-2017-16943) 深度解析 | LeisureLinux 公众号</title>
+<meta name="description" content="Exim BDAT 缓冲区溢出漏洞 (CVE-2017-16943) 深度解析">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/nfVQ4m7l78RpTAh6Dflpbg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Exim BDAT 缓冲区溢出漏洞 (CVE-2017-16943) 深度解析", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0187.html", "sameAs": "https://mp.weixin.qq.com/s/nfVQ4m7l78RpTAh6Dflpbg", "isBasedOn": "https://mp.weixin.qq.com/s/nfVQ4m7l78RpTAh6Dflpbg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Exim BDAT 缓冲区溢出漏洞 (CVE-2017-16943) 深度解析</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<h3 heading="true" id="架构背景smtp-bdat-动词与分块传输">1. 架构背景：SMTP BDAT 动词与分块传输</h3>
+<p>在 SMTP 协议的扩展中，BDAT 命令（RFC 3030）用于替代传统的 DATA 命令。其核心逻辑是允许客户端以"分块（Chunking）"的方式传输二进制数据，而无需进行 Base64 编码或寻找特定的结束标识符（如 .）。这种机制旨在提高大数据量传输的效率，减少服务器端的解析开销。</p>
+<h3 heading="true" id="漏洞成因非法序列导致的释放后使用-uaf">2. 漏洞成因：非法序列导致的释放后使用 (UAF)</h3>
+<p>该漏洞存在于 Exim 的 receive_msg 函数中。当服务器处理特殊的 BDAT 命令序列时，解析逻辑未能正确维护内存指针的状态：</p>
+<ul>
+<li>•<strong>内存重分配机制</strong>：Exim 在处理 SMTP 头部和数据时使用动态分配的缓冲区。当接收到 BDAT 请求时，系统会分配一段内存用于存储数据块。</li>
+<li>•<strong>非预期状态转换</strong>：攻击者通过发送一系列精心构造的 BDAT 命令，中间夹杂着会导致缓冲区重新分配或重置的操作。</li>
+<li>•<strong>释放后使用 (Use-After-Free)</strong>：在某些特定条件下，Exim 可能会释放掉当前正在使用的缓冲区，但全局变量中仍然保留着指向该无效内存地址的指针（Dangling Pointer）。</li>
+<li>•<strong>堆溢出与控制流劫持</strong>：后续的 BDAT 数据写入操作会直接作用于已释放的堆内存块。通过堆喷射（Heap Spraying）等技术，攻击者可以覆盖关键的函数指针（如 base64_decode 相关的回调），从而实现远程代码执行（RCE）。</li>
+</ul>
+<h3 heading="true" id="技术特征与风险评估">3. 技术特征与风险评估</h3>
+<ul>
+<li>•<strong>攻击向量</strong>：网络远程触发（远程未经身份验证）。</li>
+<li>•<strong>利用难度</strong>：由于现代 Linux 发行版普遍启用了 ASLR（地址空间布局随机化）和 NX（堆栈不可执行），纯粹的漏洞利用需要精准的内存布局控制，但在未打补丁的系统中依然具有极高风险。</li>
+<li>•<strong>受影响范围</strong>：Exim 4.88 及 4.89 版本（当启用 chunking 支持时，这是默认选项）。</li>
+</ul>
+<h3 heading="true" id="修复与防御建议">4. 修复与防御建议</h3>
+<ol>
+<li>1.<strong>版本升级</strong>：立即升级至<strong>Exim 4.90</strong>或更高版本。</li>
+<li>2.<strong>临时规避</strong>：若无法立即升级，可以通过在配置文件中设置 chunking_advertise_hosts =（将其设置为空）来禁用 BDAT 命令的支持，迫使客户端回退到传统的 DATA 模式。</li>
+<li>3.<strong>安全加固</strong>：利用 AppArmor 或 SELinux 限制 Exim 进程的系统调用权限。</li>
+</ol>
+<h3 heading="true" id="参考文献">参考文献</h3>
+<ul>
+<li>•<strong>Meh Chang (Devcore)</strong>. (2017).<em>Exim Remote Code Execution (CVE-2017-16943)</em>. [Online]. Available at: https://devco.re/blog/2017/12/11/Exim-RCE-advisory-CVE-2017-16943-en/</li>
+<li>•<strong>Vadey, G. (Mitre)</strong>. (2017).<em>CVE-2017-16943 Detail</em>. [Online]. Available at: https://nvd.nist.gov/vuln/detail/CVE-2017-16943</li>
+<li>•<strong>Exim Maintainers</strong>. (2017).<em>Exim Security Release: CVE-2017-16943 and CVE-2017-16944</em>. [Online]. Available at: https://lists.exim.org/lurker/message/20171125.034842.d1d7514f.en.html</li>
+<li>•<strong>RFC 3030</strong>. (2000).<em>SMTP Service Extensions for Transmission of Large and Binary MIME Messages</em>. [Online]. Available at: https://tools.ietf.org/html/rfc3030</li>
+</ul>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316226&amp;idx=1&amp;sn=59d71f404fd1aaa692a684852fcae9da&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9o0aaw20e9lm1zfdgjk" target="_blank" textvalue="技术深度解析：微软 Authenticator 移除“密码”管理器的底层逻辑">技术深度解析：微软 Authenticator 移除"密码"管理器的底层逻辑</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316406&amp;idx=1&amp;sn=a6a9d8c0348756f22635b2e3b73aa3ff&amp;scene=21#wechat_redirect" linktype="2" localeditorid="yswnjdmcxqq165n3sw" target="_blank" textvalue="自身产品竟成入侵跳板：SmarterTools 遭 Warlock 勒索软件深度渗透技术复盘">自身产品竟成入侵跳板：SmarterTools 遭 Warlock 勒索软件深度渗透技术复盘</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316274&amp;idx=1&amp;sn=0cfe4701f3921036c5b40de2c9e2f4f8&amp;scene=21#wechat_redirect" linktype="2" localeditorid="dym5dudjo9h0fataf4" target="_blank" textvalue="核心观点：为什么 EDR、Email 和 SASE 会“失明”？">核心观点：为什么 EDR、Email 和 SASE 会"失明"？</a>\</p>
+<p>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/nfVQ4m7l78RpTAh6Dflpbg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

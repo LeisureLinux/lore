@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术 | LeisureLinux 公众号</title>
+<meta name="description" content="别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/kVMgGTVSBIpBLxf2IJB3cw">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术", "datePublished": null, "articleSection": "AI/Agent", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0613.html", "sameAs": "https://mp.weixin.qq.com/s/kVMgGTVSBIpBLxf2IJB3cw", "isBasedOn": "https://mp.weixin.qq.com/s/kVMgGTVSBIpBLxf2IJB3cw", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<p><strong>摘要：</strong>2026年 Linux 社区最火的存储话题是什么？是 DAXFS。本文带你硬核拆解 DAX 技术，手把手教你在没有高性能硬件的情况下，用内存模拟出极致的 I/O 通道。</p>
+<p>\</p>
+<hr />
+<h2 id="一-引言为什么我们需要-dax" path-to-node="5">一、 引言：为什么我们需要 DAX？</h2>
+<p>在 Linux 的世界里，访问文件一直有个"潜规则"：数据必须在磁盘、内核页缓存（Page Cache）和用户空间之间搬来搬去。</p>
+<p>虽然页缓存提升了速度，但在高性能计算、AI 推理等场景下，这种**"二次拷贝"**带来的延迟和 CPU 损耗已经成了性能杀手。于是，<strong>DAX（Direct Access，直接访问）</strong>技术应运而生。</p>
+<p>\</p>
+<h2 id="二-什么是-dax绕过内核的特权路" path-to-node="8">二、 什么是 DAX？绕过内核的"特权路"</h2>
+<p>简单来说，<strong>DAX 是一把开启存储硬件的"仓库钥匙"</strong>。</p>
+<h3 id="传统-io-的快递模式" path-to-node="10">1. 传统 I/O 的"快递模式"</h3>
+<p>你读一个文件：硬盘 -> 内核缓冲区 -> 应用程序。</p>
+<ul>
+<li><strong>弊端：</strong>浪费内存空间，增加 CPU 拷贝开销。</li>
+</ul>
+<h3 id="dax-的面对面模式" path-to-node="13">2. DAX 的"面对面模式"</h3>
+<p>在支持 DAX 的硬件（如 NVDIMM、CXL 设备）上，内核不再充当搬运工。</p>
+<ul>
+<li>
+<p><strong>原理：</strong>内核通过<code index-in-node="9" path-to-node="15,0,0">mmap</code>直接将<strong>硬件的物理地址</strong>映射到进程的虚拟地址空间。</p>
+</li>
+<li>
+<p><strong>结果：</strong>应用程序通过 CPU 指令（Load/Store）直接读写硬件，实现真正的<strong>零拷贝（Zero-copy）</strong>。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>最新动态：</strong>在 2026 年第 4 周的 Linux 周报中，<strong>DAXFS</strong>的提议再次将这一技术推向高潮，旨在通过更灵活的文件接口管理大规模共享内存。<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315912&amp;idx=1&amp;sn=436bc6ed8251e435aabab576bb47c9e8&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4d9i1cfph6w8vwx14w" target="_blank" textvalue="2026年第4周（1月19日至25日） - Linux 和开源新闻周报">2026年第4周（1月19日至25日） - Linux 和开源新闻周报</a></p>
+</blockquote>
+<hr />
+<h2 id="section-path-to-node18">{#section path-to-node="18"}</h2>
+<h2 id="三-内核层是如何实现-dax-的" path-to-node="18">三、 内核层是如何实现 DAX 的？</h2>
+<p>DAX 并不是一个简单的驱动，而是 Linux 内核多个子系统的"大合唱"：</p>
+<ol>
+<li>
+<p><strong>设备识别</strong>：内核通过<code index-in-node="10" path-to-node="20,0,0">libnvdimm</code>子系统识别出具有字节寻址能力的硬件（如<code index-in-node="40" path-to-node="20,0,0">/dev/pmem</code>）。</p>
+</li>
+<li>
+<p><strong>缺页异常处理</strong>：这是最核心的一步。当程序访问数据时，内核触发缺页异常，但它不从磁盘读数据，而是<strong>直接修改进程页表</strong>，将硬件物理地址填进去。</p>
+</li>
+<li>
+<p><strong>文件系统配合</strong>：像 Ext4 或 XFS 这种支持 DAX 的文件系统，在挂载时会调用<code index-in-node="43" path-to-node="20,2,0">dax_direct_access</code>接口，彻底停用页缓存机制。</p>
+</li>
+</ol>
+<p>\</p>
+<hr />
+<h2 id="四-硬核实操没有硬件也能玩转-dax" path-to-node="22">四、 硬核实操：没有硬件也能玩转 DAX</h2>
+<p>想在自己的电脑上体验 DAX？不需要昂贵的傲腾内存，我们可以用<strong>普通物理内存来模拟</strong>。</p>
+<h3 id="第一步修改内核参数" path-to-node="24">第一步：修改内核参数</h3>
+<p>编辑<code index-in-node="3" path-to-node="25">/etc/default/grub</code>，在<code index-in-node="23" path-to-node="25">GRUB_CMDLINE_LINUX</code>中添加：</p>
+<p>[Bash]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571=""># 模拟 1G 的持久内存，从物理地址 4G 处开始
+memmap=1G!4G
+</code></pre>
+<p>更新 grub 并重启：<code index-in-node="12" path-to-node="27">sudo update-grub &amp;&amp; reboot</code></p>
+<h3 id="第二步检查设备" path-to-node="28">第二步：检查设备</h3>
+<p>重启后，你应该能看到一个新的 pmem 设备：</p>
+<p>[Bash]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571="">ls /dev/pmem*
+# 应该能看到 /dev/pmem0
+</code></pre>
+<h3 id="第三步配置并挂载文件系统" path-to-node="31">第三步：配置并挂载文件系统</h3>
+<p>使用<code index-in-node="3" path-to-node="32">ndctl</code>工具（需安装）配置模式，并以 DAX 模式挂载：</p>
+<p>[Bash]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571=""># 设置为 fsdax 模式
+sudo ndctl create-namespace -f -e namespace0.0 --mode=fsdax
+
+# 格式化并挂载（关键点：-o dax）
+sudo mkfs.xfs /dev/pmem0
+sudo mount -o dax /dev/pmem0 /mnt/dax_test
+</code></pre>
+<h3 id="第四步验证零拷贝" path-to-node="34">第四步：验证零拷贝</h3>
+<p>你可以通过<code index-in-node="6" path-to-node="35">mount</code>命令查看挂载选项，或者使用 C 语言编写一个简单的<code index-in-node="38" path-to-node="35">mmap</code>程序，测试读写延迟。你会发现，这块"磁盘"的速度已经达到了内存级！</p>
+<p>\</p>
+<p>\</p>
+<hr />
+<h2 id="五-总结与展望" path-to-node="37">五、 总结与展望</h2>
+<p>DAX 技术是 Linux 向极致性能演进的关键一步。随着<strong>CXL</strong>和<strong>高性能 AI 算力</strong>的普及，DAX 将不再是少数专家的玩具，而是开发者必须掌握的底层基石。</p>
+<p>\</p>
+<p>\</p>
+<p><strong>想看更多关于 Linux 内核硬核技术的拆解？</strong>欢迎关注<strong>LeisureLinux</strong>公众号，同名<strong>B站频道</strong>更有详细的操作视频演示，带你领略 Linux 系统的底层之美！</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/kVMgGTVSBIpBLxf2IJB3cw" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

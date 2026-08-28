@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>被遗忘的 DNS 记录，正在给骗局开路——Hazy Hawk 子域名劫持全拆解 | LeisureLinux 公众号</title>
+<meta name="description" content="QUOTE真正的漏洞不在Web服务器，而在DNS里那条「没人记得」的CNAME记录。——老徐·拆解Infoblox对Ha">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/yz-KgMiAwpA6Q39toBGidg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "被遗忘的 DNS 记录，正在给骗局开路——Hazy Hawk 子域名劫持全拆解", "datePublished": "2026-08-05T18:26:00+08:00", "articleSection": "安全/漏洞", "description": "QUOTE真正的漏洞不在Web服务器，而在DNS里那条「没人记得」的CNAME记录。——老徐·拆解Infoblox对Ha", "url": "https://freelamp.com/leisurelinux/articles/0017.html", "sameAs": "https://mp.weixin.qq.com/s/yz-KgMiAwpA6Q39toBGidg", "isBasedOn": "https://mp.weixin.qq.com/s/yz-KgMiAwpA6Q39toBGidg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">被遗忘的 DNS 记录，正在给骗局开路——Hazy Hawk 子域名劫持全拆解</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-08-05T18:26:00+08:00">2026-08-05 18:26</time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>QUOTE</p>
+<p>真正的漏洞不在 Web 服务器，而在 DNS 里那条      「没人记得」的 CNAME 记录      。</p>
+<p>------ 老 徐 · 拆解 Infoblox 对 Hazy Hawk 的披露</p>
+<p>2025 年 2 月，美国 CDC 域名下突然冒出一堆指向色情片的 URL，搜索结果里还挂着 CDC 的「官方信誉」。不是 CDC 网站被人攻破，而是他们一个早被遗忘的 Azure 子域名，被一个叫Hazy Hawk的团伙悄悄接管了。</p>
+<p>干基础设施这行的人都清楚：DNS 是最容易「烂尾」的地方。域名注册、DNS 托管、业务资源可能分属三四个团队，业务下线了，DNS 记录没人清。Hazy Hawk 干的，就是专门去翻这些没人记得的记录。本文把这条攻击链从里到外拆一遍。</p>
+<p>本文看点</p>
+<p>01</p>
+<p>CNAME 悬挂记录，一个从不设防的后门</p>
+<p>02</p>
+<p>为什么云资源劫持，比注册个域名难得多</p>
+<p>03</p>
+<p>一条恶意 URL，从生成到落地要过几层</p>
+<p>01</p>
+<p>DANGLING DNS</p>
+<h3 id="cname">CNAME 与「悬挂记录」：后门从哪来</h3>
+<p>CNAME（Canonical Name）是一条把「别名」指向「真实名字」的 DNS 记录：你在自己域名下配个子域，告诉解析器，cdn.yourdomain.com 的内容，实际在云端找。CDN、云服务、负载均衡都爱这么干，因为这样你能只改云端资源，不动 DNS。</p>
+<p>cdn.yourdomain.com.   IN   CNAME   cdn-xxx.azureedge.net.</p>
+<p>当 CNAME 指向的资源不存在了，这条记录就成了悬挂记录（dangling DNS）。理论上业务下线时该同步删掉 CNAME；现实中大量组织根本做不到。于是攻击者只要把这个失踪的资源重新创建出来，就能接管那条子域名。</p>
+<p>Hazy Hawk 的价值，不在于打了多精妙的 0day，而在于它把一条藏起来的路径讲透了：DNS 的悬挂记录，是很多组织从不设防的后门。</p>
+<p>02</p>
+<p>WHY CLOUD IS HARD</p>
+<h3 id="_1">云资源劫持，为什么比注册域名难得多</h3>
+<p>经典 CNAME 劫持其实很「简单」：CNAME 指向一个没人注册的域名。这时 DNS 返回 NXDOMAIN（不存在），攻击者花几美元把它注册下来就接盘了。但云资源劫持完全不是一回事：</p>
+<p>多数云厂商对已删除的资源不返回 NXDOMAIN，而是返回一个 IP。你以为还在线，其实资源早就没了。每家云厂商处理方式还不一样，有的甚至专门做了防劫持机制（比如 Azure 对删除的 App Service 有域名校验）。想在海量 DNS 里挑出「悬挂但还能利用」的记录，公网探测根本做不到，必须有大规模的passive DNS数据配合人工验证。</p>
+<p>\$3.4B</p>
+<p>2023 年美国 60+ 人群因这类诈骗的损失</p>
+<p>2023.12</p>
+<p>起持续活跃，覆盖政府/大学/四大</p>
+<p>这就是 Hazy Hawk 的核心门槛：他们手上大概率有商业级 passive DNS，能交叉比对「历史解析」与「当前资源是否存在」，一点点把著名机构域名下的悬挂记录挖出来。这也解释了为什么这类攻击能长期潜伏------大多数人压根不把 DNS 当威胁面。</p>
+<p>03</p>
+<p>ATTACK CHAIN</p>
+<h3 id="url">完整攻击链：一条恶意 URL 怎么落地</h3>
+<p>用劫持 CDC 的例子走一遍：ahbazuretestapp[.]cdc[.]gov 的 CNAME 指向一个 CDC 早就丢弃的 Azure 站点。攻击者注册个 Azure 账号、用同名建个站点，这条子域名就姓「哈」了。接管只是第一步，真正赚钱的是后面的分发链条。</p>
+<p>① 被劫持的著名子域名</p>
+<p>托管海量恶意 URL，靠搜索引擎信誉顶到前排</p>
+<p>▼</p>
+<p>② URL 混淆 / 伪装</p>
+<p>把 S3 桶名藏进 URL 路径，躲过按域名的封锁</p>
+<p>▼</p>
+<p>③ 第一跳：二次跳转</p>
+<p>被劫持的 js.org / Blogspot 废弃页 / 短链服务</p>
+<p>▼</p>
+<p>④ 进入 TDS 流量分发系统</p>
+<p>按设备 / 地区 / 是否 VPN 动态路由到不同骗局</p>
+<p>▼</p>
+<p>⑤ 诱导「允许推送通知」</p>
+<p>拿到权限 = 长期可反复触达受害者的提款机</p>
+<p>这五层里，最值得细说的是后面三层。</p>
+<p>\
+URL 混淆</p>
+<p>AWS S3 场景：不直接写 oercommons[.]s3[.]amazonaws[.]com，而写成 s3-ap-southeast-2[.]amazonaws[.]com/oercommons/------把桶名藏进路径，安全设备按完整域名封锁就失效了。</p>
+<p>\
+TDS 分诊</p>
+<p>从 VPN 访问直接拦「检测到匿名代理」；从住宅 IP 访问，按设备与地区进不同骗局。有人第一次进诈骗页、第二次却看到购物页------每次都不同，最难拦截。</p>
+<p>\
+推送变现</p>
+<p>推送通知的推广返佣高达 70%--90%。一条 URL 只能骗一次；拿到推送权限，就拿到了一条长期反复触达受害者的通道。</p>
+<p>有意思的是，这些高信誉域名被劫持后，干的却不是间谍活动，而是广告联盟下面的灰色骗局生意。落地页也讲究：要么直接克隆纽约时报骗过内容爬虫，要么模仿被劫持公司自己的官网（劫持 Honeywell 子域就做仿 Honeywell 的页面）。</p>
+<p>04</p>
+<p>DEFENSE</p>
+<h3 id="dns">防护：把 DNS 当「资产」管</h3>
+<p>Hazy Hawk 的受害者分两类：被劫持的域名所有者，和点进恶意链接的用户。防护也分两层。对域名所有者，老徐最想强调一句：DNS 不是配好就不管的东西，它是要维护的资产。并购之后，两边项目、域名注册、DNS 记录可能各管各的，最容易留悬挂记录。</p>
+<p>\
+下线即删</p>
+<p>任何云资源（S3 桶、Azure App Service、CDN）下线时，强制走「同步清理 CNAME」流程。</p>
+<p>\
+追踪对账</p>
+<p>维护「云资源 ↔ DNS 记录」对应清单，定期确认每个 CNAME 指向的资源还活着。</p>
+<p>\
+悬挂检测</p>
+<p>用 passive DNS 或安全平台定期扫自己域下的悬挂 CNAME。</p>
+<p>对终端用户：用防护型 DNS 是最性价比的解法。TDS 攻击者再会换域名，只要威胁情报能追踪其关联域名体系，换域名也逃不掉。还有一条------别乱点「允许通知」。</p>
+<p>∞</p>
+<p>THE END</p>
+<h3 id="_2">写在最后</h3>
+<p>这类攻击不需要多精妙的 0day，只需要你有一堆「没人记得的资源」和「没人清理的记录」。</p>
+<p>干运维的人都懂一句话：系统下线不是结束，把 DNS 记录也清干净才是结束。下次当你看到某个没人用的子域名还解析到某个云服务时，想想 Hazy Hawk------那条记录，可能正在给某个骗局开路。</p>
+<p>\
+       END        \</p>
+<p>老 徐</p>
+<p>30 多年 IT 老兵 · 银行、证券、互联网等行业运维经验</p>
+<p>☕ 曾在 eBay / PayPal 负责 IT 基础设施运维，后去澳洲上市公司担任 CIO。</p>
+<p>🛒 创业期间，独立搭建过海淘电商、微信生态 SaaS 平台及工业物联网网关。</p>
+<p>🏦 主导某股份行的信创办公国产化改造，自建支持超过 6 万多台的全行终端管理平台。</p>
+<p>\</p>
+<p>github.com/LeisureLinux        space.bilibili.com/517298151</p>
+<p>公众号写技术观察笔记，人话翻译复杂事儿。</p>
+<p>如果您觉得这篇有用，请赞一个或者在看，就是对我最大的鼓励。咱们下篇见！</p>
+<p>\
+\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/yz-KgMiAwpA6Q39toBGidg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

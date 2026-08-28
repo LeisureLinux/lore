@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PID 1 的另一种可能：GNU Guix 如何用 Scheme 重新定义系统服务 | LeisureLinux 公众号</title>
+<meta name="description" content="PID 1 的另一种可能：GNU Guix 如何用 Scheme 重新定义系统服务">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/5UO_1rshlJioc168Ctif3w">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "PID 1 的另一种可能：GNU Guix 如何用 Scheme 重新定义系统服务", "datePublished": null, "articleSection": "Linux/运维", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0271.html", "sameAs": "https://mp.weixin.qq.com/s/5UO_1rshlJioc168Ctif3w", "isBasedOn": "https://mp.weixin.qq.com/s/5UO_1rshlJioc168Ctif3w", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">PID 1 的另一种可能：GNU Guix 如何用 Scheme 重新定义系统服务</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 Linux/运维</div>
+    <div class="content" itemprop="articleBody">
+<p>\</p>
+<h3 heading="true" id="溯源从函数式包管理到独立操作系统">1. 溯源：从函数式包管理到独立操作系统</h3>
+<p>GNU Guix（发音为 /ɡiːks/）的历史最早可追溯至 2012 年。它最初作为<strong>Nix</strong>包管理器的 GNU 实现而诞生，由 Ludovic Courtès 等开发者在 GNU 项目框架下发起。其核心愿景是将函数式编程的严谨性引入系统部署。</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsuXJONCgm4QkSr6Ep1JaTvupud6D2iawNxU9sIcbsm8DfQAvwK43icv5XGpRAuRvqm7CIibCLiaPiavicYEqbZdmv3koHMcnicQoR4ymY/640?wx_fmt=jpeg" /></p>
+<p>2015 年，Guix 正式推出了独立操作系统版本<strong>GNU Guix System</strong>。它不仅继承了 Nix 的函数式范式，更深度集成了 GNU 项目的旗舰组件，成为自由软件基金会（FSF）官方认可的、完全自由的操作系统。与传统的命令式安装（如 apt install）不同，Guix 采用**声明式（Declarative）**配置，将操作系统视为一个大型的、可重入的函数。\</p>
+<h3 heading="true" id="核心架构解构-guix-的技术底座">2. 核心架构：解构 Guix 的技术底座</h3>
+<p>作为 IT 系统架构师，理解 Guix 的专业性必须深入其底层组件：</p>
+<ul>
+<li>•<strong>包管理逻辑：/gnu/store 的艺术</strong>\
+    不同于传统的 FHS 标准，Guix 所有的软件包都存储在 /gnu/store 下。每个路径名都包含该包及其所有依赖项的<strong>SHA256 散列值</strong>。这种隔离机制允许系统同时存在多个版本的库而不会产生冲突，彻底终结了"依赖地狱"。</li>
+<li>•<strong>统一语言：GNU Guile (Scheme)</strong>\
+    Guix 是一个"由代码定义的系统"。它使用<strong>GNU Guile</strong>（Scheme 语言的实现）作为唯一的配置语言。从内核参数到环境变量，整个系统全栈都由 Scheme 代码统一抽象。</li>
+<li>•<strong>现代桌面与窗口管理</strong>\
+    Guix 支持<strong>GNOME</strong>、<strong>KDE Plasma</strong>、<strong>Xfce</strong>等主流桌面环境。对于追求效率的极客，它对<strong>EXWM</strong>、<strong>Sway</strong>、<strong>Qtile</strong>等平铺式窗口管理器提供了深度的配置支持。</li>
+</ul>
+<h3 heading="true" id="pid-1-的革命从-systemd-转向-gnu-shepherd">3. PID 1 的革命：从 Systemd 转向 GNU Shepherd</h3>
+<p>在现代 Linux 世界中，Systemd 几乎成了初始化系统的代名词。然而，在 Guix System 中，PID 1 的位置由<strong>GNU Shepherd</strong>占据。这不仅是一个初始化工具，更是 Scheme 语言在操作系统底层能力的延伸。</p>
+<h4 heading="true" id="架构本质从命令式到声明式的跨越">3.1 架构本质：从命令式到声明式的跨越</h4>
+<p>Shepherd 结合 Guix，描述的是**"系统应该是什么状态"**。</p>
+<ul>
+<li>•<strong>服务即对象 (Services as Objects)</strong>：Shepherd 将系统服务视为 Scheme 对象。你可以利用高阶函数动态生成服务，或根据逻辑条件判断启动时机，这比静态的 .service 文件灵活得多。</li>
+<li>•<strong>原子更新与回滚</strong>：由于服务定义是系统声明的一部分，更新配置是原子级的。若新服务配置出错，只需在 GRUB 菜单选择旧的"世代（Generation）"即可瞬间回滚。</li>
+</ul>
+<h4 heading="true" id="技术解构shepherd-服务定义示例">3.2 技术解构：Shepherd 服务定义示例</h4>
+<p>一个典型的 Shepherd 服务定义展示了 Scheme 的优雅：</p>
+<pre><code>(service
+  (documentation "自定义后端 API 服务")
+  (provision '(my-api))
+  (requirement '(networking syslog))
+  (start #~(make-forkexec-constructor
+             (list #$(file-append my-package "/bin/api-server")
+                   "--port" "8080")))
+  (stop #~(make-kill-destructor)))
+</code></pre>
+<p>在这个片段中，<strong>G-Expressions (#\~)</strong>确保了路径引用在系统重构后依然精确。这种函数式构造器比编写易错的 Shell 脚本更具健壮性。</p>
+<h3 heading="true" id="专家视角安全纯净与可复现性">4. 专家视角：安全、纯净与可复现性</h3>
+<p>对于信息安全分析师和 IT 顾问而言，Guix System 提供了无与伦比的资产价值：</p>
+<ul>
+<li>•<strong>100% 自由与透明</strong>：遵循 GNU FSDG 指南，使用<strong>Linux-libre 内核</strong>，移除所有闭源固件（Blobs），确保底层环境的可审计性。</li>
+<li>•<strong>可复现构建 (Reproducible Builds)</strong>：Guix 致力于确保二进制文件在位级（bit-for-bit）上与源码一致，有效排除了编译器后门攻击的可能性。</li>
+<li>•<strong>计算一致性</strong>：通过 guix shell，架构师可以为团队定义一套精确到字节的开发环境，彻底解决"在我的机器上能运行"的尴尬。</li>
+</ul>
+<h3 heading="true" id="结语打破-pid-1-的垄断">结语：打破 PID 1 的垄断</h3>
+<p>GNU Guix 与 Shepherd 的组合证明了，操作系统底层并不一定要走向单体化或黑盒化。通过函数式编程的理念，我们将系统的控制权从复杂的二进制守护进程交还给了<strong>可预测的代码</strong>。\
+如果你厌倦了 Systemd 繁琐的日志系统（Journald）或晦涩的配置语法，GNU Guix System 提供了一个充满极客精神的避难所。\
+\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317295&amp;idx=1&amp;sn=68f6137e22ed68e9b9ce58c79164e8e5&amp;scene=21#wechat_redirect" linktype="2" localeditorid="147vnjjq1ft36qbr40" target="_blank" textvalue="内核 6.18 LTS 驱动加持，Solus 4.9 如何通过 Systemd Preset 与 Wheel 组重塑运维标准？">内核 6.18 LTS 驱动加持，Solus 4.9 如何通过 Systemd Preset 与 Wheel 组重塑运维标准？</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317167&amp;idx=1&amp;sn=3f2769905f745ad0947039a4a1ded4c4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2m2nxztgvbnky1naww" target="_blank" textvalue="开源圈炸锅了！Debian 如何应对美国/巴西新出的奇葩法律？">开源圈炸锅了！Debian 如何应对美国/巴西新出的奇葩法律？</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316326&amp;idx=1&amp;sn=33a667ab309b4ad3af8b2fcd41068854&amp;scene=21#wechat_redirect" linktype="2" localeditorid="sq1pgp612v0csy445c" target="_blank" textvalue="进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的“静默解密”">进阶实战：基于 TPM 2.0 实现 Arch Linux 加密磁盘的"静默解密"</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316002&amp;idx=1&amp;sn=fce35e779e162822e55817fcb5abb046&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9iz5984q16917erk6bk" target="_blank" textvalue="Vol.3：从内核到云端——复刻 Milan 的 22k Star DevOps 技能图谱（深度全景版）">Vol.3：从内核到云端------复刻 Milan 的 22k Star DevOps 技能图谱（深度全景版）</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315964&amp;idx=1&amp;sn=1465e390206a971a539e320d16cf5af7&amp;scene=21#wechat_redirect" linktype="2" localeditorid="bbd1ed2u61u9bv668" target="_blank" textvalue="李逵变李鬼！那个号称 Claude 亲兄弟的插件，其实是来偷家的">李逵变李鬼！那个号称 Claude 亲兄弟的插件，其实是来偷家的</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315960&amp;idx=1&amp;sn=7011a187538f26c748a0c0b8d4a680ea&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1ebws9mh8perzzmi54hs" target="_blank" textvalue="为了 1% 的性能，我差点送走我的 Debian 13：dracut 翻车实录与深度复盘">为了 1% 的性能，我差点送走我的 Debian 13：dracut 翻车实录与深度复盘</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317213&amp;idx=1&amp;sn=e84d8abc40a260896d58852273859181&amp;scene=21#wechat_redirect" linktype="2" localeditorid="si7rj6iad4pcp2owe8" target="_blank" textvalue="不可变架构（Immutable Infrastructure）：解决 Linux 桌面脆弱性的终极方案">不可变架构（Immutable Infrastructure）：解决 Linux 桌面脆弱性的终极方案</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317287&amp;idx=1&amp;sn=d4359760dc8e9ba6f54848f65a53bca0&amp;scene=21#wechat_redirect" linktype="2" localeditorid="dvinjp0dijh2z4dlvk" target="_blank" textvalue="拒绝家目录乱象：XDG 规范演进史与 $XDG_STATE_HOME 的架构意义">拒绝家目录乱象：XDG 规范演进史与 \$XDG_STATE_HOME 的架构意义</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316338&amp;idx=1&amp;sn=a113b9f8223acafdbf65d34473a1b833&amp;scene=21#wechat_redirect" linktype="2" localeditorid="buobgo28z6cywoa874" target="_blank" textvalue="2026 网络安全十大趋势与实战应对方案">2026 网络安全十大趋势与实战应对方案</a>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/5UO_1rshlJioc168Ctif3w" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

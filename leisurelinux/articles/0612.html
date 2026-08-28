@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>树莓派 + IPv6 + ntfy：构建零中转私人告警网关 | LeisureLinux 公众号</title>
+<meta name="description" content="树莓派 + IPv6 + ntfy：构建零中转私人告警网关">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/O8QdAQ4GBszH_d3VpnjV2g">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "树莓派 + IPv6 + ntfy：构建零中转私人告警网关", "datePublished": null, "articleSection": "Linux/运维", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0612.html", "sameAs": "https://mp.weixin.qq.com/s/O8QdAQ4GBszH_d3VpnjV2g", "isBasedOn": "https://mp.weixin.qq.com/s/O8QdAQ4GBszH_d3VpnjV2g", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">树莓派 + IPv6 + ntfy：构建零中转私人告警网关</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 Linux/运维</div>
+    <div class="content" itemprop="articleBody">
+<p>利用树莓派的公网 IPv6 优势，绕过任何第三方云平台，实现手机与家庭 IoT 设备的高速直连通知。</p>
+<p>\</p>
+<hr />
+<h3 id="一-基础环境ipv6-与-域名映射" path-to-node="3">一、 基础环境：IPv6 与 域名映射</h3>
+<ol>
+<li>
+<p><strong>获取 IPv6</strong>：确保树莓派通过<code index-in-node="16" path-to-node="4,0,0">ip -6 addr</code>能看到<code index-in-node="31" path-to-node="4,0,0">240e/2408/2409</code>开头的全球单播地址。</p>
+</li>
+<li>
+<p><strong>DDNS 自动化</strong>：使用<code index-in-node="12" path-to-node="4,1,0">ddns-go</code>或脚本，将你的域名（如<code index-in-node="32" path-to-node="4,1,0">pi.example.com</code>）实时解析至该 IPv6。</p>
+</li>
+<li>
+<p><strong>防火墙放行</strong>：在路由器（或 OpenWrt）的 IPv6 流量规则中，开放树莓派的<code index-in-node="41" path-to-node="4,2,0">80</code>或<code index-in-node="46" path-to-node="4,2,0">8080</code>端口。</p>
+</li>
+</ol>
+<p>\</p>
+<hr />
+<h3 id="二-部署-ntfy-服务debian-原生" path-to-node="6">二、 部署 ntfy 服务（Debian 原生）</h3>
+<p>不使用 Docker，减少资源开销，直接在 Pi OS 上运行：</p>
+<p>[Bash]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571=""># 添加官方源并安装
+sudo curl -L -o /etc/apt/keyrings/archive.ntfy.sh.gpg https://ntfy.sh/static/pubkey.gpg
+echo &quot;deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/archive.ntfy.sh.gpg] https://archive.ntfy.sh/debian all main&quot; \
+  | sudo tee /etc/apt/sources.list.d/ntfy.list
+sudo apt update &amp;&amp; sudo apt install ntfy
+
+# 修改关键配置
+sudo nano /etc/ntfy/server.yml
+</code></pre>
+<p><strong>配置核心项：</strong></p>
+<ul>
+<li>
+<p><code index-in-node="0" path-to-node="10,0,0">base-url</code>:<code index-in-node="10" path-to-node="10,0,0">https://pi.example.com</code>（你的 DDNS 域名）</p>
+</li>
+<li>
+<p><code index-in-node="0" path-to-node="10,1,0">listen-http</code>:<code index-in-node="13" path-to-node="10,1,0">:8080</code></p>
+</li>
+<li>
+<p><code index-in-node="0" path-to-node="10,2,0">auth-file</code>:<code index-in-node="11" path-to-node="10,2,0">"/var/lib/ntfy/user.db"</code>（<strong>必须开启</strong>，否则全网皆可推送）</p>
+</li>
+<li>
+<p><code index-in-node="0" path-to-node="10,3,0">auth-default-access</code>:<code index-in-node="21" path-to-node="10,3,0">"deny-all"</code></p>
+</li>
+</ul>
+<p><strong>管理命令：</strong></p>
+<p>[Bash]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571="">sudo ntfy user add --role=admin myuser  # 创建用户
+sudo systemctl enable ntfy
+sudo systemctl restart ntfy
+</code></pre>
+<hr />
+<h3 id="三-手机端配置与互动" path-to-node="14">三、 手机端配置与互动</h3>
+<ol>
+<li>
+<p><strong>App 设置</strong>：在手机端 ntfy 设置中，将"默认服务器"改为<code index-in-node="32" path-to-node="15,0,0">https://pi.example.com</code>。</p>
+</li>
+<li>
+<p><strong>身份验证</strong>：在 App 订阅主题时填入<code index-in-node="19" path-to-node="15,1,0">myuser</code>的账号密码。</p>
+</li>
+<li>
+<p><strong>订阅主题</strong>：订阅例如<code index-in-node="10" path-to-node="15,2,0">home_security</code>。</p>
+</li>
+</ol>
+<hr />
+<h3 id="section-path-to-node17">{#section path-to-node="17"}</h3>
+<h3 id="四-自动化告警脚本实例" path-to-node="17">四、 自动化告警脚本实例</h3>
+<h4 id="ssh-登录即时提醒" path-to-node="18">1. SSH 登录即时提醒</h4>
+<p>将以下代码加入<code index-in-node="8" path-to-node="19">/etc/pam.d/sshd</code>或<code index-in-node="26" path-to-node="19">.bashrc</code>，实现物理隔离的登录报警：</p>
+<p>[Bash]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571=""># 简单的 curl 发送
+curl -u &quot;myuser:password&quot; \
+     -H &quot;Title: SSH 登录警告&quot; \
+     -H &quot;Priority: high&quot; \
+     -H &quot;Tags: warning&quot; \
+     -d &quot;用户 $USER 从 $PAM_RHOST 登录了树莓派&quot; \
+     https://pi.example.com/home_security
+</code></pre>
+<h4 id="iot-设备状态监控python-示例" path-to-node="21">2. IoT 设备状态监控（Python 示例）</h4>
+<p>监控局域网内 IoT 设备（如摄像头）存活状态：</p>
+<p>[Python]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571="">import os
+import requests
+
+def check_device(ip):
+    response = os.system(f&quot;ping -c 1 {ip} &gt; /dev/null&quot;)
+    if response != 0:
+        requests.post(&quot;https://pi.example.com/home_security&quot;,
+                      data=f&quot;设备 {ip} 掉线！&quot;,
+                      auth=('myuser', 'password'),
+                      headers={&quot;Title&quot;: &quot;IoT 离线&quot;, &quot;Priority&quot;: &quot;4&quot;})
+
+check_device(&quot;192.168.1.50&quot;)
+</code></pre>
+<hr />
+<h3 id="五-进阶https-证书自动管理" path-to-node="25">五、 进阶：HTTPS 证书自动管理</h3>
+<p>为了安全，建议安装<strong>Caddy</strong>作为反向代理，它会自动处理 IPv6 的 SSL 证书：</p>
+<p>[代码段]{ngcontent-ng-c2411640571=""}</p>
+<pre><code ngcontent-ng-c2411640571=""># /etc/caddy/Caddyfile
+pi.example.com {
+    reverse_proxy localhost:8080
+}
+</code></pre>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/O8QdAQ4GBszH_d3VpnjV2g" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈 | LeisureLinux 公众号</title>
+<meta name="description" content="解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/ldd-kPV0h4Oy8Ajo4DDnTg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈", "datePublished": null, "articleSection": "Linux/运维", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0564.html", "sameAs": "https://mp.weixin.qq.com/s/ldd-kPV0h4Oy8Ajo4DDnTg", "isBasedOn": "https://mp.weixin.qq.com/s/ldd-kPV0h4Oy8Ajo4DDnTg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 Linux/运维</div>
+    <div class="content" itemprop="articleBody">
+<p><strong>摘要：</strong>为什么 NGINX 能扛住百万并发？不仅仅是异步非阻塞，更在于它对 Linux 内核<code index-in-node="47" path-to-node="3">epoll</code>机制近乎冷酷的压榨。今天我们拆解<code index-in-node="70" path-to-node="3">ENOSPC</code>报错、<code index-in-node="80" path-to-node="3">epoll_events</code>步长以及那个让架构师又爱又恨的 ET 模式。</p>
+<h3 id="section-path-to-node5">{#section path-to-node="5"}</h3>
+<h3 id="section-1-path-to-node5">{#section-1 path-to-node="5"}</h3>
+<h3 id="一-架构之魂nginx-的-master-worker-模型" path-to-node="5">一、 架构之魂：NGINX 的 Master-Worker 模型</h3>
+<p>NGINX 并非简单的 Web 服务器，它是一个极其精密的多进程事件驱动引擎。</p>
+<ul>
+<li>
+<p><strong>1:1 物理亲和性</strong>：NGINX 通常每个 CPU 核心运行一个 Worker 进程。这种设计最大限度减少了<strong>Context Switch（上下文切换）</strong>。在 LeisureLinux 之前的 B 站视频里我们强调过：减少 CPU 的"胡思乱想"，是提升性能的第一步。</p>
+</li>
+<li>
+<p><strong>状态机解耦</strong>：每一个请求被拆分为无数个微小的状态。Worker 进程绝不会在某个 I/O 上死等，而是通过内核通知，在成千上万个连接间瞬间切换。</p>
+</li>
+</ul>
+<h3 id="section-2-path-to-node8">{#section-2 path-to-node="8"}</h3>
+<h3 id="二-内核决战为什么是-epoll-而非-select" path-to-node="8">二、 内核决战：为什么是 epoll 而非 select？</h3>
+<p>在 C10K 时代，<code index-in-node="10" path-to-node="9">select</code>的[\$O(n)\$]{index-in-node="19" math="O(n)"}线性扫描机制已经成为了性能墓碑。而 NGINX 选择了[\$O(1)\$]{index-in-node="52" math="O(1)"}复杂度的<code index-in-node="62" path-to-node="9">epoll</code>。</p>
+<ul>
+<li>
+<p><strong>事件驱动 vs 轮询</strong>：<code index-in-node="11" path-to-node="10,0,0">select</code>像是一个笨管家，挨个敲门问是否有快递；而<code index-in-node="39" path-to-node="10,0,0">epoll</code>则是内核级别的智能感应，只有快递到了才会精准触发回调。</p>
+</li>
+<li>
+<p><strong>内存拷贝开销</strong>：<code index-in-node="7" path-to-node="10,1,0">select</code>每次都要将 FD 集合从用户态拷贝进内核，在高并发下这简直是 CPU 灾难。而<code index-in-node="54" path-to-node="10,1,0">epoll</code>通过内核红黑树管理 FD，仅在事件触发时进行极少量数据交换。</p>
+</li>
+</ul>
+<p>\</p>
+<h3 id="三-深水区lt-与-et-模式的性能博弈" path-to-node="11">三、 深水区：LT 与 ET 模式的性能博弈</h3>
+<p>这是区分"运维工程师"与"高阶架构师"的分水岭。</p>
+<h4 id="lt-level-triggered-稳健的默认值" path-to-node="13">1. LT (Level Triggered) ------ 稳健的默认值</h4>
+<p>NGINX 默认使用 LT。只要缓冲区有数据，内核就会不断提醒。这种方式容错率极高，配合非阻塞 I/O，足以应对绝大多数生产场景。</p>
+<h4 id="et-edge-triggered-极致的边缘" path-to-node="15">2. ET (Edge Triggered) ------ 极致的"边缘"</h4>
+<p>只有状态发生改变的一瞬间，内核才会通知一次。</p>
+<ul>
+<li>
+<p><strong>配置参数</strong>：在<code index-in-node="7" path-to-node="17,0,0">events</code>块中通过<code index-in-node="19" path-to-node="17,0,0">use epoll;</code>并配合<code index-in-node="34" path-to-node="17,0,0">multi_accept on;</code>可以激活类似 ET 的行为。</p>
+</li>
+<li>
+<p><strong>性能真相</strong>：ET 理论上减少了系统调用次数，但在 NGINX 这种复杂的应用层，ET 极易导致"漏读"造成连接卡死。非核心自研模块，严禁在生产环境盲目切换。</p>
+</li>
+</ul>
+<p>\</p>
+<h3 id="四-硬核参数epoll_events-512-的内幕" path-to-node="18">四、 硬核参数：epoll_events 512 的内幕</h3>
+<p>在<code index-in-node="2" path-to-node="19">nginx.conf</code>中，<code index-in-node="15" path-to-node="19">epoll_events 512;</code>常被忽视。</p>
+<ul>
+<li>
+<p><strong>它不是连接上限</strong>：它定义了 NGINX 每次调用<code index-in-node="24" path-to-node="20,0,0">epoll_wait</code>系统调用时，从内核"打包"带回的就绪事件数组大小。</p>
+</li>
+<li>
+<p><strong>CPU 缓存的权衡</strong>：设置为 512 是为了迎合<strong>CPU L1/L2 Cache Line</strong>。数值过大会导致 Cache Miss，过小则增加系统调用频次。512 是历经实战检验的"黄金比例"。</p>
+</li>
+</ul>
+<h3 id="section-3-path-to-node21">{#section-3 path-to-node="21"}</h3>
+<h3 id="五-避坑指南诡异的-enospc-报错" path-to-node="21">五、 避坑指南：诡异的 ENOSPC 报错</h3>
+<p>当你发现磁盘还有空间，NGINX 却报<code index-in-node="20" path-to-node="22">ENOSPC</code>时，那是内核在报警。</p>
+<ul>
+<li>
+<p><strong>根源</strong>：每个<code index-in-node="6" path-to-node="23,0,0">epoll</code>监听的 FD 都要在内核红黑树占位。当超过<code index-in-node="34" path-to-node="23,0,0">fs.epoll.max_user_watches</code>限制时，就会抛出此错。</p>
+</li>
+<li>
+<p><strong>调优指令</strong>：</p>
+<p>[Bash]{ngcontent-ng-c973371891=""}</p>
+<p>``` {ngcontent-ng-c973371891=""}</p>
+<h1 id="200">临时调优至 200 万</h1>
+<p>sysctl -w fs.epoll.max_user_watches=2097152
+```</p>
+</li>
+</ul>
+<h3 id="section-4-path-to-node25">{#section-4 path-to-node="25"}</h3>
+<h3 id="section-5-path-to-node25">{#section-5 path-to-node="25"}</h3>
+<h3 id="leisurelinux-结语" path-to-node="25">LeisureLinux 结语</h3>
+<p>NGINX 的强大，不在于它写了多少行代码，而在于它对 Linux 内核特性的极致克制与利用。从<code index-in-node="49" path-to-node="26">epoll</code>的红黑树到 CPU 缓存行的对齐，每一行配置背后都是对底层原理的深刻领悟。</p>
+<p>\</p>
+<p>\</p>
+<p><strong>想了解更多关于 NGINX 源码级调优与实战技巧？</strong></p>
+<p>欢迎在<strong>B 站搜索"LeisureLinux"</strong>，观看同名频道视频，我们通过实验演示带你直击内核现场。</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/ldd-kPV0h4Oy8Ajo4DDnTg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

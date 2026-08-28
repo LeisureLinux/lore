@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>53 万行 Zig、11 天、1 个模型：Bun 把自己用 Rust 重写了一遍，到底发生了什么？ | LeisureLinux 公众号</title>
+<meta name="description" content="QUOTE53万行Zig、11天、1个模型——这是基础设施软件第一次被AI系统性地重写。——JarredSumner/B">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/2gsT1KZxDMzYMJvZ4adoDg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "53 万行 Zig、11 天、1 个模型：Bun 把自己用 Rust 重写了一遍，到底发生了什么？", "datePublished": "2026-07-09T19:54:00+08:00", "articleSection": "AI/Agent", "description": "QUOTE53万行Zig、11天、1个模型——这是基础设施软件第一次被AI系统性地重写。——JarredSumner/B", "url": "https://freelamp.com/leisurelinux/articles/0067.html", "sameAs": "https://mp.weixin.qq.com/s/2gsT1KZxDMzYMJvZ4adoDg", "isBasedOn": "https://mp.weixin.qq.com/s/2gsT1KZxDMzYMJvZ4adoDg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">53 万行 Zig、11 天、1 个模型：Bun 把自己用 Rust 重写了一遍，到底发生了什么？</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-07-09T19:54:00+08:00">2026-07-09 19:54</time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<p>QUOTE</p>
+<p>53 万行 Zig、11 天、1 个模型------      这是基础设施软件第一次被 AI 系统性地重写      。</p>
+<p>------ Jarred Sumner / Bun 创始人</p>
+<p>2026 年 7 月，Bun 创始人 Jarred Sumner 公布了一组让整个 JavaScript 圈沉默的数据：      53 万行 Zig → 11 天 Rust 重写 → 100 万行新增代码被接受合并      。这不是一次普通的技术升级，而是一次      <strong>用 AI 模型系统性地重写一门基础设施软件</strong>      的完整工程复盘。</p>
+<p>本文看点</p>
+<p>01</p>
+<p>53 万行 Zig 重写的 14 个 use-after-free</p>
+<p>02</p>
+<p>11 天 + 50 个动态 workflow</p>
+<p>03</p>
+<p>对抗式 review 与基础设施的未来</p>
+<p>\</p>
+<p>01</p>
+<p>WHY RUST, NOT ZIG</p>
+<h3 id="bun-rust">为什么 Bun 要把自己用 Rust 重写一遍？</h3>
+<p>Bun 现在的 CLI 每月下载量超过 2200 万次，      Claude Code 和 OpenCode 把 Bun 当成默认 runtime      ，Vercel / Railway / DigitalOcean 都已经把 Bun 列为 first-party 支持。</p>
+<p>但 Bun 的 scope 一直是      <strong>稳定性问题</strong>      的根源。Bun v1.3.14 这次修的 bug 列表非常典型，几乎全是      使用后释放（use-after-free）、双重释放（double-free）、忘记释放      这类内存安全问题：</p>
+<p>BUG LIST · BUN V1.3.14</p>
+<p>· <code>node:zlib</code> 在异步 <code>.write()</code> 还没跑完时调用 <code>.reset()</code> 触发 heap-use-after-free</p>
+<p>· <code>node:http2</code> 在 hashmap 扩容时让回调拿到失效的 stream 指针</p>
+<p>· <code>UDPSocket.send()</code> 在 <code>valueOf()</code> 回调里 detach ArrayBuffer 导致 payload 失效</p>
+<p>· <code>Buffer#copy</code> / <code>Buffer#fill</code> 在 <code>valueOf()</code> 回调里 resizes 底层 buffer</p>
+<p>· <code>crypto.scrypt</code> 在分配失败时既不释放回调也不释放 password/salt buffer</p>
+<p>· <code>tlsSocket.setSession()</code> 每次泄漏一个 \~6.5 KB 的 SSL_SESSION</p>
+<p>· <code>fs.watch()</code> 的 watcher 引用计数下溢后被永久 pin 在 GC root 上</p>
+<p>· <code>tls.connect({ socket: duplex })</code> 的 DuplexUpgradeContext 永远不释放</p>
+<p>这些问题在 Bun v1.3 的 14 个 changelog 里有 11 个。Bug 列表越修越长，Sumner 自己都说"晚上睡觉都在担心 Bun 什么时候 crash"。</p>
+<p>Bun 已经在做的稳定性防御</p>
+<p>给 Zig 编译器打补丁加上 Address Sanitizer（ASAN），每个 commit 跑一遍测试套件；Windows ReleaseSafe build 默认开启 Zig safety 检查；      24/7 用 Fuzzilli fuzz runtime API      （Fuzzilli 是 Google Project Zero 用来 fuzz V8 和 JavaScriptCore 的工具）；一大堆端到端的内存泄漏测试。</p>
+<p>但这些防御仍然不够。      <strong>use-after-free / double-free / forgot-to-free 这三类 bug</strong>      ，本质是      Zig 内存管理模型的必然产物      。</p>
+<p>\</p>
+<p>02</p>
+<p>THE DEFER PROBLEM</p>
+<h3 id="zig-defer">Zig 的 <code>defer</code> 不是终极答案</h3>
+<p>Zig 是 Bun 创立时的核心赌注。Sumner 在      2021 年 4 月 16 日写下第一行 Zig 代码      时，Bun 是 esbuild Go → Zig 的一行一行移植。他选择 Zig 的理由是"看到 Hacker News 上 Zig Language Reference 单页面就兴奋了"------C 级别控制力 + 性能，但没有 C 的精神负担。</p>
+<p>Zig 的内存管理哲学是      <strong>显式优于隐式</strong>      。Zig 拒绝 C++ 的 <code>~Destructor</code> 和 Rust 的 <code>Drop</code> 这种隐式 cleanup，强制要求用 <code>defer</code> 显式写出清理代码：</p>
+<p>语言   cleanup 机制</p>
+<hr />
+<p>Zig    <code>defer</code>、<code>errdefer</code>
+  C++    <code>~Destructor</code>、<code>&amp;&amp;Move</code>
+  Rust   <code>Drop</code></p>
+<p>Bun 是      GC 写的 JavaScript 引擎和手写 C 库的胶水层      。Zig 的"显式 defer"在这种场景下非常容易出错：每次内存分配都要问四个问题------</p>
+<p>四次反问</p>
+<p>1</p>
+<p>这块内存在哪里被释放？</p>
+<p>2</p>
+<p>怎么保证只释放一次？</p>
+<p>3</p>
+<p>JavaScript 异常抛出了吗？</p>
+<p>4</p>
+<p>这个 GC 指针保守栈扫描器看得到吗？</p>
+<p>Sumner 自承：JavaScript 是 GC 语言，JavaScriptCore（Safari 的引擎）和 V8 对异常处理和 GC 都有严格规则。      <strong>Zig 像 C 一样不管内存</strong>      ，让这两种范式混在一起写出来，是 Bun 稳定性问题的主要来源。</p>
+<p>可以选的方案</p>
+<p>01</p>
+<p>风格指南 + 代码评审</p>
+<p>TigerBeetle 的 TigerStyle 是代表，但风格指南的问题是如何强制执行</p>
+<p>02</p>
+<p>换 C++</p>
+<p>能拿到构造函数/析构函数，但仍依赖风格指南 + ASAN</p>
+<p>03</p>
+<p>换 Rust</p>
+<p>borrow checker 把内存错误变成编译器错误</p>
+<p>「Homegrown smart pointers 比 Rust 差太多 ergonomics，没有 Rust 的任何保证。」</p>
+<p>Sumner 在 2025 年尝试过给 Bun 写 Rust 风格的智能指针（<code>SharedPtr</code>），但他承认上面这一点。</p>
+<p>\</p>
+<p>03</p>
+<p>THE TRANSPILE STRATEGY</p>
+<h3 id="transpile">重写不是"重写"，是 transpile 风格移植</h3>
+<p>按传统软件工程经验，      重写是最糟糕的决定      。Bun 现在 535,496 行 Zig（不算注释），一个小型工程师团队完整重写需要整整一年，期间要冻结 bug fix、安全 fix、特性开发。最低风险的方案是      <strong>机械化的转译</strong>      ------把 Zig 代码一行一行翻译成 Rust，行为不变，跑同一套测试套件。</p>
+<p>幸运的是，Bun 的测试套件是用 TypeScript 写的，      不依赖 runtime 的编程语言      。</p>
+<p>两个关键决策</p>
+<p>\
+整体重写还是增量重写</p>
+<p>Sumner 在 2021 年把 esbuild 从 Go 移植到 Zig 时用过"整体重写"路线，没有 LLM 辅助。增量重写会产生临时代码，希望未来被删除，短期到中期都很痛苦。所以        <strong>整体重写</strong>        。</p>
+<p>\
+保持架构还是利用 Rust 特性</p>
+<p>保持架构。用 Rust 的 borrow checker，但不全面改造架构、不追求"更 idiomatic 的 Rust"。等 Bun v1.4 发布后再做。</p>
+<p>\</p>
+<p>04</p>
+<p>CLAUDE, REWRITE BUN</p>
+<h3 id="claude-rewrite-bun-in-rust">Claude, rewrite Bun in Rust.</h3>
+<p>"一开始我也不信这件事能成。" Sumner 在      Anthropic 收购 Bun      之后，有了      内部预发布版 Claude Fable 5      。他问自己的问题是：花一周时间测试，如果模型能改写 Bun，就继续。</p>
+<p>几天后，      <strong>测试套件的大量用例开始通过</strong>      。新写的 Rust 代码和原 Zig 代码的对应度让他改变判断------从"值得试一下"到"我要 merge 这个"。</p>
+<p>但关键不是"Claude, rewrite Bun in Rust. Don't make any mistakes." 这种祈祷式 prompt。Sumner 实际上做了非常系统化的工作：</p>
+<p>1</p>
+<p><strong>写一份 porting guide</strong>------把 Zig 的每个模式/类型映射到 Rust 的对应物</p>
+<p>2</p>
+<p><strong>机械式地逐文件移植</strong>------<code>.zig</code> → <code>.rs</code></p>
+<p>3</p>
+<p><strong>修每个 crate 的编译错误</strong></p>
+<p>4</p>
+<p><strong>修子命令</strong>------<code>bun test</code>、<code>bun build</code> 等 CLI 工具先跑通</p>
+<p>5</p>
+<p><strong>跑通整个测试套件</strong>------TypeScript 写的百万级断言</p>
+<p>6</p>
+<p><strong>几次大重构和清理</strong></p>
+<p>50</p>
+<p>个动态工作流</p>
+<p>11</p>
+<p>天不间断运行</p>
+<p>他用      50 个动态 workflow      （dynamic workflows），在      11 天      内不间断地跑 Claude Code。</p>
+<p>工作流循环</p>
+<p>PSEUDOCODE</p>
+<p>let task; while ((task = todoList.pop())) {    const result = task();    const feedback = await Promise.all([review(result), review(result)]);    await apply(feedback, result); }</p>
+<p>这本质上就是把"软件工程师的日常工作"------写代码、提 PR、收 review、改反馈------      <strong>程序化成了一个可以并行跑的循环</strong>      。</p>
+<p>\</p>
+<p>05</p>
+<p>ADVERSARIAL REVIEW</p>
+<h3 id="review-100-pr">怎么 review 一个 +100 万行新增代码的 PR？</h3>
+<p>11 天 + 50 个 workflow + Claude 写代码------这些数据放在一起，最难的问题不是"模型写不写得出来"，而是      "人怎么敢 merge 它"      。</p>
+<p>Sumner 给出的答案是三件套：</p>
+<p>\
+语言无关的测试套件</p>
+<p>百万级断言，TypeScript 写的，和 runtime 语言无关。这是 Bun 长期投资的红利。</p>
+<p>\
+对抗式 code review</p>
+<p>让 Claude 在独立的 context window 里，假装代码是错的，穷尽一切可能的方式找 bug。</p>
+<p>\
+修流程而不是修代码</p>
+<p>发现 bug 时，不去手改那一行代码，而是修生成这段代码的 workflow。这样下次生成的同类代码自动修复。</p>
+<p>对抗式 review 的关键设计</p>
+<p><strong>1 个 implementer + 2 个以上 adversarial reviewer</strong>。Implementer 只管写代码，不管 review；Reviewer 只管找 bug，不管写代码。Implementer Claude 想让代码被接受（"ship 偏好"），Reviewer Claude 想找代码的问题（"质疑偏好"）。Implementer 看不到 Reviewer 的输入，Reviewer 只看 diff。</p>
+<p>Sumner 在 blog 里给了三个对抗式 review 实际抓住的 bug------      全部能编译通过、全部看起来合理      ，但都是错的：</p>
+<p>BUGS CAUGHT BEFORE MERGE</p>
+<p><strong>· bug 1 of 3 · the async close</strong></p>
+<p>在 async close 路径上 lifetime 错误</p>
+<p><strong>· bug 2 of 3</strong></p>
+<p><strong>· bug 3 of 3</strong></p>
+<p>------ 原 blog 里有完整 commit hash 和 reviewer 标注</p>
+<p>每个被 review 抓住的 bug，commit message 都在 subject line 里标了 review attribution。</p>
+<p>\</p>
+<p>06</p>
+<p>AFTER V1.4</p>
+<h3 id="bun-v14-rust">Bun 的未来：v1.4 之后才是真正的 Rust 化</h3>
+<p>Bun v1.4 之前的 Rust 重写，      <strong>架构上完全保持 Bun 原样</strong>      ------只是把 Zig 改成了 Rust。性能指标、API 兼容性、模块系统、所有用户能感知的部分都不变。</p>
+<p>Sumner 明确说：</p>
+<p>「我们做的是那种看上去像是把 Zig 代码 transpile 成 Rust 的重写。我们会逐步重构以减少 unsafe 用量，并让它更接近 idiomatic Rust------但那是 Bun v1.4 之后的事。」</p>
+<p>这意味着：</p>
+<p>1</p>
+<p>v1.4 之前的 Rust 代码里，<strong>unsafe 块可能比 idiomatic Rust 多</strong></p>
+<p>2</p>
+<p>v1.4 之后会做几轮"清理"，把不安全的 unsafe 包装成更 Rusty 的抽象</p>
+<p>3</p>
+<p>但用户不会感知到任何差异------这是一次纯底层重写</p>
+<p>\</p>
+<p>07</p>
+<p>ECOSYSTEM IMPLICATIONS</p>
+<h3 id="javascript">对整个 JavaScript 生态意味着什么？</h3>
+<p>把这次重写放在更大的背景下看，有三层意义：</p>
+<p>第一层 · 基础设施软件的 AI 重写从理论变成工程现实</p>
+<p>Firefox 去年用 AI 辅助写过一个组件，但从未有过      整个 runtime      的 AI 重写并被接受合并。Bun 是第一个。</p>
+<p>第二层 · 语言选择不再是一锤子买卖</p>
+<p>Sumner 在原文里说："直到最近，编程语言选择对 Bun 这种项目来说还是单向决定"。Claude Fable 5 改变了这个事实------      <strong>未来你可以在不同语言间"切换"而不需要一年冻结期</strong>      。</p>
+<p>第三层 · V8 / JavaScriptCore 团队需要重新思考 AI 战略</p>
+<p>Bun 的成功重写会逼着所有 runtime 作者回答一个问题：      我们什么时候也用 AI 改写底层      ？</p>
+<p>更深一层：      <strong>Anthropic 收购 Bun 不到一年</strong>      ，用自家最强的预发布模型重写自家收购的 JavaScript runtime------这不是产品行为，这是      模型能力的范式证明      。Claude Fable 5 能用 11 天时间把 53 万行 Zig 改写成 Rust 并通过百万级测试，这是模型对长程、复杂、有状态工程任务的标志性胜利。</p>
+<p>\</p>
+<p>∞</p>
+<p>EPILOGUE</p>
+<h3 id="_1">写在最后</h3>
+<p>Bun 的 Rust 重写不是"AI 替代程序员"的故事------它恰恰相反。      <strong>是 Jarred Sumner 这个 Bun 的创造者</strong>      ：</p>
+<p>知道哪些 bug 必须修；知道 Bun 的测试套件在哪、怎么跑；知道哪些是真正的设计决策（整体重写、保持架构）；知道怎么设计 prompt 和 workflow（50 个动态工作流）；知道怎么 review 100 万行新代码（对抗式 review）。</p>
+<p>Sumner 自己是 prompt engineer，是 workflow architect，是 adversarial review designer。Claude Fable 5 是执行者。</p>
+<p>未来的基础设施工程师      不会只写代码      ------他们会      写会写代码的 AI 跑的 workflow      。</p>
+<p>参考资料</p>
+<p>· Jarred Sumner 原文：<code>bun.com/blog/bun-in-rust</code></p>
+<p>· Anthropic 收购 Bun 公告：<code>anthropic.com</code>（2025-12）</p>
+<p>· Fuzzilli：<code>github.com/googleprojectzero/fuzzilli</code></p>
+<p>· TigerBeetle TigerStyle：<code>tigerstyle.dev</code></p>
+<p>· Bun 测试套件：<code>github.com/oven-sh/bun/tree/main/test</code></p>
+<p>\
+       END        \</p>
+<p>如果你觉得今天这篇有收获，欢迎        <strong>点赞、在看、转发</strong>        三连，我们下篇见。</p>
+<p>\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316978&amp;idx=1&amp;sn=0e237e87fae57b0a03e743cfe2b730ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="dwwu7zf7q77pazzhts" target="_blank" textvalue="自动化平台的“噩梦”：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案">自动化平台的"噩梦"：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318200&amp;idx=1&amp;sn=723f6a102886dd2002ea105ad5ecaeda&amp;scene=21#wechat_redirect" linktype="2" localeditorid="pgtbzfl23h8ufyv37k" target="_blank" textvalue="瀑布模型的荒诞起源：软件工程史上最大的误会">瀑布模型的荒诞起源：软件工程史上最大的误会</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316378&amp;idx=1&amp;sn=e7d635fa90cc793cb45308fa954d2611&amp;scene=21#wechat_redirect" linktype="2" localeditorid="wg6ngqf4imseqe6juo" target="_blank" textvalue="架构思维：2026 年软件工程的“护城河”">架构思维：2026 年软件工程的"护城河"</a>\
+\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318281&amp;idx=1&amp;sn=b71655d76f1417b76a024c373a2636f2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="l9w3w4ab2m8ixqadc0" target="_blank" textvalue="深度解读 Claude Tag：Anthropic 把 AI 变成了你的 Slack 同事">深度解读 Claude Tag：Anthropic 把 AI 变成了你的 Slack 同事</a>\
+\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/2gsT1KZxDMzYMJvZ4adoDg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

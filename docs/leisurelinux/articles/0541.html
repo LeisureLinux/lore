@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>运维避坑：为什么 rm 了 5GB 日志，磁盘空间还是 100%？ | LeisureLinux 公众号</title>
+<meta name="description" content="运维避坑：为什么 rm 了 5GB 日志，磁盘空间还是 100%？">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/tbZZSGYvDmeje7OoaDKzLg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "运维避坑：为什么 rm 了 5GB 日志，磁盘空间还是 100%？", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0541.html", "sameAs": "https://mp.weixin.qq.com/s/tbZZSGYvDmeje7OoaDKzLg", "isBasedOn": "https://mp.weixin.qq.com/s/tbZZSGYvDmeje7OoaDKzLg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">运维避坑：为什么 rm 了 5GB 日志，磁盘空间还是 100%？</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>最近有一位刚入行 DevOps 的同学跑来问我一个诡异的现象：生产服务器磁盘告警，他反手一个 <code index-in-node="47" path-to-node="4">rm</code> 删除了 5GB 的大日志，结果 <code index-in-node="66" path-to-node="4">df -h</code> 一看，空间占用纹丝不动。</p>
+<p>\</p>
+<p>这其实是 Linux 系统中 <strong>"文件删除机制"</strong> 与 <strong>"进程引用计数"</strong> 之间的一个经典博弈。</p>
+<h3 id="解耦的设计文件名并不等于文件" path-to-node="6">1. 解耦的设计：文件名并不等于文件</h3>
+<p>在 Linux 的虚拟文件系统（VFS）中，一个文件被拆分为两个核心维度：</p>
+<ul>
+<li>
+<p><strong>dentry (Directory Entry):</strong> 我们在 Shell 里看到的"文件名"，本质上只是一个指向 Inode 的指针。</p>
+</li>
+<li>
+<p><strong>Inode:</strong> 真正的文件元数据（元信息），包含权限、属主以及指向磁盘 <strong>Data Blocks</strong> 的地址。</p>
+</li>
+</ul>
+<p>当你执行 <code index-in-node="5" path-to-node="9">rm</code> 命令时，内核调用的是 <code index-in-node="19" path-to-node="9">unlink()</code>。这个操作仅仅是删除了 <strong>dentry</strong>，并将 Inode 的 <strong>i_link（硬链接数）</strong> 减 1。</p>
+<h3 id="关键变量i_count-引用计数" path-to-node="10">2. 关键变量：i_count 引用计数</h3>
+<p>除了 <code index-in-node="3" path-to-node="11">i_link</code>，内核还维护着一个关键指标：<strong><code index-in-node="23" path-to-node="11">i_count</code>（进程引用计数）</strong>。\
+在上述案例中，Web Server 进程依然打开着该日志文件，持有其文件描述符（File Descriptor）。此时：</p>
+<ul>
+<li>
+<p><strong><code index-in-node="0" path-to-node="12,0,0">i_link</code> = 0</strong>（文件名已消失）</p>
+</li>
+<li>
+<p><strong><code index-in-node="0" path-to-node="12,1,0">i_count</code> > 0</strong>（进程句柄未关闭）</p>
+</li>
+</ul>
+<p><strong>Linux 内核的准则：</strong> 只有当 <code index-in-node="17" path-to-node="13">i_link</code> 和 <code index-in-node="26" path-to-node="13">i_count</code> 同时为 0 时，指向磁盘 Data Blocks 的指针才会被释放，空间才会被标记为"空闲"。</p>
+<h3 id="df-与-du-的情报差" path-to-node="14">3. df 与 du 的"情报差"</h3>
+<p>这就是为什么你会看到 <code index-in-node="11" path-to-node="15">df</code> 和 <code index-in-node="16" path-to-node="15">du</code> 的数据冲突：</p>
+<ul>
+<li>
+<p><strong><code index-in-node="0" path-to-node="16,0,0">du</code> (Disk Usage):</strong> 基于文件树扫描。因为 dentry 没了，它找不到这个文件，所以报告空间已释放。</p>
+</li>
+<li>
+<p><strong><code index-in-node="0" path-to-node="16,1,0">df</code> (Disk Free):</strong> 基于超级块（Superblock）的磁盘块分配表。因为 <code index-in-node="44" path-to-node="16,1,0">i_count &gt; 0</code>，内核依然认为这些块是 Active 状态，所以报告空间依然占满。</p>
+</li>
+</ul>
+<h3 id="专家级处理方案" path-to-node="17">4. 专家级处理方案</h3>
+<p>在生产环境中，<strong>严禁</strong>对正在被进程写入的日志执行 <code index-in-node="23" path-to-node="18">rm</code>。</p>
+<ul>
+<li>
+<p><strong>优雅方案（在线清空）：</strong>\
+    使用 <code index-in-node="15" path-to-node="19,0,0">true &gt; /var/log/access.log</code> 或 <code index-in-node="44" path-to-node="19,0,0">truncate -s 0</code>。\
+    这会触发内核将 Data Blocks 直接置空，而无需改变 Inode 状态，进程可以无感地继续写入，且空间立即释放。</p>
+</li>
+<li>
+<p><strong>事后补救（寻找隐形文件）：</strong>\
+    如果已经删了文件，可以使用以下命令定位这些"幽灵文件"：</p>
+<p>[Bash]{ngcontent-ng-c3649887988=""}</p>
+<p><code>{ngcontent-ng-c3649887988=""}
+lsof +L1  # 查找 link count 小于 1 且仍被打开的文件</code></p>
+<p>找到对应的 PID 后，通过 <code index-in-node="15" path-to-node="19,1,2">&gt; /proc/[PID]/fd/[FD]</code> 强制截断，或者优雅地 <code index-in-node="48" path-to-node="19,1,2">reload</code> 该服务。</p>
+</li>
+</ul>
+<hr />
+<h3 id="section-path-to-node21">{#section path-to-node="21"}</h3>
+<h3 id="section-1-path-to-node21">{#section-1 path-to-node="21"}</h3>
+<h3 id="leisurelinux-禅悟" path-to-node="21">LeisureLinux 禅悟</h3>
+<p>在 Linux 的世界里，看到的（文件名）不一定是真实的，看不到的（Inode/FD）才是系统运行的基石。理解了 <strong>引用计数</strong>，你才算真正跨过了运维开发的初阶门槛。</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/tbZZSGYvDmeje7OoaDKzLg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

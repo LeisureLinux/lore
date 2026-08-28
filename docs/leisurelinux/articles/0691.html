@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>比“脏牛”更丝滑？深度解析 Linux 提权核弹：DirtyPipe (CVE-2022-0847) | LeisureLinux 公众号</title>
+<meta name="description" content="比“脏牛”更丝滑？深度解析 Linux 提权核弹：DirtyPipe (CVE-2022-0847)">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/GsZgeSvaetlVeXtfcExnxg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "比“脏牛”更丝滑？深度解析 Linux 提权核弹：DirtyPipe (CVE-2022-0847)", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0691.html", "sameAs": "https://mp.weixin.qq.com/s/GsZgeSvaetlVeXtfcExnxg", "isBasedOn": "https://mp.weixin.qq.com/s/GsZgeSvaetlVeXtfcExnxg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">比“脏牛”更丝滑？深度解析 Linux 提权核弹：DirtyPipe (CVE-2022-0847)</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>\</p>
+<p>摘要： 无需竞态条件，一行代码改写只读文件。带你复盘这个让 Linux 内核开发者"老脸一红"的高危漏洞。</p>
+<p>\</p>
+<p>前言</p>
+<p>在 Linux 安全圈，提到"脏"（Dirty）这个字眼，大家首先想到的往往是 2016 年那个威震天下的 Dirty COW (脏牛)。</p>
+<p>然而，2022 年爆出的 DirtyPipe (CVE-2022-0847)，在利用效率和稳定性上，完全超越了它的前辈。它利用了内核管道（Pipe）机制的逻辑缺陷，让普通用户能像"神"一样，无需权限即可改写系统中的任何只读文件。</p>
+<p>今天，我们就来深度拆解这个被戏称为"脏牛 2.0"的内核提权核弹。</p>
+<p>1. 什么是 DirtyPipe？</p>
+<p>DirtyPipe 是由 Max Kellermann 发现的一个 Linux 内核本地提权漏洞。它的"魅力"在于：极其稳定且利用简单。</p>
+<p>* 漏洞编号：CVE-2022-0847</p>
+<p>* 影响版本：Linux 内核 5.8 及以上版本（直到 5.16.11, 5.15.24, 5.10.102 修复）。</p>
+<p>* 杀伤力：CVSS 7.8。本地普通用户可以瞬间篡改 /etc/passwd、/etc/shadow 或是任何二进制程序，直接获取 Root 权限。</p>
+<p>2. 核心原理：管道里的"脏东西"</p>
+<p>这个漏洞的根源在于 Linux 内核处理 管道缓冲区（Pipe Buffer） 的一个小失误。</p>
+<p>在 Linux 中，管道不仅用于进程间通信，还可以通过 splice() 系统调用将文件内容"零拷贝"到管道中。</p>
+<p>* 历史原因：从内核 5.8 开始，为了提升性能，引入了一个新标志 PIPE_BUF_FLAG_CAN_MERGE。它告诉内核：这个缓冲区是可合并的。</p>
+<p>* 漏洞触发：当攻击者使用 splice() 将一个只读文件的数据拉入管道时，内核错误地保留了上一个操作留下的"可合并"标志。</p>
+<p>* 移花接木：接下来，攻击者向管道写入恶意数据。内核看到"可合并"标志，就直接把数据写到了刚才那个只读文件对应的**页面缓存（Page Cache）**里。</p>
+<p>结果就是： 虽然你没有写权限，但内核被你欺骗，亲手帮你把恶意数据改写到了只读文件的物理内存页中。</p>
+<p>> 比喻： 就像你租了一个公共储物柜（管道），里面放着别人的贵重文件副本（Page Cache）。因为管理员（内核）忘了清理"可写"标签，你可以直接在那个副本上涂鸦，而这个涂鸦会直接同步到原始文件中。</p>
+<p>></p>
+<p>3. 与 Dirty COW 的对决</p>
+<p>\</p>
+<p><strong>特性</strong>                                <strong>Dirty COW (脏牛)</strong>                                <strong>DirtyPipe</strong></p>
+<hr />
+<p>[<strong>可靠性</strong>]{path-to-node="24,1,0,0"}   [依赖竞态条件，可能失败]{path-to-node="24,1,1,0"}   [逻辑漏洞，100% 成功]{path-to-node="24,1,2,0"}
+  [<strong>复杂度</strong>]{path-to-node="24,2,0,0"}   [需要复杂的内存操作]{path-to-node="24,2,1,0"}       [几行简单的 C 代码即可]{path-to-node="24,2,2,0"}
+  [<strong>性能</strong>]{path-to-node="24,3,0,0"}     [消耗 CPU 资源进行竞争]{path-to-node="24,3,1,0"}    [瞬间完成，无感操作]{path-to-node="24,3,2,0"}</p>
+<p>\</p>
+<ol>
+<li>谁会受到影响？\</li>
+</ol>
+<p>由于该漏洞存在于 5.8 之后的内核，因此绝大多数现代发行版都曾身陷囹圄：</p>
+<p>* Ubuntu 20.04/21.10/22.04</p>
+<p>* Debian 11</p>
+<p>* Android 设备（特别是使用 5.10+ 内核的新手机）</p>
+<p>* 容器环境：如果宿主机内核易受攻击，容器内的进程可能实现逃逸。</p>
+<p>5. 修复与防护建议</p>
+<p>LeisureLinux 提醒您：安全第一，升级为王！</p>
+<p>* 内核升级：这是最根本的解决办法。请确保内核版本高于：</p>
+<p>* 5.16.11 / 5.15.24 / 5.10.102</p>
+<p>* 临时缓解：如果无法重启升级，可以尝试限制非特权用户使用 user namespaces：</p>
+<p>sysctl -w kernel.unprivileged_userns_clone=0</p>
+<p>注意：这可能会导致 Docker 或 Chrome 某些功能异常。</p>
+<p>\</p>
+<p>结语</p>
+<p>DirtyPipe 的出现再次提醒我们：即便是在像 Linux 内核这样被无数眼睛盯着的开源项目中，哪怕是一个标志位的逻辑错误，也可能引发巨大的安全隐患。</p>
+<p>\</p>
+<p>如果你对该漏洞的 Exploit 代码演示或底层技术细节感兴趣，欢迎关注我们的 B 站同名频道：LeisureLinux，我们将通过视频演示带你直观感受这个漏洞的威力。</p>
+<p>\</p>
+<p>想了解更多 Linux 黑科技和运维干货？</p>
+<p>* 关注公众号：LeisureLinux</p>
+<p>* 视频教程：B 站搜索"LeisureLinux"</p>
+<p>\</p>
+<p>互动一下： 你在实际生产中遇到过最棘手的 Linux 漏洞是什么？欢迎在评论区留言交流！</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/GsZgeSvaetlVeXtfcExnxg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

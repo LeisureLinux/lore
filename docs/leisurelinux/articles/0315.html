@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞 | LeisureLinux 公众号</title>
+<meta name="description" content="Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/Y0hPDtmshkLylx4HVN4TiA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0315.html", "sameAs": "https://mp.weixin.qq.com/s/Y0hPDtmshkLylx4HVN4TiA", "isBasedOn": "https://mp.weixin.qq.com/s/Y0hPDtmshkLylx4HVN4TiA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>针对近期披露的 <strong>CVE-2026-34040</strong>，该漏洞主要存在于 Docker 守护进程（dockerd）的 API 鉴权插件（Authorization Plugins）机制中。作为架构师或安全分析师，我们需要从底层逻辑、攻击链路及修复架构三个维度进行深入剖析。</p>
+<hr />
+<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsswCTG4licHASs7IvwWfPQhBJnVUfDXbU1fu56DcpGMbuWvfGBOWibsLhesdGtiaYehbfajP74QPC8BPKZJSKxS4dfHwADhIRqLBQ/640?wx_fmt=jpeg" /></p>
+<h3 id="一-核心漏洞成因api-响应逻辑的时序陷阱" path-to-node="3">一、 核心漏洞成因：API 响应逻辑的"时序陷阱"</h3>
+<p>Docker 允许通过第三方插件（AuthZ）对 API 请求进行细粒度控制。传统的鉴权流程应该是<strong>完全阻塞式</strong>的，即：\
+<code index-in-node="59" path-to-node="4">请求 -&gt; AuthZ 插件验证 -&gt; [通过] -&gt; Docker Engine 执行</code>。</p>
+<p><strong>CVE-2026-34040</strong> 的根本问题在于 Docker API 在处理特定的 <strong>HTTP Hijacking（协议升级/劫持）</strong> 请求时，未能正确同步 AuthZ 插件的审批状态。</p>
+<ul>
+<li>
+<p><strong>技术机制：</strong> 当攻击者发送一个包含 <code index-in-node="17" path-to-node="6,0,0">Upgrade</code> 响应头（如 <code index-in-node="31" path-to-node="6,0,0">docker exec -it</code> 或 <code index-in-node="49" path-to-node="6,0,0">docker cp</code> 涉及的双向流）的请求时，Docker 守护进程在某些边界条件下，会在 AuthZ 插件尚未返回"拒绝"指令前，就已经建立了底层 TCP 劫持连接。</p>
+</li>
+<li>
+<p><strong>绕过逻辑：</strong> 攻击者利用高并发请求或特定构造的畸形报文，使插件处理出现延迟。此时，API 层的状态机误认为连接已合法建立，从而允许后续载荷绕过鉴权直接透传至容器引擎。</p>
+</li>
+</ul>
+<hr />
+<h3 id="section-path-to-node8">{#section path-to-node="8"}</h3>
+<h3 id="二-攻击链路分析从普通权限到-host-root" path-to-node="8">二、 攻击链路分析：从普通权限到 Host Root</h3>
+<p>如果环境中配置了基于 AuthZ 插件的访问控制（例如禁止普通用户挂载宿主机目录），攻击者可以利用此漏洞实现跨维度的权限提升：</p>
+<ol>
+<li>
+<p><strong>权限绕过：</strong> 攻击者通过 <code index-in-node="12" path-to-node="10,0,0">docker run</code> 发起请求，在请求头中构造协议劫持特征。</p>
+</li>
+<li>
+<p><strong>逃逸参数注入：</strong> 尽管 AuthZ 插件策略可能禁止了 <code index-in-node="27" path-to-node="10,1,0">--privileged</code> 或 <code index-in-node="42" path-to-node="10,1,0">-v /:/host</code>，但由于鉴权被绕过，这些受限参数被直接送入 <code index-in-node="74" path-to-node="10,1,0">containerd</code> 执行。</p>
+</li>
+<li>
+<p><strong>宿主机接管：</strong> 成功创建一个挂载了宿主机根目录的容器。通过 <code index-in-node="29" path-to-node="10,2,0">chroot</code> 或写入 <code index-in-node="40" path-to-node="10,2,0">crontab</code>/<code index-in-node="48" path-to-node="10,2,0">ssh_authorized_keys</code>，攻击者可在数秒内获取宿主机的完全控制权。</p>
+</li>
+</ol>
+<hr />
+<h3 id="section-1-path-to-node12">{#section-1 path-to-node="12"}</h3>
+<h3 id="三-技术架构影响评估" path-to-node="12">三、 技术架构影响评估</h3>
+<p>该漏洞对以下环境具有极高风险：</p>
+<ul>
+<li>
+<p><strong>金融级信创云：</strong> 依赖 AuthZ 插件实现多租户隔离和敏感操作审计的环境。</p>
+</li>
+<li>
+<p><strong>边缘计算节点：</strong> 通过暴露的 Docker Socket 进行远程管理，且仅靠插件层做防护的场景。</p>
+</li>
+<li>
+<p><strong>DevOps 流水线：</strong> 允许开发人员通过受限 API 调用 Docker 的自动化平台。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>注意：</strong> 如果你的 Docker 环境仅依赖原生的 Linux 用户组权限（docker group）且未启用 <code index-in-node="55" path-to-node="15,0">authorization-plugins</code> 选项，该漏洞的攻击面将显著缩小，但在多租户治理框架下，其防御逻辑已失效。</p>
+</blockquote>
+<hr />
+<h3 id="四-修复与防御架构建议" path-to-node="17">四、 修复与防御架构建议</h3>
+<h4 id="立即补丁修复" path-to-node="18">1. 立即补丁修复</h4>
+<p>Docker 已发布针对此漏洞的紧急更新（建议升级至 <strong>v27.x.x</strong> 或更高版本）。修复代码重构了 <code index-in-node="50" path-to-node="19">api/server/router/proxy.go</code> 中的劫持逻辑，强制要求在流式连接建立前必须获得 AuthZ 插件的显式 <code index-in-node="113" path-to-node="19">Allow</code> 回执。</p>
+<h4 id="深度防御defense-in-depth" path-to-node="20">2. 深度防御（Defense-in-Depth）</h4>
+<ul>
+<li>
+<p><strong>禁用不安全的 API 暴露：</strong> 严禁将 <code index-in-node="19" path-to-node="21,0,0">/var/run/docker.sock</code> 映射给不受信任的容器。</p>
+</li>
+<li>
+<p><strong>引入 Rootless 模式：</strong> 切换至 Rootless Docker，即使发生逃逸，攻击者获取的也仅是宿主机的普通用户权限。</p>
+</li>
+<li>
+<p><strong>内核级强制访问控制：</strong> 部署 <strong>AppArmor</strong> 或 <strong>SELinux</strong> 策略，从内核层面拦截容器对宿主机关键路径（如 <code index-in-node="56" path-to-node="21,2,0">/etc</code>, <code index-in-node="62" path-to-node="21,2,0">/root</code>）的非法挂载尝试，作为 AuthZ 插件失效后的最后一道防线。</p>
+</li>
+</ul>
+<hr />
+<p><strong>\
+</strong></p>
+<p><strong>\
+</strong></p>
+<p><strong>风险提示：</strong>\
+本文由 AI 生成，仅供技术研究与安全防护参考。请安全从业人员仔细甄别漏洞利用风险，并在受控测试环境中验证补丁，谨慎执行生产环境变更。</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317114&amp;idx=1&amp;sn=3e6210c7ff213feb6f7b5c02ed12b699&amp;scene=21#wechat_redirect" linktype="2" localeditorid="f7g9m2h8en9fwb0jy8" target="_blank" textvalue="紧急！OpenClaw（小龙虾）3.28 版本“投毒”，全局 axios 已被恶意代码接管！">紧急！OpenClaw（小龙虾）3.28 版本"投毒"，全局 axios 已被恶意代码接管！</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317143&amp;idx=1&amp;sn=0a50479db149798a88e028fa2f1d9794&amp;scene=21#wechat_redirect" linktype="2" localeditorid="sdd4vk0mkiary8pa80" target="_blank" textvalue="AI 屠龙：全球最安全 OS 破防，内核级“逻辑重构攻击”复盘">AI 屠龙：全球最安全 OS 破防，内核级"逻辑重构攻击"复盘</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316978&amp;idx=1&amp;sn=0e237e87fae57b0a03e743cfe2b730ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2b8jjb2qe51te6o5j4" target="_blank" textvalue="自动化平台的“噩梦”：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案">自动化平台的"噩梦"：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316759&amp;idx=1&amp;sn=f20f06a0676c4aa9f1b1d3fbbb8069fe&amp;scene=21#wechat_redirect" linktype="2" localeditorid="d8zh6royky7l6uiku8" target="_blank" textvalue="拒绝“脚本小子”思维：深挖 CI/CD 流水线的底层逻辑">拒绝"脚本小子"思维：深挖 CI/CD 流水线的底层逻辑</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316791&amp;idx=1&amp;sn=b831cad72c714b1cf8f15f93a94b57a4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="392321y9lenpbq03dog" target="_blank" textvalue="告别 Serverless 迷信：阿里开源 Zvec，将“双 11”级向量检索嵌入你的进程">告别 Serverless 迷信：阿里开源 Zvec，将"双 11"级向量检索嵌入你的进程</a>\</p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/Y0hPDtmshkLylx4HVN4TiA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

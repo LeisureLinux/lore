@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>【底层解析】Google 联手 Intel “拆解” TDX：揭秘可导致机密计算全盘崩溃的严重漏洞 | LeisureLinux 公众号</title>
+<meta name="description" content="【底层解析】Google 联手 Intel “拆解” TDX：揭秘可导致机密计算全盘崩溃的严重漏洞">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/x30CD5sJJbosOMt5DHH4Bg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "【底层解析】Google 联手 Intel “拆解” TDX：揭秘可导致机密计算全盘崩溃的严重漏洞", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0473.html", "sameAs": "https://mp.weixin.qq.com/s/x30CD5sJJbosOMt5DHH4Bg", "isBasedOn": "https://mp.weixin.qq.com/s/x30CD5sJJbosOMt5DHH4Bg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .qr{width:140px;height:auto;border-radius:8px;margin-top:8px}
+  .qrwrap{margin-top:10px}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">【底层解析】Google 联手 Intel “拆解” TDX：揭秘可导致机密计算全盘崩溃的严重漏洞</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p><strong>前言</strong></p>
+<p>在机密计算（Confidential Computing）领域，Intel TDX 一直被视为保护云端敏感负载的"金标准"。然而，近期 Google Cloud Security 团队与 Intel INT31 研究人员历时五个月的深度审计，却在 TDX Module 1.5 中挖掘出了 5 个高危漏洞及数十个安全弱点。其中最令人关注的 <strong>CVE-2025-30513</strong>，甚至允许攻击者完全瓦解 TDX 的硬件隔离保护，实现对加密内存的全盘访问。</p>
+<p>\</p>
+<p>作为关注底层安全与 IT 架构的 LeisureLinux 粉丝，我们需要深入理解这背后的技术逻辑：<strong>为什么号称"硬件级别隔离"的机密虚拟机（Trust Domain, TD）会被攻破？</strong></p>
+<hr />
+<h4 id="section" path-to-node="7"><strong> </strong></h4>
+<h4 id="一-技术背景什么是-intel-tdx" path-to-node="7"><strong>一、 技术背景：什么是 Intel TDX？</strong></h4>
+<p>Intel TDX（Trust Domain Extensions）旨在通过硬件手段，在多租户的云环境中隔离虚拟机（VM）。即便底层的 Hypervisor（宿主机操作系统）被黑客控制，或者面临恶意的内部运维人员，TDX 也能确保虚拟机的代码和数据在运行状态下保持机密性和完整性。</p>
+<p>其核心逻辑是将传统的 VM 封装为"信任域（Trust Domain, TD）"，由硬件管理的 <strong>TDX Module</strong>（运行在特殊的保护模式下）负责内存加解密和状态隔离。</p>
+<hr />
+<h4 id="section-1" path-to-node="11"><strong> </strong></h4>
+<h4 id="二-致命一击cve-2025-30513-漏洞深度拆解" path-to-node="11"><strong>二、 致命一击：CVE-2025-30513 漏洞深度拆解</strong></h4>
+<p>在本次审计中，最核心的漏洞是 <strong>CVE-2025-30513</strong>。该漏洞存在于 TDX 的**迁移（Migration）**逻辑中，是一个经典的 <strong>TOCTOU（Time-of-Check to Time-of-Use，检查时与使用时之差）</strong> 漏洞。</p>
+<p><strong>\
+</strong></p>
+<p><strong>1. 攻击路径：从"可迁移"到"可调试"的属性翻转</strong>\
+在 TDX 架构中，TD 有两种互斥的状态：</p>
+<ul>
+<li>
+<p><strong>Migratable（可迁移）：</strong> 允许在不同物理服务器间移动，但保持加密状态。</p>
+</li>
+<li>
+<p><strong>Debuggable（可调试）：</strong> 允许 Host 访问内存以进行开发调试，但这会丧失机密性（生产环境严禁开启）。</p>
+</li>
+</ul>
+<p><strong>\
+</strong></p>
+<p><strong>2. 漏洞机制：</strong>\
+当一个 TD 正在进行跨主机迁移时，Host 可以利用 TOCTOU 漏洞，在 TD 的不可变状态（Immutable State）被导入的瞬间，恶意修改其属性，将原本安全的"生产型 TD"伪装成"调试型 TD"。</p>
+<p><strong>\
+</strong></p>
+<p><strong>3. 灾难性后果：</strong>\
+一旦属性被成功翻转为 Debug 模式，Host 就可以通过硬件接口直接读取该 TD 的全部解密状态。由于迁移可以在 TD 生命周期的任何时刻发生，这意味着攻击者可以在 TD 完成远程度量（Attestation）并载入核心秘钥后发起攻击，从而窃取所有核心业务数据。</p>
+<hr />
+<h4 id="section-2" path-to-node="18"><strong> </strong></h4>
+<h4 id="section-3" path-to-node="18"><strong> </strong></h4>
+<h4 id="三-审计方法论ai-手动代码审计" path-to-node="18"><strong>三、 审计方法论：AI + 手动代码审计</strong></h4>
+<p>Google 团队此次发布的 85 页技术报告显示，他们并不仅仅依赖传统的模糊测试（Fuzzing），而是采用了一套组合拳：</p>
+<ul>
+<li>
+<p><strong>手动代码审查：</strong> 针对 TDX Module 1.5 的高层功能代码进行逐行审计。</p>
+</li>
+<li>
+<p><strong>自定义工具链：</strong> 针对机密计算特殊的硬件交互逻辑编写了专属测试用例。</p>
+</li>
+<li>
+<p><strong>AI 辅助分析：</strong> 利用大模型（Off-the-shelf AI）辅助识别潜在的代码缺陷，极大提升了对复杂逻辑漏洞（如状态机错误）的捕捉效率。</p>
+</li>
+</ul>
+<p>最终结果是惊人的：<strong>5 个 CVE 漏洞，35 个各类 Bug、弱点及安全改进建议。</strong></p>
+<h4 id="section-4" path-to-node="22"><strong> </strong></h4>
+<h4 id="section-5" path-to-node="22"><strong> </strong></h4>
+<h4 id="四-漏洞修复与修复建议" path-to-node="22"><strong>四、 漏洞修复与修复建议</strong></h4>
+<p>目前，Intel 已经发布了针对性的固件更新和微代码补丁，涵盖了以下 CVE：</p>
+<ul>
+<li><strong>CVE-2025-32007, 27940, 30513, 27572, 32467</strong>：涉及提权和信息泄露。</li>
+</ul>
+<p><strong>\
+</strong></p>
+<p><strong>\
+</strong></p>
+<p><strong>LeisureLinux 专家建议：</strong></p>
+<ol>
+<li>
+<p><strong>基础设施升级：</strong> 正在使用 Intel 第四代/第五代至强处理器（Sapphire Rapids / Emerald Rapids）构建私有云或机密计算平台的同学，必须尽快更新 Intel 提供的 <strong>TDX Module 固件版本</strong>。</p>
+</li>
+<li>
+<p><strong>重新评估迁移策略：</strong> 在补丁未完全覆盖前，建议暂时在敏感业务中禁用 TD 迁移功能。</p>
+</li>
+<li>
+<p><strong>关注远程度量（Attestation）：</strong> 确保你的 Attestation 逻辑能够识别并拒绝属性异常（如非预期的 Debug 状态）的 TD 运行环境。</p>
+</li>
+</ol>
+<hr />
+<p><strong>\
+</strong></p>
+<p><strong>\
+</strong></p>
+<p><strong>结语</strong></p>
+<p>机密计算并非"银弹"，硬件层面的复杂性往往意味着更隐蔽的攻击面。Google 与 Intel 的这次联手审计再次证明：<strong>即使是烧录在硅片里的信任根，也需要通过持续的开源精神和严苛的代码审计来维持。</strong></p>
+<p>\</p>
+<p>更多关于 Linux 底层安全、内核加固及 IT 技术的干货，请关注 <strong>LeisureLinux</strong>。如果你对机密计算的底层实现感兴趣，欢迎在评论区留言交流。</p>
+<hr />
+<p>*\
+*</p>
+<p>*\
+*</p>
+<p><em>注：本文参考了 SecurityWeek 及 Google Cloud Security 公开发布的最新技术审计报告。</em></p>
+<p>\</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/x30CD5sJJbosOMt5DHH4Bg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+      <p class="qrwrap"><img class="qr" src="/leisurelinux-qrcode.jpeg" alt="LeisureLinux 公众号二维码（微信扫一扫关注）"></p>
+    </div>
+  </article>
+</div>
+</body>
+</html>
