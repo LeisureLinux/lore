@@ -165,29 +165,49 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <p>近日，由开发者 Ferran Duarri 发布的开源项目<strong>GreenBoost</strong>引起了 Linux 社区和 AI 领域的高度关注。该项目通过一个 GPLv2 授权的 Linux 内核模块，实现了将 NVIDIA GPU 的专用显存（vRAM）与系统内存（DDR4/DDR5）及 NVMe 存储进行透明化池化。</p>
-<p>\</p>
 <p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsvYRmlDkqjjWI4UanMddBbcaicGugzmsse8TcPTymF3kcF1dpIIPHxxib32az099Xiazib2iaYVicuAic9Oiamz43ictgeVUNKqYIMmlMZA/640?wx_fmt=jpeg" /></p>
-<p>\</p>
 <p>对于正在运营<code index-in-node="7" path-to-node="2">LeisureLinux</code>的技术博主而言，该项目的底层架构、内存管理机制以及对 CUDA 生态的兼容性，是非常值得深入拆解的硬核题材。</p>
 <h3 id="section-path-to-node4">{#section path-to-node="4"}</h3>
 <h3 id="架构设计三级存储层次3-tier-memory-hierarchy" path-to-node="4">1.架构设计：三级存储层次（3-Tier Memory Hierarchy）</h3>
 <p>GreenBoost 的核心逻辑是将 GPU 无法容纳的大型模型张量（如 KV Cache、模型权重）按照访问频率分布在三个性能梯次中：</p>
-<p>\</p>
-<p><strong>梯次</strong>                               <strong>物理介质</strong>                                     <strong>吞吐能力（估算）</strong>                                 <strong>适用场景</strong></p>
-<hr />
-<p>[<strong>Tier 1</strong>]{path-to-node="6,1,0,0"}   [<strong>VRAM (HBM/GDDR)</strong>]{path-to-node="6,1,1,0"}    [\~1000 GB/s (RTX 4090)]{path-to-node="6,1,2,0"}     [热数据（当前计算层的权重、激活值）]{path-to-node="6,1,3,0"}
-  [<strong>Tier 2</strong>]{path-to-node="6,2,0,0"}   [<strong>System RAM (DDR)</strong>]{path-to-node="6,2,1,0"}   [\~32 GB/s (PCIe 4.0 x16)]{path-to-node="6,2,2,0"}   [温数据（KV Cache、次优计算层）]{path-to-node="6,2,3,0"}
-  [<strong>Tier 3</strong>]{path-to-node="6,3,0,0"}   [<strong>NVMe SSD</strong>]{path-to-node="6,3,1,0"}           [\~2-7 GB/s]{path-to-node="6,3,2,0"}                 [冷数据（冻结页、溢出缓存）]{path-to-node="6,3,3,0"}</p>
+<table>
+<thead>
+<tr>
+<th><strong>梯次</strong></th>
+<th><strong>物理介质</strong></th>
+<th><strong>吞吐能力（估算）</strong></th>
+<th><strong>适用场景</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>[<strong>Tier 1</strong>]{path-to-node="6,1,0,0"}</td>
+<td>[<strong>VRAM (HBM/GDDR)</strong>]{path-to-node="6,1,1,0"}</td>
+<td>[\~1000 GB/s (RTX 4090)]{path-to-node="6,1,2,0"}</td>
+<td>[热数据（当前计算层的权重、激活值）]{path-to-node="6,1,3,0"}</td>
+</tr>
+<tr>
+<td>[<strong>Tier 2</strong>]{path-to-node="6,2,0,0"}</td>
+<td>[<strong>System RAM (DDR)</strong>]{path-to-node="6,2,1,0"}</td>
+<td>[\~32 GB/s (PCIe 4.0 x16)]{path-to-node="6,2,2,0"}</td>
+<td>[温数据（KV Cache、次优计算层）]{path-to-node="6,2,3,0"}</td>
+</tr>
+<tr>
+<td>[<strong>Tier 3</strong>]{path-to-node="6,3,0,0"}</td>
+<td>[<strong>NVMe SSD</strong>]{path-to-node="6,3,1,0"}</td>
+<td>[\~2-7 GB/s]{path-to-node="6,3,2,0"}</td>
+<td>[冷数据（冻结页、溢出缓存）]{path-to-node="6,3,3,0"}</td>
+</tr>
+</tbody>
+</table>
 <h3 id="内核态与用户态的协同机制" path-to-node="7">2. 内核态与用户态的协同机制</h3>
 <p>GreenBoost 并不是通过逆向工程修改 NVIDIA 的官方闭源驱动（<code index-in-node="38" path-to-node="8">nvidia.ko</code>），而是采用了一种"侧挂式"架构：</p>
 <h4 id="section-1-path-to-node9">{#section-1 path-to-node="9"}</h4>
 <h4 id="a.内核模块-greenboost.ko" path-to-node="9">A.内核模块 (<code index-in-node="9" path-to-node="9">greenboost.ko</code>)</h4>
 <p>该模块使用 Linux 内核的<strong>Buddy Allocator</strong>分配固定的（Pinned）DDR 页面。</p>
-<p>\</p>
 <ul>
 <li>
 <p><strong>大页优化</strong>：为了提高 TLB 命中率，GreenBoost 默认分配<strong>2MB 复合页（Compound Pages）</strong>。</p>
-<p>\</p>
 </li>
 <li>
 <p><strong>DMA-BUF 导出</strong>：通过<code index-in-node="14" path-to-node="11,1,0">dma-buf</code>机制将这些系统内存页面导出为文件描述符，使其能够跨驱动通信。</p>
@@ -205,7 +225,6 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </li>
 <li>
 <p><strong>零拷贝映射</strong>：从 CUDA 视角看，这些系统内存页就像是显存的一部分，GPU 可以直接通过 PCIe 总线进行寻址访问。</p>
-<p>\</p>
 </li>
 </ol>
 <h3 id="section-3-path-to-node16">{#section-3 path-to-node="16"}</h3>
@@ -219,7 +238,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </li>
 <li>
 <p><strong>性能权衡</strong>：</p>
-<ul>
+</li>
 <li>
 <p><strong>Latency</strong>：访问 Tier 2 内存受限于 PCIe 带宽和延迟，相比原生 VRAM 存在性能衰减。</p>
 </li>
@@ -227,27 +246,22 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>Stability</strong>：由于使用了 Pinned Memory 和底层的 DMA 操作，系统高负载下的内存碎片管理是该项目目前的实验性难点。</p>
 </li>
 </ul>
-</li>
-</ul>
 <h3 id="section-4-path-to-node19">{#section-4 path-to-node="19"}</h3>
 <h3 id="部署与运维参考leisurelinux-视角" path-to-node="19">4. 部署与运维参考（LeisureLinux 视角）</h3>
 <p>该项目目前的安装脚本<code index-in-node="11" path-to-node="20">greenboost_setup.sh</code>会自动检测 CPU 的 P/E 核拓扑、NVMe 容量以及 GPU 状态，并动态调整内核参数。</p>
-<p>[\
-]{ngcontent-ng-c565977111=""}[# 核心依赖项\
-# 要求：NVIDIA Driver >= 550, Linux Kernel >= 6.1\
-\
-]{ngcontent-ng-c565977111=""}[git clone https://gitlab.com/IsolatedOctopi/nvidia_greenboost.git\
-cd nvidia_greenboost\
-sudo ./greenboost_setup.sh full-install]{ngcontent-ng-c565977111=""}\</p>
-<p><strong>\
+<p>[
+]{ngcontent-ng-c565977111=""}[# 核心依赖项
+# 要求：NVIDIA Driver >= 550, Linux Kernel >= 6.1</p>
+<p>]{ngcontent-ng-c565977111=""}[git clone https://gitlab.com/IsolatedOctopi/nvidia_greenboost.git
+cd nvidia_greenboost
+sudo ./greenboost_setup.sh full-install]{ngcontent-ng-c565977111=""}</p>
+<p><strong>
 </strong></p>
 <p><strong>安全建议</strong>：作为安全分析师，需注意该驱动涉及<code index-in-node="22" path-to-node="22">dma-buf</code>跨驱动共享，且需要 Pinned Memory 权限。在多租户环境或高安全要求的生产服务器上，需审视其内存隔离策略，防止潜在的侧信道攻击或内存越界访问。</p>
 <h3 id="section-5-path-to-node24">{#section-5 path-to-node="24"}</h3>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316678&amp;idx=1&amp;sn=96ca9d254f3527323e61a503a726e353&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1mads0gidjjq93avx8g" target="_blank" textvalue="存储架构的阶跃：美光 9650 领衔 PCIe 6.0 时代，28GB/s 吞吐量刷新 IO 上限">存储架构的阶跃：美光 9650 领衔 PCIe 6.0 时代，28GB/s 吞吐量刷新 IO 上限</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316177&amp;idx=1&amp;sn=caf31df436a70e419f9ae2b82eed010e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="vxv5z8m05xn4s4e6uww" target="_blank" textvalue="2026 年 Linux 全栈 AI 工具图鉴 (完整版)">2026 年 Linux 全栈 AI 工具图鉴 (完整版)</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316783&amp;idx=1&amp;sn=15848cb501cec13c27d0a23c218a1ffa&amp;scene=21#wechat_redirect" linktype="2" localeditorid="rl56ql3hte2t7jft34" target="_blank" textvalue="LXD 6.7 正式发布：引入 AMD GPU 透传支持与架构优化">LXD 6.7 正式发布：引入 AMD GPU 透传支持与架构优化</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316678&amp;idx=1&amp;sn=96ca9d254f3527323e61a503a726e353&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1mads0gidjjq93avx8g" target="_blank" textvalue="存储架构的阶跃：美光 9650 领衔 PCIe 6.0 时代，28GB/s 吞吐量刷新 IO 上限">存储架构的阶跃：美光 9650 领衔 PCIe 6.0 时代，28GB/s 吞吐量刷新 IO 上限</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316177&amp;idx=1&amp;sn=caf31df436a70e419f9ae2b82eed010e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="vxv5z8m05xn4s4e6uww" target="_blank" textvalue="2026 年 Linux 全栈 AI 工具图鉴 (完整版)">2026 年 Linux 全栈 AI 工具图鉴 (完整版)</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316783&amp;idx=1&amp;sn=15848cb501cec13c27d0a23c218a1ffa&amp;scene=21#wechat_redirect" linktype="2" localeditorid="rl56ql3hte2t7jft34" target="_blank" textvalue="LXD 6.7 正式发布：引入 AMD GPU 透传支持与架构优化">LXD 6.7 正式发布：引入 AMD GPU 透传支持与架构优化</a></p>
     </div>
     <div class="src">
       <div class="txt">

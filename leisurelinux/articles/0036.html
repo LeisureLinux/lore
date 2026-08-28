@@ -164,8 +164,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/RiTtIxfq1ecz5J2xLpTU1g" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>一个潜伏九年的内核竞态，让一次普通的写入，静默覆写了受保护的文件。</p>
-<p>------ CVE-2026-64600 · RefluXFS</p>
+<p>一个潜伏九年的内核竞态，让一次普通的写入，静默覆写了受保护的文件。——CVE-2026-64600 · RefluXFS</p>
 <p>想象这样一个场景。周三早上 9 点，你打开工单系统，看到一条紧急告警：某台生产环境的 RHEL 10.2 服务器，凌晨 3 点被人登录了 root 账号。但 root 密码只有三个人知道，且都明确表示没有操作过。</p>
 <p>你 SSH 上服务器开始排查：journalctl 一片空白，ausearch 没有任何记录，last 命令没有异常 IP。唯一可疑的痕迹是 /etc/passwd 里多了一行无密码的 UID=0 账号。</p>
 <p>SELinux enforcing 完好，KASLR/SMEP/SMAP 全开。但攻击者就是拿到了 root，且全程没有日志。这就是 <strong>CVE-2026-64600</strong>，一个潜伏 9 年 的内核 XFS 漏洞。</p>
@@ -176,92 +175,69 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>致命的时间窗口：四步竞态拆解</p>
 <p>03</p>
 <p>检测、自查与唯一可靠的修复路径</p>
-<p>\</p>
 <p>01 · OVERVIEW</p>
 <h3 id="5">漏洞全景：5 个关键事实</h3>
-<p>\</p>
 <p>RefluXFS（Reflink + XFS 的合体）由 Qualys 威胁研究单元 发现，是 Linux 内核 XFS 文件系统 copy-on-write 路径中的竞态条件。它允许任意本地用户静默提权 root，绕过 SELinux、容器隔离、KASLR/SMEP/SMAP。</p>
 <p>漏洞自 2017 年的内核 4.11 起潜伏，2026 年 7 月 16 日修复合入主线。Qualys 估算全球 约 1640 万台 主机暴露，RHEL、Oracle Linux、Amazon Linux、Fedora Server 默认即中招。</p>
 <p>唯一可靠的修复：升级内核 + 重启。没有零时差缓解手段。</p>
-<p>\</p>
 <p>02 · BASICS</p>
 <h3 id="xfs-reflink-copy-on-write">先搞懂：XFS reflink 与 Copy-on-Write</h3>
-<p>\</p>
-<p><strong>reflink</strong> 是 XFS 的块级共享机制，让两个文件共享同一组物理块。执行 cp --reflink=always 几乎是瞬时完成，因为根本没有复制数据。</p>
-<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsvSpaQICYatzk6jCkWgBCUdIONCVORfYxn9t7DAmVA5ghWJr64m9rsf9bWOGW6XRIv1yj8ee14ekHLuEXHMPqWvNtR75zxUQIc/640?wx_fmt=jpeg" /></p>
-<p>--- reflink：两个文件共享同一组物理块</p>
+<p><strong>reflink</strong> 是 XFS 的块级共享机制，让两个文件共享同一组物理块。执行 cp \——reflink=always 几乎是瞬时完成，因为根本没有复制数据。</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsvSpaQICYatzk6jCkWgBCUdIONCVORfYxn9t7DAmVA5ghWJr64m9rsf9bWOGW6XRIv1yj8ee14ekHLuEXHMPqWvNtR75zxUQIc/640?wx_fmt=jpeg" />——reflink：两个文件共享同一组物理块</p>
 <p>但两个文件共享块，对其中一个写入时怎么办？答案是 <strong>Copy-on-Write</strong>：内核分配新块，把数据复制过去，修改 inode 映射指向新块，源文件完全不受影响。</p>
 <p>关键背景：自 2019 年起，mkfs.xfs 默认开启 reflink。今天线上绝大多数 Linux 服务器，都在 RefluXFS 的攻击面上。</p>
-<p>\</p>
 <p>03 · ROOT CAUSE</p>
 <h3 id="_1">那个致命的时间窗口</h3>
-<p>\</p>
 <p>「等待日志空间时，内核临时释放了 inode 锁。」</p>
 <p>触发条件是三重奏：<strong>XFS 文件系统 + reflink 已启用 + 同一文件系统上有用户可写目录和高价值文件</strong>。第三点在多用户系统中默认成立。</p>
-<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMstkTXZ0pUQbYZqicbAdbHlrkLicn8WUviaSjkoibia6Y9LfqqBPBb8iaFn2kVfOtfaLOqANBdb3fibdL2pKfRgEib0o0Sdo7BVKBp30XZE/640?wx_fmt=jpeg" /></p>
-<p>--- 竞态时序：丢锁、陈旧地址、覆写源文件</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMstkTXZ0pUQbYZqicbAdbHlrkLicn8WUviaSjkoibia6Y9LfqqBPBb8iaFn2kVfOtfaLOqANBdb3fibdL2pKfRgEib0o0Sdo7BVKBp30XZE/640?wx_fmt=jpeg" />——竞态时序：丢锁、陈旧地址、覆写源文件</p>
 <p>进程 A 对 reflink 文件发起 O_DIRECT 写，内核走 CoW 路径；日志空间不够时，内核临时释放 inode 锁（ilock）；进程 B 在窗口内发起并发写入，改变块映射；进程 A 带着陈旧地址复活，把数据写到了源文件的物理块上。</p>
 <p>O_DIRECT 绕过 page cache，这次写入是永久的、不可逆的。</p>
 <p>攻击效果：把 /usr/bin/sudo reflink 出来做副本，发起竞态替换；或者在 /etc/passwd 里追加 hacker::0:0::/root:/bin/bash（第二列空即无密码）。</p>
 <p>为什么所有传统防护都失效？KASLR/SMEP/SMAP 是 CPU 特权级机制，对 块设备层覆写 无效；SELinux 看不到 reflink 的合法写权限；容器共享内核自然也失效；auditd 记录的 syscall 单独看都是正常的。</p>
-<p>\</p>
 <p>04 · IMPACT</p>
 <h3 id="1640">影响面：1640 万台机器在射程内</h3>
-<p>\
-       <img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMss7F8ebsbads5l0K99ictStwp1pM5JIOTep9WWz6FCwdIEibEffYeh1SdHMxcbgK51QpkpX33yQmRwwc5Dw9wiacibd5k2icNC9ialib4/640?wx_fmt=jpeg" /></p>
-<p>--- RefluXFS 影响面分布（Source: Qualys TRU, 2026）</p>
-<p>默认中招（XFS+reflink 是默认）：RHEL 8/9/10、Oracle Linux、Amazon Linux 2/2023、Fedora Server。默认安全（ext4 是默认）：Debian、Ubuntu、SUSE------但只要手工选过 XFS 就在射程内。</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMss7F8ebsbads5l0K99ictStwp1pM5JIOTep9WWz6FCwdIEibEffYeh1SdHMxcbgK51QpkpX33yQmRwwc5Dw9wiacibd5k2icNC9ialib4/640?wx_fmt=jpeg" />——RefluXFS 影响面分布（Source: Qualys TRU, 2026）</p>
+<p>默认中招（XFS+reflink 是默认）：RHEL 8/9/10、Oracle Linux、Amazon Linux 2/2023、Fedora Server。默认安全（ext4 是默认）：Debian、Ubuntu、SUSE——但只要手工选过 XFS 就在射程内。</p>
 <p>如果你公司有跑了几年的服务器从未重启，恭喜，漏洞暴露窗口是满的。云厂商默认 Linux 镜像大多基于 RHEL 系，云上的暴露面比想象的大得多。</p>
-<p>\</p>
 <p>05 · RESPONSE</p>
 <h3 id="5_1">检测、自查与修复：5 秒出结论</h3>
-<p>\</p>
 <p>SELF-CHECK</p>
 <p>三项全中等于高危：内核不低于 4.11 且未打补丁；用了 XFS；reflink 已启用。</p>
 <p>执行以下命令排查。</p>
-<p>.    .    .    bash</p>
-<p>uname -r                       # 1. 内核版本（是否不低于 4.11）</p>
-<p>findmnt -t xfs                 # 2. 是否用了 XFS</p>
-<p>xfs_info / | grep -i reflink   # 3. reflink 是否启用</p>
+<p>.    .    .    bash</p>
+<p>uname -r                       # 1. 内核版本（是否不低于 4.11）</p>
+<p>findmnt -t xfs                 # 2. 是否用了 XFS</p>
+<p>xfs_info / | grep -i reflink   # 3. reflink 是否启用</p>
 <p>升级内核并重启，是唯一可靠的修复路径。</p>
-<p>.    .    .    bash</p>
+<p>.    .    .    bash</p>
 <p># RHEL / CentOS / Oracle / Fedora / Amazon Linux</p>
 <p>sudo yum update kernel &amp;&amp; sudo reboot</p>
 <p># Debian / Ubuntu</p>
 <p>sudo apt update &amp;&amp; sudo apt upgrade linux-image-generic &amp;&amp; sudo reboot</p>
 <p>没有可靠的临时缓解。RefluXFS 攻击的是任意可读文件，不止 SUID 文件。chmod 0755 这种 Dirty Pipe 的招数对它无效。</p>
 <p>如果今天你只做一件事：在所有 Linux 服务器上跑一次自检三连。</p>
-<p>\</p>
 <p>06 · REFLECTION</p>
 <h3 id="_2">对架构与运维的启示</h3>
-<p>\</p>
 <p>RefluXFS 不只是一个漏洞，它是一个信号。它告诉我们三件事。</p>
 <p>01</p>
-<p>「默认安全」假设是脆弱的------任何一个发行版默认配置的变更都是一次安全债</p>
+<p>「默认安全」假设是脆弱的——任何一个发行版默认配置的变更都是一次安全债</p>
 <p>02</p>
-<p>防御纵深不能止步于 CPU 特权级------KASLR/SMEP 管不到块设备层的覆写</p>
+<p>防御纵深不能止步于 CPU 特权级——KASLR/SMEP 管不到块设备层的覆写</p>
 <p>03</p>
-<p>容器与多租户场景下共享内核等于共享 root------9 年潜伏期值得整个生态反思</p>
-<p>长期加固：三件事写进团队 SOP------<strong>内核热补丁机制</strong>（kpatch/kgraft/livepatch）、<strong>关键二进制完整性监控</strong>（AIDE/Tripwire）、<strong>多租户共享最小化</strong>。</p>
-<p>\</p>
+<p>容器与多租户场景下共享内核等于共享 root——9 年潜伏期值得整个生态反思</p>
+<p>长期加固：三件事写进团队 SOP——<strong>内核热补丁机制</strong>（kpatch/kgraft/livepatch）、<strong>关键二进制完整性监控</strong>（AIDE/Tripwire）、<strong>多租户共享最小化</strong>。</p>
 <p>∞ · POSTSCRIPT</p>
 <h3 id="_3">结语</h3>
-<p>\</p>
 <p>「云原生时代，内核漏洞等于全集群漏洞。」</p>
-<p>RefluXFS 提醒我们，纵深防御的边界不能止步于 CPU 和 syscall------必须延伸到块设备层、文件系统层、二进制完整性监控。安全运维不是一次性项目，而是和操作系统本身一起演进的长期工程。</p>
+<p>RefluXFS 提醒我们，纵深防御的边界不能止步于 CPU 和 syscall——必须延伸到块设备层、文件系统层、二进制完整性监控。安全运维不是一次性项目，而是和操作系统本身一起演进的长期工程。</p>
 <p>END</p>
 <p>本文作者：LeisureLinux。一个专注 Linux 内核与底层架构的公众号，致力于分享硬核技术深度解读。</p>
-<p>如果你觉得今天这篇有收获，欢迎    <strong>点赞、在看、转发</strong>    三连，我们下篇见。</p>
-<p>\</p>
-<p>\
-<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317527&amp;idx=2&amp;sn=96358fc11da6f5e7ce37fbd17250568d&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4s3zu6c0tce0pnxw8hs" target="_blank" textvalue="Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确">Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确</a>\
-\
-<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2ix49mmlj4zix7g9og" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a>\
-\
-<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316549&amp;idx=1&amp;sn=2ac36aa0d170669b6dbe02a4136886c3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="u7oeu6mxxvbsq7pwjk" target="_blank" textvalue="2026 管理重构：顶级管理者如何利用 AI 构建技术团队的“第二大脑”？">2026 管理重构：顶级管理者如何利用 AI 构建技术团队的"第二大脑"？</a>\
-\
-<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318331&amp;idx=1&amp;sn=ff0aa302f83227895bec76f0f367afd9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ozsrwrudz7xgsetibk" target="_blank" textvalue="ISO 27001:2022 认证完全解读 —— 从零到合规的工具箱">ISO 27001:2022 认证完全解读 ------ 从零到合规的工具箱</a>\
-\</p>
+<p>如果你觉得今天这篇有收获，欢迎    <strong>点赞、在看、转发</strong>    三连，我们下篇见。</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317527&amp;idx=2&amp;sn=96358fc11da6f5e7ce37fbd17250568d&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4s3zu6c0tce0pnxw8hs" target="_blank" textvalue="Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确">Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2ix49mmlj4zix7g9og" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316549&amp;idx=1&amp;sn=2ac36aa0d170669b6dbe02a4136886c3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="u7oeu6mxxvbsq7pwjk" target="_blank" textvalue="2026 管理重构：顶级管理者如何利用 AI 构建技术团队的“第二大脑”？">2026 管理重构：顶级管理者如何利用 AI 构建技术团队的"第二大脑"？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318331&amp;idx=1&amp;sn=ff0aa302f83227895bec76f0f367afd9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ozsrwrudz7xgsetibk" target="_blank" textvalue="ISO 27001:2022 认证完全解读——从零到合规的工具箱">ISO 27001:2022 认证完全解读——从零到合规的工具箱</a></p>
     </div>
     <div class="src">
       <div class="txt">

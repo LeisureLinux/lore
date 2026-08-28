@@ -164,7 +164,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/R3jAvbw4wrynFBz3OCQ3aw" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>近期，Linux 内核社区连续遭遇了<strong>CopyFail</strong>(CVE-2026-31431) 与<strong>Dirty Frag</strong>(CVE-2026-43284/43500) 两个灾难性本地权限提升（LPE）漏洞。面对 AI 辅助漏洞挖掘工具（如 Theori 的 Xint Code）带来的漏洞爆发，Linux 稳定版维护者 Sasha Levin 正式提交了一项名为<strong>\"Emergency Killswitch\"</strong>的内核补丁提案。\
+<p>近期，Linux 内核社区连续遭遇了<strong>CopyFail</strong>(CVE-2026-31431) 与<strong>Dirty Frag</strong>(CVE-2026-43284/43500) 两个灾难性本地权限提升（LPE）漏洞。面对 AI 辅助漏洞挖掘工具（如 Theori 的 Xint Code）带来的漏洞爆发，Linux 稳定版维护者 Sasha Levin 正式提交了一项名为<strong>\"Emergency Killswitch\"</strong>的内核补丁提案。
 这一动向标志着 Linux 内核安全策略从"被动响应"向"运行时功能隔离"的重大转型。</p>
 <p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsscyn5b6N58YGicnOJvDr9WfTNNg2KYuiazicibQKdvbl0pjjapHGC25nZSey3dAPWserVg7tJKiay8AR6nMrK2uSEqSfNiaaKN7okOk/640?wx_fmt=jpeg" /></p>
 <h3 heading="true" id="一-核心漏洞背景copyfail-与-dirty-frag-的共性分析">一、 核心漏洞背景：CopyFail 与 Dirty Frag 的共性分析</h3>
@@ -182,15 +182,13 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>•<strong>威胁</strong>：该漏洞不仅能实现 Root 提权，且能直接突破容器隔离，影响整个宿主机。</li>
 </ul>
 <h3 heading="true" id="二-killswitch-机制架构级防御演进">二、 Killswitch 机制：架构级防御演进</h3>
-<p>传统的漏洞修复依赖于"发现 -> 开发补丁 -> 发行版打包 -> 管理员重启"。但在 CopyFail 这种零日漏洞面前，窗口期往往长达数天甚至数周。\
-<strong>Killswitch 补丁的核心逻辑：</strong>\
+<p>传统的漏洞修复依赖于"发现 -> 开发补丁 -> 发行版打包 -> 管理员重启"。但在 CopyFail 这种零日漏洞面前，窗口期往往长达数天甚至数周。
+<strong>Killswitch 补丁的核心逻辑：</strong>
 该提案允许系统管理员在<strong>无需重启、无需重新编译内核</strong>的情况下，通过 sysfs 接口直接动态禁用特定的内核函数或子系统。</p>
 <h4 heading="true" id="技术实现">1. 技术实现</h4>
 <p>管理员可以向内核控制接口发送指令，强行修改指定函数的入口行为：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 示例：直接禁用引发 CopyFail 的加密接口函数
-echo &quot;engage af_alg_sendmsg -1&quot; &gt; /sys/kernel/security/killswitch/control
-</code></pre></div>
-
+<h1 id="copyfail">示例：直接禁用引发 CopyFail 的加密接口函数</h1>
+<p>echo "engage af_alg_sendmsg -1" &gt; /sys/kernel/security/killswitch/control</p>
 <p>当该命令执行后，内核会劫持 af_alg_sendmsg 函数。此后任何对该函数的调用都会直接返回 -1（EPERM/EINVAL），其内部的脆弱代码逻辑永远不会被触达。</p>
 <h4 heading="true" id="污染标记-taint">2. "污染"标记 (Taint)</h4>
 <p>为了防止该功能被滥用或导致难以调试的系统崩溃，启用 Killswitch 会导致内核被标记为<strong>Tainted (位 20, 字符 \'H\')</strong>。这向维护者标明：当前运行环境已非原生，任何 Crash 报告都必须结合 Killswitch 策略进行分析。</p>
@@ -203,25 +201,18 @@ echo &quot;engage af_alg_sendmsg -1&quot; &gt; /sys/kernel/security/killswi
 <h4 heading="true" id="隔离技术的降级预案">3. 隔离技术的降级预案</h4>
 <p>目前的容器安全极度依赖内核命名空间。一旦发生 Page Cache 级的共享内存破坏，所有的逻辑隔离都会失效。Killswitch 提供了一种粗鲁但有效的物理切断方式，在紧急情况下牺牲特定功能（如 IPsec 性能或特定加密支持）来保全整机的完整性。</p>
 <h3 heading="true" id="四-总结与专家建议">四、 总结与专家建议</h3>
-<p>Linux 内核引入 Killswitch 是对此前"漏洞修补马拉松"的无奈妥协，也是一种实用主义的进步。\
+<p>Linux 内核引入 Killswitch 是对此前"漏洞修补马拉松"的无奈妥协，也是一种实用主义的进步。
 <strong>建议 IT 决策者：</strong></p>
 <ul>
 <li>•<strong>资产盘点</strong>：明确生产环境对内核子系统（如 ksmbd, nftables, AF_ALG）的依赖程度。</li>
 <li>•<strong>策略预置</strong>：在内核 7.x 普及后，将 Killswitch 纳入应急响应预案（IRP）。一旦监测到类似 Dirty Frag 的零日漏洞，第一时间下发阻断策略，而非等待补丁。</li>
 <li>•<strong>环境加固</strong>：对于高密度的多租户环境，应考虑引入 gVisor 或 Kata Containers 等轻量级虚拟化技术，作为 Page Cache 共享机制的替代方案。</li>
 </ul>
-<p>\</p>
-<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="uu057wodylhpt1e0ow" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="narh4qx46k3pgghds" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="jchbpaqgghnbfgxk3k" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317155&amp;idx=1&amp;sn=2017b2a48cab6b84e36ff39b3953a102&amp;scene=21#wechat_redirect" linktype="2" localeditorid="h91kh2lpft0ncczksg" target="_blank" textvalue="深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备">深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315916&amp;idx=1&amp;sn=091dc857d3dcb4cf91338d50fefd57b2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="kfhvl24h3g32e8zaio" target="_blank" textvalue="别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术">别再让内核当"中间商"：深度解析 Linux DAX 零拷贝技术</a>\</p>
-<p>\</p>
-<p>\</p>
+<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="uu057wodylhpt1e0ow" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="narh4qx46k3pgghds" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="jchbpaqgghnbfgxk3k" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317155&amp;idx=1&amp;sn=2017b2a48cab6b84e36ff39b3953a102&amp;scene=21#wechat_redirect" linktype="2" localeditorid="h91kh2lpft0ncczksg" target="_blank" textvalue="深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备">深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315916&amp;idx=1&amp;sn=091dc857d3dcb4cf91338d50fefd57b2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="kfhvl24h3g32e8zaio" target="_blank" textvalue="别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术">别再让内核当"中间商"：深度解析 Linux DAX 零拷贝技术</a></p>
     </div>
     <div class="src">
       <div class="txt">

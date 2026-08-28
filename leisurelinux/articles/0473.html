@@ -166,20 +166,17 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     <div class="content" itemprop="articleBody">
 <p><strong>前言</strong></p>
 <p>在机密计算（Confidential Computing）领域，Intel TDX 一直被视为保护云端敏感负载的"金标准"。然而，近期 Google Cloud Security 团队与 Intel INT31 研究人员历时五个月的深度审计，却在 TDX Module 1.5 中挖掘出了 5 个高危漏洞及数十个安全弱点。其中最令人关注的 <strong>CVE-2025-30513</strong>，甚至允许攻击者完全瓦解 TDX 的硬件隔离保护，实现对加密内存的全盘访问。</p>
-<p>\</p>
 <p>作为关注底层安全与 IT 架构的 LeisureLinux 粉丝，我们需要深入理解这背后的技术逻辑：<strong>为什么号称"硬件级别隔离"的机密虚拟机（Trust Domain, TD）会被攻破？</strong></p>
-<hr />
 <h4 id="section" path-to-node="7"><strong> </strong></h4>
 <h4 id="一-技术背景什么是-intel-tdx" path-to-node="7"><strong>一、 技术背景：什么是 Intel TDX？</strong></h4>
 <p>Intel TDX（Trust Domain Extensions）旨在通过硬件手段，在多租户的云环境中隔离虚拟机（VM）。即便底层的 Hypervisor（宿主机操作系统）被黑客控制，或者面临恶意的内部运维人员，TDX 也能确保虚拟机的代码和数据在运行状态下保持机密性和完整性。</p>
 <p>其核心逻辑是将传统的 VM 封装为"信任域（Trust Domain, TD）"，由硬件管理的 <strong>TDX Module</strong>（运行在特殊的保护模式下）负责内存加解密和状态隔离。</p>
-<hr />
 <h4 id="section-1" path-to-node="11"><strong> </strong></h4>
 <h4 id="二-致命一击cve-2025-30513-漏洞深度拆解" path-to-node="11"><strong>二、 致命一击：CVE-2025-30513 漏洞深度拆解</strong></h4>
 <p>在本次审计中，最核心的漏洞是 <strong>CVE-2025-30513</strong>。该漏洞存在于 TDX 的**迁移（Migration）**逻辑中，是一个经典的 <strong>TOCTOU（Time-of-Check to Time-of-Use，检查时与使用时之差）</strong> 漏洞。</p>
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>1. 攻击路径：从"可迁移"到"可调试"的属性翻转</strong>\
+<p><strong>1. 攻击路径：从"可迁移"到"可调试"的属性翻转</strong>
 在 TDX 架构中，TD 有两种互斥的状态：</p>
 <ul>
 <li>
@@ -189,15 +186,14 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>Debuggable（可调试）：</strong> 允许 Host 访问内存以进行开发调试，但这会丧失机密性（生产环境严禁开启）。</p>
 </li>
 </ul>
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>2. 漏洞机制：</strong>\
+<p><strong>2. 漏洞机制：</strong>
 当一个 TD 正在进行跨主机迁移时，Host 可以利用 TOCTOU 漏洞，在 TD 的不可变状态（Immutable State）被导入的瞬间，恶意修改其属性，将原本安全的"生产型 TD"伪装成"调试型 TD"。</p>
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>3. 灾难性后果：</strong>\
+<p><strong>3. 灾难性后果：</strong>
 一旦属性被成功翻转为 Debug 模式，Host 就可以通过硬件接口直接读取该 TD 的全部解密状态。由于迁移可以在 TD 生命周期的任何时刻发生，这意味着攻击者可以在 TD 完成远程度量（Attestation）并载入核心秘钥后发起攻击，从而窃取所有核心业务数据。</p>
-<hr />
 <h4 id="section-2" path-to-node="18"><strong> </strong></h4>
 <h4 id="section-3" path-to-node="18"><strong> </strong></h4>
 <h4 id="三-审计方法论ai-手动代码审计" path-to-node="18"><strong>三、 审计方法论：AI + 手动代码审计</strong></h4>
@@ -221,9 +217,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <ul>
 <li><strong>CVE-2025-32007, 27940, 30513, 27572, 32467</strong>：涉及提权和信息泄露。</li>
 </ul>
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>\
+<p><strong>
 </strong></p>
 <p><strong>LeisureLinux 专家建议：</strong></p>
 <ol>
@@ -237,22 +233,18 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>关注远程度量（Attestation）：</strong> 确保你的 Attestation 逻辑能够识别并拒绝属性异常（如非预期的 Debug 状态）的 TD 运行环境。</p>
 </li>
 </ol>
-<hr />
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>\
+<p><strong>
 </strong></p>
 <p><strong>结语</strong></p>
 <p>机密计算并非"银弹"，硬件层面的复杂性往往意味着更隐蔽的攻击面。Google 与 Intel 的这次联手审计再次证明：<strong>即使是烧录在硅片里的信任根，也需要通过持续的开源精神和严苛的代码审计来维持。</strong></p>
-<p>\</p>
 <p>更多关于 Linux 底层安全、内核加固及 IT 技术的干货，请关注 <strong>LeisureLinux</strong>。如果你对机密计算的底层实现感兴趣，欢迎在评论区留言交流。</p>
-<hr />
-<p>*\
+<p>*
 *</p>
-<p>*\
+<p>*
 *</p>
 <p><em>注：本文参考了 SecurityWeek 及 Google Cloud Security 公开发布的最新技术审计报告。</em></p>
-<p>\</p>
     </div>
     <div class="src">
       <div class="txt">

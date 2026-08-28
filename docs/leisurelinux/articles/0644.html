@@ -167,11 +167,8 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>"在 K8s 运维中，能 Ping 通仅仅代表网络没死，离业务可用还差得远。"</strong></p>
 <p>很多 DevOps 工程师在排查网络时，习惯性地进入 Pod 执行一个<code index-in-node="36" path-to-node="5">ping</code>。如果通了，就觉得网络没问题，转头去折腾代码。</p>
 <p>但这正是灾难的开始。在云原生环境下，<strong>ICMP、TCP、UDP 的转发路径可能完全不同。</strong>那些最诡异的生产事故（比如：小包正常，大包丢失；或者每隔几分钟连接就断开一次），往往藏在 Linux 内核最深处。</p>
-<p>\</p>
 <p>今天，我们再次邀请<strong>Akhilesh Mishra</strong>拆解那些藏在 iptables 和内核表里的网络真相。</p>
-<p>\</p>
-<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/HujibpdKMyu7SpRFCVdSZzXzstUT8lIDVjoGDoicFoS8LtRwhibCoqaycukfry4uhoBvibLDVa09ASnTbUjETcjJqg/640?wx_fmt=jpeg" />\</p>
-<hr />
+<p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/HujibpdKMyu7SpRFCVdSZzXzstUT8lIDVjoGDoicFoS8LtRwhibCoqaycukfry4uhoBvibLDVa09ASnTbUjETcjJqg/640?wx_fmt=jpeg" /></p>
 <h2 id="永远不要相信容器里的-ping-包" path-to-node="9">01. 永远不要相信容器里的 Ping 包</h2>
 <p><strong>💡 真相：</strong>Ping 使用的是 ICMP 协议，而业务使用的是 TCP/UDP。由于 CNI（如 Calico/Flannel）的封装（VxLAN 或 IPIP），可能会出现<strong>MTU（最大传输单元）不匹配</strong>。</p>
 <ul>
@@ -182,19 +179,16 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>避坑：</strong>永远优先使用<code index-in-node="11" path-to-node="11,1,0">curl -v</code>或<code index-in-node="21" path-to-node="11,1,0">telnet</code>测试业务端口，这才是真实的生产链路。</p>
 </li>
 </ul>
-<p>\</p>
 <h2 id="dns-缓存那个隐形的性能杀手" path-to-node="12">02. DNS 缓存：那个"隐形"的性能杀手</h2>
 <p><strong>💡 真相：</strong>K8s 默认的<code index-in-node="15" path-to-node="13">ndots:5</code>配置，会导致 Pod 在解析一个外网域名时，先在内部域搜索 5 次。这不仅增加了延迟，还会瞬间打爆<strong>CoreDNS</strong>的 QPS。</p>
 <ul>
 <li><strong>架构思维：</strong>在高并发生产环境下，<strong>NodeLocal DNSCache</strong>不是选配，而是标配。</li>
 </ul>
-<p>\</p>
 <h2 id="iptables-的死亡螺旋" path-to-node="15">03. iptables 的"死亡螺旋"</h2>
 <p><strong>💡 真相：</strong>kube-proxy 默认的 iptables 模式是线性搜索。当你的 Service 数量超过 5000 个，iptables 的规则链会变得极其冗长，处理每个包都要扫描几千条规则。</p>
 <ul>
 <li><strong>高阶方案：</strong>大规模集群必须强制转向<strong>IPVS 模式</strong>。它基于 Hash 表查找，无论 Service 有多少，性能几乎恒定。</li>
 </ul>
-<p>\</p>
 <h2 id="僵尸连接为何重启-pod-依然报错" path-to-node="18">04. 僵尸连接：为何重启 Pod 依然报错？</h2>
 <p><strong>💡 真相：</strong>有时候 Pod 重启了，但旧的连接条目残留在宿主机的<strong>conntrack（连接跟踪表）</strong>中。</p>
 <ul>
@@ -205,27 +199,20 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>诊断：</strong>资深工程师会使用<code index-in-node="13" path-to-node="20,1,0">conntrack -L</code>检查内核表，而非反复重启 Pod。</p>
 </li>
 </ul>
-<p>\</p>
 <h2 id="环回地址loopback的误区" path-to-node="21">05. 环回地址（Loopback）的误区</h2>
 <p><strong>💡 真相：</strong>在 Istio 或 Sidecar 架构中，应用访问<code index-in-node="34" path-to-node="22">localhost</code>并不意味着不出 Pod。流量会被 iptables 强制拦截并注入 Envoy 代理。</p>
 <ul>
 <li><strong>陷阱：</strong>如果配置不当，流量会在 Pod 内部无限回环，导致 CPU 瞬间满载。</li>
 </ul>
-<p>\</p>
 <h2 id="负载均衡的偏心现象" path-to-node="24">06. 负载均衡的"偏心"现象</h2>
 <p><strong>💡 真相：</strong>iptables 模式下的随机负载均衡（Random Balancing）并不真正平滑。对于长连接，可能会出现流量大量堆积在某一个后端 Pod 的情况。</p>
 <ul>
 <li><strong>排查：</strong>监控 Pod 的连接数分布，而非仅仅看 CPU 利用率。</li>
 </ul>
-<p>\</p>
 <h2 id="容器网络的静默丢包" path-to-node="27">07. 容器网络的"静默丢包"</h2>
 <p><strong>💡 真相：</strong>Linux 内核的<code index-in-node="17" path-to-node="28">net.ipv4.tcp_tw_reuse</code>或<code index-in-node="41" path-to-node="28">tcp_timestamps</code>参数如果设置不当，在 NAT 环境下会导致握手包被内核直接丢弃，且没有任何应用日志。</p>
-<p>\</p>
-<p>\</p>
-<hr />
 <h3 id="leisurelinux-深度预告" path-to-node="30">👨‍💻 LeisureLinux 深度预告</h3>
 <p>Akhilesh 提到的这些现象，本质上都是<strong>Linux 网络命名空间 (Network Namespace)</strong>和<strong>Netfilter 框架</strong>深度交互的结果。对于大多数运维人来说，这些底层逻辑正是最难啃的"硬骨头"。</p>
-<p>\</p>
 <p>我最近正在复现文中所说的<strong>"MTU 导致的 TCP 大包丢弃"</strong>以及<strong>"IPVS 模式下的性能调优"</strong>实验。</p>
 <ul>
 <li>
@@ -236,14 +223,12 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </li>
 </ul>
 <p>这些硬核实验我计划在接下来的<strong>LeisureLinux</strong>视频中逐一拆解。如果你对某个网络话题特别感兴趣，<strong>欢迎在评论区留言</strong>，你的建议将直接决定我下一期视频的选题！</p>
-<hr />
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>\
+<p><strong>
 </strong></p>
 <p><strong>关于原作者：Akhilesh Mishra</strong>，资深 AWS/DevOps 架构师。他主张"理解数据流，而非死记工具"，其分享的技术洞察在 X (Twitter) 及 LinkedIn 上广受好评。</p>
-<hr />
-<p><strong>\
+<p><strong>
 </strong></p>
 <p><strong>你会如何排查一个"偶尔超时"的 K8s Service？欢迎在评论区分享你的绝招！</strong></p>
     </div>

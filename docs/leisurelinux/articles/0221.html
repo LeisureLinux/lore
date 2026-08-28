@@ -165,15 +165,15 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <blockquote>
-<p>针对近期披露的潜伏长达 9 年之久的 Linux 内核高危漏洞，特别是 CVE-2024-1086 与 CVE-2026-31431（Copy Fail），以下是整合了 AEAD 机制逻辑、NoliGery 研究成果及架构师级加固方案的全方位技术解析。</p>
+<p>针对近期披露的潜伏长达 9 年之久的 Linux 内核高危漏洞，特别是 CVE-2024-1086 与 CVE-2026-31431（Copy Fail），以下是整合了 AEAD 机制逻辑、NoliGery 研究成果及架构师级加固方案的全方位技术解析。</p>
 </blockquote>
 <h3 heading="true" id="一-事件背景与受影响范围">一、 事件背景与受影响范围</h3>
-<p><strong>1. 事件综述</strong>\
+<p><strong>1. 事件综述</strong>
 Linux 内核近期连续披露了两个极具代表性的 LPE（本地权限提升）漏洞。这些漏洞并非由于简单的编码错误，而是深植于内核状态机与复杂子系统交互中的<strong>逻辑设计缺陷</strong>。</p>
 <ul>
 <li>•<strong>CVE-2024-1086</strong>：由研究员 NoliGery 深入解构，利用 Netfilter 子系统的双重释放（Double Free）实现 UAF。</li>
-<li>•<strong>CVE-2026-31431 (Copy Fail)</strong>：涉及 algif_aead 与 splice() 系统调用的交互缺陷，允许篡改只读文件的 Page Cache。\
-    <strong>2. 影响范围</strong></li>
+<li>•<strong>CVE-2026-31431 (Copy Fail)</strong>：涉及 algif_aead 与 splice() 系统调用的交互缺陷，允许篡改只读文件的 Page Cache。
+<strong>2. 影响范围</strong></li>
 <li>•<strong>版本</strong>：覆盖 Linux Kernel v3.15 至 v6.x（潜伏期约 9 年）。</li>
 <li>•<strong>发行版</strong>：所有主流发行版（Ubuntu 20.04/22.04/24.04 LTS、Debian、RHEL、Amazon Linux 等）在未修补前均处于风险中。</li>
 </ul>
@@ -194,8 +194,8 @@ Linux 内核近期连续披露了两个极具代表性的 LPE（本地权限提�
 <h3 heading="true" id="三-攻击路径从非特权用户到-uid-0">三、 攻击路径：从非特权用户到 UID 0</h3>
 <p>攻击者通常采用以下确定性路径，成功率极高：</p>
 <ol>
-<li>1.<strong>沙盒逃逸 (User Namespaces)</strong>：\
-    利用无权限用户命名空间克隆出一个具有 CAP_NET_ADMIN 权限的环境，从而绕过限制去触达 nf_tables 或 AF_ALG 接口。</li>
+<li>1.<strong>沙盒逃逸 (User Namespaces)</strong>：
+利用无权限用户命名空间克隆出一个具有 CAP_NET_ADMIN 权限的环境，从而绕过限制去触达 nf_tables 或 AF_ALG 接口。</li>
 <li>
 <p>2.<strong>构建读写原语 (Primitive)</strong>：</p>
 </li>
@@ -206,62 +206,56 @@ Linux 内核近期连续披露了两个极具代表性的 LPE（本地权限提�
 <p>•<strong>路径 B (Netfilter)</strong>：劫持内核对象的虚函数表（vtable），获得内核空间<strong>任意地址读写能力</strong>。</p>
 </li>
 <li>
-<p>3.<strong>身份持久化</strong>：\
-    在内存中定位当前进程的 cred 结构体，将其 uid、gid、euid 等关键字段全部覆写为<strong>0</strong>，瞬间实现权限跃迁。</p>
+<p>3.<strong>身份持久化</strong>：
+在内存中定位当前进程的 cred 结构体，将其 uid、gid、euid 等关键字段全部覆写为<strong>0</strong>，瞬间实现权限跃迁。</p>
 </li>
 </ol>
 <h3 heading="true" id="四-架构师视角深度防御与加固">四、 架构师视角：深度防御与加固</h3>
 <p>针对此类"逻辑型"漏洞，补丁仅是最后一道防线，必须实施纵深防御：</p>
 <h4 heading="true" id="缩减攻击面-核心操作">1. 缩减攻击面 (核心操作)</h4>
 <p>禁用非特权用户命名空间是阻断此类攻击最经济且高效的手段：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 临时禁用
-sysctl -w kernel.unprivileged_userns_clone=0
-<span class="gh">#</span> 永久禁用
-vim /etc/sysctl.d/99-security-hardening.conf
-<span class="gh">#</span> 添加：kernel.unprivileged_userns_clone=0
-</code></pre></div>
-
+<h1 id="_1">临时禁用</h1>
+<p>sysctl -w kernel.unprivileged_userns_clone=0</p>
+<h1 id="_2">永久禁用</h1>
+<p>vim /etc/sysctl.d/99-security-hardening.conf</p>
+<h1 id="kernelunprivileged_userns_clone0">添加：kernel.unprivileged_userns_clone=0</h1>
 <h4 heading="true" id="模块级隔离">2. 模块级隔离</h4>
 <p>如果业务无需内核级硬件加速加密，应禁用 algif_aead 等相关模块：</p>
-<div class="highlight"><pre><span></span><code>vim /etc/modprobe.d/blacklist-crypto.conf
-<span class="gh">#</span> 添加：blacklist algif_aead
-</code></pre></div>
-
+<p>vim /etc/modprobe.d/blacklist-crypto.conf</p>
+<h1 id="blacklist-algif_aead">添加：blacklist algif_aead</h1>
 <h4 heading="true" id="运行时检测">3. 运行时检测</h4>
 <p>利用<strong>eBPF</strong>监控敏感内核结构体（如 task_struct->cred）的非法修改行为，实现实时的入侵检测与拦截。</p>
 <h3 heading="true" id="五-参考文献-references">五、 参考文献 (References)</h3>
 <ul>
-<li>•<strong>[1] NVD - CVE-2024-1086 (Netfilter nf_tables UAF)</strong>\
-    https://nvd.nist.gov/vuln/detail/CVE-2024-1086</li>
-<li>•<strong>[2] NoliGery - Deep Dive into CVE-2024-1086 Exploit</strong>\
-    https://github.com/NoliGery/CVE-2024-1086-Exploit</li>
-<li>•<strong>[3] Xint.io - Technical Analysis of CVE-2026-31431 (Copy Fail)</strong>\
-    https://xint.io/blog/copy-fail-linux-kernel-vulnerability-analysis</li>
-<li>•<strong>[4] Openwall - Oss-Security: Double Free in Linux Kernel Netfilter</strong>\
-    https://www.openwall.com/lists/oss-security/2024/03/26/4</li>
-<li>•<strong>[5] Linux Kernel Source - Patch for algif_aead boundary check</strong>\
-    https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=f342de4e2f34</li>
+<li>•<strong>[1] NVD - CVE-2024-1086 (Netfilter nf_tables UAF)</strong>
+https://nvd.nist.gov/vuln/detail/CVE-2024-1086</li>
+<li>•<strong>[2] NoliGery - Deep Dive into CVE-2024-1086 Exploit</strong>
+https://github.com/NoliGery/CVE-2024-1086-Exploit</li>
+<li>•<strong>[3] Xint.io - Technical Analysis of CVE-2026-31431 (Copy Fail)</strong>
+https://xint.io/blog/copy-fail-linux-kernel-vulnerability-analysis</li>
+<li>•<strong>[4] Openwall - Oss-Security: Double Free in Linux Kernel Netfilter</strong>
+https://www.openwall.com/lists/oss-security/2024/03/26/4</li>
+<li>•<strong>[5] Linux Kernel Source - Patch for algif_aead boundary check</strong>
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=f342de4e2f34</li>
 </ul>
 <h3 heading="true" id="六-总结">六、 总结</h3>
-<p>无论是 AEAD 还是 Netfilter 漏洞，都反映出宏内核在复杂交互下的逻辑脆弱性。对于 IT 架构师而言，除了维持内核版本的滚动更新，更应审视系统的默认配置，通过 sysctl 硬化和最小化模块加载来压缩攻击面。\
+<p>无论是 AEAD 还是 Netfilter 漏洞，都反映出宏内核在复杂交互下的逻辑脆弱性。对于 IT 架构师而言，除了维持内核版本的滚动更新，更应审视系统的默认配置，通过 sysctl 硬化和最小化模块加载来压缩攻击面。
 <strong>本文由 AI 生成，仅供参考，请仔细甄别，谨慎解读。</strong></p>
-<p><strong>\
+<p><strong>
 </strong></p>
-<p>\</p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="m0d981vhhevi2qu6tc" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a></p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317415&amp;idx=7&amp;sn=2f84e36fe4028cf2885cd998f8d91026&amp;scene=21#wechat_redirect" linktype="2" localeditorid="534qz5kz5ekn5k13i8" target="_blank" textvalue="AI 时代的“删库跑路”：Claude 9 秒抹除 PocketOS 全量数据背后的权限灾难">AI 时代的"删库跑路"：Claude 9 秒抹除 PocketOS 全量数据背后的权限灾难</a></p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317295&amp;idx=1&amp;sn=68f6137e22ed68e9b9ce58c79164e8e5&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8b19k53wrhjrrxzoge8" target="_blank" textvalue="内核 6.18 LTS 驱动加持，Solus 4.9 如何通过 Systemd Preset 与 Wheel 组重塑运维标准？">内核 6.18 LTS 驱动加持，Solus 4.9 如何通过 Systemd Preset 与 Wheel 组重塑运维标准？</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317269&amp;idx=1&amp;sn=0efb3259c6e56725d0e8e41973045acf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="pautnlz0gcgs7tbz7k" target="_blank" textvalue="Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余">Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317265&amp;idx=1&amp;sn=26ce286816eca88ec64ce3dc452ba5ce&amp;scene=21#wechat_redirect" linktype="2" localeditorid="x22rzket6kmf4kiups" target="_blank" textvalue="从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进">从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="l9qferqr40jhopo074" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317155&amp;idx=1&amp;sn=2017b2a48cab6b84e36ff39b3953a102&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3ct8yzmlhsn2dnpr0g0" target="_blank" textvalue="深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备">深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316888&amp;idx=1&amp;sn=3b20b009fc705e90b4015197b57f3b8b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="rj9qv8qtmxeyjm1x4w" target="_blank" textvalue="【摘要】2026年国际AI安全报告：通用型人工智能的风险临界点与全球治理范式重构">【摘要】2026年国际AI安全报告：通用型人工智能的风险临界点与全球治理范式重构</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316479&amp;idx=1&amp;sn=330d4f9927a6e05522219567a6449949&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1a0dyi18olvbo4ry03k" target="_blank" textvalue="深度解读 Parrot OS 7.1：内核演进与安全工具链的全面革新">深度解读 Parrot OS 7.1：内核演进与安全工具链的全面革新</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315739&amp;idx=1&amp;sn=836947169f7af19d3dd97c0c692c2d29&amp;scene=21#wechat_redirect" linktype="2" localeditorid="96tqafpp7y9i2v40000" target="_blank" textvalue="Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具">Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315640&amp;idx=1&amp;sn=d08da4c854e66f64e72e03356f592845&amp;scene=21#wechat_redirect" linktype="2" localeditorid="todxk0orx5ycfsn7y8" target="_blank" textvalue="深度解析：2026最新国测安全可靠测评结果，为何“二级”才是国产操作系统的真标杆？">深度解析：2026最新国测安全可靠测评结果，为何"二级"才是国产操作系统的真标杆？</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316622&amp;idx=1&amp;sn=65ee50d4cc50a8c4df8d75a3f2e34842&amp;scene=21#wechat_redirect" linktype="2" localeditorid="nwvcsjb8oi34ukwlc0" target="_blank" textvalue="核心加密库风险通告：OpenSSL 3.6.1 紧急修复多项内存安全与逻辑漏洞">核心加密库风险通告：OpenSSL 3.6.1 紧急修复多项内存安全与逻辑漏洞</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316937&amp;idx=1&amp;sn=b4e9f0362e46f39c5abb475e30f62cbb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1w3mbyyaaxufx95a80" target="_blank" textvalue="架构即防御：拆解 SASE 如何在底层重构零信任安全">架构即防御：拆解 SASE 如何在底层重构零信任安全</a>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317295&amp;idx=1&amp;sn=68f6137e22ed68e9b9ce58c79164e8e5&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8b19k53wrhjrrxzoge8" target="_blank" textvalue="内核 6.18 LTS 驱动加持，Solus 4.9 如何通过 Systemd Preset 与 Wheel 组重塑运维标准？">内核 6.18 LTS 驱动加持，Solus 4.9 如何通过 Systemd Preset 与 Wheel 组重塑运维标准？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317269&amp;idx=1&amp;sn=0efb3259c6e56725d0e8e41973045acf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="pautnlz0gcgs7tbz7k" target="_blank" textvalue="Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余">Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317265&amp;idx=1&amp;sn=26ce286816eca88ec64ce3dc452ba5ce&amp;scene=21#wechat_redirect" linktype="2" localeditorid="x22rzket6kmf4kiups" target="_blank" textvalue="从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进">从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="l9qferqr40jhopo074" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317155&amp;idx=1&amp;sn=2017b2a48cab6b84e36ff39b3953a102&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3ct8yzmlhsn2dnpr0g0" target="_blank" textvalue="深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备">深度分析：Linux 内核如何通过启发式算法识别恶意 USB 设备</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316888&amp;idx=1&amp;sn=3b20b009fc705e90b4015197b57f3b8b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="rj9qv8qtmxeyjm1x4w" target="_blank" textvalue="【摘要】2026年国际AI安全报告：通用型人工智能的风险临界点与全球治理范式重构">【摘要】2026年国际AI安全报告：通用型人工智能的风险临界点与全球治理范式重构</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316479&amp;idx=1&amp;sn=330d4f9927a6e05522219567a6449949&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1a0dyi18olvbo4ry03k" target="_blank" textvalue="深度解读 Parrot OS 7.1：内核演进与安全工具链的全面革新">深度解读 Parrot OS 7.1：内核演进与安全工具链的全面革新</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315739&amp;idx=1&amp;sn=836947169f7af19d3dd97c0c692c2d29&amp;scene=21#wechat_redirect" linktype="2" localeditorid="96tqafpp7y9i2v40000" target="_blank" textvalue="Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具">Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315640&amp;idx=1&amp;sn=d08da4c854e66f64e72e03356f592845&amp;scene=21#wechat_redirect" linktype="2" localeditorid="todxk0orx5ycfsn7y8" target="_blank" textvalue="深度解析：2026最新国测安全可靠测评结果，为何“二级”才是国产操作系统的真标杆？">深度解析：2026最新国测安全可靠测评结果，为何"二级"才是国产操作系统的真标杆？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316622&amp;idx=1&amp;sn=65ee50d4cc50a8c4df8d75a3f2e34842&amp;scene=21#wechat_redirect" linktype="2" localeditorid="nwvcsjb8oi34ukwlc0" target="_blank" textvalue="核心加密库风险通告：OpenSSL 3.6.1 紧急修复多项内存安全与逻辑漏洞">核心加密库风险通告：OpenSSL 3.6.1 紧急修复多项内存安全与逻辑漏洞</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316937&amp;idx=1&amp;sn=b4e9f0362e46f39c5abb475e30f62cbb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1w3mbyyaaxufx95a80" target="_blank" textvalue="架构即防御：拆解 SASE 如何在底层重构零信任安全">架构即防御：拆解 SASE 如何在底层重构零信任安全</a></p>
     </div>
     <div class="src">
       <div class="txt">

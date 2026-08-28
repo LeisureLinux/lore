@@ -164,7 +164,6 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/TPJsYTWPR5VnuLy5nOBk1A" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<hr />
 <h4 id="_1"></h4>
 <h4 id="initramfs">一、核心知识点：为什么我们需要 initramfs？</h4>
 <p>在进入翻车现场前，我们先聊聊这个"幕后英雄"。内核（Kernel）虽然是系统的灵魂，但它其实很"纯粹"。当电脑启动时，内核被加载进内存，它面临第一个哲学问题：<strong>我的根文件系统（Root FS）在哪？</strong>如果你的系统装在 NVMe 硬盘、RAID 阵列或者加密分区（LUKS）里，内核此时可能并没有对应的驱动。如果让内核集成所有驱动，内核会变得臃肿不堪。于是，<strong>initramfs</strong> 诞生了。它是一个微型的临时文件系统（像一个精简版的 Linux），内核启动后先把它加载进去：</p>
@@ -174,31 +173,27 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>"移花接木"：把控制权交给真正的根文件系统。</li>
 </ol>
 <p>一句话总结：没有它，内核就找不到硬盘，你的系统就会卡在"寻找灵魂"的路上。</p>
-<hr />
 <h4 id="_2"></h4>
 <h4 id="_3"></h4>
 <h4 id="_4">二、缘起：极客的执念</h4>
-<p>在 Debian 13 (Trixie) 上折腾最新的 XanMod 6.18 内核时，为了追求极致的响应速度，我做了一个决定：<strong>弃用 Debian 默认的脚本化工具，改用红帽系标配的模块化工具 ------ dracut</strong>。结果，我不仅没得到速度，反而得到了启动时的冰冷报错：Failed to isolate default target: Unit rescue.service not found系统冻结，启动即崩溃。</p>
-<hr />
+<p>在 Debian 13 (Trixie) 上折腾最新的 XanMod 6.18 内核时，为了追求极致的响应速度，我做了一个决定：<strong>弃用 Debian 默认的脚本化工具，改用红帽系标配的模块化工具——dracut</strong>。结果，我不仅没得到速度，反而得到了启动时的冰冷报错：Failed to isolate default target: Unit rescue.service not found系统冻结，启动即崩溃。</p>
 <h4 id="_5"></h4>
 <h4 id="_6"></h4>
 <h4 id="initramfs_1">三、深度复盘：initramfs 两大家族的"前世今生"</h4>
 <p>为什么在 Fedora 上跑得风生水起的 dracut，到了 Debian 13 这里就成了"灾难"？</p>
 <hr />
 <p>特性            initramfs-tools（Debian 亲儿子）   dracut（Red Hat 系先锋）
-  底层核心        BusyBox + 纯 Shell 脚本            systemd + 二进制模块
-  运行逻辑        线性执行脚本，直观简单             模块化自探测，并行启动
-  Debian 适配度   极高（原生适配 /usr 合并等特性）   一般（常在开发版路径变动中"迷路"）</p>
-<hr />
-<hr />
+底层核心        BusyBox + 纯 Shell 脚本            systemd + 二进制模块
+运行逻辑        线性执行脚本，直观简单             模块化自探测，并行启动
+| Debian 适配度 | 极高（原生适配 /usr 合并等特性） | 一般（常在开发版路径变动中"迷路"） |
+| --- | --- | --- |</p>
 <h4 id="_7"></h4>
 <h4 id="dracut">四、调试实录：手撕 dracut 配置的底层逻辑</h4>
 <p>面对 dracut 因为逻辑死锁无法生成镜像的问题，我直接修改了 <strong>/usr/lib/dracut/modules.d/98dracut-systemd/[module-setup.sh](module-setup.sh)</strong>，删除了依赖：</p>
 <div class="highlight"><pre><span></span><code>deps=&quot;systemd-initrd ...&quot;
 </code></pre></div>
 
-<p>为什么敢这么干？  因为 dracut 的模块依赖（deps）主要用于"打包阶段"的文件抓取。在 Debian 13 中，systemd-initrd 因为路径探测偏移导致 dracut 误判模块缺失。手动删掉这行，是为了绕过"逻辑门禁"。只要我们确认文件在系统里，强行塞进镜像后，启动时的 systemd 依然能各司其职。</p>
-<hr />
+<p>为什么敢这么干？  因为 dracut 的模块依赖（deps）主要用于"打包阶段"的文件抓取。在 Debian 13 中，systemd-initrd 因为路径探测偏移导致 dracut 误判模块缺失。手动删掉这行，是为了绕过"逻辑门禁"。只要我们确认文件在系统里，强行塞进镜像后，启动时的 systemd 依然能各司其职。</p>
 <h4 id="_8"></h4>
 <h4 id="_9"></h4>
 <h4 id="lsinitrd">五、检查工具：lsinitrd 的"开箱"核验</h4>
@@ -208,7 +203,6 @@ sudo lsinitrd /boot/initrd.img-你的内核版本 | grep -E &quot;initrd.target|
 </code></pre></div>
 
 <p>⚠️ 关键点：如果没有 <code>default.target -&gt; initrd.target</code> 软链接，systemd 进场后会因为找不到默认入口而直接罢工。</p>
-<hr />
 <h4 id="_10"></h4>
 <h4 id="_11"></h4>
 <h4 id="warning">六、回归原生：消灭那些烦人的 Warning</h4>
@@ -218,12 +212,11 @@ sudo lsinitrd /boot/initrd.img-你的内核版本 | grep -E &quot;initrd.target|
 <li><strong>Resume 警告</strong>：编辑 <code>/etc/initramfs-tools/conf.d/resume</code>，显式指定 Swap 分区的 UUID，解决休眠唤醒的疑虑；</li>
 <li><strong>RAID 报错</strong>：如果你没有组建阵列，直接执行 <code>apt purge mdadm</code>，让构建过程清清爽爽。</li>
 </ol>
-<hr />
 <h4 id="_12"></h4>
 <h4 id="_13"></h4>
 <h4 id="_14">结语</h4>
-<p>Linux 玩家的成长，往往是从一次次失败的启动开始的。折腾 dracut 并不是为了否定它，而是在失败的过程中，让我们看清了系统引导的每一个齿轮。\
-带着学到的硬核知识，回归最稳健的选择，这就是极客的"实用主义"。\
+<p>Linux 玩家的成长，往往是从一次次失败的启动开始的。折腾 dracut 并不是为了否定它，而是在失败的过程中，让我们看清了系统引导的每一个齿轮。
+带着学到的硬核知识，回归最稳健的选择，这就是极客的"实用主义"。
 本文首发于 LeisureLinux 公众号，如需转载请联系授权。技术问题欢迎在留言区交流～</p>
 <h1 id="_15"></h1>
     </div>

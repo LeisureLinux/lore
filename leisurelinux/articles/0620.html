@@ -166,22 +166,15 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     <div class="content" itemprop="articleBody">
 <p>Linux 内核最近合入了一个补丁，修复了 x86 架构下页面错误（page fault）处理逻辑中一个从 Linux 5.8 时代（约2020年）就存在的缺陷。这个缺陷的核心是：在处理用户态地址访问失败进入"bad area"路径时，中断（interrupt）的禁用/启用状态在不同分支间不一致。某些代码（如 __bad_area_nosemaphore() 的部分实现）会重新打开中断，而后续逻辑假定中断仍然是关闭的。这种不对称在大多数场景下不会触发问题，但叠加嵌套 page fault、NMI 或其他中断上下文时，可能导致内核状态混乱、难以追踪的异常行为。Intel 工程师 Cedric Xing 定位并提交了修复。补丁思路很简单：不再依赖分支去"聪明地"开关中断，而是在 bad area 处理路径的入口和出口强制统一 local_irq_disable()，消除所有潜在的不一致。性能影响微乎其微，但代码可靠性提升明显。伪代码对比（简化）：旧逻辑（有缺陷）：</p>
 <p>c</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// 进入 bad area</span>
-<span class="n">__bad_area_nosemaphore</span><span class="p">(...);</span><span class="c1">// 某些路径内部 local_irq_enable()</span>
-
-<span class="c1">// 后续假设中断仍禁用 ← 实际可能已打开</span>
-</code></pre></div>
-
+<p>// 进入 bad area
+__bad_area_nosemaphore(...);// 某些路径内部 local_irq_enable()</p>
+<p>// 后续假设中断仍禁用 ← 实际可能已打开</p>
 <p>新逻辑：</p>
 <p>c</p>
-<div class="highlight"><pre><span></span><code>local_irq_disable();// 强制统一关闭
-
-<span class="k">...</span> 处理 ...
-
-local_irq_disable();// 返回前再确保关闭（幂等）
-</code></pre></div>
-
-<p>这个补丁已合并到 Linux 6.19 开发分支，预计会回溯到部分稳定版（如 6.6、6.1 等，视维护者决定）。这类 bug 典型特点：日常触发概率极低，但一旦出现就属于"组合爆炸"类型，调试成本很高。内核社区这类"状态不一致"修复往往优先简单粗暴的方案，而不是继续修补分支逻辑。对有 x86 生产环境的用户，建议关注后续 stable backport；对内核开发者来说，又是一个提醒：中断状态管理永远别指望"分支聪明"。原文出处：\
+<p>local_irq_disable();// 强制统一关闭</p>
+<p>... 处理 ...</p>
+<p>local_irq_disable();// 返回前再确保关闭（幂等）</p>
+<p>这个补丁已合并到 Linux 6.19 开发分支，预计会回溯到部分稳定版（如 6.6、6.1 等，视维护者决定）。这类 bug 典型特点：日常触发概率极低，但一旦出现就属于"组合爆炸"类型，调试成本很高。内核社区这类"状态不一致"修复往往优先简单粗暴的方案，而不是继续修补分支逻辑。对有 x86 生产环境的用户，建议关注后续 stable backport；对内核开发者来说，又是一个提醒：中断状态管理永远别指望"分支聪明"。原文出处：
 https://securityonline.info/deep-kernel-fix-linux-closes-a-5-year-old-flaw-in-x86-memory-handling/相关内核信息：</p>
 <ul>
 <li>Commit 作者：Cedric Xing (Intel)</li>
@@ -189,7 +182,6 @@ https://securityonline.info/deep-kernel-fix-linux-closes-a-5-year-old-flaw-in-x8
 <li>参考报道：Phoronix \"Linux Lands Fix For Its \'Subtly Wrong\' Page Fault Handling Code For The Past 5 Years\"（https://www.phoronix.com/news/Linux-6.19-Page-Fault-Code-Fix）</li>
 </ul>
 <p>（完）</p>
-<p>\</p>
     </div>
     <div class="src">
       <div class="txt">

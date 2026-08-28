@@ -164,7 +164,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/JpfQuY-C4OTJoQbM58YV-g" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>近日，Linux 内核中一个名为<strong>Dirty Frag</strong>（CVE-2026-3071）的严重漏洞被提前公开。该漏洞存在于内核的<strong>IPv4 分片重组逻辑</strong>中，攻击者可以利用它实现本地提权（LPE），并在几乎所有主流 Linux 发行版上获得<strong>Root 权限</strong>。\
+<p>近日，Linux 内核中一个名为<strong>Dirty Frag</strong>（CVE-2026-3071）的严重漏洞被提前公开。该漏洞存在于内核的<strong>IPv4 分片重组逻辑</strong>中，攻击者可以利用它实现本地提权（LPE），并在几乎所有主流 Linux 发行版上获得<strong>Root 权限</strong>。
 作为架构师和安全分析师，我们需要从底层机制出发，剥离表象，直击其技术本质。</p>
 <p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsvIzIjYtlhTsu4TexutpohSwEGZJlWFBaicY3SPkxVKuw4bW06H7w5TySLUgF5HEAWkzFE1SaVBx0qdVouwOjD8gm5nyNzaYJmE/640?wx_fmt=jpeg" /></p>
 <h3 heading="true" id="一-核心漏洞原理ipv4-分片重组中的竞争条件">一、 核心漏洞原理：IPv4 分片重组中的竞争条件</h3>
@@ -178,11 +178,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>该漏洞的影响范围极其广泛，主要基于以下三个因素：</p>
 <ul>
 <li>•<strong>代码根源深厚</strong>：漏洞点位于 net/ipv4/ip_fragment.c。这部分代码属于 Linux 网络协议栈的核心基础组件，多年来变动较小，导致从 5.x 到最新的 7.x（如实验性的 xanmod 7.0+）内核均受到影响。</li>
-<li>•<strong>绕过防御机制</strong>：<ul>
+<li>•<strong>绕过防御机制</strong>：</li>
 <li>•<strong>KASLR 绕过</strong>：通过泄露分片结构的内核地址，攻击者可以轻易定位内核基址。</li>
 <li>•<strong>容器逃逸</strong>：由于漏洞发生在内核空间，非特权容器（Unprivileged Containers）内的用户同样可以触发此逻辑，从而实现从容器到宿主机的逃逸。</li>
-</ul>
-</li>
 <li>•<strong>发行版普适性</strong>：无论是 Debian (Trixie/Sid)、Ubuntu 还是 RHEL，只要启用了 IPv4 栈（默认均为开启），且允许用户态程序发送或接收原始套接字数据包，漏洞即具备触发条件。</li>
 </ul>
 <h3 heading="true" id="三-深度技术分析从架构师视角看风险">三、 深度技术分析：从架构师视角看风险</h3>
@@ -197,20 +195,14 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>各主流发行版已在紧急发布补丁。对于使用自定义内核（如<strong>xanmod</strong>）的用户，请务必关注官方仓库的最新 Commit，特别是针对 ip_fragment 相关的修复。</p>
 <h4 heading="true" id="临时规避方案">2. 临时规避方案</h4>
 <ul>
-<li>
-<p>•<strong>调整分片超时阈值</strong>：通过 sysctl 调低分片重组的超时时间，增加攻击者构造竞争条件的难度。</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 示例命令，具体数值需根据业务压测调整
-sudo sysctl -w net.ipv4.ipfrag_time=10
-</code></pre></div>
-
-</li>
-<li>
-<p>•<strong>禁用非特权用户命名空间</strong>：如果业务不需要，可以限制非特权用户创建新的 User/Network Namespace。</p>
-<div class="highlight"><pre><span></span><code>sudo sysctl -w kernel.unprivileged_userns_clone=0
-</code></pre></div>
-
-</li>
+<li>•<strong>调整分片超时阈值</strong>：通过 sysctl 调低分片重组的超时时间，增加攻击者构造竞争条件的难度。</li>
 </ul>
+<h1 id="_1">示例命令，具体数值需根据业务压测调整</h1>
+<p>sudo sysctl -w net.ipv4.ipfrag_time=10</p>
+<ul>
+<li>•<strong>禁用非特权用户命名空间</strong>：如果业务不需要，可以限制非特权用户创建新的 User/Network Namespace。</li>
+</ul>
+<p>sudo sysctl -w kernel.unprivileged_userns_clone=0</p>
 <h4 heading="true" id="监控与审计">3. 监控与审计</h4>
 <ul>
 <li>• 利用<strong>eBPF</strong>监控内核中 ip_frag_reasm 函数的异常调用频率。</li>
@@ -219,21 +211,13 @@ sudo sysctl -w net.ipv4.ipfrag_time=10
 <blockquote>
 <p><strong>专家点评</strong>：Dirty Frag 再次提醒我们，即使是存在了十几年的成熟代码路径，在现代多核架构下依然可能爆发出严重的并发性漏洞。在金融信创转型过程中，加强对内核补丁管理（Patch Management）的自动化审计，是保障底层架构安全的关键。</p>
 </blockquote>
-<p>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="o3yphx8m2lh52n3s3k" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="46ieoxp5a0xew9cpjpc" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=3&amp;sn=d2e24b0e06919518661af12926925f37&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1l24j4mqzjcz87k2dc" target="_blank" textvalue="CEO 必须掌握的 AI 治理框架">CEO 必须掌握的 AI 治理框架</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8zekvszhrrdqjdnke8" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317539&amp;idx=1&amp;sn=dafc1ceaeaebd060b603b779ebfe3b38&amp;scene=21#wechat_redirect" linktype="2" localeditorid="hkc3rl53ca1hq56jvgg" target="_blank" textvalue="2026年5月10日 周日 · 技术新闻早报">2026年5月10日 周日 · 技术新闻早报</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317527&amp;idx=2&amp;sn=96358fc11da6f5e7ce37fbd17250568d&amp;scene=21#wechat_redirect" linktype="2" localeditorid="chrnflr3ydwllidxc" target="_blank" textvalue="Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确">Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317508&amp;idx=6&amp;sn=c682f11affd863345e267e4f6885390b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="7brff19rwzexkzuik1s" target="_blank" textvalue="持续停摆超 24 小时：Canonical 遭遇跨国勒索，开源分发体系的“单点故障”">持续停摆超 24 小时：Canonical 遭遇跨国勒索，开源分发体系的"单点故障"</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="o3yphx8m2lh52n3s3k" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="46ieoxp5a0xew9cpjpc" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=3&amp;sn=d2e24b0e06919518661af12926925f37&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1l24j4mqzjcz87k2dc" target="_blank" textvalue="CEO 必须掌握的 AI 治理框架">CEO 必须掌握的 AI 治理框架</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8zekvszhrrdqjdnke8" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317539&amp;idx=1&amp;sn=dafc1ceaeaebd060b603b779ebfe3b38&amp;scene=21#wechat_redirect" linktype="2" localeditorid="hkc3rl53ca1hq56jvgg" target="_blank" textvalue="2026年5月10日 周日 · 技术新闻早报">2026年5月10日 周日 · 技术新闻早报</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317527&amp;idx=2&amp;sn=96358fc11da6f5e7ce37fbd17250568d&amp;scene=21#wechat_redirect" linktype="2" localeditorid="chrnflr3ydwllidxc" target="_blank" textvalue="Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确">Linux 文件系统扩散已成负担：未来文件系统的准入要求已明确</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317508&amp;idx=6&amp;sn=c682f11affd863345e267e4f6885390b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="7brff19rwzexkzuik1s" target="_blank" textvalue="持续停摆超 24 小时：Canonical 遭遇跨国勒索，开源分发体系的“单点故障”">持续停摆超 24 小时：Canonical 遭遇跨国勒索，开源分发体系的"单点故障"</a></p>
     </div>
     <div class="src">
       <div class="txt">

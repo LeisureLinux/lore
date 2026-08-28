@@ -164,13 +164,12 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/DiiSzshRtwSkJYX7BCfL3A" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>内存问题只有两种：一种把你炸得粉碎，一种让你慢慢失血。前者好治，后者才是真正的工程难题。</p>
-<p>------ 从架构师视角看 C++ 内存排查四件套</p>
+<p>内存问题只有两种：一种把你炸得粉碎，一种让你慢慢失血。前者好治，后者才是真正的工程难题。——从架构师视角看 C++ 内存排查四件套</p>
 <p>写 C++ 的工程师，多半被两种内存 bug 反复折磨过。</p>
-<p>第一种是崩溃型------<code>Segmentation fault</code>、<code>double free</code>、<code>heap-buffer-overflow</code>、<code>use-after-free</code>。它们会在你眼前炸开，core dump 直接砸到脸上。这种 bug 其实<strong>好治</strong>：复现路径短，定位快，绝大多数时候加个 AddressSanitizer 跑一遍就能抓到。</p>
-<p>第二种是静默型------内存随时间一点一点漏掉，进程跑三天、五天、三十天，RSS 一路涨到 OOM 被系统 kill。开发环境看不出，CI 测不出，线上才暴露，dump 还抓不全。这种 bug 才让人睡不着觉。</p>
+<p>第一种是崩溃型——<code>Segmentation fault</code>、<code>double free</code>、<code>heap-buffer-overflow</code>、<code>use-after-free</code>。它们会在你眼前炸开，core dump 直接砸到脸上。这种 bug 其实<strong>好治</strong>：复现路径短，定位快，绝大多数时候加个 AddressSanitizer 跑一遍就能抓到。</p>
+<p>第二种是静默型——内存随时间一点一点漏掉，进程跑三天、五天、三十天，RSS 一路涨到 OOM 被系统 kill。开发环境看不出，CI 测不出，线上才暴露，dump 还抓不全。这种 bug 才让人睡不着觉。</p>
 <p>而 C++ 之所以比 Java、Go、Rust 都难，根本原因只有一个：没有 GC 替你兜底，<strong>所有内存动作都直接落到裸指针上</strong>。RAII、智能指针、<code>std::vector</code> 这些「工程化封装」只解决「愿不愿意好好写」的问题，解决不了「写错了怎么抓」的问题。</p>
-<p>本篇要讲的是------<strong>抓内存问题的四件套</strong>：ASan、Valgrind、gdb、memleak（含 glibc mtrace）。从架构师视角覆盖原理、适用场景、最佳实践，并给出一段完整可编译的 C++ 演示代码（带 buffer overflow + leak + use-after-free 三种 bug），配上 4 个工具的真实输出，最后给出「按场景选工具」的决策矩阵。</p>
+<p>本篇要讲的是——<strong>抓内存问题的四件套</strong>：ASan、Valgrind、gdb、memleak（含 glibc mtrace）。从架构师视角覆盖原理、适用场景、最佳实践，并给出一段完整可编译的 C++ 演示代码（带 buffer overflow + leak + use-after-free 三种 bug），配上 4 个工具的真实输出，最后给出「按场景选工具」的决策矩阵。</p>
 <p>本文脉络</p>
 <p>01</p>
 <p>四件套定位全景</p>
@@ -184,22 +183,18 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>gdb 实战</p>
 <p>06</p>
 <p>memleak &amp; mtrace</p>
-<p>\</p>
 <p>01 · CHAPTER ONE</p>
 <h3 id="_1">四件套定位全景</h3>
-<p>\</p>
 <p>先建立一张大图，什么时候用哪个，心里要有数。</p>
-<p><strong>ASan（AddressSanitizer）</strong>------Clang / GCC 内置的编译期 + 运行时内存错误检测器。它会在编译时往你的代码里插入「红区（redzone）」和「影子内存（shadow memory）」，运行时一旦踩到红区立刻报错。覆盖溢出（heap / stack / global）、UAF、double free、内存泄漏（通过 LeakSanitizer）几乎所有常见内存 bug，<strong>性能损耗约 2 倍</strong>。</p>
-<p><strong>Valgrind</strong>------一个运行时二进制翻译框架，其中<strong>memcheck</strong> 工具是它最出名的成员。原理是把程序跑在它自己的模拟 CPU 上，每次 load / store 都检查一遍。<strong>不需要重新编译</strong>（但用 <code>-O0 -g</code> 编译效果最好），性能损耗<strong>10--50 倍</strong>，但能给出最干净的栈回溯和未初始化内存使用（MSan 之外的替代品）的检测。</p>
-<p><strong>gdb</strong>------不是内存检测器，而是事后取证与交互验证工具。当 sanitizer 抓不住、Valgrind 复现不了（比如依赖特定时序）时，gdb 上场。<code>maint info heap</code>、<code>info proc mappings</code>、watchpoint、<code>backtrace</code> 是它的核心武器。</p>
-<p><strong>memleak（含 glibc mtrace）</strong>------轻量级、嵌入式友好的泄漏检测方案。libmemleak 是嵌入式 Linux 的 hook 库；glibc 自带的 <code>mtrace()</code> + <code>mtrace</code> 工具是更通用的兜底。零运行时依赖、零编译侵入，但<strong>只能查泄漏</strong>------其他内存错误它不抓。</p>
+<p><strong>ASan（AddressSanitizer）</strong>——Clang / GCC 内置的编译期 + 运行时内存错误检测器。它会在编译时往你的代码里插入「红区（redzone）」和「影子内存（shadow memory）」，运行时一旦踩到红区立刻报错。覆盖溢出（heap / stack / global）、UAF、double free、内存泄漏（通过 LeakSanitizer）几乎所有常见内存 bug，<strong>性能损耗约 2 倍</strong>。</p>
+<p><strong>Valgrind</strong>——一个运行时二进制翻译框架，其中<strong>memcheck</strong> 工具是它最出名的成员。原理是把程序跑在它自己的模拟 CPU 上，每次 load / store 都检查一遍。<strong>不需要重新编译</strong>（但用 <code>-O0 -g</code> 编译效果最好），性能损耗<strong>10——50 倍</strong>，但能给出最干净的栈回溯和未初始化内存使用（MSan 之外的替代品）的检测。</p>
+<p><strong>gdb</strong>——不是内存检测器，而是事后取证与交互验证工具。当 sanitizer 抓不住、Valgrind 复现不了（比如依赖特定时序）时，gdb 上场。<code>maint info heap</code>、<code>info proc mappings</code>、watchpoint、<code>backtrace</code> 是它的核心武器。</p>
+<p><strong>memleak（含 glibc mtrace）</strong>——轻量级、嵌入式友好的泄漏检测方案。libmemleak 是嵌入式 Linux 的 hook 库；glibc 自带的 <code>mtrace()</code> + <code>mtrace</code> 工具是更通用的兜底。零运行时依赖、零编译侵入，但<strong>只能查泄漏</strong>——其他内存错误它不抓。</p>
 <p>四件套的关系不是「选一个」，而是组合使用：开发期 ASan 全开，CI 跑 Valgrind 做兜底，线上崩溃时 gdb 取证，嵌入式 / 性能敏感场景退到 mtrace。</p>
-<p>\</p>
 <p>02 · CHAPTER TWO</p>
 <h3 id="bug-c">一段带三种 bug 的 C++ 演示代码</h3>
-<p>\</p>
 <p>下面这段代码，<strong>故意</strong>埋了 3 个 bug 让你后面 4 个工具都有的抓。完整可编译运行，建议保存为<code>mem_bugs.cpp</code>。</p>
-<p>.      .      .      cpp</p>
+<p>.      .      .      cpp</p>
 <p>// mem_bugs.cpp</p>
 <p>// 编译：g++ -std=c++17 -O0 -g mem_bugs.cpp -o mem_bugs</p>
 <p>// 运行：./mem_bugs</p>
@@ -221,7 +216,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>std::free(buf);</p>
 <p>}</p>
 <p>static void bug_leak() {</p>
-<p>// Bug #2: 内存泄漏 ------ 一路分配到头</p>
+<p>// Bug #2: 内存泄漏——一路分配到头</p>
 <p>std::vector\&lt;Order*> bag;</p>
 <p>for (int i = 0; i \&lt; 100; ++i) {</p>
 <p>Order* o = new Order{ i, 「test」 };</p>
@@ -234,14 +229,14 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>// Bug #3: use-after-free</p>
 <p>int* p = new int(42);</p>
 <p>delete p;</p>
-<p>std::printf(「after free: *p = %d\n」, *p);　// 读已释放内存</p>
+<p>std::printf(「after free: *p = %d\n」, *p); // 读已释放内存</p>
 <p>}</p>
 <p>int main(int argc, char** argv) {</p>
 <p>int which = (argc > 1) ? std::atoi(argv[1]) : 0;</p>
 <p>switch (which) {</p>
 <p>case 1: bug_buffer_overflow(); break;</p>
-<p>case 2: bug_leak();　　　　　　break;</p>
-<p>case 3: bug_use_after_free();　break;</p>
+<p>case 2: bug_leak();      break;</p>
+<p>case 3: bug_use_after_free(); break;</p>
 <p>default:</p>
 <p>bug_buffer_overflow();</p>
 <p>bug_leak();</p>
@@ -251,48 +246,46 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>return 0;</p>
 <p>}</p>
 <p>3 个 bug 的位置都标在注释里。<code>./mem_bugs 1</code> 单跑第一个、<code>./mem_bugs 2</code> 单跑第二个、<code>./mem_bugs 3</code> 单跑第三个。后面 4 个工具会逐个对着它们表演。</p>
-<p>\</p>
 <p>03 · CHAPTER THREE</p>
 <h3 id="asan">ASan 实战：编译参数与输出解读</h3>
-<p>\</p>
 <p>3.1 编译 + 运行</p>
-<p>.      .      .      bash</p>
-<p>g++ -std=c++17 -O0 -g -fsanitize=address -fno-omit-frame-pointer \</p>
+<p>.      .      .      bash</p>
+<p>g++ -std=c++17 -O0 -g -fsanitize=address -fno-omit-frame-pointer</p>
 <p>mem_bugs.cpp -o mem_bugs_asan</p>
-<p>ASAN_OPTIONS=detect_leaks=1:abort_on_error=0:print_stats=1 \</p>
+<p>ASAN_OPTIONS=detect_leaks=1:abort_on_error=0:print_stats=1</p>
 <p>./mem_bugs_asan</p>
 <p>NOTE</p>
 <p><code>-fsanitize=address</code> 会自动启用 LeakSanitizer（LSan），不需要单独加。<code>-fno-omit-frame-pointer</code> 强烈建议加上，否则栈回溯里全是 <code>??:0</code>。</p>
 <p>3.2 buffer overflow 的 ASan 输出</p>
-<p>.      .      .      asan-output</p>
+<p>.      .      .      asan-output</p>
 <p>==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000ef0</p>
 <p>WRITE of size 42 at 0x602000000ef0 thread T0</p>
-<p>#0 0x4012a3 in bug_buffer_overflow mem_bugs.cpp:14</p>
-<p>#1 0x4013f1 in main mem_bugs.cpp:46</p>
-<p>#2 0x7f.... in __libc_start_main</p>
+<h1 id="0-0x4012a3-in-bug_buffer_overflow-mem_bugscpp14">0 0x4012a3 in bug_buffer_overflow mem_bugs.cpp:14</h1>
+<h1 id="1-0x4013f1-in-main-mem_bugscpp46">1 0x4013f1 in main mem_bugs.cpp:46</h1>
+<h1 id="2-0x7f-in-__libc_start_main">2 0x7f.... in __libc_start_main</h1>
 <p>0x602000000ef0 is located 0 bytes to the right of 16-byte region</p>
 <p>allocated by thread T0 here:</p>
-<p>#0 0x7f.... in malloc</p>
-<p>#1 0x40128a in bug_buffer_overflow mem_bugs.cpp:11</p>
+<h1 id="0-0x7f-in-malloc">0 0x7f.... in malloc</h1>
+<h1 id="1-0x40128a-in-bug_buffer_overflow-mem_bugscpp11">1 0x40128a in bug_buffer_overflow mem_bugs.cpp:11</h1>
 <p>SUMMARY: AddressSanitizer: heap-buffer-overflow mem_bugs.cpp:14</p>
-<p>这段输出信息量极大：第几行写溢出、写多少字节、往哪写、原始 16 字节分配在哪、谁分配的、调用栈是什么------一行没漏。架构师做 Code Review 时，看到这种 ASan 报告基本能直接拍板。</p>
+<p>这段输出信息量极大：第几行写溢出、写多少字节、往哪写、原始 16 字节分配在哪、谁分配的、调用栈是什么——一行没漏。架构师做 Code Review 时，看到这种 ASan 报告基本能直接拍板。</p>
 <p>3.3 use-after-free 的 ASan 输出</p>
-<p>.      .      .      asan-output</p>
+<p>.      .      .      asan-output</p>
 <p>==12345==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000001230</p>
 <p>READ of size 4 at 0x602000001230 thread T0</p>
-<p>#0 0x4013a1 in bug_use_after_free mem_bugs.cpp:36</p>
-<p>#1 0x401421 in main mem_bugs.cpp:49</p>
+<h1 id="0-0x4013a1-in-bug_use_after_free-mem_bugscpp36">0 0x4013a1 in bug_use_after_free mem_bugs.cpp:36</h1>
+<h1 id="1-0x401421-in-main-mem_bugscpp49">1 0x401421 in main mem_bugs.cpp:49</h1>
 <p>0x602000001230 is located 0 bytes inside of 4-byte region</p>
 <p>freed by thread T0 here:</p>
-<p>#0 0x7f.... in operator delete(void*)</p>
-<p>#1 0x401390 in bug_use_after_free mem_bugs.cpp:34</p>
-<p>ASan 把读访问、释放动作两条栈都打出来。这是它<strong>最值钱</strong>的能力------UAF 在没有 ASan 的年代，core dump 里完全看不出谁 free 的。</p>
+<h1 id="0-0x7f-in-operator-deletevoid">0 0x7f.... in operator delete(void*)</h1>
+<h1 id="1-0x401390-in-bug_use_after_free-mem_bugscpp34">1 0x401390 in bug_use_after_free mem_bugs.cpp:34</h1>
+<p>ASan 把读访问、释放动作两条栈都打出来。这是它<strong>最值钱</strong>的能力——UAF 在没有 ASan 的年代，core dump 里完全看不出谁 free 的。</p>
 <p>3.4 leak 的 ASan 输出</p>
-<p>.      .      .      asan-output</p>
+<p>.      .      .      asan-output</p>
 <p>==12345==ERROR: LeakSanitizer: detected memory leaks</p>
 <p>Direct leak of 400 byte(s) in 100 object(s) allocated from:</p>
-<p>#0 0x7f.... in operator new(unsigned long)</p>
-<p>#1 0x4012f0 in bug_leak mem_bugs.cpp:24</p>
+<h1 id="0-0x7f-in-operator-newunsigned-long">0 0x7f.... in operator new(unsigned long)</h1>
+<h1 id="1-0x4012f0-in-bug_leak-mem_bugscpp24">1 0x4012f0 in bug_leak mem_bugs.cpp:24</h1>
 <p>SUMMARY: LeakSanitizer: detected 100 Order objects leaked</p>
 <p>100 个 Order × 4 字节（int）= 400 字节，全列在<code>bug_leak:24</code>这行。直接对着分配栈修就行。</p>
 <p>3.5 ASan 的关键环境变量</p>
@@ -307,44 +300,42 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>05</p>
 <p><code>__asan_default_options()</code> 代码内硬编码默认选项（嵌入二进制，CI 改不动）</p>
 <p>NOTE</p>
-<p><strong>生产二进制不要在源头就关 ASan</strong>------通过 <code>__asan_default_options()</code> 给一个「默认开，但可被环境变量关」的策略，比「-O2 编一遍再加 sanitizer 编一遍」灵活得多。</p>
-<p>\</p>
+<p><strong>生产二进制不要在源头就关 ASan</strong>——通过 <code>__asan_default_options()</code> 给一个「默认开，但可被环境变量关」的策略，比「-O2 编一遍再加 sanitizer 编一遍」灵活得多。</p>
 <p>04 · CHAPTER FOUR</p>
 <h3 id="valgrind-memcheck">Valgrind / Memcheck 实战</h3>
-<p>\</p>
 <p>4.1 编译 + 运行</p>
 <p>不需要重新编译。直接：</p>
-<p>.      .      .      bash</p>
+<p>.      .      .      bash</p>
 <p>g++ -std=c++17 -O0 -g mem_bugs.cpp -o mem_bugs_native</p>
-<p>valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes \</p>
+<p>valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes</p>
 <p>--num-callers=20 --log-file=valgrind.log ./mem_bugs_native</p>
 <p>NOTE</p>
-<p><code>--track-origins=yes</code> 会让 Valgrind 把未初始化值来源追到原始 malloc 那一行。开销翻倍但<strong>抓 MSan 替代品</strong>（未初始化内存使用）的唯一办法。CI 默认开，生产环境慎用。</p>
+<p><code>——track-origins=yes</code> 会让 Valgrind 把未初始化值来源追到原始 malloc 那一行。开销翻倍但<strong>抓 MSan 替代品</strong>（未初始化内存使用）的唯一办法。CI 默认开，生产环境慎用。</p>
 <p>4.2 三种 bug 的 Valgrind 输出</p>
 <p>buffer overflow：</p>
-<p>.      .      .      valgrind-output</p>
+<p>.      .      .      valgrind-output</p>
 <p>==12345== Invalid write of size 42</p>
-<p>==12345==　　at 0x4012A3: bug_buffer_overflow (mem_bugs.cpp:14)</p>
-<p>==12345==　　by 0x4013F1: main (mem_bugs.cpp:46)</p>
-<p>==12345==　Address 0x5ab8060 is 0 bytes after a block of size 16 alloc\'d</p>
-<p>==12345==　　at 0x4C2AB58: malloc (vg_replace_malloc.c:274)</p>
-<p>==12345==　　by 0x40128A: bug_buffer_overflow (mem_bugs.cpp:11)</p>
+<p>==12345==  at 0x4012A3: bug_buffer_overflow (mem_bugs.cpp:14)</p>
+<p>==12345==  by 0x4013F1: main (mem_bugs.cpp:46)</p>
+<p>==12345== Address 0x5ab8060 is 0 bytes after a block of size 16 alloc\'d</p>
+<p>==12345==  at 0x4C2AB58: malloc (vg_replace_malloc.c:274)</p>
+<p>==12345==  by 0x40128A: bug_buffer_overflow (mem_bugs.cpp:11)</p>
 <p>==12345==</p>
 <p>use-after-free：</p>
-<p>.      .      .      valgrind-output</p>
+<p>.      .      .      valgrind-output</p>
 <p>==12345== Invalid read of size 4</p>
-<p>==12345==　　at 0x4013A1: bug_use_after_free (mem_bugs.cpp:36)</p>
-<p>==12345==　　by 0x401421: main (mem_bugs.cpp:49)</p>
-<p>==12345==　Address 0x5ab80a0 is 0 bytes inside a block of size 4 free\'d</p>
-<p>==12345==　　at 0x4C2C8C4: operator delete(void*) (vg_replace_malloc.c:480)</p>
-<p>==12345==　　by 0x401390: bug_use_after_free (mem_bugs.cpp:34)</p>
+<p>==12345==  at 0x4013A1: bug_use_after_free (mem_bugs.cpp:36)</p>
+<p>==12345==  by 0x401421: main (mem_bugs.cpp:49)</p>
+<p>==12345== Address 0x5ab80a0 is 0 bytes inside a block of size 4 free\'d</p>
+<p>==12345==  at 0x4C2C8C4: operator delete(void*) (vg_replace_malloc.c:480)</p>
+<p>==12345==  by 0x401390: bug_use_after_free (mem_bugs.cpp:34)</p>
 <p>leak summary（在文件末尾）：</p>
-<p>.      .      .      valgrind-output</p>
+<p>.      .      .      valgrind-output</p>
 <p>==12345== LEAK SUMMARY:</p>
-<p>==12345==　　definitely lost: 400 bytes in 100 blocks</p>
-<p>==12345==　　indirectly lost: 0 bytes in 0 blocks</p>
-<p>==12345==　　possibly lost:　 0 bytes in 0 blocks</p>
-<p>==12345==　　still reachable: 0 bytes in 0 blocks</p>
+<p>==12345==  definitely lost: 400 bytes in 100 blocks</p>
+<p>==12345==  indirectly lost: 0 bytes in 0 blocks</p>
+<p>==12345==  possibly lost:  0 bytes in 0 blocks</p>
+<p>==12345==  still reachable: 0 bytes in 0 blocks</p>
 <p>==12345== SUPPRESSIONS USED: 0</p>
 <p>==12345== ERROR SUMMARY: 3 errors from 3 contexts</p>
 <p><code>definitely lost</code> =<strong>肯定泄漏</strong>，没有指针指向。<code>indirectly lost</code> = 通过泄漏指针间接泄漏（典型：树节点）。<code>possibly lost</code> = 内部指针残留，<strong>未必是真泄漏</strong>，要人工判断。</p>
@@ -352,37 +343,35 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>01</p>
 <p><strong>memcheck</strong> 内存读写错误 + 泄漏（本篇重点）</p>
 <p>02</p>
-<p><strong>cachegrind</strong> CPU cache 命中率分析（<code>--tool=cachegrind</code>）</p>
+<p><strong>cachegrind</strong> CPU cache 命中率分析（<code>——tool=cachegrind</code>）</p>
 <p>03</p>
 <p><strong>callgrind</strong> 函数级调用次数 + 指令数 + call graph（性能调优神器）</p>
 <p>04</p>
-<p><strong>massif</strong> 堆内存增长曲线，定位峰值（<code>--tool=massif</code>，配合 <code>ms_print</code>）</p>
+<p><strong>massif</strong> 堆内存增长曲线，定位峰值（<code>——tool=massif</code>，配合 <code>ms_print</code>）</p>
 <p>05</p>
 <p><strong>helgrind</strong> 锁竞争 / 死锁 / 数据竞争（多线程必看）</p>
 <p>06</p>
 <p><strong>drd</strong> 另一个数据竞争检测器，比 helgrind 轻</p>
 <p>NOTE</p>
-<p><strong>ASan 与 Valgrind 不可叠加</strong>------ASan 用影子内存实现，Valgrind 是二进制翻译，叠加会互相干扰甚至崩溃。要么 ASan、要么 Valgrind，二选一。</p>
-<p>\</p>
+<p><strong>ASan 与 Valgrind 不可叠加</strong>——ASan 用影子内存实现，Valgrind 是二进制翻译，叠加会互相干扰甚至崩溃。要么 ASan、要么 Valgrind，二选一。</p>
 <p>05 · CHAPTER FIVE</p>
 <h3 id="gdb-watchpoint">gdb 实战：取证、堆分析、断点与 watchpoint</h3>
-<p>\</p>
-<p>gdb 在内存排查里<strong>不是第一线工具</strong>------它的角色是「其他工具抓不到时的兜底取证 + 交互验证」。但它有几招是 ASan / Valgrind 都做不到的。</p>
+<p>gdb 在内存排查里<strong>不是第一线工具</strong>——它的角色是「其他工具抓不到时的兜底取证 + 交互验证」。但它有几招是 ASan / Valgrind 都做不到的。</p>
 <p>5.1 取一份 core dump</p>
-<p>.      .      .      bash</p>
+<p>.      .      .      bash</p>
 <p>ulimit -c unlimited</p>
 <p>echo 「/tmp/core.%e.%p」 | sudo tee /proc/sys/kernel/core_pattern</p>
 <p>./mem_bugs_native 3</p>
 <p># 假设崩了 / heap 没崩</p>
 <p>gdb ./mem_bugs_native /tmp/core.mem_bugs.12345</p>
 <p>5.2 进程内存全景</p>
-<p>.      .      .      gdb</p>
-<p>(gdb) info proc mappings　　　　　# 虚拟地址空间布局</p>
-<p>(gdb) maint info heap　　　　　　# glibc arena 概览（仅 glibc 编译时）</p>
-<p>(gdb) call (void)malloc_stats()　# 直接调 glibc API 打统计</p>
+<p>.      .      .      gdb</p>
+<p>(gdb) info proc mappings     # 虚拟地址空间布局</p>
+<p>(gdb) maint info heap      # glibc arena 概览（仅 glibc 编译时）</p>
+<p>(gdb) call (void)malloc_stats() # 直接调 glibc API 打统计</p>
 <p><code>info proc mappings</code> 把代码段、堆、栈、共享库全画出来，能立刻看到 <code>mmap</code> 出来的巨大私有内存（往往是泄漏征兆）。<code>malloc_stats()</code> 是 glibc 提供的运行时 API，gdb 里直接调它就能拿到当前 arena 的<code>system bytes / in use bytes / max system bytes</code>。</p>
 <p>5.3 在 malloc / free 上下断点</p>
-<p>.      .      .      gdb</p>
+<p>.      .      .      gdb</p>
 <p>(gdb) break malloc</p>
 <p>(gdb) commands</p>
 <p>> silent</p>
@@ -399,81 +388,77 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>> end</p>
 <p>(gdb) run</p>
 <p>NOTE</p>
-<p><code>commands ... end</code> 是 gdb 的<strong>断点命令组</strong>------每次断点命中都自动执行里面的命令。配 <code>silent</code> + <code>printf</code> + <code>backtrace</code> 是<strong>看泄漏现场最经典的手法</strong>。</p>
+<p><code>commands ... end</code> 是 gdb 的<strong>断点命令组</strong>——每次断点命中都自动执行里面的命令。配 <code>silent</code> + <code>printf</code> + <code>backtrace</code> 是<strong>看泄漏现场最经典的手法</strong>。</p>
 <p>5.4 watchpoint：盯住一个地址</p>
 <p>UAF 的特征是「我读 / 写一个早就被 free 的地址」。<strong>watchpoint</strong> 让 gdb 在某地址被访问时自动停：</p>
-<p>.      .      .      gdb</p>
-<p>(gdb) watch　*(int*)0x55555576a2a0　　 # 监视写</p>
-<p>(gdb) rwatch *(int*)0x55555576a2a0　　 # 监视读</p>
-<p>(gdb) awatch *(int*)0x55555576a2a0　　 # 读 + 写</p>
+<p>.      .      .      gdb</p>
+<p>(gdb) watch *(int*)0x55555576a2a0   # 监视写</p>
+<p>(gdb) rwatch *(int*)0x55555576a2a0   # 监视读</p>
+<p>(gdb) awatch *(int*)0x55555576a2a0   # 读 + 写</p>
 <p>对 <code>bug_use_after_free</code>：先在<code>delete p</code>后打断点，记下 <code>p</code> 的地址，然后<code>awatch</code> 它，再次<code>run</code>就精确停在那行 <code>printf</code> 的 UAF 上。</p>
 <p>5.5 heap-analysis-helper 与 gdb-heap</p>
 <p>glibc 自带的 <code>gdb-heap</code> 脚本和社区的<code>heap-analysis-helper</code>是<strong>专门给 gdb 加内存排查命令的扩展</strong>：</p>
-<p>.      .      .      gdb</p>
+<p>.      .      .      gdb</p>
 <p># glibc 自带（在 debug glibc 时可用）</p>
 <p>(gdb) source /usr/lib/glibc/2.x/scripts/gdb-heap.py</p>
-<p>(gdb) heap used　　　　　# 看总占用</p>
-<p>(gdb) heap chunks　　　　# 列所有 chunk</p>
+<p>(gdb) heap used     # 看总占用</p>
+<p>(gdb) heap chunks    # 列所有 chunk</p>
 <p>NOTE</p>
-<p><strong>gdb 不是内存检测器</strong>------它的价值在「已经知道有问题、需要追到具体位置」时。如果你的第一反应是「gdb 看一下内存」，多半方向错了；<strong>先 ASan，再 Valgrind，最后 gdb</strong>。</p>
-<p>\</p>
+<p><strong>gdb 不是内存检测器</strong>——它的价值在「已经知道有问题、需要追到具体位置」时。如果你的第一反应是「gdb 看一下内存」，多半方向错了；<strong>先 ASan，再 Valgrind，最后 gdb</strong>。</p>
 <p>06 · CHAPTER SIX</p>
 <h3 id="memleak-glibc-mtrace">memleak 与 glibc mtrace：嵌入式与轻量场景</h3>
-<p>\</p>
 <p>6.1 glibc mtrace：零依赖的兜底方案</p>
 <p>glibc 自带 <code>mtrace()</code> / <code>muntrace()</code> 两个 API + 一个 <code>mtrace</code> 命令行工具。<strong>不需要链接任何额外库</strong>（glibc 是必备运行时）。</p>
 <p>源码改造：</p>
-<p>.      .      .      cpp</p>
+<p>.      .      .      cpp</p>
 <h1 id="include-mcheckh">include \&lt;mcheck.h></h1>
 <p>int main(int argc, char** argv) {</p>
 <p>setenv(「MALLOC_TRACE」, 「/tmp/mtrace.log」, 1);</p>
-<p>mtrace();　　// 开始记录</p>
+<p>mtrace();  // 开始记录</p>
 <p>// ... 你的业务代码 ...</p>
 <p>muntrace(); // 停止记录</p>
 <p>return 0;</p>
 <p>}</p>
 <p>编译运行：</p>
-<p>.      .      .      bash</p>
+<p>.      .      .      bash</p>
 <p>g++ -std=c++17 -O0 -g mem_bugs.cpp -o mem_bugs_mtrace</p>
 <p>unset MALLOC_TRACE</p>
 <p>MALLOC_TRACE=/tmp/mtrace.log ./mem_bugs_mtrace 2</p>
 <p>mtrace ./mem_bugs_mtrace /tmp/mtrace.log</p>
 <p>输出（只查 bug #2 leak）：</p>
-<p>.      .      .      mtrace-output</p>
+<p>.      .      .      mtrace-output</p>
 <p>Memory not freed:</p>
 <p>-----------------</p>
-<p>Address　　　Size　　Caller</p>
-<p>0x00000000004a42c0　　0x20　at mem_bugs.cpp:24</p>
-<p>0x00000000004a4310　　0x20　at mem_bugs.cpp:24</p>
-<p>0x00000000004a4360　　0x20　at mem_bugs.cpp:24</p>
+<p>Address   Size  Caller</p>
+<p>0x00000000004a42c0  0x20 at mem_bugs.cpp:24</p>
+<p>0x00000000004a4310  0x20 at mem_bugs.cpp:24</p>
+<p>0x00000000004a4360  0x20 at mem_bugs.cpp:24</p>
 <p>... (共 100 行)</p>
 <p>直接定位到分配点。<strong>注意</strong>：mtrace 只能查通过 malloc / calloc / realloc / new 分配的内存泄漏，栈上变量、静态对象它不管。</p>
 <p>6.2 libmemleak：嵌入式 Linux 的 hook 库</p>
-<p>嵌入式场景下，glibc 都不一定有（很多板子是 musl / uClibc / newlib）。这时用<strong>libmemleak</strong>------通过 LD_PRELOAD 拦截 malloc / free，把泄漏信息写到一个文件或环形 buffer。</p>
-<p>.      .      .      bash</p>
+<p>嵌入式场景下，glibc 都不一定有（很多板子是 musl / uClibc / newlib）。这时用<strong>libmemleak</strong>——通过 LD_PRELOAD 拦截 malloc / free，把泄漏信息写到一个文件或环形 buffer。</p>
+<p>.      .      .      bash</p>
 <p>LD_PRELOAD=./libmemleak.so MKMEMLEAK_OUTPUT=/tmp/leak.log ./my_embedded_app</p>
 <p>NOTE</p>
-<p><strong>LD_PRELOAD 在 musl 上不工作</strong>------musl 不支持完整的 ELF symbol interposition。要做嵌入式 musl 的内存检测，直接进工程用 <code>__wrap_malloc</code> / <code>__wrap_free</code>（newlib）或改 libc。</p>
+<p><strong>LD_PRELOAD 在 musl 上不工作</strong>——musl 不支持完整的 ELF symbol interposition。要做嵌入式 musl 的内存检测，直接进工程用 <code>__wrap_malloc</code> / <code>__wrap_free</code>（newlib）或改 libc。</p>
 <p>6.3 mtrace 的几个坑</p>
 <p>01</p>
 <p>必须在<code>main</code>最早调用<code>mtrace()</code>，否则它记录不到早于它自己的分配</p>
 <p>02</p>
-<p>写日志会触发 malloc，循环里调 mtrace 等于自递归------加<code>MALLOC_TRACE</code>之前别 <code>mtrace</code></p>
+<p>写日志会触发 malloc，循环里调 mtrace 等于自递归——加<code>MALLOC_TRACE</code>之前别 <code>mtrace</code></p>
 <p>03</p>
 <p>mtrace 的输出不显示泄漏的字节总数，只列条目。要总数，自己 <code>grep -c</code></p>
 <p>04</p>
-<p><strong>只查泄漏，不查溢出 / UAF</strong>------这是它和 ASan / Valgrind 的本质区别</p>
-<p>\</p>
+<p><strong>只查泄漏，不查溢出 / UAF</strong>——这是它和 ASan / Valgrind 的本质区别</p>
 <p>07 · CHAPTER SEVEN</p>
 <h3 id="_2">决策矩阵：按场景选工具</h3>
-<p>\</p>
 <p>开发期（本地）</p>
 <p>推荐组合：ASan 全开 + gdb</p>
 <p>性能损耗 \~2x</p>
 <p>编码即查 bug，编译选项加<code>-fsanitize=address</code></p>
 <p>CI（跑全量测试）</p>
 <p>推荐组合：Valgrind / Memcheck 跑核心 case</p>
-<p>性能损耗 10--50x</p>
+<p>性能损耗 10——50x</p>
 <p>抓 ASan 抓不到的 corner case，开<code>track-origins</code></p>
 <p>预发布（压测）</p>
 <p>推荐组合：ASan + 抽样</p>
@@ -481,7 +466,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>抓高负载下才暴露的 UAF</p>
 <p>生产（线上）</p>
 <p>推荐组合：默认关 ASan，仅保留 UBSan / TSan</p>
-<p>性能损耗 1.1--1.3x</p>
+<p>性能损耗 1.1——1.3x</p>
 <p>见第 8 节</p>
 <p>嵌入式 / 性能敏感</p>
 <p>推荐组合：glibc mtrace / libmemleak</p>
@@ -489,11 +474,11 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>不改二进制逻辑，LD_PRELOAD 即可</p>
 <p>多线程数据竞争</p>
 <p>推荐组合：TSan 或 Helgrind</p>
-<p>性能损耗 5--15x</p>
+<p>性能损耗 5——15x</p>
 <p>TSan 是 Clang 原生，Helgrind 走 Valgrind</p>
 <p>未初始化内存</p>
-<p>推荐组合：MSan 或 Valgrind<code>--track-origins</code></p>
-<p>性能损耗 3--10x</p>
+<p>推荐组合：MSan 或 Valgrind<code>——track-origins</code></p>
+<p>性能损耗 3——10x</p>
 <p>MSan 只能 Clang</p>
 <p>Core dump 取证</p>
 <p>推荐组合：gdb + <code>info proc mappings</code> + <code>maint info heap</code></p>
@@ -501,21 +486,19 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>找泄漏点要靠经验</p>
 <p>NOTE</p>
 <p><strong>架构原则</strong>：「开发期重，CI 中，生产轻」。ASan 在生产里是性能 + 内存双重重负（红区 + 影子内存），对延迟敏感的服务<strong>绝对不要开</strong>。生产期只开 UBSan 和 TSan 的轻量子集，泄漏问题由<strong>运行时监控（RSS 趋势、jemalloc 自带 stats）</strong>补位。</p>
-<p>\</p>
 <p>08 · CHAPTER EIGHT</p>
 <h3 id="sanitizer">进阶：sanitizer 在生产环境的边界</h3>
-<p>\</p>
 <p>8.1 ASan 关闭，UBSan 保留</p>
-<p>.      .      .      bash</p>
+<p>.      .      .      bash</p>
 <p># 推荐的「生产构建」sanitizer 组合</p>
-<p>g++ -std=c++17 -O2 -g -fno-omit-frame-pointer \</p>
-<p>-fsanitize=undefined \</p>
-<p>-fno-sanitize-recover=all \</p>
-<p>-fno-sanitize=alignment,vptr \</p>
+<p>g++ -std=c++17 -O2 -g -fno-omit-frame-pointer</p>
+<p>-fsanitize=undefined</p>
+<p>-fno-sanitize-recover=all</p>
+<p>-fno-sanitize=alignment,vptr</p>
 <p>-c source.cpp</p>
-<p>UBSan 抓的是未定义行为------整数溢出、空指针解引用、<code>nullptr</code> 调用 <code>this</code>、类型混淆。它的开销通常<strong>\&lt; 30%</strong>，对大部分服务是可接受的。<code>alignment</code>、<code>vptr</code> 在 C++ 模板代码里<strong>会疯狂误报</strong>，建议显式关。</p>
+<p>UBSan 抓的是未定义行为——整数溢出、空指针解引用、<code>nullptr</code> 调用 <code>this</code>、类型混淆。它的开销通常<strong>\&lt; 30%</strong>，对大部分服务是可接受的。<code>alignment</code>、<code>vptr</code> 在 C++ 模板代码里<strong>会疯狂误报</strong>，建议显式关。</p>
 <p>8.2 静态分析补充</p>
-<p>内存错误有三类<strong>永远跑不到运行时</strong>------光靠 sanitizer 抓不到：</p>
+<p>内存错误有三类<strong>永远跑不到运行时</strong>——光靠 sanitizer 抓不到：</p>
 <p>01</p>
 <p>死代码里的内存泄漏</p>
 <p>02</p>
@@ -524,15 +507,15 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>第三方库内部泄漏（你不会重编它们）</p>
 <p>这些靠<strong>静态分析</strong>补：</p>
 <p>01</p>
-<p><strong>Clang Static Analyzer</strong>（<code>scan-build</code>）------ 免费，覆盖率一般</p>
+<p><strong>Clang Static Analyzer</strong>（<code>scan-build</code>）——免费，覆盖率一般</p>
 <p>02</p>
-<p><strong>Coverity</strong> ------ 商业王者，误报率最低</p>
+<p><strong>Coverity</strong>——商业王者，误报率最低</p>
 <p>03</p>
-<p><strong>PVS-Studio</strong> ------ 俄罗斯出品，C++ 友好</p>
+<p><strong>PVS-Studio</strong>——俄罗斯出品，C++ 友好</p>
 <p>04</p>
-<p><strong>Infer</strong>（Facebook）------ 增量分析友好</p>
+<p><strong>Infer</strong>（Facebook）——增量分析友好</p>
 <p>8.3 运行时内存监控（生产兜底）</p>
-<p>生产环境的内存泄漏<strong>不要靠 sanitizer 抓</strong>------靠<strong>监控</strong>：</p>
+<p>生产环境的内存泄漏<strong>不要靠 sanitizer 抓</strong>——靠<strong>监控</strong>：</p>
 <p>01</p>
 <p><strong>RSS 趋势</strong> + 告警（每进程每分钟打点，斜率超阈值就告警）</p>
 <p>02</p>
@@ -543,12 +526,10 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>关键服务的<strong>heap profile 定时落盘</strong>（gperftools / jemalloc heap profiling）</p>
 <p>NOTE</p>
 <p><strong>架构师最容易犯的错</strong>：把「我代码里加了 ASan 跑通了」当成「生产不会泄漏」。ASan 在<strong>生产环境默认应该关</strong>。<strong>生产防内存问题的最后一道墙，是监控 + 告警 + 灰度</strong>。</p>
-<p>\</p>
 <p>∞ · POSTSCRIPT</p>
 <h3 id="_3">结语</h3>
-<p>\</p>
 <p><strong>后记：</strong>内存 bug 不会因为工具强大而消失，只会因为工程师懂得在正确的场景用正确的工具而变得可控。ASan 是日常饮食，Valgrind 是定期体检，gdb 是手术台，mtrace 是随身血压计。<strong>四件套没有银弹，但组合起来就是 C++ 工程实践的护城河</strong>。</p>
-<p>--- --- ---</p>
+<hr />
 <p>本文完。欢迎关注 LeisureLinux，获取更多深度技术解读。</p>
 <p>END</p>
 <p>REFERENCES</p>
@@ -562,17 +543,13 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>[8] LLVM Project Documentation: <em>UndefinedBehaviorSanitizer</em>. clang.llvm.org</p>
 <p>[9] Embedded Linux Wiki: <em>libmemleak</em>. elinux.org</p>
 <p>[10] Google Sanitizers Wiki: <em>Sanitizer Performance Overhead</em>. github.com</p>
-<p>\</p>
-<p>\
-<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316161&amp;idx=1&amp;sn=6096c58239f44a76fbefb502e0efe348&amp;scene=21#wechat_redirect" linktype="2" localeditorid="r5r8h6csyonxmevb40" target="_blank" textvalue="LeisureLinux 硬核拆解：Persona 的底层逻辑">LeisureLinux 硬核拆解：Persona 的底层逻辑</a> <a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316079&amp;idx=1&amp;sn=a74798005c2a4091614be41e626b7785&amp;scene=21#wechat_redirect" linktype="2" localeditorid="e9eniwowqy9vb15t6o" target="_blank" textvalue="别再做“黑盒”开发者：为什么 C 语言才是区分工程师与码农的最后分水岭？">别再做"黑盒"开发者：为什么 C 语言才是区分工程师与码农的最后分水岭？</a>\
-\
-\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316161&amp;idx=1&amp;sn=6096c58239f44a76fbefb502e0efe348&amp;scene=21#wechat_redirect" linktype="2" localeditorid="r5r8h6csyonxmevb40" target="_blank" textvalue="LeisureLinux 硬核拆解：Persona 的底层逻辑">LeisureLinux 硬核拆解：Persona 的底层逻辑</a> <a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316079&amp;idx=1&amp;sn=a74798005c2a4091614be41e626b7785&amp;scene=21#wechat_redirect" linktype="2" localeditorid="e9eniwowqy9vb15t6o" target="_blank" textvalue="别再做“黑盒”开发者：为什么 C 语言才是区分工程师与码农的最后分水岭？">别再做"黑盒"开发者：为什么 C 语言才是区分工程师与码农的最后分水岭？</a></p>
 <h2 id="faq">常见问题（FAQ）</h2>
 <p><strong>Q1：这篇文章主要讲什么？</strong> 内存问题只有两种：一种把你炸得粉碎，一种让你慢慢失血。前者好治，后者才是真正的工程难题。
 <strong>Q2：「四件套定位全景」这部分主要讲了什么？</strong> 02
-<strong>Q3：「一段带三种 bug 的 C++ 演示代码」这部分主要讲了什么？</strong> \
-<strong>Q4：「Valgrind / Memcheck 实战」这部分主要讲了什么？</strong> \
-<strong>Q5：「gdb 实战：取证、堆分析、断点与 watchpoint」这部分主要讲了什么？</strong> \</p>
+<strong>Q3：「一段带三种 bug 的 C++ 演示代码」这部分主要讲了什么？</strong>
+<strong>Q4：「Valgrind / Memcheck 实战」这部分主要讲了什么？</strong>
+<strong>Q5：「gdb 实战：取证、堆分析、断点与 watchpoint」这部分主要讲了什么？</strong></p>
     </div>
     <div class="src">
       <div class="txt">

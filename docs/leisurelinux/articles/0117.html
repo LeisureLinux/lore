@@ -165,40 +165,79 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <p>编按：把控制面也暴露到公网确实高风险。</p>
-<p>决定限制自己公网服务器对外的 ssh  端口，仅允许通过家里的香橙派访问。</p>
+<p>决定限制自己公网服务器对外的 ssh  端口，仅允许通过家里的香橙派访问。</p>
 <blockquote>
 <p><strong>读完本文，你会搞懂：哪吒监控最近曝出的几条高危漏洞究竟是什么、为什么一个面板应用会同时出这么多严重问题、以及如何在 5 分钟内确认自己是否中招。</strong></p>
 </blockquote>
 <p>━━━ ━━━ ━━━</p>
 <p>背景：十万台服务器的\"透明窗口\"</p>
-<p>哪吒监控（Nezha Monitoring）是国内使用最广的开源服务器监控面板之一。简单来说，它由一个<strong>服务端（Dashboard）</strong>和一群<strong>探针（Agent）</strong>组成。部署在哪吒上的服务器数量，保守估计超过 <strong>十万台</strong>------涵盖了一线互联网公司、云厂商的运维监控、众多个人站长和独立开发者的小型集群。</p>
+<p>哪吒监控（Nezha Monitoring）是国内使用最广的开源服务器监控面板之一。简单来说，它由一个<strong>服务端（Dashboard）</strong>和一群<strong>探针（Agent）</strong>组成。部署在哪吒上的服务器数量，保守估计超过 <strong>十万台</strong>——涵盖了一线互联网公司、云厂商的运维监控、众多个人站长和独立开发者的小型集群。</p>
 <p>这套架构本身简洁漂亮：Agent 主动连接 Dashboard 上报数据，Dashboard 提供 Web 管理界面。部署方便，自托管可控，因此广受欢迎。</p>
 <p>但问题出在：<strong>Dashboard 暴露在公网</strong>。</p>
 <p>这意味着，如果有人能攻破 Dashboard，就能拿到所有被监控服务器的信息、SSH 配置、甚至执行命令的权限。2026 年中陆续曝出的一组高危 CVE，让这个风险变成了现实。</p>
 <p>漏洞全景：一组连环雷</p>
 <p>到目前为止，哪吒监控在 2026 年已披露 5 个 CVE，其中 3 个 CVSS 评分 ≥ 9.0。不是小打小闹的安全补丁，而是<strong>可以直接被远程攻击者利用、无需任何权限、甚至可以直接控制服务器的漏洞</strong>。</p>
-<p>CVE 编号             CVSS      类型                 影响版本              简述</p>
-<hr />
-<p><strong>CVE-2026-53519</strong>   <strong>9.1</strong>   未授权任意文件读取   \&lt; 2.0.13             无需登录，读取服务器任意文件
-  <strong>CVE-2026-46716</strong>   <strong>9.0</strong>   跨租户远程代码执行   1.4.0 ≤ v \&lt; 2.0.8    低权限用户在所有服务器上执行命令
-  <strong>CVE-2026-46717</strong>   7.5       信息泄露             1.4.0 ≤ v \&lt; 2.0.8    调用通知处理程序泄露敏感信息
-  <strong>CVE-2026-53521</strong>   6.5       DDNS 跨用户提权      2.0.14 ≤ v \&lt; 2.1.0   利用不存在的 DDNS 配置劫持更新
-  <strong>CVE-2026-53522</strong>   5.3       WebSocket DoS        1.0.0 ≤ v \&lt; 2.2.0    无连接限制导致拒绝服务</p>
+<table>
+<thead>
+<tr>
+<th>CVE 编号</th>
+<th>CVSS</th>
+<th>类型</th>
+<th>影响版本</th>
+<th>简述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CVE-2026-53519</strong></td>
+<td><strong>9.1</strong></td>
+<td>未授权任意文件读取</td>
+<td>\&lt; 2.0.13</td>
+<td>无需登录，读取服务器任意文件</td>
+</tr>
+<tr>
+<td><strong>CVE-2026-46716</strong></td>
+<td><strong>9.0</strong></td>
+<td>跨租户远程代码执行</td>
+<td>1.4.0 ≤ v \&lt; 2.0.8</td>
+<td>低权限用户在所有服务器上执行命令</td>
+</tr>
+<tr>
+<td><strong>CVE-2026-46717</strong></td>
+<td>7.5</td>
+<td>信息泄露</td>
+<td>1.4.0 ≤ v \&lt; 2.0.8</td>
+<td>调用通知处理程序泄露敏感信息</td>
+</tr>
+<tr>
+<td><strong>CVE-2026-53521</strong></td>
+<td>6.5</td>
+<td>DDNS 跨用户提权</td>
+<td>2.0.14 ≤ v \&lt; 2.1.0</td>
+<td>利用不存在的 DDNS 配置劫持更新</td>
+</tr>
+<tr>
+<td><strong>CVE-2026-53522</strong></td>
+<td>5.3</td>
+<td>WebSocket DoS</td>
+<td>1.0.0 ≤ v \&lt; 2.2.0</td>
+<td>无连接限制导致拒绝服务</td>
+</tr>
+</tbody>
+</table>
 <p>最引人注目的两个漏洞值得单独分析。</p>
-<p>漏洞一：CVE-2026-53519 ------ 一个函数引发的\"裸奔\"</p>
+<p>漏洞一：CVE-2026-53519——一个函数引发的\"裸奔\"</p>
 <p>CVSS 9.1，接近满分。这是什么概念？它意味着<strong>一个完全没有登录的、在公网扫到哪吒监控端口的攻击者，可以直接下载你的配置文件、JWT 密钥、甚至系统文件</strong>。</p>
 <p>根因分析</p>
-<p>漏洞出在 Dashboard 的 <code>fallbackToFrontend</code> 函数中。这个函数的设计初衷是：当用户访问 <code>/dashboard/xxx</code> 路径时，如果这个路径没有对应的 API handler，就退回到前端静态文件，返回前端的 <code>index.html</code>------这是单页应用的常规做法。</p>
+<p>漏洞出在 Dashboard 的 <code>fallbackToFrontend</code> 函数中。这个函数的设计初衷是：当用户访问 <code>/dashboard/xxx</code> 路径时，如果这个路径没有对应的 API handler，就退回到前端静态文件，返回前端的 <code>index.html</code>——这是单页应用的常规做法。</p>
 <p>但实现上的问题是一个经典错误：</p>
-<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">HasPrefix</span><span class="p">(</span><span class="n">url</span><span class="o">,</span><span class="w"> </span><span class="s">&quot;/dashboard&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">trimmed</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">strings</span><span class="o">.</span><span class="n">TrimPrefix</span><span class="p">(</span><span class="n">url</span><span class="o">,</span><span class="w"> </span><span class="s">&quot;/dashboard&quot;</span><span class="p">)</span><span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="s">&quot;/dashboard../data/config.yaml&quot;</span>
-<span class="w">    </span><span class="n">filePath</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">path</span><span class="o">.</span><span class="n">Join</span><span class="p">(</span><span class="s">&quot;admin-dist&quot;</span><span class="o">,</span><span class="w"> </span><span class="n">trimmed</span><span class="p">)</span><span class="w">      </span><span class="o">//</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="s">&quot;admin-dist/../data/config.yaml&quot;</span>
-<span class="w">    </span><span class="o">//</span><span class="w"> </span><span class="n">path</span><span class="o">.</span><span class="n">Join</span><span class="w"> </span><span class="err">会规范化</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="s">&quot;data/config.yaml&quot;</span>
-<span class="w">    </span><span class="n">os</span><span class="o">.</span><span class="n">Stat</span><span class="p">(</span><span class="n">filePath</span><span class="p">)</span><span class="w">     </span><span class="o">//</span><span class="w"> </span><span class="err">✅</span><span class="w"> </span><span class="err">找到了</span>
-<span class="w">    </span><span class="n">http</span><span class="o">.</span><span class="n">ServeFile</span><span class="p">(</span><span class="n">w</span><span class="o">,</span><span class="w"> </span><span class="n">r</span><span class="o">,</span><span class="w"> </span><span class="n">filePath</span><span class="p">)</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="err">「给我吧」</span>
-<span class="p">}</span>
-</code></pre></div>
-
+<p>if strings.HasPrefix(url, "/dashboard") {
+trimmed := strings.TrimPrefix(url, "/dashboard")  // "/dashboard../data/config.yaml"
+filePath := path.Join("admin-dist", trimmed)      // → "admin-dist/../data/config.yaml"
+// path.Join 会规范化 → "data/config.yaml"
+os.Stat(filePath)     // ✅ 找到了
+http.ServeFile(w, r, filePath) // 「给我吧」
+}</p>
 <p>关键漏洞点：<strong><code>strings.HasPrefix</code> 检查的是字符串前缀，不是路径段匹配。</strong></p>
 <p><code>/dashboard../data/config.yaml</code> 确实以 <code>/dashboard</code> 开头，检查通过。<code>TrimPrefix</code> 得到 <code>../data/config.yaml</code>，<code>path.Join</code> 将其规范化。最终返回了服务器上的任意文件。</p>
 <p>攻击链</p>
@@ -227,7 +266,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <blockquote>
 <p><strong>如果你部署了哪吒监控且版本低于 2.0.13，你的 config.yaml 可能已经被人看过了。</strong></p>
 </blockquote>
-<p>漏洞二：CVE-2026-46716 ------ 从低权限到 root 权限的一条命令</p>
+<p>漏洞二：CVE-2026-46716——从低权限到 root 权限的一条命令</p>
 <p>如果说 53519 是偷窥，那 46716 就是直接动手。</p>
 <p>这个漏洞影响 1.4.0 到 2.0.8 之间的版本。攻击路径是这样的：</p>
 <ol>
@@ -237,52 +276,66 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>计划任务中包含的攻击命令在所有探针上被执行</li>
 </ol>
 <p>意味着什么？一个只有最基础的 <code>RoleMember</code> 权限的用户，可以在 Dashboard 纳管的所有服务器上任意执行 shell 命令。<strong>从普通成员到全量服务器沦陷，只有一步之遥。</strong></p>
-<p>这个漏洞在 2.0.8 版本中被修复，但修复方式是否彻底，需要持续关注------类似的权限绕过往往会在后续版本中以变种形式重现。</p>
+<p>这个漏洞在 2.0.8 版本中被修复，但修复方式是否彻底，需要持续关注——类似的权限绕过往往会在后续版本中以变种形式重现。</p>
 <p>CVE-2026-53521：DDNS 配置劫持</p>
 <p>这是一个更有趣的漏洞。如果 Dashboard 上有一个不存在的 <code>ddns_profiles</code> ID 被持久化了，之后其他用户创建了相同 ID 的 DDNS 配置文件，那么原来的任务就会被劫持到攻击者的服务器上更新 DNS。</p>
-<p>这不是传统意义上的\"提权\"，但它属于<strong>业务逻辑漏洞</strong>------利用系统设计中的隐式信任关系。这类漏洞在复杂应用（特别是涉及 cron、webhook、第三方集成功能）中非常常见，但很难通过自动化扫描发现，需要人工审计。</p>
+<p>这不是传统意义上的\"提权\"，但它属于<strong>业务逻辑漏洞</strong>——利用系统设计中的隐式信任关系。这类漏洞在复杂应用（特别是涉及 cron、webhook、第三方集成功能）中非常常见，但很难通过自动化扫描发现，需要人工审计。</p>
 <p>如果跑的是哪吒监控，现在该做什么？第一步：确认版本</p>
-<div class="highlight"><pre><span></span><code>#<span class="w"> </span><span class="nv">Docker</span><span class="w"> </span>部署
-<span class="nv">docker</span><span class="w"> </span><span class="k">exec</span><span class="w"> </span><span class="o">-</span><span class="nv">it</span><span class="w"> </span><span class="nv">nezha</span><span class="o">-</span><span class="nv">dashboard</span><span class="w"> </span>.<span class="o">/</span><span class="nv">dashboard</span><span class="w"> </span><span class="o">--</span><span class="nv">version</span>
-
-#<span class="w"> </span>或者查看容器镜像标签
-<span class="nv">docker</span><span class="w"> </span><span class="nv">inspect</span><span class="w"> </span><span class="nv">nezha</span><span class="o">-</span><span class="nv">dashboard</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nv">jq</span><span class="w"> </span><span class="s1">&#39;.[].Config.Image&#39;</span>
-</code></pre></div>
-
+<h1 id="docker">Docker 部署</h1>
+<p>docker exec -it nezha-dashboard ./dashboard --version</p>
+<h1 id="_1">或者查看容器镜像标签</h1>
+<p>docker inspect nezha-dashboard | jq '.[].Config.Image'</p>
 <p>第二步：根据版本决定升级策略</p>
-<p>当前版本         需要修复的 CVE                   目标版本</p>
-<hr />
-<p>\&lt; 2.0.8         CVE-2026-46716, CVE-2026-46717   <strong>≥ 2.0.13</strong>
-  2.0.8 - 2.0.12   CVE-2026-53519                   <strong>≥ 2.0.13</strong>
-  2.0.14 - 2.0.x   CVE-2026-53521                   <strong>≥ 2.1.0</strong>
-  2.1.0 or above   CVE-2026-53522                   <strong>≥ 2.2.0</strong></p>
+<table>
+<thead>
+<tr>
+<th>当前版本</th>
+<th>需要修复的 CVE</th>
+<th>目标版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>\&lt; 2.0.8</td>
+<td>CVE-2026-46716, CVE-2026-46717</td>
+<td><strong>≥ 2.0.13</strong></td>
+</tr>
+<tr>
+<td>2.0.8 - 2.0.12</td>
+<td>CVE-2026-53519</td>
+<td><strong>≥ 2.0.13</strong></td>
+</tr>
+<tr>
+<td>2.0.14 - 2.0.x</td>
+<td>CVE-2026-53521</td>
+<td><strong>≥ 2.1.0</strong></td>
+</tr>
+<tr>
+<td>2.1.0 or above</td>
+<td>CVE-2026-53522</td>
+<td><strong>≥ 2.2.0</strong></td>
+</tr>
+</tbody>
+</table>
 <p><strong>建议：直接升级到最新的 2.2.0+。</strong></p>
 <p>第三步：升级操作</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Docker Compose 部署</span>
-<span class="n">docker</span><span class="w"> </span><span class="n">compose</span><span class="w"> </span><span class="n">pull</span>
-<span class="n">docker</span><span class="w"> </span><span class="n">compose</span><span class="w"> </span><span class="n">up</span><span class="w"> </span><span class="o">-</span><span class="n">d</span>
-
-<span class="c1"># 手动部署</span>
-<span class="c1"># 下载最新 Release</span>
-<span class="n">wget</span><span class="w"> </span><span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">nezhahq</span><span class="o">/</span><span class="n">nezha</span><span class="o">/</span><span class="n">releases</span><span class="o">/</span><span class="n">download</span><span class="o">/</span><span class="n">v2</span><span class="o">.</span><span class="mf">2.0</span><span class="o">/</span><span class="n">dashboard</span><span class="o">-</span><span class="n">linux</span><span class="o">-</span><span class="n">amd64</span><span class="o">.</span><span class="n">zip</span>
-<span class="c1"># ... 按官方文档替换二进制并重启</span>
-</code></pre></div>
-
+<h1 id="docker-compose">Docker Compose 部署</h1>
+<p>docker compose pull
+docker compose up -d</p>
+<h1 id="_2">手动部署</h1>
+<h1 id="release">下载最新 Release</h1>
+<p>wget https://github.com/nezhahq/nezha/releases/download/v2.2.0/dashboard-linux-amd64.zip</p>
+<h1 id="_3">... 按官方文档替换二进制并重启</h1>
 <p>第四步：升级后的安全检查</p>
 <p>即使升级了，也要确认关键配置没有被泄露过：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 检查 JWT 密钥是否已被替换
-grep jwt_secret_key config.yaml
-
-<span class="gh">#</span> 检查审计日志（如果有）
-<span class="gh">#</span> 查看 /dashboard../data/config.yaml 的访问记录
-
-<span class="gh">#</span> 替换 JWT 密钥（重要！如果已经被读取过，旧密钥已不安全）
-<span class="gh">#</span> 修改 config.yaml，重新生成 jwt_secret_key 并重启 Dashboard
-
-<span class="gh">#</span> 重置所有 Agent Secret
-<span class="gh">#</span> 在 Dashboard 的 agent 管理页面重新生成每个 agent 的 secret
-</code></pre></div>
-
+<h1 id="jwt">检查 JWT 密钥是否已被替换</h1>
+<p>grep jwt_secret_key config.yaml</p>
+<h1 id="_4">检查审计日志（如果有）</h1>
+<h1 id="dashboarddataconfigyaml">查看 /dashboard../data/config.yaml 的访问记录</h1>
+<h1 id="jwt_1">替换 JWT 密钥（重要！如果已经被读取过，旧密钥已不安全）</h1>
+<h1 id="configyaml-jwt_secret_key-dashboard">修改 config.yaml，重新生成 jwt_secret_key 并重启 Dashboard</h1>
+<h1 id="agent-secret">重置所有 Agent Secret</h1>
+<h1 id="dashboard-agent-agent-secret">在 Dashboard 的 agent 管理页面重新生成每个 agent 的 secret</h1>
 <p>第五步：长期安全建议</p>
 <ol>
 <li><strong>永远不要将 Dashboard 直接暴露在公网。</strong> 在前面套一层 Nginx / Caddy 做反向代理，顺便加一个简单的 Basic Auth 或 Cloudflare Access。</li>
@@ -294,11 +347,11 @@ grep jwt_secret_key config.yaml
 <p>这次漏洞事件说明了什么？</p>
 <p>哪吒监控的连环漏洞并非个例，而是开源监控面板面临的一个<strong>普遍安全困境</strong>。</p>
 <p><strong>困境一：功能越做越多，攻击面越做越大。</strong></p>
-<p>Dashboard 1.0 版本的功能很纯粹：展示探针状态、预警通知。后来的版本陆续加入了 cron 任务、DDNS 更新、通知集成------每个新功能都引入了新的攻击面。<code>cron</code> 功能允许\"在所有服务器上执行命令\"，这个设计本身就非常危险，一旦权限检查出错就是灾难性后果。</p>
+<p>Dashboard 1.0 版本的功能很纯粹：展示探针状态、预警通知。后来的版本陆续加入了 cron 任务、DDNS 更新、通知集成——每个新功能都引入了新的攻击面。<code>cron</code> 功能允许\"在所有服务器上执行命令\"，这个设计本身就非常危险，一旦权限检查出错就是灾难性后果。</p>
 <p><strong>困境二：开源安全修复的不对称性。</strong></p>
 <p>商业软件有安全团队，漏洞发现到修复、到用户升级的平均窗口期较短。开源项目从漏洞披露到用户实际升级，时间窗口长得多。很多用户直到今天仍然跑着 1.x 版本的 Dashboard，完全不知道自己的服务器在裸奔。</p>
 <p><strong>困境三：Go 的隐式安全问题。</strong></p>
-<p>哪吒监控用 Go 编写。<code>strings.HasPrefix</code> 做路径检查这个错误，在 Go 项目中出现的频率非常高。Ruby 有 <code>start_with?</code>、Python 有 <code>startswith</code>------同样的模式，同样的潜在风险。Go 社区的工具链依赖和旧版本 Go 的安全漏洞（2024\~2025 年曝出数起 Go 编译器本身的安全问题）也加剧了这类应用的整体风险。</p>
+<p>哪吒监控用 Go 编写。<code>strings.HasPrefix</code> 做路径检查这个错误，在 Go 项目中出现的频率非常高。Ruby 有 <code>start_with?</code>、Python 有 <code>startswith</code>——同样的模式，同样的潜在风险。Go 社区的工具链依赖和旧版本 Go 的安全漏洞（2024\~2025 年曝出数起 Go 编译器本身的安全问题）也加剧了这类应用的整体风险。</p>
 <p>如果你的业务依赖于哪吒监控，现在是时候认真审视它的安全性了。一个好的运维习惯是：<strong>监控系统本身，也应该是被监控的对象。</strong></p>
 <p>━━━ ━━━ ━━━</p>
 <blockquote>
@@ -318,12 +371,10 @@ grep jwt_secret_key config.yaml
 <li>*Reddit r/selfhosted - \"Nezha security issues\" 讨论帖*</li>
 <li>*Nodeseek - 哪吒监控漏洞跟踪贴*</li>
 </ol>
-<p>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316978&amp;idx=1&amp;sn=0e237e87fae57b0a03e743cfe2b730ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6c3bqlha5e7nltct8g0" target="_blank" textvalue="自动化平台的“噩梦”：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案">自动化平台的"噩梦"：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318021&amp;idx=1&amp;sn=927b9a0fe9a456fb9f1f7fd2ac6fe721&amp;scene=21#wechat_redirect" linktype="2" localeditorid="78hjhcklgnpsx0m9z4" target="_blank" textvalue="一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析">一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317539&amp;idx=2&amp;sn=f6e7cabddd7fd90ce3b0b582c65115e4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="mo5udsof5y6pu7d340" target="_blank" textvalue="深度解析：当 CRL 过期，为何信创电脑会集体“断网”？">深度解析：当 CRL 过期，为何信创电脑会集体"断网"？</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317163&amp;idx=1&amp;sn=f2e97e9b66b5c4bb2e2c847d3d0a1ed9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="91y8h0q0g0wmaa2pkw" target="_blank" textvalue="Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞">Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316978&amp;idx=1&amp;sn=0e237e87fae57b0a03e743cfe2b730ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6c3bqlha5e7nltct8g0" target="_blank" textvalue="自动化平台的“噩梦”：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案">自动化平台的"噩梦"：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318021&amp;idx=1&amp;sn=927b9a0fe9a456fb9f1f7fd2ac6fe721&amp;scene=21#wechat_redirect" linktype="2" localeditorid="78hjhcklgnpsx0m9z4" target="_blank" textvalue="一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析">一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317539&amp;idx=2&amp;sn=f6e7cabddd7fd90ce3b0b582c65115e4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="mo5udsof5y6pu7d340" target="_blank" textvalue="深度解析：当 CRL 过期，为何信创电脑会集体“断网”？">深度解析：当 CRL 过期，为何信创电脑会集体"断网"？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317163&amp;idx=1&amp;sn=f2e97e9b66b5c4bb2e2c847d3d0a1ed9&amp;scene=21#wechat_redirect" linktype="2" localeditorid="91y8h0q0g0wmaa2pkw" target="_blank" textvalue="Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞">Docker CVE-2026-34040 鉴权绕过与宿主机访问漏洞</a></p>
 <h2 id="faq">常见问题（FAQ）</h2>
 <p><strong>Q1：这篇文章主要讲什么？</strong> 决定限制自己公网服务器对外的 ssh 端口，仅允许通过家里的香橙派访问。
 <strong>Q2：还有哪些关键事实？</strong> <strong> 原因是： - 哪吒监控 Dashboard 最常见的部署方式是 </strong>Docker，直接映射 8008 端口<strong>，没有任何前置反向代理或认证网关 - 很多用户开着默认的用户名密码（admin / admin） - Docker 容器内的 config.yaml 包含了 </strong>JWT 密钥和数据库连接信息<strong> 审计一个真实的暴露面数据：在 Shodan / …

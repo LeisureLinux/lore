@@ -165,14 +165,10 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <p>近期提交给 Linux 内核邮件列表（LKML）的一个名为<strong><code index-in-node="37" path-to-node="0">hid-omg-detect</code></strong>的新驱动补丁，其核心目标是识别并预警那些伪装成普通键盘或鼠标的<strong>恶意 HID（人机接口设备）</strong>，例如臭名昭著的<strong>O.MG Cable</strong>或<strong>USB Rubber Ducky</strong>。</p>
-<p>\</p>
 <p><img alt="" src="https://mmbiz.qpic.cn/mmbiz_jpg/VRq5bn9tMsticmnm5XKibgmX656w3QVr9CFNXEJia7mrqMSx5sSzzKiaJ3LWAEKKicVQqOnlib6YvjDl1SqtE8eTpK4YeiciaKTSnqU5omEhfI4eVQY/640?wx_fmt=jpeg" /></p>
-<p>\</p>
 <p>以下是该驱动的技术要点解析：</p>
-<p>\</p>
 <h3 id="核心机制行为审计而非身份识别" path-to-node="2">1. 核心机制：行为审计而非身份识别</h3>
 <p>传统的 USB 防护（如 USBGuard）通常基于"黑白名单"模式，通过 Vendor ID/Product ID 来过滤。但恶意设备可以轻松伪造合法的 ID。</p>
-<p>\</p>
 <ul>
 <li>
 <p><strong>被动监控</strong>：<code index-in-node="5" path-to-node="4,0,0">hid-omg-detect</code>并不直接拦截数据流，而是作为一个旁路监听器，观察 HID 设备的输入模式。</p>
@@ -190,77 +186,86 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </li>
 <li>
 <p><strong>内核预警</strong>：一旦设备评分超过设定的阈值，驱动会触发内核警告（Kernel Warning）。</p>
-<p>\</p>
 </li>
 <li>
 <p><strong>用户态配合</strong>：它建议与<strong>USBGuard</strong>等用户态工具配合。当内核发出告警信号后，由用户态策略决定是断开连接还是锁定系统。</p>
-<p>\</p>
 </li>
 </ul>
 <h3 id="针对性防御对象" path-to-node="8">3. 针对性防御对象</h3>
 <p>主要针对<strong>HID 注入攻击（BadUSB）</strong>。这类攻击的隐蔽性在于系统将其视为"受信任的输入设备"，从而绕过大部分基于网络或文件系统的防火墙。尤其是<strong>O.MG 这种自带 Wi-Fi 遥控功能的线缆</strong>，传统的物理审计很难发现其异常。</p>
-<p>\</p>
 <h3 id="从架构师安全分析师视角来看" path-to-node="11">从架构师/安全分析师视角来看：</h3>
 <ul>
 <li>
 <p><strong>低侵入性</strong>：该驱动目前的实现（第二版补丁）非常轻量，作为补丁进入主线内核的概率较大，因为它解决了 Linux 内核在 HID 层次缺乏行为审计的空白。</p>
-<p>\</p>
 </li>
 <li>
 <p><strong>消除信任盲区</strong>：它将"零信任"原则引入了硬件交互层，不再默认信任声称自己是"键盘"的设备。</p>
 </li>
 </ul>
-<p>\</p>
 <p>附：USBGuard 介绍</p>
-<p>\</p>
-<p>作为对 hid-omg-detect 内核驱动的补充，**USBGuard** 是目前 Linux 生态中处理 USB 安全的事实标准工具。如果说内核驱动是"传感器"和"哨兵"，那么 USBGuard 就是"执行者"和"防火墙"。\
-从系统架构师视角来看，以下是关于 USBGuard 的深度介绍：\
-### 1. 核心定位：USB 准入控制防火墙\
-USBGuard 是一个用户态的开源框架，利用 Linux 内核提供的 **USB Device Authorization** 机制。它的核心逻辑不是分析数据包，而是根据**设备指纹**（Device Attributes）来决定是否允许该设备与内核通信。\
-\</p>
-<p>### 2. 工作原理：默认拒绝（Default Deny）\
-USBGuard 模仿了网络防火墙的逻辑：\
-* **扫描阶段**：当新设备插入时，内核会先将其置于"未授权"状态。\
-* **策略匹配**：USBGuard 守护进程（usbguard-daemon）获取该设备的 Vendor ID、Product ID、Serial Number、接口类（Interface Class）等信息。\
-* **执行准入**：如果匹配到 allow 规则，则通知内核授权该设备；否则保持阻塞或直接下线。\
-### 3. 与 hid-omg-detect 的协同关系\
-这两者形成了完整的**纵深防御体系**：\</p>
-<p><strong>特性</strong>                                  <strong>USBGuard (现有工具)</strong>                                         <strong>hid-omg-detect (新驱动补丁)</strong></p>
-<hr />
-<p>[<strong>工作层面</strong>]{path-to-node="10,1,0,0"}   [用户态策略层]{path-to-node="10,1,1,0"}                         [内核态驱动/审计层]{path-to-node="10,1,2,0"}
-  [<strong>判定依据</strong>]{path-to-node="10,2,0,0"}   [<strong>身份</strong>（ID/序列号/指纹）]{path-to-node="10,2,1,0"}           [<strong>行为</strong>（输入频率/熵值/时延）]{path-to-node="10,2,2,0"}
-  [<strong>防御痛点</strong>]{path-to-node="10,3,0,0"}   [无法识别伪造了合法 ID 的恶意设备]{path-to-node="10,3,1,0"}     [专门针对 BadUSB/O.MG 等"合法身份"设备]{path-to-node="10,3,2,0"}
-  [<strong>角色分配</strong>]{path-to-node="10,4,0,0"}   [<strong>执行者</strong>：负责根据规则阻断或允许]{path-to-node="10,4,1,0"}   [<strong>哨兵</strong>：负责发现"虽然身份合法但行为诡异"的设备]{path-to-node="10,4,2,0"}</p>
-<p>>\
-### 4. 核心功能特性\
-* **规则引擎**：支持复杂的规则语言。例如，你可以规定：*"只允许在特定的 USB 端口插入特定序列号的 Yubikey"*。\
-* **接口级控制**：它可以细化到只允许复合设备的某个接口工作（例如：允许一个 U 盘的存储接口，但阻断其隐藏的键盘接口）。\
-* **用户态交互**：提供 usbguard-qt 界面，当未知设备插入时，系统会像防火墙询问网络访问一样弹出：*"发现新键盘，是否允许？"*\
-### 5. 部署建议（LeisureLinux 风格）\
-对于追求安全性的系统，建议的生产环境配置：\
- 1. **生成基准策略**：\
-  ```bash\
-  # 授权当前已连接的所有设备作为初始白名单\
-  usbguard generate-policy > /etc/usbguard/rules.conf\
- \
-  ```\
-2. **设置默认策略为 Block**：\
-  在 /etc/usbguard/usbguard-daemon.conf 中设置 ImplicitPolicyTarget=block。\
-3. **强化审计**：配合未来的 hid-omg-detect，通过监听内核告警来实现动态封锁。\
-\</p>
-<p>**安全分析师点评：**\
+<p>作为对 hid-omg-detect 内核驱动的补充，**USBGuard** 是目前 Linux 生态中处理 USB 安全的事实标准工具。如果说内核驱动是"传感器"和"哨兵"，那么 USBGuard 就是"执行者"和"防火墙"。
+从系统架构师视角来看，以下是关于 USBGuard 的深度介绍：
+### 1. 核心定位：USB 准入控制防火墙
+USBGuard 是一个用户态的开源框架，利用 Linux 内核提供的 **USB Device Authorization** 机制。它的核心逻辑不是分析数据包，而是根据**设备指纹**（Device Attributes）来决定是否允许该设备与内核通信。</p>
+<p>### 2. 工作原理：默认拒绝（Default Deny）
+USBGuard 模仿了网络防火墙的逻辑：
+* **扫描阶段**：当新设备插入时，内核会先将其置于"未授权"状态。
+* **策略匹配**：USBGuard 守护进程（usbguard-daemon）获取该设备的 Vendor ID、Product ID、Serial Number、接口类（Interface Class）等信息。
+* **执行准入**：如果匹配到 allow 规则，则通知内核授权该设备；否则保持阻塞或直接下线。
+### 3. 与 hid-omg-detect 的协同关系
+这两者形成了完整的**纵深防御体系**：</p>
+<table>
+<thead>
+<tr>
+<th><strong>特性</strong></th>
+<th><strong>USBGuard (现有工具)</strong></th>
+<th><strong>hid-omg-detect (新驱动补丁)</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>[<strong>工作层面</strong>]{path-to-node="10,1,0,0"}</td>
+<td>[用户态策略层]{path-to-node="10,1,1,0"}</td>
+<td>[内核态驱动/审计层]{path-to-node="10,1,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong>判定依据</strong>]{path-to-node="10,2,0,0"}</td>
+<td>[<strong>身份</strong>（ID/序列号/指纹）]{path-to-node="10,2,1,0"}</td>
+<td>[<strong>行为</strong>（输入频率/熵值/时延）]{path-to-node="10,2,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong>防御痛点</strong>]{path-to-node="10,3,0,0"}</td>
+<td>[无法识别伪造了合法 ID 的恶意设备]{path-to-node="10,3,1,0"}</td>
+<td>[专门针对 BadUSB/O.MG 等"合法身份"设备]{path-to-node="10,3,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong>角色分配</strong>]{path-to-node="10,4,0,0"}</td>
+<td>[<strong>执行者</strong>：负责根据规则阻断或允许]{path-to-node="10,4,1,0"}</td>
+<td>[<strong>哨兵</strong>：负责发现"虽然身份合法但行为诡异"的设备]{path-to-node="10,4,2,0"}</td>
+</tr>
+</tbody>
+</table>
+<p>>
+### 4. 核心功能特性
+* **规则引擎**：支持复杂的规则语言。例如，你可以规定：*"只允许在特定的 USB 端口插入特定序列号的 Yubikey"*。
+* **接口级控制**：它可以细化到只允许复合设备的某个接口工作（例如：允许一个 U 盘的存储接口，但阻断其隐藏的键盘接口）。
+* **用户态交互**：提供 usbguard-qt 界面，当未知设备插入时，系统会像防火墙询问网络访问一样弹出：*"发现新键盘，是否允许？"*
+### 5. 部署建议（LeisureLinux 风格）
+对于追求安全性的系统，建议的生产环境配置：
+1. **生成基准策略**：
+```bash
+# 授权当前已连接的所有设备作为初始白名单
+usbguard generate-policy > /etc/usbguard/rules.conf</p>
+<p>```
+2. **设置默认策略为 Block**：
+在 /etc/usbguard/usbguard-daemon.conf 中设置 ImplicitPolicyTarget=block。
+3. **强化审计**：配合未来的 hid-omg-detect，通过监听内核告警来实现动态封锁。</p>
+<p>**安全分析师点评：**
 USBGuard 解决了"谁能进来"的问题，但无法解决"进来的好人变坏了"或者"坏人整容成了好人"的问题。这正是为什么我们需要 hid-omg-detect 这种基于行为模式（Heuristics）的驱动来补全物理层安全拼图的原因。</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316483&amp;idx=1&amp;sn=ec590e7bcadf7879d248df97f0978525&amp;scene=21#wechat_redirect" linktype="2" localeditorid="69w38v6d3yj8noxg268" target="_blank" textvalue="【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%">【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315916&amp;idx=1&amp;sn=091dc857d3dcb4cf91338d50fefd57b2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6j4oqgfu0jx2dhrdse8" target="_blank" textvalue="别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术">别再让内核当"中间商"：深度解析 Linux DAX 零拷贝技术</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315739&amp;idx=1&amp;sn=836947169f7af19d3dd97c0c692c2d29&amp;scene=21#wechat_redirect" linktype="2" localeditorid="g94d7jk9hl6cekwlc" target="_blank" textvalue="Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具">Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="v280eq6262try1kkxs" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a>\</p>
-<p>\</p>
-<p>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316483&amp;idx=1&amp;sn=ec590e7bcadf7879d248df97f0978525&amp;scene=21#wechat_redirect" linktype="2" localeditorid="69w38v6d3yj8noxg268" target="_blank" textvalue="【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%">【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315916&amp;idx=1&amp;sn=091dc857d3dcb4cf91338d50fefd57b2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6j4oqgfu0jx2dhrdse8" target="_blank" textvalue="别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术">别再让内核当"中间商"：深度解析 Linux DAX 零拷贝技术</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315739&amp;idx=1&amp;sn=836947169f7af19d3dd97c0c692c2d29&amp;scene=21#wechat_redirect" linktype="2" localeditorid="g94d7jk9hl6cekwlc" target="_blank" textvalue="Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具">Linux 内核安全新纪元：深入解析内置 SPDX SBOM 生成工具</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="v280eq6262try1kkxs" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a></p>
     </div>
     <div class="src">
       <div class="txt">

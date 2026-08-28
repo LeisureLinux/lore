@@ -165,32 +165,30 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <blockquote>
-<p><strong>TL;DR：</strong> 开发者 Galih Tama（之前做 scx_flow 的）发布了 Infinity Scheduler------一个直接修改 CFS 和 RT 调度器的内核补丁集，<strong>彻底抛弃了 BPF/sched_ext 路线</strong>。核心思想：用指数移动平均（EMA）追踪每个任务的运行时历史，CPU 密集型任务的调度时间片可缩小到 400µs 地板，交互式任务保持完整份额，RT 任务同样受 EMA 调优。目前支持 Linux 6.18 LTS、7.0、7.1。</p>
+<p><strong>TL;DR：</strong> 开发者 Galih Tama（之前做 scx_flow 的）发布了 Infinity Scheduler——一个直接修改 CFS 和 RT 调度器的内核补丁集，<strong>彻底抛弃了 BPF/sched_ext 路线</strong>。核心思想：用指数移动平均（EMA）追踪每个任务的运行时历史，CPU 密集型任务的调度时间片可缩小到 400µs 地板，交互式任务保持完整份额，RT 任务同样受 EMA 调优。目前支持 Linux 6.18 LTS、7.0、7.1。</p>
 </blockquote>
 <p>一、背景：调度器之争的三个流派</p>
 <p>Linux CPU 调度器在 2025-2026 年进入了\"百花齐放\"的时代，但方向上可以分为三个流派：</p>
 <p>流派 1：sched_ext / BPF 调度器（\"外挂党\"）</p>
 <p>通过 Linux 的 sched_ext（可扩展调度）框架，用 BPF（Berkeley Packet Filter）程序在运行时动态替换调度策略，<strong>不需要修改内核代码</strong>。代表作品：</p>
 <ul>
-<li>scx_lavd --- 延迟感知虚拟 deadline</li>
-<li>scx_rusty --- Rust 写的调度器</li>
-<li>scx_bpfland --- BPF 驱动的调度器集合</li>
-<li><strong>scx_flow</strong> --- Galih Tama 之前的作品</li>
+<li>scx_lavd——延迟感知虚拟 deadline</li>
+<li>scx_rusty——Rust 写的调度器</li>
+<li>scx_bpfland——BPF 驱动的调度器集合</li>
+<li><strong>scx_flow</strong>——Galih Tama 之前的作品</li>
 </ul>
 <p>优势：不用编译内核、热加载、低门槛。</p>
-<p>劣势：Phoronix 文章里明确指出了------<strong>\"fundamental limitations\"（根本性限制），包括 BPF 验证器误判（false positives），高负载下的可靠性问题。</strong></p>
+<p>劣势：Phoronix 文章里明确指出了——<strong>\"fundamental limitations\"（根本性限制），包括 BPF 验证器误判（false positives），高负载下的可靠性问题。</strong></p>
 <p>流派 2：调度器插件 / 独立调度域（\"中间派\"）</p>
 <ul>
 <li>如 Project C / MuQSS（Con Kolivas 的多年坚持）</li>
 <li>部分独立于主线，部分依赖内核接口</li>
 </ul>
 <p>流派 3：直接修改内核调度核心（\"硬改党\"）← Infinity Scheduler 在此</p>
-<p>直接打补丁到 CFS（完全公平调度器）和 RT（实时调度器），<strong>不走 BPF、不走 sched-ext</strong>。这是最\"硬核\"的做法------你需要重新编译内核，但换来的是没有抽象层的性能损耗和完全的调度控制权。</p>
+<p>直接打补丁到 CFS（完全公平调度器）和 RT（实时调度器），<strong>不走 BPF、不走 sched-ext</strong>。这是最\"硬核\"的做法——你需要重新编译内核，但换来的是没有抽象层的性能损耗和完全的调度控制权。</p>
 <p>二、Infinity Scheduler 的核心技术EMA（指数移动平均）追踪</p>
 <p>核心创新其实不复杂：用一个指数移动平均（Exponential Moving Average）来追踪<strong>每个任务</strong>的最近运行时历史。</p>
-<div class="highlight"><pre><span></span><code>EMA_new = α × runtime_recent + (1 - α) × EMA_old
-</code></pre></div>
-
+<p>EMA_new = α × runtime_recent + (1 - α) × EMA_old</p>
 <ul>
 <li>α 是平滑因子，决定对最近运行时的敏感度</li>
 <li>对每个任务维护一个独立的 EMA 值</li>
@@ -205,12 +203,12 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>vslice（虚拟时间片）优先</p>
 <p>低 EMA 值的任务（交互式/新唤醒）在 EEVDF（最早虚拟截止时间优先）树中获得 <strong>50% 更短的 vslice</strong>。这意味着它们的 deadline 被提前，更容易被选中执行。</p>
 <p>futex 等待绕过</p>
-<p>Infinity Scheduler 在 <code>pick_eevdf()</code> 函数中增加了一个 <strong>futex-waiting bypass</strong>------等待 futex 锁的任务在下一次调度点可以被立即抢占（preempted），不需要等到时间片用完。</p>
+<p>Infinity Scheduler 在 <code>pick_eevdf()</code> 函数中增加了一个 <strong>futex-waiting bypass</strong>——等待 futex 锁的任务在下一次调度点可以被立即抢占（preempted），不需要等到时间片用完。</p>
 <p>这对锁竞争频繁的场景（数据库、Web 服务器、并发框架）是显著的优化。</p>
 <p>RT 任务同样受 EMA 调优</p>
-<p>连 RT（实时）调度类的任务都受到 EMA 的 queue placement modulation（队列位置调优）------内核之前很少对 RT 任务做这种动态调整。</p>
+<p>连 RT（实时）调度类的任务都受到 EMA 的 queue placement modulation（队列位置调优）——内核之前很少对 RT 任务做这种动态调整。</p>
 <p>三、为什么抛弃 sched_ext？</p>
-<p>Galih Tama 的做法在圈内是有点争议的------他之前是 scx_flow 的作者，sched_ext 路线的主力开发者之一。现在他反过来<strong>批评 sched_ext 的\"根本性限制\"</strong>，并回归主线内核的 CFS/RT 修改。</p>
+<p>Galih Tama 的做法在圈内是有点争议的——他之前是 scx_flow 的作者，sched_ext 路线的主力开发者之一。现在他反过来<strong>批评 sched_ext 的\"根本性限制\"</strong>，并回归主线内核的 CFS/RT 修改。</p>
 <p>原因很明确：</p>
 <ol>
 <li><strong>BPF 验证器的误判</strong>：在高负载下，BPF 验证器会拒绝合法的调度程序</li>
@@ -234,7 +232,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li><strong>需要和上游保持同步</strong>：Infinity 目前是独立补丁集，没有合入主线计划</li>
 </ul>
 <p>极低延迟 vs. 高吞吐</p>
-<p>这里有一个你需要注意的权衡：时间片降到 400µs 在提升交互体验的同时，意味着<strong>更多的上下文切换</strong>。在 CPU 密集型的纯计算任务上------比如一个运行 10 分钟的 CFD（计算流体力学）模拟------更多的调度切换会引入额外的 cache miss 和 TLB 刷新，导致<strong>总运行时间增加</strong>。</p>
+<p>这里有一个你需要注意的权衡：时间片降到 400µs 在提升交互体验的同时，意味着<strong>更多的上下文切换</strong>。在 CPU 密集型的纯计算任务上——比如一个运行 10 分钟的 CFD（计算流体力学）模拟——更多的调度切换会引入额外的 cache miss 和 TLB 刷新，导致<strong>总运行时间增加</strong>。</p>
 <p>Infinity Scheduler 默认选择偏向交互体验。如果你的工作负载主要是批处理计算，可以调高时间片地板值。</p>
 <p>五、值得关注，但别急着打补丁</p>
 <p>Infinity Scheduler 目前：</p>
@@ -244,24 +242,18 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>GitHub 仓库可能还是私有的（Phoronix 给出了链接但公开搜不到）</li>
 <li>还没有独立的性能 benchmark 数据（Phoronix 表示如果读者有兴趣就去跑测试）</li>
 </ul>
-<p>EMA 追踪 + EEVDF 动态 deadline 调节这个方向是正确的。但调度器是操作系统里<strong>最难做对</strong>的部分------一场内核世界大战。在 Phoronix 跑出可靠 benchmark 之前，建议观望。</p>
+<p>EMA 追踪 + EEVDF 动态 deadline 调节这个方向是正确的。但调度器是操作系统里<strong>最难做对</strong>的部分——一场内核世界大战。在 Phoronix 跑出可靠 benchmark 之前，建议观望。</p>
 <p>不过，作为 Linux 调度器\"从外挂回归内核原生\"的技术思潮转变的一个信号，Infinity Scheduler 值得每一个关心 Linux 底层的人关注。</p>
 <p>━━━ ━━━ ━━━</p>
 <blockquote>
-<p><strong>后记：</strong> Linux 调度器的江湖从不缺新门派。从 CFS 到 EEVDF 到 sched_ext，再到现在的 Infinity Scheduler 重回内核原生路线------每个流派都在说\"我找到了更好的路\"。技术的魅力就在于此：没有完美的调度器，只有不同 trade-off 之间的取舍。</p>
+<p><strong>后记：</strong> Linux 调度器的江湖从不缺新门派。从 CFS 到 EEVDF 到 sched_ext，再到现在的 Infinity Scheduler 重回内核原生路线——每个流派都在说\"我找到了更好的路\"。技术的魅力就在于此：没有完美的调度器，只有不同 trade-off 之间的取舍。</p>
 </blockquote>
 <p>━━━ ━━━ ━━━</p>
 <p>*欢迎关注 LeisureLinux，获取更多深度技术解读。*</p>
-<p>\</p>
-<p>\</p>
-<p>\</p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="x1qt49i0va9r742wao" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a></p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317316&amp;idx=1&amp;sn=94dff972470a027a3690e0cc03b7bc99&amp;scene=21#wechat_redirect" linktype="2" localeditorid="7pss6j3j8inafm24idc" target="_blank" textvalue="性能跃迁：在 Debian 13 上驾驭 Linux 7.0 极速内核（CachyOS &amp; XanMod 实践）">性能跃迁：在 Debian 13 上驾驭 Linux 7.0 极速内核（CachyOS &amp; XanMod 实践）</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317377&amp;idx=6&amp;sn=e623bf7025342f487066f083c811e3c8&amp;scene=21#wechat_redirect" linktype="2" localeditorid="euwlci9uxf2o6li6tc" target="_blank" textvalue="技术前瞻：Fedora 44 下周正式发布，底层架构有哪些值得关注的重大变更？">技术前瞻：Fedora 44 下周正式发布，底层架构有哪些值得关注的重大变更？</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316735&amp;idx=1&amp;sn=b87ef4c151913787ba7c7b360fceffab&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3kehjqwdkluou0r07b4" target="_blank" textvalue="进阶避坑：深度解析 ethtool 统计触发 RTNL 锁竞争导致的线上 RPC 抖动">进阶避坑：深度解析 ethtool 统计触发 RTNL 锁竞争导致的线上 RPC 抖动</a>\</p>
-<p>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317316&amp;idx=1&amp;sn=94dff972470a027a3690e0cc03b7bc99&amp;scene=21#wechat_redirect" linktype="2" localeditorid="7pss6j3j8inafm24idc" target="_blank" textvalue="性能跃迁：在 Debian 13 上驾驭 Linux 7.0 极速内核（CachyOS &amp; XanMod 实践）">性能跃迁：在 Debian 13 上驾驭 Linux 7.0 极速内核（CachyOS &amp; XanMod 实践）</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317377&amp;idx=6&amp;sn=e623bf7025342f487066f083c811e3c8&amp;scene=21#wechat_redirect" linktype="2" localeditorid="euwlci9uxf2o6li6tc" target="_blank" textvalue="技术前瞻：Fedora 44 下周正式发布，底层架构有哪些值得关注的重大变更？">技术前瞻：Fedora 44 下周正式发布，底层架构有哪些值得关注的重大变更？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316735&amp;idx=1&amp;sn=b87ef4c151913787ba7c7b360fceffab&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3kehjqwdkluou0r07b4" target="_blank" textvalue="进阶避坑：深度解析 ethtool 统计触发 RTNL 锁竞争导致的线上 RPC 抖动">进阶避坑：深度解析 ethtool 统计触发 RTNL 锁竞争导致的线上 RPC 抖动</a></p>
     </div>
     <div class="src">
       <div class="txt">

@@ -181,30 +181,26 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>要理解这个漏洞，先要了解内核网络栈中两个核心概念。</p>
 <p>skb（socket buffer）</p>
 <p>skb 是 Linux 网络栈中一切数据包的基本载体。它是一个内核对象，包含：</p>
-<div class="highlight"><pre><span></span><code><span class="err">┌─────────────────────────────┐</span>
-<span class="err">│</span><span class="w">  </span><span class="n">sk_buff</span><span class="w"> </span><span class="err">元数据</span><span class="w">              </span><span class="err">│</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">head</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">tail</span><span class="p">,</span><span class="w"> </span><span class="kd">end </span><span class="err">指针</span>
-<span class="err">├─────────────────────────────┤</span>
-<span class="err">│</span><span class="w">  </span><span class="err">线性数据区域</span><span class="w"> </span><span class="p">(</span><span class="n">linear</span><span class="w"> </span><span class="n">area</span><span class="p">)</span><span class="w">   </span><span class="err">│</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">skb</span><span class="o">-&gt;</span><span class="n">head</span><span class="w"> </span><span class="o">~</span><span class="w"> </span><span class="n">skb</span><span class="o">-&gt;</span><span class="kd">end</span>
-<span class="err">├─────────────────────────────┤</span>
-<span class="err">│</span><span class="w">  </span><span class="n">skb_shared_info</span><span class="w">             </span><span class="err">│</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">frags</span><span class="p">[]</span><span class="w"> </span><span class="err">页散射数组</span>
-<span class="err">│</span><span class="w">  </span><span class="err">┌────────────────────────┐</span><span class="w">  </span><span class="err">│</span>
-<span class="err">│</span><span class="w">  </span><span class="err">│</span><span class="w">  </span><span class="n">nr_frags</span><span class="p">,</span><span class="w"> </span><span class="n">frags</span><span class="p">[]</span><span class="w">     </span><span class="err">│</span><span class="w">  </span><span class="err">│</span>
-<span class="err">│</span><span class="w">  </span><span class="err">│</span><span class="w">  </span><span class="n">dataref</span><span class="p">,</span><span class="w"> </span><span class="n">destructor</span><span class="w">   </span><span class="err">│</span><span class="w">  </span><span class="err">│</span>
-<span class="err">│</span><span class="w">  </span><span class="err">└────────────────────────┘</span><span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="err">紧跟在</span><span class="w"> </span><span class="n">skb</span><span class="o">-&gt;</span><span class="kd">end </span><span class="err">之后</span>
-<span class="err">└─────────────────────────────┘</span>
-</code></pre></div>
-
+<p>┌─────────────────────────────┐
+│  sk_buff 元数据              │ ← head, data, tail, end 指针
+├─────────────────────────────┤
+│  线性数据区域 (linear area)   │ ← skb-&gt;head ~ skb-&gt;end
+├─────────────────────────────┤
+│  skb_shared_info             │ ← frags[] 页散射数组
+│  ┌────────────────────────┐  │
+│  │  nr_frags, frags[]     │  │
+│  │  dataref, destructor   │  │
+│  └────────────────────────┘  │ → 紧跟在 skb-&gt;end 之后
+└─────────────────────────────┘</p>
 <p><code>skb_shared_info</code> 紧贴在线性数据区 <code>end</code> 指针之后，是一个极其关键的内核结构。<strong>一旦写入超过 <code>end</code>，就等于直接覆盖了 skb_shared_info 的字段。</strong></p>
 <p>fraggap 机制</p>
-<p>IPv6 分片传递时，如果上一个分片的数据在 8 字节对齐时留有空隙（gap），这个空隙不会丢失------会被累积变量<code>fraggap</code> 跟踪，并<strong>在下一个 skb 的线性区头部补齐</strong>。换句话说，fraggap 是 IPv6 分片中\"跨包结转\"的碎片大小。</p>
+<p>IPv6 分片传递时，如果上一个分片的数据在 8 字节对齐时留有空隙（gap），这个空隙不会丢失——会被累积变量<code>fraggap</code> 跟踪，并<strong>在下一个 skb 的线性区头部补齐</strong>。换句话说，fraggap 是 IPv6 分片中\"跨包结转\"的碎片大小。</p>
 <p>漏洞根因：3 行代码的账目错误</p>
 <p>漏洞发生在 <code>net/ipv6/ip6_output.c</code> 的 <code>__ip6_append_data()</code> 函数中。</p>
 <p>有问题的代码</p>
 <p>当内核走 <strong>paged-allocation 分支</strong>（即数据量大到需要使用 <code>MSG_MORE</code> + <code>NETIF_F_SG</code> + page 散射机制）时，alloclen 和 pagedlen 的计算为：</p>
-<div class="highlight"><pre><span></span><code>alloclen = fragheaderlen + transhdrlen;
-pagedlen = datalen - transhdrlen;
-</code></pre></div>
-
+<p>alloclen = fragheaderlen + transhdrlen;
+pagedlen = datalen - transhdrlen;</p>
 <p><strong>问题出在哪里？</strong></p>
 <p><code>datalen</code> 本身已经包含了 <code>fraggap</code>（因为 <code>datalen = length + fraggap</code>）。但在 paged 分支中：</p>
 <ul>
@@ -213,45 +209,39 @@ pagedlen = datalen - transhdrlen;
 </ul>
 <p>后果</p>
 <p>当内核把 fraggap 字节复制到新 skb 的线性区时：</p>
-<div class="highlight"><pre><span></span><code>实际写入: [head ... head + fragheaderlen + fraggap]
+<p>实际写入: [head ... head + fragheaderlen + fraggap]
 分配空间: [head ... head + fragheaderlen]
-                                     ^^^^^^^^^^^^
-                                     越界写入 skb_shared_info!
-</code></pre></div>
-
+^^^^^^^^^^^^
+越界写入 skb_shared_info!</p>
 <p>简单说：<strong>搬了 fraggap 字节的数据，但只给 fraggap 字节少的位置放。</strong> 多出来的字节直接写到了 <code>skb-&gt;end</code> 之后，覆盖了 <code>skb_shared_info</code>。</p>
 <p>为什么之前没被利用？</p>
 <p>这个漏洞其实早在 2022 年 7 月（commit 773ba4fe9104）就被引入了。但在此后的三年多时间里，<code>copy</code> 变量在 paged 分支中会算出<strong>负值</strong>（<code>-fraggap</code>），而这个负触发早期的 <code>-EINVAL</code> 检查直接返回错误，阻止了数据的实际写入。</p>
 <p><strong>转折点</strong>出现在 commit ce650a166335（\"udp6: Fix __ip6_append_data()\'s handling of MSG_SPLICE_PAGES\"）。这个补丁允许 <code>MSG_SPLICE_PAGES</code> 在 <code>copy &lt; 0</code> 时继续执行，使得本应被拦下的路径变成了可触发的漏洞。</p>
 <p>触发路径：攻击者怎么做？</p>
 <p>攻击者只需要在容器内具备基本的网络能力（<code>CAP_NET_RAW</code> 或 <code>net.ipv6.ping_group_range</code> 配置允许），<strong>无需 root 权限</strong>：</p>
-<div class="highlight"><pre><span></span><code>int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+<p>int fd = socket(AF_INET6, SOCK_DGRAM, 0);
 // 关键组合：MSG_MORE + MSG_SPLICE_PAGES
-// 构造多个 sendmsg 调用触发分片和 fraggap
-</code></pre></div>
-
+// 构造多个 sendmsg 调用触发分片和 fraggap</p>
 <p>关键触发条件：</p>
 <ol>
 <li>✅ <strong>UDPv6 socket</strong>（TCPv6 走不同路径）</li>
-<li>✅ <strong>MSG_MORE 标志</strong> ------ 告诉内核还有更多数据要来，暂不发送</li>
-<li>✅ <strong>MSG_SPLICE_PAGES 标志</strong> ------ 允许内核使用 page 散射而非线性复制</li>
-<li>✅ <strong>分片触发</strong> ------ 数据量超过 MTU，产生多个 skb 和 fraggap</li>
+<li>✅ <strong>MSG_MORE 标志</strong>——告诉内核还有更多数据要来，暂不发送</li>
+<li>✅ <strong>MSG_SPLICE_PAGES 标志</strong>——允许内核使用 page 散射而非线性复制</li>
+<li>✅ <strong>分片触发</strong>——数据量超过 MTU，产生多个 skb 和 fraggap</li>
 </ol>
 <p>当这些条件满足时，<code>__ip6_append_data()</code> 在 paged 分支上计算出错误的 alloclen，memcpy 写入 <code>skb-&gt;end</code> 之后的 <code>skb_shared_info</code>。</p>
 <p>为什么是容器逃逸？</p>
 <p><code>skb_shared_info</code> 结构包含的关键字段：</p>
-<div class="highlight"><pre><span></span><code><span class="n">struct</span><span class="w"> </span><span class="n">skb_shared_info</span><span class="w"> </span><span class="err">{</span>
-<span class="w">    </span><span class="n">__u8</span><span class="w">       </span><span class="n">__unused</span><span class="p">;</span>
-<span class="w">    </span><span class="n">__u8</span><span class="w">       </span><span class="n">meta_len</span><span class="p">;</span>
-<span class="w">    </span><span class="n">__u8</span><span class="w">       </span><span class="n">nr_frags</span><span class="p">;</span><span class="w">      </span><span class="o">//</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">可以被覆盖</span><span class="err">！</span>
-<span class="w">    </span><span class="n">__u16</span><span class="w">      </span><span class="n">dataref</span><span class="p">;</span>
-<span class="w">    </span><span class="n">struct</span><span class="w"> </span><span class="n">skb_shared_hwtstamps</span><span class="w"> </span><span class="n">hwtstamps</span><span class="p">;</span>
-<span class="w">    </span><span class="n">unsigned</span><span class="w"> </span><span class="n">short</span><span class="w">   </span><span class="n">gso_type</span><span class="p">;</span>
-<span class="w">    </span><span class="n">u32</span><span class="w">          </span><span class="n">gso_size</span><span class="p">;</span>
-<span class="w">    </span><span class="n">struct</span><span class="w"> </span><span class="n">page</span><span class="w"> </span><span class="o">*</span><span class="n">frags</span><span class="o">[</span><span class="n">MAX_SKB_FRAGS</span><span class="o">]</span><span class="p">;</span><span class="w">  </span><span class="o">//</span><span class="w"> </span><span class="err">←</span><span class="w"> </span><span class="n">页指针数组</span><span class="err">！</span>
-<span class="err">}</span><span class="p">;</span>
-</code></pre></div>
-
+<p>struct skb_shared_info {
+__u8       __unused;
+__u8       meta_len;
+__u8       nr_frags;      // ← 可以被覆盖！
+__u16      dataref;
+struct skb_shared_hwtstamps hwtstamps;
+unsigned short   gso_type;
+u32          gso_size;
+struct page *frags[MAX_SKB_FRAGS];  // ← 页指针数组！
+};</p>
 <p>越界写入 fraggap 字节（通常 1-7 字节）覆盖的是 <code>nr_frags</code>、<code>dataref</code> 等字段的上半部分。精心构造的 payload 可以：</p>
 <ol>
 <li><strong>篡改 <code>nr_frags</code></strong> 让内核解析出非法数量的页片段</li>
@@ -261,74 +251,102 @@ pagedlen = datalen - transhdrlen;
 </ol>
 <p>这本质上是一个典型的<strong>堆越界写入 → 结构覆写 → 提权</strong>的漏洞链路。</p>
 <p>修复补丁分析</p>
-<p>修复极其简洁------<strong>只改了 3 行代码</strong>：</p>
-<div class="highlight"><pre><span></span><code><span class="w"> </span><span class="c1">// paged 分支</span>
-<span class="o">-</span><span class="n">alloclen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">fragheaderlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">transhdrlen</span><span class="p">;</span>
-<span class="o">-</span><span class="n">pagedlen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">datalen</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">transhdrlen</span><span class="p">;</span>
-<span class="o">+</span><span class="n">alloclen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">fragheaderlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">transhdrlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">fraggap</span><span class="p">;</span>
-<span class="o">+</span><span class="n">pagedlen</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">datalen</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">transhdrlen</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">fraggap</span><span class="p">;</span>
-</code></pre></div>
-
+<p>修复极其简洁——<strong>只改了 3 行代码</strong>：</p>
+<p>// paged 分支
+-alloclen = fragheaderlen + transhdrlen;
+-pagedlen = datalen - transhdrlen;
++alloclen = fragheaderlen + transhdrlen + fraggap;
++pagedlen = datalen - transhdrlen - fraggap;</p>
 <p><strong>加上 fraggap：</strong> <code>alloclen</code> 正确计入 fraggap 字节，线性区长度正确。</p>
 <p><strong>减去 fraggap：</strong> <code>pagedlen</code> 相应减少，避免重复计账。</p>
 <p>同时移除了 <code>copy &lt; 0</code> 时的 <code>MSG_SPLICE_PAGES</code> 例外：</p>
-<div class="highlight"><pre><span></span><code>-if (copy &lt; 0 &amp;&amp; !(flags &amp; MSG_SPLICE_PAGES)) {
+<p>-if (copy &lt; 0 &amp;&amp; !(flags &amp; MSG_SPLICE_PAGES)) {
 +if (copy &lt; 0) {
-     err = -EINVAL;
-</code></pre></div>
-
+err = -EINVAL;</p>
 <p>现在 paged 分支中的 <code>copy</code> 不会再变成负数，MSG_SPLICE_PAGES 也不再需要特殊豁免。</p>
 <p>受影响版本与修复</p>
-<p>分支       受影响起始   修复版本   修复 commit</p>
-<hr />
-<p>mainline   v6.0+        v7.2-rc1   736b380e28d0
-  7.1.y      7.1          7.1.3      14200d435af9
-  6.12.y     6.12+        待确认     46f201f8b4c3
-  6.6.y      6.6+         待确认     6374fb9edf72
-  6.1.y      6.1+         待确认     65fb14cbebb0</p>
+<table>
+<thead>
+<tr>
+<th>分支</th>
+<th>受影响起始</th>
+<th>修复版本</th>
+<th>修复 commit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mainline</td>
+<td>v6.0+</td>
+<td>v7.2-rc1</td>
+<td>736b380e28d0</td>
+</tr>
+<tr>
+<td>7.1.y</td>
+<td>7.1</td>
+<td>7.1.3</td>
+<td>14200d435af9</td>
+</tr>
+<tr>
+<td>6.12.y</td>
+<td>6.12+</td>
+<td>待确认</td>
+<td>46f201f8b4c3</td>
+</tr>
+<tr>
+<td>6.6.y</td>
+<td>6.6+</td>
+<td>待确认</td>
+<td>6374fb9edf72</td>
+</tr>
+<tr>
+<td>6.1.y</td>
+<td>6.1+</td>
+<td>待确认</td>
+<td>65fb14cbebb0</td>
+</tr>
+</tbody>
+</table>
 <p>受影响的大部分是 2022 年 7 月之后发布的内核，包括 Ubuntu 22.04+、Debian 12+、Fedora 36+、RHEL 9.x 及各种容器运行时（Docker、Kubernetes Node 等）的底层内核。如果容器运行时使用了与宿主机共享内核的配置（默认情况），容器内普通进程即可触发此漏洞。</p>
 <p>缓和措施</p>
 <p>如果暂时无法升级内核：</p>
 <ol>
-<li><strong>限制容器内 <code>CAP_NET_RAW</code></strong> ------ 这是最有效的权限收缩，Docker / Kubernetes 默认授予，但非必要应移除</li>
-<li><strong>禁用 IPv6</strong> ------ <code>sysctl -w net.ipv6.conf.all.disable_ipv6=1</code>（仅限不需要 IPv6 的环境）</li>
-<li><strong>使用用户命名空间映射</strong> ------ <code>user.max_user_namespaces=0</code> 或配置 <code>userns</code> 隔离</li>
-<li><strong>启用内核防护</strong> ------ <code>slub_debug=UFPZ</code>、<code>CONFIG_SLAB_FREELIST_RANDOM</code>、<code>CONFIG_RANDOMIZE_KSTACK_OFFSET</code> 等可以增加利用难度</li>
+<li><strong>限制容器内 <code>CAP_NET_RAW</code></strong>——这是最有效的权限收缩，Docker / Kubernetes 默认授予，但非必要应移除</li>
+<li><strong>禁用 IPv6</strong>——<code>sysctl -w net.ipv6.conf.all.disable_ipv6=1</code>（仅限不需要 IPv6 的环境）</li>
+<li><strong>使用用户命名空间映射</strong>——<code>user.max_user_namespaces=0</code> 或配置 <code>userns</code> 隔离</li>
+<li><strong>启用内核防护</strong>——<code>slub_debug=UFPZ</code>、<code>CONFIG_SLAB_FREELIST_RANDOM</code>、<code>CONFIG_RANDOMIZE_KSTACK_OFFSET</code> 等可以增加利用难度</li>
 </ol>
 <p>写在最后</p>
 <p>CVE-2026-53362 是一个典型的\"4 行代码修了 4 年的 bug\"故事。2022 年一个小小的账目错误，遇到 2025 年一个放宽 MSG_SPLICE_PAGES 检查的 commit，最终在 2026 年变成了一个高危容器逃逸漏洞。再次印证了一个道理：</p>
 <p><strong>内核代码中\"看似永远不会被执行到的路径\"，总有一天会被人走出来。</strong></p>
 <p>三个关键教训：</p>
 <ol>
-<li><strong>数值计算的边界条件必须精确</strong> ------ 多 1 字节的偏移量就是安全与沦陷的差别</li>
-<li><strong>放宽安全检查时务必审计关联路径</strong> ------ ce650a166335 的本意是修复 MSG_SPLICE_PAGES 的正常使用，却意外放开了漏洞的扳机</li>
-<li><strong>容器隔离不解决内核漏洞</strong> ------ 公用的内核永远是容器的阿喀琉斯之踵</li>
+<li><strong>数值计算的边界条件必须精确</strong>——多 1 字节的偏移量就是安全与沦陷的差别</li>
+<li><strong>放宽安全检查时务必审计关联路径</strong>——ce650a166335 的本意是修复 MSG_SPLICE_PAGES 的正常使用，却意外放开了漏洞的扳机</li>
+<li><strong>容器隔离不解决内核漏洞</strong>——公用的内核永远是容器的阿喀琉斯之踵</li>
 </ol>
 <p>━━━ ━━━ ━━━</p>
 <p>参考文献</p>
 <ol>
 <li>CVE-2026-53362 - NVD</li>
-<li>修复 commit (主线) --- Wongi Lee, Jungwoo Lee</li>
+<li>修复 commit (主线)——Wongi Lee, Jungwoo Lee</li>
 <li>修复 commit (7.1.y 稳定版)</li>
 <li>修复 commit (6.12.y 稳定版)</li>
 <li>修复 commit (6.6.y 稳定版)</li>
 <li>修复 commit (6.1.y 稳定版)</li>
-<li>引入漏洞的 commit: ipv6: avoid partial copy for zc (773ba4fe9104) --- Pavel Begunkov, 2022-07-12</li>
+<li>引入漏洞的 commit: ipv6: avoid partial copy for zc (773ba4fe9104)——Pavel Begunkov, 2022-07-12</li>
 <li>放宽 MSG_SPLICE_PAGES 检查的 commit: udp6: Fix __ip6_append_data()\'s handling of MSG_SPLICE_PAGES (ce650a166335)</li>
 </ol>
 <p>━━━ ━━━ ━━━</p>
 <p>*本文完。欢迎关注 LeisureLinux，获取更多深度 Linux 内核与安全技术分析。*</p>
-<p>\</p>
-<p>\</p>
-<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4fy6q97ie4mbhzkxz4" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6gzj1nqwpr8rnvcr9c" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2nxlyavzrq5oipcmww" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318517&amp;idx=1&amp;sn=9bcd61a084aa316400ebc23f24047e3e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="jqc3bi7gedqttcg8ow" target="_blank" textvalue="Bad Epoll 深度拆解：一桩跨越三年、两条机器指令引发的内核血案">Bad Epoll 深度拆解：一桩跨越三年、两条机器指令引发的内核血案</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318409&amp;idx=1&amp;sn=db4a485da0365c8a3a2b6bd9beaae9d6&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ast5q3njaggl8ly7ls" target="_blank" textvalue="libssh2 漏洞深度解读：SSH 库的“重症监护室”时刻">libssh2 漏洞深度解读：SSH 库的"重症监护室"时刻</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318287&amp;idx=1&amp;sn=10edb1f2ac31408e7f2bbbbdcec1f532&amp;scene=21#wechat_redirect" linktype="2" localeditorid="wh2vwlawcr9lungidc" target="_blank" textvalue="当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化">当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318209&amp;idx=1&amp;sn=f2605216bdcd3edd17a78ed5b4c09b13&amp;scene=21#wechat_redirect" linktype="2" localeditorid="llljp8z1a53q8gohs" target="_blank" textvalue="六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门">六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318021&amp;idx=1&amp;sn=927b9a0fe9a456fb9f1f7fd2ac6fe721&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xum58hidyfzrev04xs" target="_blank" textvalue="一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析">一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析</a>\</p>
-<p>\</p>
+<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4fy6q97ie4mbhzkxz4" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6gzj1nqwpr8rnvcr9c" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2nxlyavzrq5oipcmww" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318517&amp;idx=1&amp;sn=9bcd61a084aa316400ebc23f24047e3e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="jqc3bi7gedqttcg8ow" target="_blank" textvalue="Bad Epoll 深度拆解：一桩跨越三年、两条机器指令引发的内核血案">Bad Epoll 深度拆解：一桩跨越三年、两条机器指令引发的内核血案</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318409&amp;idx=1&amp;sn=db4a485da0365c8a3a2b6bd9beaae9d6&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ast5q3njaggl8ly7ls" target="_blank" textvalue="libssh2 漏洞深度解读：SSH 库的“重症监护室”时刻">libssh2 漏洞深度解读：SSH 库的"重症监护室"时刻</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318287&amp;idx=1&amp;sn=10edb1f2ac31408e7f2bbbbdcec1f532&amp;scene=21#wechat_redirect" linktype="2" localeditorid="wh2vwlawcr9lungidc" target="_blank" textvalue="当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化">当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318209&amp;idx=1&amp;sn=f2605216bdcd3edd17a78ed5b4c09b13&amp;scene=21#wechat_redirect" linktype="2" localeditorid="llljp8z1a53q8gohs" target="_blank" textvalue="六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门">六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318021&amp;idx=1&amp;sn=927b9a0fe9a456fb9f1f7fd2ac6fe721&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xum58hidyfzrev04xs" target="_blank" textvalue="一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析">一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析</a></p>
     </div>
     <div class="src">
       <div class="txt">

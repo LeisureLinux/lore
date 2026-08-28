@@ -164,8 +164,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/ePyJ3ZXc3iu2pBEJQsDkpA" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>近日，Ollama 修复了一个关键的**越界读取（Out-of-Bounds Read）**漏洞。该漏洞允许攻击者通过精心构造的 HTTP 请求，在未经身份验证的情况下，远程泄露服务器进程内存中的敏感信息。\
-\</p>
+<p>近日，Ollama 修复了一个关键的**越界读取（Out-of-Bounds Read）**漏洞。该漏洞允许攻击者通过精心构造的 HTTP 请求，在未经身份验证的情况下，远程泄露服务器进程内存中的敏感信息。</p>
 <p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsslvdGyDbYeaeSE967OyFLLlOYCEqH4HuzPAsJp0rvvpmBDmsFc6LECsGmAxtQmY1vldxNWCUI13ibnTRQjtvV6e7Z72Zwv5nqQ/640?wx_fmt=jpeg" /></p>
 <h3 heading="true" id="核心漏洞机理">1. 核心漏洞机理</h3>
 <p>该漏洞主要存在于 Ollama 的 API 处理层，具体与<strong>HTTP 请求解析</strong>或<strong>模型权重元数据处理</strong>相关联。</p>
@@ -183,16 +182,14 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <li>•<strong>绕过安全防御</strong>：通过泄露内存布局（ASLR 偏移量），攻击者可以为后续的缓冲区溢出（Buffer Overflow）或 RCE 攻击铺平道路。</li>
 </ul>
 <h3 heading="true" id="技术溯源与审计">3. 技术溯源与审计</h3>
-<p>在 Ollama 的 Go 语言实现中，此类漏洞通常源于 unsafe 指针操作或在调用 C/C++ 编写的底层库（如 llama.cpp）时，未能在 CGO 边界处做好严格的数据长度对齐与校验。\
+<p>在 Ollama 的 Go 语言实现中，此类漏洞通常源于 unsafe 指针操作或在调用 C/C++ 编写的底层库（如 llama.cpp）时，未能在 CGO 边界处做好严格的数据长度对齐与校验。
 <strong>脆弱性代码示例（推演）：</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1">// 假设的脆弱代码逻辑</span>
-<span class="n">func</span><span class="w"> </span><span class="nf">handleRequest</span><span class="p">(</span><span class="n">data</span><span class="w"> </span><span class="p">[]</span><span class="n">byte</span><span class="p">,</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// 缺乏对 offset + length &lt; len(data) 的判断</span>
-<span class="w">    </span><span class="n">leakData</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="n">data</span><span class="p">[</span><span class="n">offset</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">offset</span><span class="o">+</span><span class="n">leakSize</span><span class="p">]</span>
-<span class="w">    </span><span class="n">sendResponse</span><span class="p">(</span><span class="n">leakData</span><span class="p">)</span>
-<span class="p">}</span>
-</code></pre></div>
-
+<p>// 假设的脆弱代码逻辑
+func handleRequest(data []byte, offset int) {
+// 缺乏对 offset + length &lt; len(data) 的判断
+leakData := data[offset : offset+leakSize]
+sendResponse(leakData)
+}</p>
 <h3 heading="true" id="架构师视角的加固方案">4. 架构师视角的加固方案</h3>
 <h4 heading="true" id="a.-立即修复与配置优化">A. 立即修复与配置优化</h4>
 <ol>
@@ -202,10 +199,8 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <div class="highlight"><pre><span></span><code><span class="o">&lt;!--</span><span class="w"> </span><span class="o">--&gt;</span>
 </code></pre></div>
 
-<div class="highlight"><pre><span></span><code># 检查服务监听状态
-netstat -tlnp | grep ollama
-</code></pre></div>
-
+<h1 id="_1">检查服务监听状态</h1>
+<p>netstat -tlnp | grep ollama</p>
 <h4 heading="true" id="b.-纵深防御部署">B. 纵深防御部署</h4>
 <ul>
 <li>•<strong>反向代理接入</strong>：在 Ollama 前端部署 Nginx 或 HAProxy，利用其成熟的 HTTP 协议校验能力拦截畸形请求。</li>
@@ -214,31 +209,20 @@ netstat -tlnp | grep ollama
 </ul>
 <h4 heading="true" id="c.-安全审计建议">C. 安全审计建议</h4>
 <p>使用 vim 编辑配置文件或 Systemd 服务文件，确保环境变量配置正确：</p>
-<div class="highlight"><pre><span></span><code>sudo vim /etc/systemd/system/ollama.service
-<span class="gh">#</span> 检查 OLLAMA_HOST 和相关安全设置
-</code></pre></div>
-
+<p>sudo vim /etc/systemd/system/ollama.service</p>
+<h1 id="ollama_host">检查 OLLAMA_HOST 和相关安全设置</h1>
 <h3 heading="true" id="专家总结">5. 专家总结</h3>
 <p>大模型后端服务（如 Ollama）由于集成了大量的底层 C/C++ 推理库，其受攻击面（Attack Surface）远比传统的 Web 应用复杂。<strong>越界读取漏洞</strong>往往是系统级崩塌的前兆。建议 IT 运维与安全团队建立定期扫描机制，并关注 CVE-2024 等相关编号的后续披露。</p>
 <blockquote>
 <p><strong>底层视角</strong>：安全不只是代码的逻辑，更是对内存边界的绝对控制。任何 1 字节的偏移，都可能成为企业数据泄露的缺口。</p>
 </blockquote>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317175&amp;idx=1&amp;sn=1143a195885ce13ca813f5c9752d1b0e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1gy4y3nd1fhjl32t5og" target="_blank" textvalue="从对话到进化：Ollama 2026 核心集成的六大 AI 智能体神器">从对话到进化：Ollama 2026 核心集成的六大 AI 智能体神器</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317171&amp;idx=1&amp;sn=d079c1c2d8a353d7d7aca566b367976a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="k5w7bwp5vlz6zhdpmo" target="_blank" textvalue="从 Ollama 到 vLLM：本地大模型从“跑起来”到“跑得飞起”的必经之路">从 Ollama 到 vLLM：本地大模型从"跑起来"到"跑得飞起"的必经之路</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317131&amp;idx=1&amp;sn=8871529de9ba71acf4ac16faeed1eab3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="hj6pna9ce1emlz5534" target="_blank" textvalue="单卡巅峰：RTX 5090 本地模型选型策略与 Ollama 推理栈深度实践">单卡巅峰：RTX 5090 本地模型选型策略与 Ollama 推理栈深度实践</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317415&amp;idx=3&amp;sn=5a3a6cc6aae1e0ce3e1c90582a40a541&amp;scene=21#wechat_redirect" linktype="2" localeditorid="byf6tehtejxbckccu8" target="_blank" textvalue="从“对话框”到“命令行”：小龙虾（OpenClaw）彻底解放生产力的 7 大实战场景">从"对话框"到"命令行"：小龙虾（OpenClaw）彻底解放生产力的 7 大实战场景</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316997&amp;idx=1&amp;sn=8ea5adaf15f5905de831d33f803691eb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="tzjflypvrpdsig3dog" target="_blank" textvalue="AI 安全纪元：Claude 攻破 Firefox 带来的技术启示与防御转型">AI 安全纪元：Claude 攻破 Firefox 带来的技术启示与防御转型</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316161&amp;idx=1&amp;sn=6096c58239f44a76fbefb502e0efe348&amp;scene=21#wechat_redirect" linktype="2" localeditorid="h3usuz5kh6c171xgqo" target="_blank" textvalue="LeisureLinux 硬核拆解：Persona 的底层逻辑">LeisureLinux 硬核拆解：Persona 的底层逻辑</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316937&amp;idx=1&amp;sn=b4e9f0362e46f39c5abb475e30f62cbb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="35zzgbozehyf0j8ibr4" target="_blank" textvalue="架构即防御：拆解 SASE 如何在底层重构零信任安全">架构即防御：拆解 SASE 如何在底层重构零信任安全</a>\</p>
-<p>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317175&amp;idx=1&amp;sn=1143a195885ce13ca813f5c9752d1b0e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1gy4y3nd1fhjl32t5og" target="_blank" textvalue="从对话到进化：Ollama 2026 核心集成的六大 AI 智能体神器">从对话到进化：Ollama 2026 核心集成的六大 AI 智能体神器</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317171&amp;idx=1&amp;sn=d079c1c2d8a353d7d7aca566b367976a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="k5w7bwp5vlz6zhdpmo" target="_blank" textvalue="从 Ollama 到 vLLM：本地大模型从“跑起来”到“跑得飞起”的必经之路">从 Ollama 到 vLLM：本地大模型从"跑起来"到"跑得飞起"的必经之路</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317131&amp;idx=1&amp;sn=8871529de9ba71acf4ac16faeed1eab3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="hj6pna9ce1emlz5534" target="_blank" textvalue="单卡巅峰：RTX 5090 本地模型选型策略与 Ollama 推理栈深度实践">单卡巅峰：RTX 5090 本地模型选型策略与 Ollama 推理栈深度实践</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317415&amp;idx=3&amp;sn=5a3a6cc6aae1e0ce3e1c90582a40a541&amp;scene=21#wechat_redirect" linktype="2" localeditorid="byf6tehtejxbckccu8" target="_blank" textvalue="从“对话框”到“命令行”：小龙虾（OpenClaw）彻底解放生产力的 7 大实战场景">从"对话框"到"命令行"：小龙虾（OpenClaw）彻底解放生产力的 7 大实战场景</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316997&amp;idx=1&amp;sn=8ea5adaf15f5905de831d33f803691eb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="tzjflypvrpdsig3dog" target="_blank" textvalue="AI 安全纪元：Claude 攻破 Firefox 带来的技术启示与防御转型">AI 安全纪元：Claude 攻破 Firefox 带来的技术启示与防御转型</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316161&amp;idx=1&amp;sn=6096c58239f44a76fbefb502e0efe348&amp;scene=21#wechat_redirect" linktype="2" localeditorid="h3usuz5kh6c171xgqo" target="_blank" textvalue="LeisureLinux 硬核拆解：Persona 的底层逻辑">LeisureLinux 硬核拆解：Persona 的底层逻辑</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316937&amp;idx=1&amp;sn=b4e9f0362e46f39c5abb475e30f62cbb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="35zzgbozehyf0j8ibr4" target="_blank" textvalue="架构即防御：拆解 SASE 如何在底层重构零信任安全">架构即防御：拆解 SASE 如何在底层重构零信任安全</a></p>
     </div>
     <div class="src">
       <div class="txt">

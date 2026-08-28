@@ -165,7 +165,6 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <p>最近有一位刚入行 DevOps 的同学跑来问我一个诡异的现象：生产服务器磁盘告警，他反手一个 <code index-in-node="47" path-to-node="4">rm</code> 删除了 5GB 的大日志，结果 <code index-in-node="66" path-to-node="4">df -h</code> 一看，空间占用纹丝不动。</p>
-<p>\</p>
 <p>这其实是 Linux 系统中 <strong>"文件删除机制"</strong> 与 <strong>"进程引用计数"</strong> 之间的一个经典博弈。</p>
 <h3 id="解耦的设计文件名并不等于文件" path-to-node="6">1. 解耦的设计：文件名并不等于文件</h3>
 <p>在 Linux 的虚拟文件系统（VFS）中，一个文件被拆分为两个核心维度：</p>
@@ -179,7 +178,7 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </ul>
 <p>当你执行 <code index-in-node="5" path-to-node="9">rm</code> 命令时，内核调用的是 <code index-in-node="19" path-to-node="9">unlink()</code>。这个操作仅仅是删除了 <strong>dentry</strong>，并将 Inode 的 <strong>i_link（硬链接数）</strong> 减 1。</p>
 <h3 id="关键变量i_count-引用计数" path-to-node="10">2. 关键变量：i_count 引用计数</h3>
-<p>除了 <code index-in-node="3" path-to-node="11">i_link</code>，内核还维护着一个关键指标：<strong><code index-in-node="23" path-to-node="11">i_count</code>（进程引用计数）</strong>。\
+<p>除了 <code index-in-node="3" path-to-node="11">i_link</code>，内核还维护着一个关键指标：<strong><code index-in-node="23" path-to-node="11">i_count</code>（进程引用计数）</strong>。
 在上述案例中，Web Server 进程依然打开着该日志文件，持有其文件描述符（File Descriptor）。此时：</p>
 <ul>
 <li>
@@ -204,25 +203,24 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>在生产环境中，<strong>严禁</strong>对正在被进程写入的日志执行 <code index-in-node="23" path-to-node="18">rm</code>。</p>
 <ul>
 <li>
-<p><strong>优雅方案（在线清空）：</strong>\
-    使用 <code index-in-node="15" path-to-node="19,0,0">true &gt; /var/log/access.log</code> 或 <code index-in-node="44" path-to-node="19,0,0">truncate -s 0</code>。\
-    这会触发内核将 Data Blocks 直接置空，而无需改变 Inode 状态，进程可以无感地继续写入，且空间立即释放。</p>
+<p><strong>优雅方案（在线清空）：</strong>
+使用 <code index-in-node="15" path-to-node="19,0,0">true &gt; /var/log/access.log</code> 或 <code index-in-node="44" path-to-node="19,0,0">truncate -s 0</code>。
+这会触发内核将 Data Blocks 直接置空，而无需改变 Inode 状态，进程可以无感地继续写入，且空间立即释放。</p>
 </li>
 <li>
-<p><strong>事后补救（寻找隐形文件）：</strong>\
-    如果已经删了文件，可以使用以下命令定位这些"幽灵文件"：</p>
-<p>[Bash]{ngcontent-ng-c3649887988=""}</p>
-<p><code>{ngcontent-ng-c3649887988=""}
-lsof +L1  # 查找 link count 小于 1 且仍被打开的文件</code></p>
-<p>找到对应的 PID 后，通过 <code index-in-node="15" path-to-node="19,1,2">&gt; /proc/[PID]/fd/[FD]</code> 强制截断，或者优雅地 <code index-in-node="48" path-to-node="19,1,2">reload</code> 该服务。</p>
+<p><strong>事后补救（寻找隐形文件）：</strong>
+如果已经删了文件，可以使用以下命令定位这些"幽灵文件"：</p>
 </li>
 </ul>
-<hr />
+<p>[Bash]{ngcontent-ng-c3649887988=""}</p>
+<div class="highlight"><pre><span></span><code>lsof +L1  # 查找 link count 小于 1 且仍被打开的文件
+</code></pre></div>
+
+<p>找到对应的 PID 后，通过 <code index-in-node="15" path-to-node="19,1,2">&gt; /proc/[PID]/fd/[FD]</code> 强制截断，或者优雅地 <code index-in-node="48" path-to-node="19,1,2">reload</code> 该服务。</p>
 <h3 id="section-path-to-node21">{#section path-to-node="21"}</h3>
 <h3 id="section-1-path-to-node21">{#section-1 path-to-node="21"}</h3>
 <h3 id="leisurelinux-禅悟" path-to-node="21">LeisureLinux 禅悟</h3>
 <p>在 Linux 的世界里，看到的（文件名）不一定是真实的，看不到的（Inode/FD）才是系统运行的基石。理解了 <strong>引用计数</strong>，你才算真正跨过了运维开发的初阶门槛。</p>
-<p>\</p>
     </div>
     <div class="src">
       <div class="txt">

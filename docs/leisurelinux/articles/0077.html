@@ -165,240 +165,282 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <blockquote>
-<p><strong>从 OpenSSH 9.9（2024 年 10 月）到 10.4（2026 年 7 月），OpenSSH 用两年时间完成了从引入 ML-KEM 混合密钥交换到实验性支持 ML-DSA 签名认证的跨越。本文提供一份可直接跟随的实操部署流程------从版本检查、配置加固到强制策略，覆盖关键交换与身份认证两个维度。</strong></p>
+<p><strong>从 OpenSSH 9.9（2024 年 10 月）到 10.4（2026 年 7 月），OpenSSH 用两年时间完成了从引入 ML-KEM 混合密钥交换到实验性支持 ML-DSA 签名认证的跨越。本文提供一份可直接跟随的实操部署流程——从版本检查、配置加固到强制策略，覆盖关键交换与身份认证两个维度。</strong></p>
 </blockquote>
-<p>━━━ ━━━ ━━━\</p>
+<p>━━━ ━━━ ━━━</p>
 <p>OpenSSH Server 强制启用后量子密码 (PQC) 实操部署流程为什么现在就要做？</p>
 <p>2026 年的现实比预想来得更快：</p>
 <ul>
-<li><strong>\"Harvest Now, Decrypt Later\"</strong> 已不是理论------对手正在大规模存储 SSH 握手密钥交换的加密流量，等待量子计算机成熟后批量解密</li>
-<li><strong>Google 已秘密实现 ECDLP 量子破译电路</strong>（2026 年 3 月可在 2 个月内被独立复现改进）------意味着整个 ECC 基础设施的理论安全边际被压缩</li>
-<li><strong>OpenSSH 10.1+ 默认发出无 PQC 警告</strong>------如果你的服务器还跑着旧版，客户端日志里已悄悄出现警告行</li>
+<li><strong>\"Harvest Now, Decrypt Later\"</strong> 已不是理论——对手正在大规模存储 SSH 握手密钥交换的加密流量，等待量子计算机成熟后批量解密</li>
+<li><strong>Google 已秘密实现 ECDLP 量子破译电路</strong>（2026 年 3 月可在 2 个月内被独立复现改进）——意味着整个 ECC 基础设施的理论安全边际被压缩</li>
+<li><strong>OpenSSH 10.1+ 默认发出无 PQC 警告</strong>——如果你的服务器还跑着旧版，客户端日志里已悄悄出现警告行</li>
 </ul>
 <p>好消息是：<strong>ML-KEM（FIPS 203，即昔日的 CRYSTALS-Kyber）从 OpenSSH 10.0 起已是默认密钥交换算法</strong>。你只需要正确配置，不需要额外打包安装第三方库。</p>
 <p>第一步：检查当前版本与状态1.1 检查 OpenSSH 版本</p>
 <p>在目标服务器上执行：</p>
-<div class="highlight"><pre><span></span><code>ssh -V
-<span class="gh">#</span> 输出示例：
-<span class="gh">#</span> OpenSSH_10.4p1, OpenSSL 3.4.1 15 Jan 2026
-</code></pre></div>
-
+<p>ssh -V</p>
+<h1 id="_1">输出示例：</h1>
+<h1 id="openssh_104p1-openssl-341-15-jan-2026">OpenSSH_10.4p1, OpenSSL 3.4.1 15 Jan 2026</h1>
 <p><strong>版本对照表：</strong></p>
-<p>版本         发布日期             PQC 密钥交换                    PQC 签名                                部署建议</p>
-<hr />
-<p>\&lt; 9.0       2022.04 之前         ❌ 不支持                       ❌ 不支持                               ❌ <strong>立即升级</strong>
-  9.0 \~ 9.8   2022.04 \~ 2024.07   ✅ sntrup761x25519（需启用）    ❌ 不支持                               ⚠️ 尽快升级
-  9.9          2024.10              ✅ mlkem768x25519（默认启用）   ❌ 不支持                               ✅ 可用
-  10.0         2025.04              ✅ <strong>默认算法</strong>                 ❌ 不支持                               ✅ 推荐基线
-  10.1+        2025.10+             ✅ 无 PQC 连接自动警告          ❌ 不支持                               ✅ 推荐
-  10.4         2026.07              ✅ 默认                         ✅ <strong>ML-DSA 44 + Ed25519 实验性支持</strong>   ✅ <strong>最新推荐</strong></p>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>发布日期</th>
+<th>PQC 密钥交换</th>
+<th>PQC 签名</th>
+<th>部署建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>\&lt; 9.0</td>
+<td>2022.04 之前</td>
+<td>❌ 不支持</td>
+<td>❌ 不支持</td>
+<td>❌ <strong>立即升级</strong></td>
+</tr>
+<tr>
+<td>9.0 \~ 9.8</td>
+<td>2022.04 \~ 2024.07</td>
+<td>✅ sntrup761x25519（需启用）</td>
+<td>❌ 不支持</td>
+<td>⚠️ 尽快升级</td>
+</tr>
+<tr>
+<td>9.9</td>
+<td>2024.10</td>
+<td>✅ mlkem768x25519（默认启用）</td>
+<td>❌ 不支持</td>
+<td>✅ 可用</td>
+</tr>
+<tr>
+<td>10.0</td>
+<td>2025.04</td>
+<td>✅ <strong>默认算法</strong></td>
+<td>❌ 不支持</td>
+<td>✅ 推荐基线</td>
+</tr>
+<tr>
+<td>10.1+</td>
+<td>2025.10+</td>
+<td>✅ 无 PQC 连接自动警告</td>
+<td>❌ 不支持</td>
+<td>✅ 推荐</td>
+</tr>
+<tr>
+<td>10.4</td>
+<td>2026.07</td>
+<td>✅ 默认</td>
+<td>✅ <strong>ML-DSA 44 + Ed25519 实验性支持</strong></td>
+<td>✅ <strong>最新推荐</strong></td>
+</tr>
+</tbody>
+</table>
 <p>1.2 检查当前密钥交换算法</p>
-<div class="highlight"><pre><span></span><code># 查看 sshd 实际启用的 KEX 算法
-sshd -T | grep -i &quot;kexalgorithms&quot;
-</code></pre></div>
-
+<h1 id="sshd-kex">查看 sshd 实际启用的 KEX 算法</h1>
+<p>sshd -T | grep -i "kexalgorithms"</p>
 <p>如果输出中<strong>没有</strong> <code>mlkem768x25519-sha256</code>，说明你的 sshd 配置覆盖了默认值，且可能禁用了后量子算法。</p>
 <p>1.3 查看客户端连接使用的算法</p>
 <p>从另一台机器连接后，在服务器上检查：</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># 查看 SSH 日志（RHEL/Debian 位置可能不同）</span>
-<span class="n">sudo</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="s2">&quot;kex&quot;</span><span class="w"> </span><span class="o">/</span><span class="k">var</span><span class="o">/</span><span class="nb">log</span><span class="o">/</span><span class="n">auth</span><span class="o">.</span><span class="n">log</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">tail</span><span class="w"> </span><span class="o">-</span><span class="mi">5</span>
-</code></pre></div>
-
+<h1 id="ssh-rheldebian">查看 SSH 日志（RHEL/Debian 位置可能不同）</h1>
+<p>sudo grep "kex" /var/log/auth.log | tail -5</p>
 <p>或在客户端执行：</p>
-<div class="highlight"><pre><span></span><code><span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="k">user</span><span class="nv">@server</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="ss">&quot;kex&quot;</span>
-</code></pre></div>
-
+<p>ssh -v user@server 2&gt;&amp;1 | grep "kex"</p>
 <p>预期输出中应出现：</p>
-<div class="highlight"><pre><span></span><code><span class="n">debug1</span><span class="o">:</span><span class="w"> </span><span class="n">kex</span><span class="o">:</span><span class="w"> </span><span class="n">algorithm</span><span class="o">:</span><span class="w"> </span><span class="n">mlkem768x25519</span><span class="o">-</span><span class="n">sha256</span>
-</code></pre></div>
-
+<p>debug1: kex: algorithm: mlkem768x25519-sha256</p>
 <p>如果只看到 <code>curve25519-sha256</code> 或 <code>sntrup761x25519-sha512</code>，说明部署了但未使用最新混合算法。</p>
 <p>第二步：升级 OpenSSH（如版本过旧）2.1 RHEL / Rocky / Alma 系列</p>
-<div class="highlight"><pre><span></span><code># RHEL 10 已内置 OpenSSH 10.x 并默认启用 ML-KEM
-sudo dnf check-update openssh
-sudo dnf update openssh-server openssh-clients
-</code></pre></div>
-
+<h1 id="rhel-10-openssh-10x-ml-kem">RHEL 10 已内置 OpenSSH 10.x 并默认启用 ML-KEM</h1>
+<p>sudo dnf check-update openssh
+sudo dnf update openssh-server openssh-clients</p>
 <p>RHEL 10.1+（2026 年 5 月发布）进一步将 ML-KEM 列为最高优先级。</p>
 <p>2.2 Debian / Ubuntu 系列</p>
-<div class="highlight"><pre><span></span><code># Ubuntu 25.10+ 和即将发布的 26.04 LTS 默认使用 mlkem768x25519
-sudo apt update
-sudo apt install openssh-server openssh-client
-</code></pre></div>
-
+<h1 id="ubuntu-2510-2604-lts-mlkem768x25519">Ubuntu 25.10+ 和即将发布的 26.04 LTS 默认使用 mlkem768x25519</h1>
+<p>sudo apt update
+sudo apt install openssh-server openssh-client</p>
 <p>2.3 源码编译（迫不得已时的备选）</p>
 <p>如果需要从源码编译最新版本：</p>
-<div class="highlight"><pre><span></span><code># 下载 OpenSSH 10.4
-wget https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.4p1.tar.gz
+<h1 id="openssh-104">下载 OpenSSH 10.4</h1>
+<p>wget https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.4p1.tar.gz
 tar xzf openssh-10.4p1.tar.gz
-cd openssh-10.4p1
-
-# 编译时 ML-KEM 默认开启，不需要额外 configure 选项
-./configure --prefix=/usr --sysconfdir=/etc/ssh
+cd openssh-10.4p1</p>
+<h1 id="ml-kem-configure">编译时 ML-KEM 默认开启，不需要额外 configure 选项</h1>
+<p>./configure --prefix=/usr --sysconfdir=/etc/ssh
 make -j$(nproc)
 sudo make install
-sudo systemctl restart sshd
-</code></pre></div>
-
+sudo systemctl restart sshd</p>
 <p>第三步：配置 sshd 强制启用 PQC 密钥交换3.1 推荐配置：明确指定 KEX 算法（排除经典算法独立使用）</p>
 <p>编辑 <code>/etc/ssh/sshd_config</code>：</p>
-<div class="highlight"><pre><span></span><code>sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d)
-sudo vi /etc/ssh/sshd_config
-</code></pre></div>
-
+<p>sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d)
+sudo vi /etc/ssh/sshd_config</p>
 <p>在文件中设置（或修改）以下行：</p>
-<div class="highlight"><pre><span></span><code># 仅允许混合 PQC 密钥交换算法
-KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512
-
-# 或更稳妥——保留纯 X25519 以防客户端太旧
-# KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,curve25519-sha256
-</code></pre></div>
-
+<h1 id="pqc">仅允许混合 PQC 密钥交换算法</h1>
+<p>KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512</p>
+<h1 id="x25519">或更稳妥——保留纯 X25519 以防客户端太旧</h1>
+<h1 id="kexalgorithms-mlkem768x25519-sha256sntrup761x25519-sha512curve25519-sha256">KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,curve25519-sha256</h1>
 <p><strong>推荐策略</strong>：先用更宽松的列表（含 <code>curve25519-sha256</code> 作为兜底），观察一周无异常后再收紧。</p>
 <p>3.2 OpenSSH 10.1+ 的静默策略（可选）</p>
 <p>在 <code>sshd_config</code> 中添加：</p>
-<div class="highlight"><pre><span></span><code># 10.1+ 新增：拒绝没有 PQC 的连接（谨慎使用！）
-# RefuseConnection yes
-
-# 或更温和：仅日志警告
-# LogLevel VERBOSE
-</code></pre></div>
-
+<h1 id="101-pqc">10.1+ 新增：拒绝没有 PQC 的连接（谨慎使用！）</h1>
+<h1 id="refuseconnection-yes">RefuseConnection yes</h1>
+<h1 id="_2">或更温和：仅日志警告</h1>
+<h1 id="loglevel-verbose">LogLevel VERBOSE</h1>
 <blockquote>
 <p>⚠️ <strong>重要警告</strong>：<code>RefuseConnection</code> 会拒绝任何不支持 PQC 密钥交换的客户端连接。在部署前，务必确认所有需要连接的客户端都已升级至 OpenSSH 9.9+。</p>
 </blockquote>
 <p>3.3 验证 KEX 算法排序优先级</p>
-<div class="highlight"><pre><span></span><code># 确认 sshd 实际加载的配置
-sshd -T | grep kexalgorithms
-</code></pre></div>
-
+<h1 id="sshd">确认 sshd 实际加载的配置</h1>
+<p>sshd -T | grep kexalgorithms</p>
 <p>应该看到你刚才配置的算法列表，且 <code>mlkem768x25519-sha256</code> 在第一位。</p>
 <p>第四步：生成并部署 PQC 主机密钥（高级配置）4.1 当前限制</p>
 <p>OpenSSH <strong>尚未</strong>默认使用 PQC 算法（如 ML-DSA）作为主机密钥签名算法。主机密钥仍然使用 RSA 或 Ed25519。但以下措施可以提高安全性：</p>
 <p>4.2 推荐：优先使用 Ed25519 主机密钥</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 删除较弱的 RSA 主机密钥（如有）
-<span class="gh">#</span> 注意：如果已有正在使用的 RSA 密钥，请先确认所有客户端已知其指纹
-<span class="gh">#</span> sudo rm /etc/ssh/ssh_host_rsa_key*
-
-<span class="gh">#</span> 生成 Ed25519 密钥（更高安全性，更短签名）
-sudo ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N &quot;&quot;
-</code></pre></div>
-
+<h1 id="rsa">删除较弱的 RSA 主机密钥（如有）</h1>
+<h1 id="rsa_1">注意：如果已有正在使用的 RSA 密钥，请先确认所有客户端已知其指纹</h1>
+<h1 id="sudo-rm-etcsshssh_host_rsa_key">sudo rm /etc/ssh/ssh_host_rsa_key*</h1>
+<h1 id="ed25519">生成 Ed25519 密钥（更高安全性，更短签名）</h1>
+<p>sudo ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N ""</p>
 <p>4.3 OpenSSH 10.4 实验性：ML-DSA 混合主机密钥</p>
 <p>OpenSSH 10.4（2026 年 7 月发布）引入了实验性的 ML-DSA 44 + Ed25519 混合签名密钥支持。要使用这一功能：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 生成 ML-DSA 44 + Ed25519 混合主机密钥（实验性）
-sudo ssh-keygen -t ml-dsa-44-ed25519 -f /etc/ssh/ssh_host_ml-dsa-44-ed25519_key -N &quot;&quot;
-</code></pre></div>
-
+<h1 id="ml-dsa-44-ed25519">生成 ML-DSA 44 + Ed25519 混合主机密钥（实验性）</h1>
+<p>sudo ssh-keygen -t ml-dsa-44-ed25519 -f /etc/ssh/ssh_host_ml-dsa-44-ed25519_key -N ""</p>
 <p>然后在 <code>sshd_config</code> 中启用：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 启用 ML-DSA 混合主机密钥（10.4+ 实验性）
-HostKey /etc/ssh/ssh_host_ml-dsa-44-ed25519_key
-HostKey /etc/ssh/ssh_host_ed25519_key   # 保留作为兜底
-</code></pre></div>
-
+<h1 id="ml-dsa-104">启用 ML-DSA 混合主机密钥（10.4+ 实验性）</h1>
+<p>HostKey /etc/ssh/ssh_host_ml-dsa-44-ed25519_key
+HostKey /etc/ssh/ssh_host_ed25519_key   # 保留作为兜底</p>
 <blockquote>
 <p><strong>注意</strong>：ML-DSA 签名密钥实验性支持在 10.4 中仍然标记为实验特性，生产环境建议先做充分测试。</p>
 </blockquote>
 <p>第五步：客户端配置（同样重要）</p>
 <p>PQC 需要<strong>服务端和客户端两端</strong>同时支持。在需要连接服务器的客户端机器上：</p>
 <p>5.1 Linux / macOS 客户端</p>
-<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">确认版本</span>
-<span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">V</span>
-
-<span class="err">#</span><span class="w"> </span><span class="n">客户端升级到</span><span class="w"> </span><span class="mf">9.9</span><span class="o">+</span><span class="err">（</span><span class="n">推荐</span><span class="w"> </span><span class="mf">10.0</span><span class="o">+</span><span class="err">）</span>
-<span class="n">sudo</span><span class="w"> </span><span class="n">apt</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">openssh</span><span class="o">-</span><span class="n">client</span><span class="w">   </span><span class="err">#</span><span class="w"> </span><span class="n">Debian</span><span class="o">/</span><span class="n">Ubuntu</span>
-<span class="n">sudo</span><span class="w"> </span><span class="n">dnf</span><span class="w"> </span><span class="k">update</span><span class="w"> </span><span class="n">openssh</span><span class="o">-</span><span class="n">clients</span><span class="w">   </span><span class="err">#</span><span class="w"> </span><span class="n">RHEL</span>
-
-<span class="err">#</span><span class="w"> </span><span class="n">检查连接是否使用</span><span class="w"> </span><span class="n">PQC</span>
-<span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">v</span><span class="w"> </span><span class="k">user</span><span class="nv">@server</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="ss">&quot;kex: algorithm&quot;</span>
-<span class="err">#</span><span class="w"> </span><span class="nl">应输出</span><span class="p">:</span><span class="w"> </span><span class="n">mlkem768x25519</span><span class="o">-</span><span class="n">sha256</span>
-</code></pre></div>
-
+<h1 id="_3">确认版本</h1>
+<p>ssh -V</p>
+<h1 id="99-100">客户端升级到 9.9+（推荐 10.0+）</h1>
+<p>sudo apt install openssh-client   # Debian/Ubuntu
+sudo dnf update openssh-clients   # RHEL</p>
+<h1 id="pqc_1">检查连接是否使用 PQC</h1>
+<p>ssh -v user@server 2&gt;&amp;1 | grep "kex: algorithm"</p>
+<h1 id="mlkem768x25519-sha256">应输出: mlkem768x25519-sha256</h1>
 <p>5.2 Windows 客户端</p>
 <ul>
 <li><strong>OpenSSH for Windows</strong>（Windows 10/11 内置）：需升级到 Windows 2026 年累积更新包中的 OpenSSH 10.x 版本</li>
 <li><strong>Termius</strong>：自 2026 年 Q1 版本起已支持 <code>mlkem768x25519-sha256</code></li>
 </ul>
 <p>第六步：验证部署成功6.1 连接全链路验证</p>
-<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">从客户端执行详细连接</span>
-<span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">vv</span><span class="w"> </span><span class="k">user</span><span class="nv">@server</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;&amp;</span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">grep</span><span class="w"> </span><span class="o">-</span><span class="n">E</span><span class="w"> </span><span class="ss">&quot;(kex|kex_alg|server_host_key)&quot;</span>
-</code></pre></div>
-
+<h1 id="_4">从客户端执行详细连接</h1>
+<p>ssh -vv user@server 2&gt;&amp;1 | grep -E "(kex|kex_alg|server_host_key)"</p>
 <p>期望输出：</p>
-<div class="highlight"><pre><span></span><code><span class="n">debug2</span><span class="o">:</span><span class="w"> </span><span class="n">kex_parse_kexinit</span><span class="o">:</span><span class="w"> </span><span class="n">mlkem768x25519</span><span class="o">-</span><span class="n">sha256</span>
-<span class="n">debug1</span><span class="o">:</span><span class="w"> </span><span class="n">kex</span><span class="o">:</span><span class="w"> </span><span class="n">algorithm</span><span class="o">:</span><span class="w"> </span><span class="n">mlkem768x25519</span><span class="o">-</span><span class="n">sha256</span>
-<span class="n">debug1</span><span class="o">:</span><span class="w"> </span><span class="n">kex</span><span class="o">:</span><span class="w"> </span><span class="n">host</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="n">algorithm</span><span class="o">:</span><span class="w"> </span><span class="n">ssh</span><span class="o">-</span><span class="n">ed25519</span>
-</code></pre></div>
-
+<p>debug2: kex_parse_kexinit: mlkem768x25519-sha256
+debug1: kex: algorithm: mlkem768x25519-sha256
+debug1: kex: host key algorithm: ssh-ed25519</p>
 <p>6.2 强制回退测试（可选）</p>
-<div class="highlight"><pre><span></span><code><span class="err">#</span><span class="w"> </span><span class="n">如果启用了</span><span class="w"> </span><span class="n">RefuseConnection</span><span class="err">，</span><span class="n">测试不支持的客户端行为</span>
-<span class="n">ssh</span><span class="w"> </span><span class="o">-</span><span class="n">oKexAlgorithms</span><span class="o">=</span><span class="n">diffie</span><span class="o">-</span><span class="n">hellman</span><span class="o">-</span><span class="n">group14</span><span class="o">-</span><span class="n">sha256</span><span class="w"> </span><span class="k">user</span><span class="nv">@server</span>
-<span class="err">#</span><span class="w"> </span><span class="n">预期</span><span class="err">：</span><span class="n">连接被拒绝</span>
-</code></pre></div>
-
+<h1 id="refuseconnection">如果启用了 RefuseConnection，测试不支持的客户端行为</h1>
+<p>ssh -oKexAlgorithms=diffie-hellman-group14-sha256 user@server</p>
+<h1 id="_5">预期：连接被拒绝</h1>
 <p>6.3 安全合规审计脚本</p>
 <p>保存为 <code>/usr/local/bin/check_ssh_pqc.sh</code>：</p>
-<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/bash</span>
-<span class="c1"># 检查 OpenSSH 服务器 PQC 合规状态</span>
-
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;=== SSH PQC 合规检查 ===&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
-
-<span class="c1"># 版本检查</span>
-<span class="nv">VERSION</span><span class="o">=</span><span class="k">$(</span>sshd<span class="w"> </span>-V<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;版本: </span><span class="nv">$VERSION</span><span class="s2">&quot;</span>
-
-<span class="c1"># KEX 算法检查</span>
-<span class="nv">KEX</span><span class="o">=</span><span class="k">$(</span>sshd<span class="w"> </span>-T<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>kexalgorithms<span class="k">)</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;密钥交换: </span><span class="nv">$KEX</span><span class="s2">&quot;</span>
-
-<span class="k">if</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEX</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;mlkem768x25519&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ ML-KEM 混合密钥交换已启用&quot;</span>
-<span class="k">else</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;❌ ML-KEM 混合密钥交换未启用&quot;</span>
-<span class="k">fi</span>
-
-<span class="c1"># 主机密钥检查</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;主机密钥:&quot;</span>
-<span class="k">for</span><span class="w"> </span>key<span class="w"> </span><span class="k">in</span><span class="w"> </span>/etc/ssh/ssh_host_*_key.pub<span class="p">;</span><span class="w"> </span><span class="k">do</span>
-<span class="w">    </span><span class="nv">KEYTYPE</span><span class="o">=</span><span class="k">$(</span>ssh-keygen<span class="w"> </span>-lf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$key</span><span class="s2">&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $4}&#39;</span><span class="k">)</span>
-<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;  </span><span class="nv">$key</span><span class="s2"> → </span><span class="nv">$KEYTYPE</span><span class="s2">&quot;</span>
-<span class="k">done</span>
-
-<span class="c1"># 连接测试</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;连接测试 (localhost):&quot;</span>
-<span class="k">if</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEX</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;mlkem768x25519&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<span class="w">    </span>ssh<span class="w"> </span>-oKexAlgorithms<span class="o">=</span>mlkem768x25519-sha256<span class="w"> </span>-oConnectTimeout<span class="o">=</span><span class="m">5</span><span class="w"> </span>localhost<span class="w"> </span><span class="s2">&quot;echo &#39;✅ PQC KEX 连接成功&#39;&quot;</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
-<span class="k">fi</span>
-
-chmod<span class="w"> </span>+x<span class="w"> </span>/usr/local/bin/check_ssh_pqc.sh
-sudo<span class="w"> </span>/usr/local/bin/check_ssh_pqc.sh
-</code></pre></div>
-
+<h1 id="binbash">!/bin/bash</h1>
+<h1 id="openssh-pqc">检查 OpenSSH 服务器 PQC 合规状态</h1>
+<p>echo "=== SSH PQC 合规检查 ==="
+echo ""</p>
+<h1 id="_6">版本检查</h1>
+<p>VERSION=$(sshd -V 2&gt;&amp;1 | head -1)
+echo "版本: $VERSION"</p>
+<h1 id="kex">KEX 算法检查</h1>
+<p>KEX=$(sshd -T | grep kexalgorithms)
+echo "密钥交换: $KEX"</p>
+<p>if echo "$KEX" | grep -q "mlkem768x25519"; then
+echo "✅ ML-KEM 混合密钥交换已启用"
+else
+echo "❌ ML-KEM 混合密钥交换未启用"
+fi</p>
+<h1 id="_7">主机密钥检查</h1>
+<p>echo ""
+echo "主机密钥:"
+for key in /etc/ssh/ssh_host_*_key.pub; do
+KEYTYPE=$(ssh-keygen -lf "$key" 2&gt;/dev/null | awk '{print $4}')
+echo "  $key → $KEYTYPE"
+done</p>
+<h1 id="_8">连接测试</h1>
+<p>echo ""
+echo "连接测试 (localhost):"
+if echo "$KEX" | grep -q "mlkem768x25519"; then
+ssh -oKexAlgorithms=mlkem768x25519-sha256 -oConnectTimeout=5 localhost "echo '✅ PQC KEX 连接成功'" 2&gt;&amp;1
+fi</p>
+<p>chmod +x /usr/local/bin/check_ssh_pqc.sh
+sudo /usr/local/bin/check_ssh_pqc.sh</p>
 <p>第七步：注册到监控系统（Cron + 日志）</p>
 <p>将 PQC 状态检查加入 cron，确保不会因为配置漂移而回退：</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># 每天凌晨 4 点检查一次</span>
-<span class="n">echo</span><span class="w"> </span><span class="s2">&quot;0 4 * * * root /usr/local/bin/check_ssh_pqc.sh &gt; /var/log/ssh_pqc_check.log 2&gt;&amp;1&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">sudo</span><span class="w"> </span><span class="n">tee</span><span class="w"> </span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">cron</span><span class="o">.</span><span class="n">d</span><span class="o">/</span><span class="n">ssh_pqc_check</span>
-</code></pre></div>
-
+<h1 id="4">每天凌晨 4 点检查一次</h1>
+<p>echo "0 4 * * * root /usr/local/bin/check_ssh_pqc.sh &gt; /var/log/ssh_pqc_check.log 2&gt;&amp;1" | sudo tee /etc/cron.d/ssh_pqc_check</p>
 <p>完整部署路线图（可供参考）</p>
-<p>阶段    动作                              时间估计   风险等级</p>
-<hr />
-<p>T0      检查所有服务器 OpenSSH 版本       0.5 天     无
-  T0+1    升级 <code>&lt; 9.9</code> 的服务器至最新       1-2 天     中（需重启服务）
-  T0+3    放宽 KEX 算法（保留兜底）         0.5 天     低
-  T0+10   观察一周，检查兼容性              7 天       无
-  T0+17   收紧 KEX 算法（移除纯经典算法）   0.5 天     中
-  T0+18   开启 RefuseConnection（可选）     0.5 天     高
-  T0+25   实验性 ML-DSA 主机密钥（10.4）    1 天       实验性
-  T0+30   建立定期合规审计                  0.5 天     无</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>动作</th>
+<th>时间估计</th>
+<th>风险等级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T0</td>
+<td>检查所有服务器 OpenSSH 版本</td>
+<td>0.5 天</td>
+<td>无</td>
+</tr>
+<tr>
+<td>T0+1</td>
+<td>升级 <code>&lt; 9.9</code> 的服务器至最新</td>
+<td>1-2 天</td>
+<td>中（需重启服务）</td>
+</tr>
+<tr>
+<td>T0+3</td>
+<td>放宽 KEX 算法（保留兜底）</td>
+<td>0.5 天</td>
+<td>低</td>
+</tr>
+<tr>
+<td>T0+10</td>
+<td>观察一周，检查兼容性</td>
+<td>7 天</td>
+<td>无</td>
+</tr>
+<tr>
+<td>T0+17</td>
+<td>收紧 KEX 算法（移除纯经典算法）</td>
+<td>0.5 天</td>
+<td>中</td>
+</tr>
+<tr>
+<td>T0+18</td>
+<td>开启 RefuseConnection（可选）</td>
+<td>0.5 天</td>
+<td>高</td>
+</tr>
+<tr>
+<td>T0+25</td>
+<td>实验性 ML-DSA 主机密钥（10.4）</td>
+<td>1 天</td>
+<td>实验性</td>
+</tr>
+<tr>
+<td>T0+30</td>
+<td>建立定期合规审计</td>
+<td>0.5 天</td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
 <p>常见问题（FAQ）</p>
 <p><strong>Q: ML-KEM 混合密钥交换的安全性如何？</strong></p>
 <p>A: 它是<strong>混合构造</strong>：<code>mlkem768</code>（后量子 ML-KEM）+ <code>x25519</code>（经典 ECDH）。即使量子计算机未来攻破 ML-KEM，<code>x25519</code> 层仍会提供经典安全保护。反之亦然。这是最保守的安全设计。</p>
 <p><strong>Q: 如果我升级后客户端还是旧版，会无法连接吗？</strong></p>
-<p>A: 取决于你的 <code>KexAlgorithms</code> 设置。如果只保留了混合算法（如 <code>mlkem768x25519-sha256</code>），OpenSSH 9.9 以下版本的客户端确实无法连接。<strong>推荐策略：逐步收紧</strong>------先用宽松列表过渡一段时间。</p>
+<p>A: 取决于你的 <code>KexAlgorithms</code> 设置。如果只保留了混合算法（如 <code>mlkem768x25519-sha256</code>），OpenSSH 9.9 以下版本的客户端确实无法连接。<strong>推荐策略：逐步收紧</strong>——先用宽松列表过渡一段时间。</p>
 <p><strong>Q: OpenSSH 10.4 的 ML-DSA 签名能否替代 SSH 密钥认证？</strong></p>
 <p>A: <strong>不能</strong>。10.4 的 ML-DSA 签名支持仅限于<strong>主机密钥</strong>（host key），用于验证服务器身份。客户端用户的身份认证密钥（public key authentication）仍然使用经典的 RSA/Ed25519 密钥。PQC 用户认证密钥的支持仍在开发中。</p>
 <p>参考文献</p>
@@ -415,22 +457,13 @@ sudo<span class="w"> </span>/usr/local/bin/check_ssh_pqc.sh
 </ol>
 <p>━━━ ━━━ ━━━</p>
 <p>*本文为纯技术操作指南，基于 OpenSSH 官方发布说明、NIST FIPS 203 标准及相关发行版文档编写。操作前请确保已备份 sshd_config 并在非生产环境充分测试。最后更新：2026-07-07。*</p>
-<p>\</p>
-<p>\</p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318557&amp;idx=1&amp;sn=51acf69fe5c850e3506730475b2e49ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2t9ij1lyntlti1ochkw" target="_blank" textvalue="五大战线、三条路径、一项禁令：美国战争部《后量子密码战略》深度解读">五大战线、三条路径、一项禁令：美国战争部《后量子密码战略》深度解读</a></p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316837&amp;idx=1&amp;sn=811ff87ea53ca96437868580614534db&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ltofruyclyd6seudxc" target="_blank" textvalue="招商银行QKD试点：量子金融安全的架构深演与估值逻辑">招商银行QKD试点：量子金融安全的架构深演与估值逻辑</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="spseuqsanlnizmmadc" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316338&amp;idx=1&amp;sn=a113b9f8223acafdbf65d34473a1b833&amp;scene=21#wechat_redirect" linktype="2" localeditorid="kc36prq73j6txu9ds0" target="_blank" textvalue="2026 网络安全十大趋势与实战应对方案">2026 网络安全十大趋势与实战应对方案</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317265&amp;idx=1&amp;sn=26ce286816eca88ec64ce3dc452ba5ce&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9ls27tkp37pjuoigem8" target="_blank" textvalue="从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进">从 SNI 泄漏到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315796&amp;idx=1&amp;sn=faf869aa6cbafee9b8bc25024b21410b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5oyx8mgr8wou0wrs4cg" target="_blank" textvalue="零信任安全架构全景解析：从概念到落地的完整指南（2026版）">零信任安全架构全景解析：从概念到落地的完整指南（2026版）</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318409&amp;idx=1&amp;sn=db4a485da0365c8a3a2b6bd9beaae9d6&amp;scene=21#wechat_redirect" linktype="2" localeditorid="aox8vafla9dixfwdmo" target="_blank" textvalue="libssh2 漏洞深度解读：SSH 库的“重症监护室”时刻">libssh2 漏洞深度解读：SSH 库的"重症监护室"时刻</a>\</p>
-<p>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316837&amp;idx=1&amp;sn=811ff87ea53ca96437868580614534db&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ltofruyclyd6seudxc" target="_blank" textvalue="招商银行QKD试点：量子金融安全的架构深演与估值逻辑">招商银行QKD试点：量子金融安全的架构深演与估值逻辑</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="spseuqsanlnizmmadc" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316338&amp;idx=1&amp;sn=a113b9f8223acafdbf65d34473a1b833&amp;scene=21#wechat_redirect" linktype="2" localeditorid="kc36prq73j6txu9ds0" target="_blank" textvalue="2026 网络安全十大趋势与实战应对方案">2026 网络安全十大趋势与实战应对方案</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317265&amp;idx=1&amp;sn=26ce286816eca88ec64ce3dc452ba5ce&amp;scene=21#wechat_redirect" linktype="2" localeditorid="9ls27tkp37pjuoigem8" target="_blank" textvalue="从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进">从 SNI 泄漏到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315796&amp;idx=1&amp;sn=faf869aa6cbafee9b8bc25024b21410b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5oyx8mgr8wou0wrs4cg" target="_blank" textvalue="零信任安全架构全景解析：从概念到落地的完整指南（2026版）">零信任安全架构全景解析：从概念到落地的完整指南（2026版）</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318409&amp;idx=1&amp;sn=db4a485da0365c8a3a2b6bd9beaae9d6&amp;scene=21#wechat_redirect" linktype="2" localeditorid="aox8vafla9dixfwdmo" target="_blank" textvalue="libssh2 漏洞深度解读：SSH 库的“重症监护室”时刻">libssh2 漏洞深度解读：SSH 库的"重症监护室"时刻</a></p>
     </div>
     <div class="src">
       <div class="txt">

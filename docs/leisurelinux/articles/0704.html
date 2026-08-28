@@ -165,61 +165,95 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <h2 id="section-path-to-node3-pm-slice0-0">{#section path-to-node="3" pm-slice="0 0 []"}</h2>
-<p><strong>导读：</strong> 当一台原本工作正常的 PC 突然有线断网，作为网络工程师，我们的第一反应通常是检查 DHCP。但如果是在一个混合了树莓派（Pi）等 Linux 设备、且正在折腾 IPv6 的环境下，问题的根源可能远比你想象的深。</p>
-<hr />
+<p><strong>导读：</strong> 当一台原本工作正常的 PC 突然有线断网，作为网络工程师，我们的第一反应通常是检查 DHCP。但如果是在一个混合了树莓派（Pi）等 Linux 设备、且正在折腾 IPv6 的环境下，问题的根源可能远比你想象的深。</p>
 <h3 id="一-核心前传什么是-ra路由通告" path-to-node="6">一、 核心前传：什么是 RA（路由通告）？</h3>
-<p>在 IPv4 世界，终端获取网关信息主要靠 DHCP。但在 IPv6 世界，引入了更优雅（也更复杂）的 <strong>SLAAC（无状态地址自动配置）</strong>。</p>
+<p>在 IPv4 世界，终端获取网关信息主要靠 DHCP。但在 IPv6 世界，引入了更优雅（也更复杂）的 <strong>SLAAC（无状态地址自动配置）</strong>。</p>
 <h4 id="ra-的原理" path-to-node="8">1. RA 的原理</h4>
-<p><strong>RA (Router Advertisement)</strong> 是 IPv6 邻居发现协议（NDP）的一部分。路由器会定期向局域网发送多播包，大声告诉所有设备："我是这个网段的网关，请根据我发布的前缀生成你们的 IP。"</p>
-<hr />
+<p><strong>RA (Router Advertisement)</strong> 是 IPv6 邻居发现协议（NDP）的一部分。路由器会定期向局域网发送多播包，大声告诉所有设备："我是这个网段的网关，请根据我发布的前缀生成你们的 IP。"</p>
 <h3 id="二-案情回放消失的-ip-地址" path-to-node="11">二、 案情回放：消失的 IP 地址</h3>
 <p>某局域网内，一台"无头" Windows PC 突然在 WOL 唤醒后无法获取 IP，路由器显示离线。排查发现，罪魁祸首竟是旁边的树莓派配置了特殊的 IPv6 参数，导致 Windows 产生了<strong>网关竞争</strong>，误把树莓派当成了通往公网的出口。</p>
-<hr />
 <h3 id="三-核心方案如何优雅且安全地配置-pi" path-to-node="14">三、 核心方案：如何优雅且安全地配置 Pi？</h3>
 <p>我们要让 Pi 实现地址固定（Token），同时关闭任何可能干扰 Windows 的"网关行为"。</p>
 <h4 id="networkmanager-侧锁定-token" path-to-node="16">1. NetworkManager 侧：锁定 Token</h4>
 <p>执行以下步骤，将地址生成权从内核移交给管理程序：</p>
-<div class="highlight"><pre><span></span><code><span class="nx">Bash</span><span class="err">#</span><span class="w"> </span><span class="mi">1</span><span class="p">.</span><span class="w"> </span><span class="nx">切换模式为</span><span class="w"> </span><span class="nx">eui64</span><span class="w"> </span><span class="p">(</span><span class="nx">设置</span><span class="w"> </span><span class="nx">Token</span><span class="w"> </span><span class="nx">的前提</span><span class="p">)</span><span class="nx">sudo</span><span class="w"> </span><span class="nx">nmcli</span><span class="w"> </span><span class="nx">connection</span><span class="w"> </span><span class="nx">modify</span><span class="w"> </span><span class="s">&quot;Wired connection 1&quot;</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="kd">addr</span><span class="o">-</span><span class="nx">gen</span><span class="o">-</span><span class="nx">mode</span><span class="w"> </span><span class="nx">eui64</span><span class="err">#</span><span class="w"> </span><span class="mi">2</span><span class="p">.</span><span class="w"> </span><span class="nx">设置固定后缀</span><span class="err">（</span><span class="nx">例如</span><span class="w"> </span><span class="o">::</span><span class="mi">123</span><span class="err">）</span><span class="nx">sudo</span><span class="w"> </span><span class="nx">nmcli</span><span class="w"> </span><span class="nx">connection</span><span class="w"> </span><span class="nx">modify</span><span class="w"> </span><span class="s">&quot;Wired connection 1&quot;</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">token</span><span class="w"> </span><span class="o">::</span><span class="mi">123</span><span class="err">#</span><span class="w"> </span><span class="mi">3</span><span class="p">.</span><span class="w"> </span><span class="nx">重启服务生效sudo</span><span class="w"> </span><span class="nx">systemctl</span><span class="w"> </span><span class="nx">restart</span><span class="w"> </span><span class="nx">NetworkManager</span>
+<div class="highlight"><pre><span></span><code><span class="nx">Bash</span><span class="err">#</span><span class="w"> </span><span class="mi">1</span><span class="p">.</span><span class="w"> </span><span class="nx">切换模式为</span><span class="w"> </span><span class="nx">eui64</span><span class="w"> </span><span class="p">(</span><span class="nx">设置</span><span class="w"> </span><span class="nx">Token</span><span class="w"> </span><span class="nx">的前提</span><span class="p">)</span><span class="nx">sudo</span><span class="w"> </span><span class="nx">nmcli</span><span class="w"> </span><span class="nx">connection</span><span class="w"> </span><span class="nx">modify</span><span class="w"> </span><span class="s">&quot;Wired connection 1&quot;</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="kd">addr</span><span class="o">-</span><span class="nx">gen</span><span class="o">-</span><span class="nx">mode</span><span class="w"> </span><span class="nx">eui64</span><span class="err">#</span><span class="w"> </span><span class="mi">2</span><span class="p">.</span><span class="w"> </span><span class="nx">设置固定后缀</span><span class="err">（</span><span class="nx">例如</span><span class="w"> </span><span class="o">::</span><span class="mi">123</span><span class="err">）</span><span class="nx">sudo</span><span class="w"> </span><span class="nx">nmcli</span><span class="w"> </span><span class="nx">connection</span><span class="w"> </span><span class="nx">modify</span><span class="w"> </span><span class="s">&quot;Wired connection 1&quot;</span><span class="w"> </span><span class="nx">ipv6</span><span class="p">.</span><span class="nx">token</span><span class="w"> </span><span class="o">::</span><span class="mi">123</span><span class="err">#</span><span class="w"> </span><span class="mi">3</span><span class="p">.</span><span class="w"> </span><span class="nx">重启服务生效sudo</span><span class="w"> </span><span class="nx">systemctl</span><span class="w"> </span><span class="nx">restart</span><span class="w"> </span><span class="nx">NetworkManager</span>
 </code></pre></div>
 
 <div class="highlight"><pre><span></span><code>
 </code></pre></div>
 
 <h4 id="内核-sysctl-侧正确配置-ra-行为" path-to-node="19">2. 内核 sysctl 侧：正确配置 RA 行为</h4>
-<p>这是文章最关键的部分！我们需要在 <code index-in-node="17" path-to-node="20">/etc/sysctl.conf</code> 中精准定义 Pi 如何处理 RA 报文，从而避免干扰 Windows：</p>
+<p>这是文章最关键的部分！我们需要在 <code index-in-node="17" path-to-node="20">/etc/sysctl.conf</code> 中精准定义 Pi 如何处理 RA 报文，从而避免干扰 Windows：</p>
 <div class="highlight"><pre><span></span><code>Bash# 彻底关闭转发，确保 Pi 不会伪装成路由器net.ipv6.conf.all.forwarding=0# 核心配置：定义 RA 接受行为# 0: 不接受 RA (手动静态 IP)# 1: 接受 RA (当 forwarding 为 0 时默认开启)# 2: 强制接受 RA (即使开启转发也接受，这往往是干扰的源头)net.ipv6.conf.eth0.accept_ra=1# 禁用发送重定向，防止 Pi 告诉 Windows “请走我这里”net.ipv4.conf.eth0.send_redirects=0net.ipv6.conf.eth0.accept_redirects=0
 </code></pre></div>
 
 <div class="highlight"><pre><span></span><code>
 </code></pre></div>
 
-<p>执行 <code index-in-node="3" path-to-node="22">sudo sysctl -p</code> 即可生效。</p>
-<hr />
+<p>执行 <code index-in-node="3" path-to-node="22">sudo sysctl -p</code> 即可生效。</p>
 <h3 id="section-1-path-to-node24">{#section-1 path-to-node="24"}</h3>
 <h3 id="四-深度复盘addr-gen-mode-与地址属性对照" path-to-node="24">四、 深度复盘：addr-gen-mode 与地址属性对照</h3>
 <h4 id="模式选择-addr-gen-mode" path-to-node="25"><strong>1. 模式选择 (addr-gen-mode)</strong></h4>
-<p><strong>模式</strong>                                                                                     <strong>逻辑说明</strong>                                          <strong>适用场景</strong></p>
-<hr />
-<p>[<strong><code index-in-node="0" path-to-node="26,1,0,0">stable-privacy</code></strong>]{path-to-node="26,1,0,0"}   [默认随机后缀，保护隐私。]{path-to-node="26,1,1,0"}   [普通终端。]{path-to-node="26,1,2,0"}
-  [<strong><code index-in-node="0" path-to-node="26,2,0,0">eui64</code></strong>]{path-to-node="26,2,0,0"}            [<strong>基于用户定义生成。</strong>]{path-to-node="26,2,1,0"}     [<strong>设置 Token 的必备模式。</strong>]{path-to-node="26,2,2,0"}</p>
-<h4 id="地址属性全解析-ip--6-a-s" path-to-node="27"><strong>2. 地址属性全解析 (<code index-in-node="12" path-to-node="27">ip -6 a s</code>)</strong></h4>
-<p><strong>属性关键字</strong>                                 <strong>状态解读</strong>                                    <strong>网工视角</strong></p>
-<hr />
-<p>[<strong>scope global</strong>]{path-to-node="28,1,0,0"}    [全球唯一地址。]{path-to-node="28,1,1,0"}       [可以上公网。]{path-to-node="28,1,2,0"}
-  [<strong>dynamic</strong>]{path-to-node="28,2,0,0"}         [随路由器前缀更新。]{path-to-node="28,2,1,0"}   [兼具静态的稳点和动态的灵活。]{path-to-node="28,2,2,0"}
-  [<strong>mngtmpaddr</strong>]{path-to-node="28,3,0,0"}      [隐私地址"母版"。]{path-to-node="28,3,1,0"}     [负责生成随机临时后缀。]{path-to-node="28,3,2,0"}
-  [<strong>noprefixroute</strong>]{path-to-node="28,4,0,0"}   [路由权移交给 NM。]{path-to-node="28,4,1,0"}    [防止内核"乱跑"导致断网。]{path-to-node="28,4,2,0"}</p>
-<hr />
+<table>
+<thead>
+<tr>
+<th><strong>模式</strong></th>
+<th><strong>逻辑说明</strong></th>
+<th><strong>适用场景</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>[<strong><code index-in-node="0" path-to-node="26,1,0,0">stable-privacy</code></strong>]{path-to-node="26,1,0,0"}</td>
+<td>[默认随机后缀，保护隐私。]{path-to-node="26,1,1,0"}</td>
+<td>[普通终端。]{path-to-node="26,1,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong><code index-in-node="0" path-to-node="26,2,0,0">eui64</code></strong>]{path-to-node="26,2,0,0"}</td>
+<td>[<strong>基于用户定义生成。</strong>]{path-to-node="26,2,1,0"}</td>
+<td>[<strong>设置 Token 的必备模式。</strong>]{path-to-node="26,2,2,0"}</td>
+</tr>
+</tbody>
+</table>
+<h4 id="地址属性全解析-ip——6-a-s" path-to-node="27"><strong>2. 地址属性全解析 (<code index-in-node="12" path-to-node="27">ip -6 a s</code>)</strong></h4>
+<table>
+<thead>
+<tr>
+<th><strong>属性关键字</strong></th>
+<th><strong>状态解读</strong></th>
+<th><strong>网工视角</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>[<strong>scope global</strong>]{path-to-node="28,1,0,0"}</td>
+<td>[全球唯一地址。]{path-to-node="28,1,1,0"}</td>
+<td>[可以上公网。]{path-to-node="28,1,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong>dynamic</strong>]{path-to-node="28,2,0,0"}</td>
+<td>[随路由器前缀更新。]{path-to-node="28,2,1,0"}</td>
+<td>[兼具静态的稳点和动态的灵活。]{path-to-node="28,2,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong>mngtmpaddr</strong>]{path-to-node="28,3,0,0"}</td>
+<td>[隐私地址"母版"。]{path-to-node="28,3,1,0"}</td>
+<td>[负责生成随机临时后缀。]{path-to-node="28,3,2,0"}</td>
+</tr>
+<tr>
+<td>[<strong>noprefixroute</strong>]{path-to-node="28,4,0,0"}</td>
+<td>[路由权移交给 NM。]{path-to-node="28,4,1,0"}</td>
+<td>[防止内核"乱跑"导致断网。]{path-to-node="28,4,2,0"}</td>
+</tr>
+</tbody>
+</table>
 <h3 id="section-2-path-to-node30">{#section-2 path-to-node="30"}</h3>
 <h3 id="五-总结网工的排查闭环" path-to-node="30">五、 总结：网工的排查闭环</h3>
-<p>这次故障的本质，是 <strong>Linux 端非标准的 IPv6 配置误导了局域网内 Windows 的网关判定</strong>。</p>
-<p>通过将地址生成逻辑从内核移交给 NetworkManager，并配合 <code index-in-node="35" path-to-node="32">eui64</code> 模式下的 Token 设置，同时在内核层关闭 <code index-in-node="64" path-to-node="32">forwarding</code> 并锁定 <code index-in-node="79" path-to-node="32">accept_ra=1</code>，我们成功实现了"地址固定"与"网络安全"的平衡。</p>
-<hr />
+<p>这次故障的本质，是 <strong>Linux 端非标准的 IPv6 配置误导了局域网内 Windows 的网关判定</strong>。</p>
+<p>通过将地址生成逻辑从内核移交给 NetworkManager，并配合 <code index-in-node="35" path-to-node="32">eui64</code> 模式下的 Token 设置，同时在内核层关闭 <code index-in-node="64" path-to-node="32">forwarding</code> 并锁定 <code index-in-node="79" path-to-node="32">accept_ra=1</code>，我们成功实现了"地址固定"与"网络安全"的平衡。</p>
 <p><strong>想了解更多 IPv6 实战技巧？关注我们，回复"IPv6"获取网卡参数调优备忘单！</strong></p>
-<hr />
 <h3 id="section-3-path-to-node36">{#section-3 path-to-node="36"}</h3>
 <h3 id="section-4-path-to-node36">{#section-4 path-to-node="36"}</h3>
-<p>\</p>
     </div>
     <div class="src">
       <div class="txt">

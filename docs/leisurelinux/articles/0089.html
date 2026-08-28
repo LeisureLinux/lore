@@ -171,10 +171,8 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>一、引言：大模型推理的\"内存墙\"困境</p>
 <p>自 GPT 架构成为主流以来，大语言模型的生成过程面临一个根本性的瓶颈：<strong>自回归解码</strong>。</p>
 <p>所谓自回归，就是模型一次只能生成一个 token（词元），每生成一个 token，就要把上一轮的输出作为输入，重新计算一次。这个过程用数学语言描述就是：</p>
-<div class="highlight"><pre><span></span><code>P(y₁, y₂, ..., yₜ) = P(y₁) · P(y₂|y₁) · P(y₃|y₁,y₂) · ... · P(yₜ|y₁,...,yₜ₋₁)
-</code></pre></div>
-
-<p>这是典型的<strong>串行瓶颈</strong>------输出长度与延迟呈线性关系。写一篇文章要生成 1000 个 token，GPU 就得跑 1000 次前向传播。</p>
+<p>P(y₁, y₂, ..., yₜ) = P(y₁) · P(y₂|y₁) · P(y₃|y₁,y₂) · ... · P(yₜ|y₁,...,yₜ₋₁)</p>
+<p>这是典型的<strong>串行瓶颈</strong>——输出长度与延迟呈线性关系。写一篇文章要生成 1000 个 token，GPU 就得跑 1000 次前向传播。</p>
 <p>更重要的是，<strong>大模型推理本质上是内存密集型的，而非计算密集型的</strong>。每次生成一个 token，GPU 绝大部分时间花在从 HBM（高带宽内存）重新加载模型权重上，而不是在做真正有用的计算。业界称之为 <strong>\"memory wall\"（内存墙）</strong>。</p>
 <p>为了解决这个问题，学术和工业界提出了多种方案：</p>
 <ul>
@@ -187,12 +185,12 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>二、推测解码：DSpark 的理论基础2.1 核心思想</p>
 <p>推测解码的核心思想非常直观：<strong>找一个轻量的\"草稿模型\"（draft model）来快速生成一段候选 token，然后用主模型（target model）并行验证这些候选。</strong></p>
 <p>如果草稿模型猜得准，主模型一次前向传播就能接受多个 token，而不是逐 token 生成。</p>
-<p>这个过程可以保证<strong>无损加速</strong>------无论草稿模型猜对多少，最终输出的概率分布和逐 token 生成完全一致。草稿模型猜错了，主模型纠正回来。</p>
+<p>这个过程可以保证<strong>无损加速</strong>——无论草稿模型猜对多少，最终输出的概率分布和逐 token 生成完全一致。草稿模型猜错了，主模型纠正回来。</p>
 <p>2.2 传统的局限性</p>
 <p>业内已有的推测解码方案（如 Eagle、Medusa、Self-Speculative Decoding）各有短板：</p>
 <ol>
 <li><strong>自回归草稿</strong>（如 Eagle 系列）：草稿模型本身也是自回归的，逐 token 生成，加速比受限于小模型的速度</li>
-<li><strong>并行草稿</strong>（如 DFlash）：草稿模型一步生成所有候选 token，速度快，但存在<strong>后缀衰减（suffix decay）</strong>问题------生成序列越长，末尾 token 的准确率断崖式下降</li>
+<li><strong>并行草稿</strong>（如 DFlash）：草稿模型一步生成所有候选 token，速度快，但存在<strong>后缀衰减（suffix decay）</strong>问题——生成序列越长，末尾 token 的准确率断崖式下降</li>
 <li><strong>静态验证</strong>：几乎所有方案都用固定的验证长度，高负载时浪费算力，低负载时加速不够</li>
 </ol>
 <p><strong>DSpark 的三大创新，正是对症下药。</strong></p>
@@ -201,63 +199,154 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>这是 DSpark 最核心的创新。</p>
 <p>传统并行草稿模型的问题是：草稿块内的 token 之间完全没有依赖关系，第 5 个 token 不知道第 4 个 token 猜了什么，导致长序列后段准确率暴跌。</p>
 <p>DSpark 的做法是：<strong>保留并行草稿的高速主干结构，但额外添加一个轻量的串行头部（sequential head）</strong>。</p>
-<div class="highlight"><pre><span></span><code>传统并行草稿：      [token_1, token_2, token_3, token_4, token_5]
-                    ↑独立预测，没有依赖关系，后缀质量差
-
-DSpark 半自回归：   [token_1 ← token_2 ← token_3 ← token_4 ← token_5]
-                    ↑并行主干 + 轻量串行头，每个 token 参考前一个
-</code></pre></div>
-
+<p>传统并行草稿：      [token_1, token_2, token_3, token_4, token_5]
+↑独立预测，没有依赖关系，后缀质量差</p>
+<p>DSpark 半自回归：   [token_1 ← token_2 ← token_3 ← token_4 ← token_5]
+↑并行主干 + 轻量串行头，每个 token 参考前一个</p>
 <p>这个串行头只引入极少的额外计算量（一个单层注意力或小 MLP），但大幅改善了草稿块的内部一致性。据论文报告，DSpark 的草稿 token 接受率比 DFlash 提升了 <strong>16%\~30%</strong>。</p>
 <p>3.2 置信度调度验证（Confidence-Scheduled Verification）</p>
 <p>这是一个<strong>动态修剪</strong>机制。</p>
 <p>DSpark 为每个草稿 token 配了一个<strong>置信度头部（confidence head）</strong>，用来预测这个 token 被主模型接受的概率。同时，一个<strong>硬件感知前缀调度器（Hardware-Aware Prefix Scheduler）</strong> 根据 GPU 实时的计算负载和显存状态，动态调整验证长度。</p>
-<div class="highlight"><pre><span></span><code>高负载时：只验证置信度高的 prefix，砍掉&quot;注定被拒&quot;的 tail
-低负载时：验证完整的草稿块，利用空闲算力
-</code></pre></div>
-
+<p>高负载时：只验证置信度高的 prefix，砍掉"注定被拒"的 tail
+低负载时：验证完整的草稿块，利用空闲算力</p>
 <p>这个策略的效果非常显著：<strong>聊天场景下的 token 接受率从 45% 跃升至 95% 以上</strong>。换句话说，在绝大多数请求中，草稿模型的猜测几乎全部被主模型接受。</p>
 <p>3.3 零开销调度（Zero-Overhead Scheduling, ZOS）</p>
-<p>调度本身也是有开销的------评估置信度、决策验证长度、调度 GPU 资源，这些步骤如果串行执行，本身就会引入延迟。</p>
+<p>调度本身也是有开销的——评估置信度、决策验证长度、调度 GPU 资源，这些步骤如果串行执行，本身就会引入延迟。</p>
 <p>ZOS 的解决思路是：<strong>提前一个步骤异步运行调度计算</strong>。</p>
-<div class="highlight"><pre><span></span><code>正常流程：   生成草稿 → [等待调度决策] → 验证
-ZOS 流程：  [异步调度] + 生成草稿 → 验证（调度已就绪）
-</code></pre></div>
-
+<p>正常流程：   生成草稿 → [等待调度决策] → 验证
+ZOS 流程：  [异步调度] + 生成草稿 → 验证（调度已就绪）</p>
 <p>通过利用历史预测来预判下一轮的调度策略，ZOS 使得调度延迟对主流程完全不可见，实现了<strong>零额外开销的连续处理</strong>。</p>
 <p>━━━ ━━━ ━━━</p>
 <p>四、性能数据：不只是理论4.1 生成速度提升</p>
 <p>DeepSeek 官方公布的数据如下（与之前的 MTP-1 生产基线对比，匹配系统容量）：</p>
-<p>模型                场景             单用户速度提升</p>
-<hr />
-<p>DeepSeek-V4-Flash   聊天/代码/数学   <strong>60%\~85%</strong>
-  DeepSeek-V4-Pro     聊天/代码/数学   <strong>57%\~78%</strong></p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>场景</th>
+<th>单用户速度提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSeek-V4-Flash</td>
+<td>聊天/代码/数学</td>
+<td><strong>60%\~85%</strong></td>
+</tr>
+<tr>
+<td>DeepSeek-V4-Pro</td>
+<td>聊天/代码/数学</td>
+<td><strong>57%\~78%</strong></td>
+</tr>
+</tbody>
+</table>
 <p>4.2 系统吞吐量提升</p>
 <p>更惊艳的是高并发场景下的吞吐量表现（在不同 SLA 目标下）：</p>
 <p><strong>DeepSeek-V4-Flash：</strong></p>
-<p>SLA 目标            吞吐量提升</p>
-<hr />
-<p>80 tokens/s/user    <strong>51%</strong>
-  120 tokens/s/user   <strong>661%</strong>（严格 SLA）</p>
+<table>
+<thead>
+<tr>
+<th>SLA 目标</th>
+<th>吞吐量提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>80 tokens/s/user</td>
+<td><strong>51%</strong></td>
+</tr>
+<tr>
+<td>120 tokens/s/user</td>
+<td><strong>661%</strong>（严格 SLA）</td>
+</tr>
+</tbody>
+</table>
 <p><strong>DeepSeek-V4-Pro：</strong></p>
-<p>SLA 目标           吞吐量提升</p>
-<hr />
-<p>35 tokens/s/user   <strong>52%</strong>
-  50 tokens/s/user   <strong>406%</strong></p>
-<p>这一数据说明了 DSpark 在高负载下的巨大优势------<strong>LLM 推理的瓶颈不是算力总量，而是算力利用率</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>SLA 目标</th>
+<th>吞吐量提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>35 tokens/s/user</td>
+<td><strong>52%</strong></td>
+</tr>
+<tr>
+<td>50 tokens/s/user</td>
+<td><strong>406%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>这一数据说明了 DSpark 在高负载下的巨大优势——<strong>LLM 推理的瓶颈不是算力总量，而是算力利用率</strong>。</p>
 <p>4.3 跨模型的通用性</p>
 <p>DSpark 并非 DeepSeek 系列独享。论文证明了它在 Qwen3、Gemma 等开源模型上同样有显著的 token 接受率提升，表明其架构不依赖于特定模型的结构。</p>
 <p>━━━ ━━━ ━━━</p>
 <p>五、算法对比：DSpark vs 其他方案</p>
-<p>特性                传统自回归   Eagle/Eagle3   DFlash     <strong>DSpark</strong></p>
-<hr />
-<p>草稿模型            ---          自回归         并行       <strong>半自回归</strong>
-  后缀衰减            ---          无             严重       <strong>显著缓解</strong>
-  验证策略            ---          固定长度       固定长度   <strong>置信度动态调度</strong>
-  调度开销            ---          有             有         <strong>ZOS 零开销</strong>
-  单次接受 token 数   1            平均 3-4       平均 4-5   <strong>平均 5-7</strong>
-  代码/数学场景       ---          较好           好         <strong>优秀</strong>
-  聊天场景接受率      ---          \~50%          \~45%      <strong>> 95%</strong></p>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>传统自回归</th>
+<th>Eagle/Eagle3</th>
+<th>DFlash</th>
+<th><strong>DSpark</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>草稿模型</td>
+<td>——</td>
+<td>自回归</td>
+<td>并行</td>
+<td><strong>半自回归</strong></td>
+</tr>
+<tr>
+<td>后缀衰减</td>
+<td>——</td>
+<td>无</td>
+<td>严重</td>
+<td><strong>显著缓解</strong></td>
+</tr>
+<tr>
+<td>验证策略</td>
+<td>——</td>
+<td>固定长度</td>
+<td>固定长度</td>
+<td><strong>置信度动态调度</strong></td>
+</tr>
+<tr>
+<td>调度开销</td>
+<td>——</td>
+<td>有</td>
+<td>有</td>
+<td><strong>ZOS 零开销</strong></td>
+</tr>
+<tr>
+<td>单次接受 token 数</td>
+<td>1</td>
+<td>平均 3-4</td>
+<td>平均 4-5</td>
+<td><strong>平均 5-7</strong></td>
+</tr>
+<tr>
+<td>代码/数学场景</td>
+<td>——</td>
+<td>较好</td>
+<td>好</td>
+<td><strong>优秀</strong></td>
+</tr>
+<tr>
+<td>聊天场景接受率</td>
+<td>——</td>
+<td>\~50%</td>
+<td>\~45%</td>
+<td><strong>> 95%</strong></td>
+</tr>
+</tbody>
+</table>
 <p>━━━ ━━━ ━━━</p>
 <p>六、场景应用6.1 大模型 API 服务</p>
 <p>对于提供 API 的服务商，DSpark 最直接的收益是<strong>成本降低</strong>。同等硬件可服务更多用户（50%\~660% 吞吐量提升），或给用户更快的响应。</p>
@@ -269,7 +358,7 @@ ZOS 流程：  [异步调度] + 生成草稿 → 验证（调度已就绪）
 <p>对于推理能力受限的边缘场景，可以利用 DSpark 的机制在服务器端做加速，减少边缘端的等待时间。</p>
 <p>━━━ ━━━ ━━━</p>
 <p>七、DeepSpec：让推测解码变得可训练、可复用</p>
-<p>DSpark 不仅开源了推理框架，还发布了 <strong>DeepSpec</strong>------一个完整的、MIT 协议的训练和评估代码栈。</p>
+<p>DSpark 不仅开源了推理框架，还发布了 <strong>DeepSpec</strong>——一个完整的、MIT 协议的训练和评估代码栈。</p>
 <p>DeepSpec 提供：</p>
 <ul>
 <li><strong>标准化的数据准备流程</strong></li>
@@ -283,7 +372,7 @@ ZOS 流程：  [异步调度] + 生成草稿 → 验证（调度已就绪）
 <p>八、总结与展望</p>
 <p>DeepSeek DSpark 的意义不在于它有多么复杂的新算法，而在于它<strong>用系统工程的思维解决了大模型推理的根本瓶颈</strong>。</p>
 <p>从半自回归生成到置信度调度验证，再到零开销调度，DSpark 的每一步都在做同一件事：<strong>让来之不易的 GPU 算力尽可能多地花在有效计算上，而不是空转或浪费</strong>。</p>
-<p>在模型能力日趋同质化的今天，推理效率已成为决定竞争力的关键------<strong>谁能让用户体验到\"速度快还不出错\"的服务，谁就能在 AI 落地的新阶段抢占先机。</strong></p>
+<p>在模型能力日趋同质化的今天，推理效率已成为决定竞争力的关键——<strong>谁能让用户体验到\"速度快还不出错\"的服务，谁就能在 AI 落地的新阶段抢占先机。</strong></p>
 <p>DSpark 的开源，也让整个行业的推理成本进一步降低。</p>
 <p>━━━ ━━━ ━━━</p>
 <p>参考文献</p>
@@ -301,15 +390,10 @@ ZOS 流程：  [异步调度] + 生成草稿 → 验证（调度已就绪）
 </ol>
 <p>━━━ ━━━ ━━━</p>
 <p>*欢迎关注 LeisureLinux，获取更多深度技术解读。*</p>
-<p>\</p>
-<p>\</p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318239&amp;idx=1&amp;sn=f593b5378976652c4814ac0d4829ca7f&amp;scene=21#wechat_redirect" linktype="2" localeditorid="4g3igrp27gujdmr1wxs" target="_blank" textvalue="韬定律：后摩尔时代，中国第一次定义了半导体规则">韬定律：后摩尔时代，中国第一次定义了半导体规则</a></p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316755&amp;idx=1&amp;sn=39c27b15096e75cc58b4e3605b693ce3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6ozzqh08rw2btl49340" target="_blank" textvalue="从 AlphaZero 到 AlphaEvolve：AI 算法进化的三个纪元">从 AlphaZero 到 AlphaEvolve：AI 算法进化的三个纪元</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318246&amp;idx=1&amp;sn=a3e7a95488d91d7898d6fc8b71bcf71c&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3f2iwkkmr7xmxkgdfk" target="_blank" textvalue="AWS Kiro 深度解析：亚马逊的 Agentic IDE 如何重新定义软件开发？">AWS Kiro 深度解析：亚马逊的 Agentic IDE 如何重新定义软件开发？</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317454&amp;idx=1&amp;sn=f8f6901d530b2a8f9664589e9913d4bf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="47ei1duza38lvhzb4" target="_blank" textvalue="Google DeepMind 论文论证：大语言模型永远不会产生意识">Google DeepMind 论文论证：大语言模型永远不会产生意识</a>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316755&amp;idx=1&amp;sn=39c27b15096e75cc58b4e3605b693ce3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6ozzqh08rw2btl49340" target="_blank" textvalue="从 AlphaZero 到 AlphaEvolve：AI 算法进化的三个纪元">从 AlphaZero 到 AlphaEvolve：AI 算法进化的三个纪元</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318246&amp;idx=1&amp;sn=a3e7a95488d91d7898d6fc8b71bcf71c&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3f2iwkkmr7xmxkgdfk" target="_blank" textvalue="AWS Kiro 深度解析：亚马逊的 Agentic IDE 如何重新定义软件开发？">AWS Kiro 深度解析：亚马逊的 Agentic IDE 如何重新定义软件开发？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317454&amp;idx=1&amp;sn=f8f6901d530b2a8f9664589e9913d4bf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="47ei1duza38lvhzb4" target="_blank" textvalue="Google DeepMind 论文论证：大语言模型永远不会产生意识">Google DeepMind 论文论证：大语言模型永远不会产生意识</a></p>
     </div>
     <div class="src">
       <div class="txt">

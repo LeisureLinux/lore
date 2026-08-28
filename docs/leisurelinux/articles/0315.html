@@ -165,10 +165,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <p>针对近期披露的 <strong>CVE-2026-34040</strong>，该漏洞主要存在于 Docker 守护进程（dockerd）的 API 鉴权插件（Authorization Plugins）机制中。作为架构师或安全分析师，我们需要从底层逻辑、攻击链路及修复架构三个维度进行深入剖析。</p>
-<hr />
 <p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsswCTG4licHASs7IvwWfPQhBJnVUfDXbU1fu56DcpGMbuWvfGBOWibsLhesdGtiaYehbfajP74QPC8BPKZJSKxS4dfHwADhIRqLBQ/640?wx_fmt=jpeg" /></p>
 <h3 id="一-核心漏洞成因api-响应逻辑的时序陷阱" path-to-node="3">一、 核心漏洞成因：API 响应逻辑的"时序陷阱"</h3>
-<p>Docker 允许通过第三方插件（AuthZ）对 API 请求进行细粒度控制。传统的鉴权流程应该是<strong>完全阻塞式</strong>的，即：\
+<p>Docker 允许通过第三方插件（AuthZ）对 API 请求进行细粒度控制。传统的鉴权流程应该是<strong>完全阻塞式</strong>的，即：
 <code index-in-node="59" path-to-node="4">请求 -&gt; AuthZ 插件验证 -&gt; [通过] -&gt; Docker Engine 执行</code>。</p>
 <p><strong>CVE-2026-34040</strong> 的根本问题在于 Docker API 在处理特定的 <strong>HTTP Hijacking（协议升级/劫持）</strong> 请求时，未能正确同步 AuthZ 插件的审批状态。</p>
 <ul>
@@ -179,7 +178,6 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>绕过逻辑：</strong> 攻击者利用高并发请求或特定构造的畸形报文，使插件处理出现延迟。此时，API 层的状态机误认为连接已合法建立，从而允许后续载荷绕过鉴权直接透传至容器引擎。</p>
 </li>
 </ul>
-<hr />
 <h3 id="section-path-to-node8">{#section path-to-node="8"}</h3>
 <h3 id="二-攻击链路分析从普通权限到-host-root" path-to-node="8">二、 攻击链路分析：从普通权限到 Host Root</h3>
 <p>如果环境中配置了基于 AuthZ 插件的访问控制（例如禁止普通用户挂载宿主机目录），攻击者可以利用此漏洞实现跨维度的权限提升：</p>
@@ -188,13 +186,12 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>权限绕过：</strong> 攻击者通过 <code index-in-node="12" path-to-node="10,0,0">docker run</code> 发起请求，在请求头中构造协议劫持特征。</p>
 </li>
 <li>
-<p><strong>逃逸参数注入：</strong> 尽管 AuthZ 插件策略可能禁止了 <code index-in-node="27" path-to-node="10,1,0">--privileged</code> 或 <code index-in-node="42" path-to-node="10,1,0">-v /:/host</code>，但由于鉴权被绕过，这些受限参数被直接送入 <code index-in-node="74" path-to-node="10,1,0">containerd</code> 执行。</p>
+<p><strong>逃逸参数注入：</strong> 尽管 AuthZ 插件策略可能禁止了 <code index-in-node="27" path-to-node="10,1,0">——privileged</code> 或 <code index-in-node="42" path-to-node="10,1,0">-v /:/host</code>，但由于鉴权被绕过，这些受限参数被直接送入 <code index-in-node="74" path-to-node="10,1,0">containerd</code> 执行。</p>
 </li>
 <li>
 <p><strong>宿主机接管：</strong> 成功创建一个挂载了宿主机根目录的容器。通过 <code index-in-node="29" path-to-node="10,2,0">chroot</code> 或写入 <code index-in-node="40" path-to-node="10,2,0">crontab</code>/<code index-in-node="48" path-to-node="10,2,0">ssh_authorized_keys</code>，攻击者可在数秒内获取宿主机的完全控制权。</p>
 </li>
 </ol>
-<hr />
 <h3 id="section-1-path-to-node12">{#section-1 path-to-node="12"}</h3>
 <h3 id="三-技术架构影响评估" path-to-node="12">三、 技术架构影响评估</h3>
 <p>该漏洞对以下环境具有极高风险：</p>
@@ -212,7 +209,6 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <blockquote>
 <p><strong>注意：</strong> 如果你的 Docker 环境仅依赖原生的 Linux 用户组权限（docker group）且未启用 <code index-in-node="55" path-to-node="15,0">authorization-plugins</code> 选项，该漏洞的攻击面将显著缩小，但在多租户治理框架下，其防御逻辑已失效。</p>
 </blockquote>
-<hr />
 <h3 id="四-修复与防御架构建议" path-to-node="17">四、 修复与防御架构建议</h3>
 <h4 id="立即补丁修复" path-to-node="18">1. 立即补丁修复</h4>
 <p>Docker 已发布针对此漏洞的紧急更新（建议升级至 <strong>v27.x.x</strong> 或更高版本）。修复代码重构了 <code index-in-node="50" path-to-node="19">api/server/router/proxy.go</code> 中的劫持逻辑，强制要求在流式连接建立前必须获得 AuthZ 插件的显式 <code index-in-node="113" path-to-node="19">Allow</code> 回执。</p>
@@ -228,27 +224,17 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><strong>内核级强制访问控制：</strong> 部署 <strong>AppArmor</strong> 或 <strong>SELinux</strong> 策略，从内核层面拦截容器对宿主机关键路径（如 <code index-in-node="56" path-to-node="21,2,0">/etc</code>, <code index-in-node="62" path-to-node="21,2,0">/root</code>）的非法挂载尝试，作为 AuthZ 插件失效后的最后一道防线。</p>
 </li>
 </ul>
-<hr />
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>\
+<p><strong>
 </strong></p>
-<p><strong>风险提示：</strong>\
+<p><strong>风险提示：</strong>
 本文由 AI 生成，仅供技术研究与安全防护参考。请安全从业人员仔细甄别漏洞利用风险，并在受控测试环境中验证补丁，谨慎执行生产环境变更。</p>
-<p>\</p>
-<p>\</p>
-<p>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317114&amp;idx=1&amp;sn=3e6210c7ff213feb6f7b5c02ed12b699&amp;scene=21#wechat_redirect" linktype="2" localeditorid="f7g9m2h8en9fwb0jy8" target="_blank" textvalue="紧急！OpenClaw（小龙虾）3.28 版本“投毒”，全局 axios 已被恶意代码接管！">紧急！OpenClaw（小龙虾）3.28 版本"投毒"，全局 axios 已被恶意代码接管！</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317143&amp;idx=1&amp;sn=0a50479db149798a88e028fa2f1d9794&amp;scene=21#wechat_redirect" linktype="2" localeditorid="sdd4vk0mkiary8pa80" target="_blank" textvalue="AI 屠龙：全球最安全 OS 破防，内核级“逻辑重构攻击”复盘">AI 屠龙：全球最安全 OS 破防，内核级"逻辑重构攻击"复盘</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316978&amp;idx=1&amp;sn=0e237e87fae57b0a03e743cfe2b730ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2b8jjb2qe51te6o5j4" target="_blank" textvalue="自动化平台的“噩梦”：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案">自动化平台的"噩梦"：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316759&amp;idx=1&amp;sn=f20f06a0676c4aa9f1b1d3fbbb8069fe&amp;scene=21#wechat_redirect" linktype="2" localeditorid="d8zh6royky7l6uiku8" target="_blank" textvalue="拒绝“脚本小子”思维：深挖 CI/CD 流水线的底层逻辑">拒绝"脚本小子"思维：深挖 CI/CD 流水线的底层逻辑</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316791&amp;idx=1&amp;sn=b831cad72c714b1cf8f15f93a94b57a4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="392321y9lenpbq03dog" target="_blank" textvalue="告别 Serverless 迷信：阿里开源 Zvec，将“双 11”级向量检索嵌入你的进程">告别 Serverless 迷信：阿里开源 Zvec，将"双 11"级向量检索嵌入你的进程</a>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317114&amp;idx=1&amp;sn=3e6210c7ff213feb6f7b5c02ed12b699&amp;scene=21#wechat_redirect" linktype="2" localeditorid="f7g9m2h8en9fwb0jy8" target="_blank" textvalue="紧急！OpenClaw（小龙虾）3.28 版本“投毒”，全局 axios 已被恶意代码接管！">紧急！OpenClaw（小龙虾）3.28 版本"投毒"，全局 axios 已被恶意代码接管！</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317143&amp;idx=1&amp;sn=0a50479db149798a88e028fa2f1d9794&amp;scene=21#wechat_redirect" linktype="2" localeditorid="sdd4vk0mkiary8pa80" target="_blank" textvalue="AI 屠龙：全球最安全 OS 破防，内核级“逻辑重构攻击”复盘">AI 屠龙：全球最安全 OS 破防，内核级"逻辑重构攻击"复盘</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316978&amp;idx=1&amp;sn=0e237e87fae57b0a03e743cfe2b730ed&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2b8jjb2qe51te6o5j4" target="_blank" textvalue="自动化平台的“噩梦”：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案">自动化平台的"噩梦"：从表达式注入到沙箱逃逸，解析 n8n 高危 RCE 漏洞防御方案</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316759&amp;idx=1&amp;sn=f20f06a0676c4aa9f1b1d3fbbb8069fe&amp;scene=21#wechat_redirect" linktype="2" localeditorid="d8zh6royky7l6uiku8" target="_blank" textvalue="拒绝“脚本小子”思维：深挖 CI/CD 流水线的底层逻辑">拒绝"脚本小子"思维：深挖 CI/CD 流水线的底层逻辑</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316791&amp;idx=1&amp;sn=b831cad72c714b1cf8f15f93a94b57a4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="392321y9lenpbq03dog" target="_blank" textvalue="告别 Serverless 迷信：阿里开源 Zvec，将“双 11”级向量检索嵌入你的进程">告别 Serverless 迷信：阿里开源 Zvec，将"双 11"级向量检索嵌入你的进程</a></p>
     </div>
     <div class="src">
       <div class="txt">

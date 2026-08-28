@@ -171,35 +171,62 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsvTfouGOibOKXuRRdkRTIh09ZibtdDMJ6nsnYmXnMjBW6uPsW8oLicnTVrCSGrXrzYAprhqicqk5c2qOgwl1sjMgVzYBOmGnTkolIQ/640?wx_fmt=jpeg" /></p>
 <p>━━━ ━━━ ━━━</p>
 <p>一个「危险」的函数终于退休</p>
-<p>2026 年 6 月 20 日，Last merge commit 落地------Linux 内核中最后一处 <code>strncpy()</code> 调用被替换，标志着这个函数在内核中彻底消失。</p>
-<p>这场清理历时 <strong>6 年</strong>，动用 <strong>超过 360 个补丁</strong>，参与的开发者遍布内核各子系统：从文件系统、网络栈，到驱动层、架构代码------每一个 <code>strncpy()</code> 都被审计、替换、测试，然后删除。</p>
-<p>Linus Torvalds 对这个函数的态度可以用两个字概括：「<strong>危险</strong>」。在内核文档中，<code>strncpy()</code> 被直接标记为「主动危险」------不是「不推荐」，是「actively dangerous」。</p>
+<p>2026 年 6 月 20 日，Last merge commit 落地——Linux 内核中最后一处 <code>strncpy()</code> 调用被替换，标志着这个函数在内核中彻底消失。</p>
+<p>这场清理历时 <strong>6 年</strong>，动用 <strong>超过 360 个补丁</strong>，参与的开发者遍布内核各子系统：从文件系统、网络栈，到驱动层、架构代码——每一个 <code>strncpy()</code> 都被审计、替换、测试，然后删除。</p>
+<p>Linus Torvalds 对这个函数的态度可以用两个字概括：「<strong>危险</strong>」。在内核文档中，<code>strncpy()</code> 被直接标记为「主动危险」——不是「不推荐」，是「actively dangerous」。</p>
 <p>strncpy() 错在哪？</p>
 <p><code>strncpy(src, dst, n)</code> 的语义复杂且反直觉：</p>
 <ul>
-<li>如果 <code>src</code> 长度 ≥ <code>n</code>------<strong>不追加 NUL 终止符</strong>，<code>dst</code> 末尾没有 <code>\0</code>，使用时必然越界。</li>
-<li>如果 <code>src</code> 长度 \&lt; <code>n</code>------<strong>剩余字节全部用 <code>\0</code> 填充</strong>，性能浪费。</li>
+<li>如果 <code>src</code> 长度 ≥ <code>n</code>——<strong>不追加 NUL 终止符</strong>，<code>dst</code> 末尾没有 <code>\0</code>，使用时必然越界。</li>
+<li>如果 <code>src</code> 长度 \&lt; <code>n</code>——<strong>剩余字节全部用 <code>\0</code> 填充</strong>，性能浪费。</li>
 <li>返回值永远是 <code>dst</code>，不是拷贝的字符数，你根本不知道实际拷贝了多少。</li>
 </ul>
 <p>这三个问题导致了内核中大量「默认不 NUL 终止」的隐式未定义行为：</p>
-<div class="highlight"><pre><span></span><code>char buf[8];
-strncpy(buf, &quot;hello world&quot;, sizeof(buf));
-// buf = &quot;hello w&quot; → 没有 \0
-printf(&quot;%s&quot;, buf);  // 读越界，打印垃圾数据
-</code></pre></div>
-
+<p>char buf[8];
+strncpy(buf, "hello world", sizeof(buf));
+// buf = "hello w" → 没有 \0
+printf("%s", buf);  // 读越界，打印垃圾数据</p>
 <p>甚至更隐蔽的是，内核经常用 <code>strncpy</code> 来「顺便做清 0」，导致代码意图完全模糊。维护者看到 <code>strncpy</code>，<strong>无法判断作者到底想做什么</strong>。</p>
 <p>为什么拆成 5 个函数？</p>
 <p>分析发现，内核中 <code>strncpy()</code> 实际上被用于 <strong>5 种完全不同的语义场景</strong>，只是当时都用同一个函数糊弄过去了：</p>
-<p>原始用法                      实际意图              替代函数</p>
-<hr />
-<p>拷贝并确保 NUL 终止但不填充   安全字符串拷贝        <code>strscpy()</code>
-  拷贝 + 尾部零填充             安全拷贝 + 静态清零   <code>strscpy_pad()</code>
-  拷贝定长字段（不需要 NUL）    固定宽度内存拷贝      <code>strtomem_pad()</code>
-  带显式填充的有界拷贝          缓冲区安全填充        <code>memcpy_and_pad()</code>
-  明确已知长度的内存拷贝        普通内存复制          <code>memcpy()</code></p>
+<table>
+<thead>
+<tr>
+<th>原始用法</th>
+<th>实际意图</th>
+<th>替代函数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>拷贝并确保 NUL 终止但不填充</td>
+<td>安全字符串拷贝</td>
+<td><code>strscpy()</code></td>
+</tr>
+<tr>
+<td>拷贝 + 尾部零填充</td>
+<td>安全拷贝 + 静态清零</td>
+<td><code>strscpy_pad()</code></td>
+</tr>
+<tr>
+<td>拷贝定长字段（不需要 NUL）</td>
+<td>固定宽度内存拷贝</td>
+<td><code>strtomem_pad()</code></td>
+</tr>
+<tr>
+<td>带显式填充的有界拷贝</td>
+<td>缓冲区安全填充</td>
+<td><code>memcpy_and_pad()</code></td>
+</tr>
+<tr>
+<td>明确已知长度的内存拷贝</td>
+<td>普通内存复制</td>
+<td><code>memcpy()</code></td>
+</tr>
+</tbody>
+</table>
 <p>关键设计思路是：<strong>用函数名暴露开发者意图</strong>。</p>
-<p>看代码的人不再需要猜测「这里要不要 NUL？填充用不用？目标多大？」------函数签名本身就告诉你了。</p>
+<p>看代码的人不再需要猜测「这里要不要 NUL？填充用不用？目标多大？」——函数签名本身就告诉你了。</p>
 <p>谁是「操刀人」？</p>
 <p>这个清理工程的主要推动者是 <strong>Kees Cook</strong>（内核安全团队核心成员，也是 Chrome OS 安全负责人）。他从 2020 年左右就开始逐步推进这项工作，逐个子系统、逐个文件地替换 <code>strncpy()</code>。</p>
 <p>Linus Torvalds 曾在 2021 年评论 <code>strncpy</code>：「我讨厌这个函数，它应该被扔进语言的垃圾堆。」</p>
@@ -207,37 +234,29 @@ printf(&quot;%s&quot;, buf);  // 读越界，打印垃圾数据
 <p>对开发者意味着什么？</p>
 <p><strong>如果你写内核模块或驱动</strong>，从现在起 <code>strncpy()</code> 在编译时会报错。请按以下规则选择替代品：</p>
 <ol>
-<li><strong>能用 <code>strscpy()</code> 就优先用</strong>------它保证 NUL 终止，返回实际拷贝长度（负数=截断）</li>
+<li><strong>能用 <code>strscpy()</code> 就优先用</strong>——它保证 NUL 终止，返回实际拷贝长度（负数=截断）</li>
 <li><strong>需要清空剩余缓冲区</strong> → <code>strscpy_pad()</code></li>
 <li><strong>目标缓冲区固定宽度且不需要字符串语义</strong> → <code>strtomem_pad()</code></li>
 <li><strong>只是内存拷贝，跟字符串无关</strong> → <code>memcpy()</code> 或 <code>memcpy_and_pad()</code></li>
 </ol>
 <p>一个简单的迁移对照：</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// ❌ 旧：意图不明</span>
-<span class="nb">strncpy</span><span class="p">(</span><span class="n">dev</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">IFNAMSIZ</span><span class="p">);</span>
-
-<span class="c1">// ✅ 新：显式语义</span>
-<span class="n">strscpy</span><span class="p">(</span><span class="n">dev</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">IFNAMSIZ</span><span class="p">);</span>
-</code></pre></div>
-
+<p>// ❌ 旧：意图不明
+strncpy(dev-&gt;name, src, IFNAMSIZ);</p>
+<p>// ✅ 新：显式语义
+strscpy(dev-&gt;name, src, IFNAMSIZ);</p>
 <p>尾声</p>
-<p>360 个补丁，6 年时间，换来的是一行 <code>#include</code> 的删除------以及内核安全水位线的整体抬升。</p>
+<p>360 个补丁，6 年时间，换来的是一行 <code>#include</code> 的删除——以及内核安全水位线的整体抬升。</p>
 <p>在 C 语言的世界里，字符串处理永远是 Bug 的温床。<code>strncpy</code> 被清退不只是「换个函数名」，更是内核社区对 <strong>代码可读性即安全性</strong> 理念的一次集体实践。</p>
 <p>函数名就是文档。别让阅读者猜你的意图。</p>
 <p>━━━ ━━━ ━━━</p>
 <p><strong>📝 文末互动</strong>：你在工作中写过 <code>strncpy</code> 的 Bug 吗？用 <code>strscpy</code> 之后有没有踩过其他坑？留言说说你的经历。</p>
 <p><strong>🔜 下期预告</strong>：Linux 7.2 还有哪些重量级合并？SPOILER：BPF 模块化、Rust for Linux 又有新进展。</p>
-<p>\</p>
-<p>\</p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318021&amp;idx=1&amp;sn=927b9a0fe9a456fb9f1f7fd2ac6fe721&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5lpujsbt1yyob2k696o" target="_blank" textvalue="一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析">一个字符就能提权到 root？Linux 内核 CVE-2026-23111 深度剖析</a></p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317877&amp;idx=1&amp;sn=3612f55d182b366f55299d7fdbe4d941&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3za5s0qayccv8n8mgao" target="_blank" textvalue="Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？">Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="nvj8rmy49643tmae4g" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a>\</p>
-<p>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317559&amp;idx=1&amp;sn=382b83f8a3480dcbb30df68d105000ca&amp;scene=21#wechat_redirect" linktype="2" localeditorid="j7osl3peakpv4bbpc" target="_blank" textvalue="Jens Axboe 操刀新款 Linux 内核补丁：拟将单核 I/O 吞吐性能飙升 60%">Jens Axboe 操刀新款 Linux 内核补丁：拟将单核 I/O 吞吐性能飙升 60%</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317269&amp;idx=1&amp;sn=0efb3259c6e56725d0e8e41973045acf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="w3j6vpl88ulk4tatc" target="_blank" textvalue="Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余">Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316483&amp;idx=1&amp;sn=ec590e7bcadf7879d248df97f0978525&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xyeaz05vh4lv6y3mrk" target="_blank" textvalue="【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%">【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%</a>\</p>
-<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317877&amp;idx=1&amp;sn=3612f55d182b366f55299d7fdbe4d941&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3za5s0qayccv8n8mgao" target="_blank" textvalue="Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？">Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="nvj8rmy49643tmae4g" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317559&amp;idx=1&amp;sn=382b83f8a3480dcbb30df68d105000ca&amp;scene=21#wechat_redirect" linktype="2" localeditorid="j7osl3peakpv4bbpc" target="_blank" textvalue="Jens Axboe 操刀新款 Linux 内核补丁：拟将单核 I/O 吞吐性能飙升 60%">Jens Axboe 操刀新款 Linux 内核补丁：拟将单核 I/O 吞吐性能飙升 60%</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317269&amp;idx=1&amp;sn=0efb3259c6e56725d0e8e41973045acf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="w3j6vpl88ulk4tatc" target="_blank" textvalue="Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余">Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316483&amp;idx=1&amp;sn=ec590e7bcadf7879d248df97f0978525&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xyeaz05vh4lv6y3mrk" target="_blank" textvalue="【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%">【内核前沿】Linux 7.0 手动内联优化：UDP 吞吐量暴力提升 12%</a></p>
     </div>
     <div class="src">
       <div class="txt">

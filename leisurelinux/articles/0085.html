@@ -165,23 +165,21 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
     </div>
     <div class="content" itemprop="articleBody">
 <blockquote>
-<p><strong>核心观点</strong>：2023 年一次看似人畜无害的 commit，在 Linux 内核的 epoll 代码中埋下了两颗炸弹。一枚被 AI 发现并拆除，另一枚------Bad Epoll（CVE-2026-46242）------潜伏了整整三年，直到 2026 年 7 月才被公开披露。它让非特权用户就能拿到 root，而且能在 Chrome 沙箱里触发。</p>
+<p><strong>核心观点</strong>：2023 年一次看似人畜无害的 commit，在 Linux 内核的 epoll 代码中埋下了两颗炸弹。一枚被 AI 发现并拆除，另一枚——Bad Epoll（CVE-2026-46242）——潜伏了整整三年，直到 2026 年 7 月才被公开披露。它让非特权用户就能拿到 root，而且能在 Chrome 沙箱里触发。</p>
 </blockquote>
 <p>一、引言：一个不高不低的日子</p>
 <p>2026 年 4 月 24 日，Linus Torvalds 合入了一个提交号为 <code>a6dc643c6931</code> 的补丁。提交信息只有一行：「eventpoll: fix ep_remove struct eventpoll」。不痛不痒，每周都能看到十几个类似的修复。</p>
 <p>但这件事的背景远不止于此。</p>
-<p>三个月后，这个补丁修复的漏洞被以「Bad Epoll」的名字披露，CVE 编号 CVE-2026-46242，CVSS 7.8（High）。它的发现者 Jaeyoung Chung------首尔大学计算机安全实验室的博士生------早在半年前就把它作为零日漏洞提交给了 Google 的 kernelCTF 项目。</p>
-<p>为什么一个号称\"高危\"的漏洞，修复了这么久才公开？因为它触及了 Linux 内核最核心、最敏感的组件之一------<strong>epoll</strong>。而真正令人不寒而栗的是：这篇代码里藏着一个陷阱，即使是最先进的 AI 安全分析工具也只找到了其中一个。</p>
+<p>三个月后，这个补丁修复的漏洞被以「Bad Epoll」的名字披露，CVE 编号 CVE-2026-46242，CVSS 7.8（High）。它的发现者 Jaeyoung Chung——首尔大学计算机安全实验室的博士生——早在半年前就把它作为零日漏洞提交给了 Google 的 kernelCTF 项目。</p>
+<p>为什么一个号称\"高危\"的漏洞，修复了这么久才公开？因为它触及了 Linux 内核最核心、最敏感的组件之一——<strong>epoll</strong>。而真正令人不寒而栗的是：这篇代码里藏着一个陷阱，即使是最先进的 AI 安全分析工具也只找到了其中一个。</p>
 <p>二、前置知识：epoll 是什么，为什么人人都怕动它</p>
-<p>如果你是后端工程师，大概率每天都在用 epoll------只是你不知道。</p>
-<div class="highlight"><pre><span></span><code>int epfd = epoll_create1(0);
+<p>如果你是后端工程师，大概率每天都在用 epoll——只是你不知道。</p>
+<p>int epfd = epoll_create1(0);
 struct epoll_event ev;
 ev.events = EPOLLIN;
 ev.data.fd = sockfd;
 epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
-// 然后可以 epoll_wait 等待事件
-</code></pre></div>
-
+// 然后可以 epoll_wait 等待事件</p>
 <p>Nginx、Redis、Node.js、Netty......几乎所有高并发框架的底层都有一个 epoll 实例在工作。epoll 是 Linux 高性能 I/O 的基石。</p>
 <p>它的内核实现（<code>fs/eventpoll.c</code>，约 2500 行）维护了两个关键结构：</p>
 <ul>
@@ -189,33 +187,29 @@ epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
 <li><strong><code>struct epitem</code></strong>：每个被监视的文件描述符对应一个 epitem，挂在 eventpoll 的红黑树上。</li>
 </ul>
 <p>当一个 fd 上有事件发生时，内核通过回调机制把对应的 epitem 加到就绪链表上，然后唤醒在 <code>epoll_wait</code> 上等待的进程。</p>
-<p>这套机制从 Linux 2.5.45（2002 年）引入，稳定运行了二十多年。没人敢乱动这段代码------它太核心、太敏感了。</p>
+<p>这套机制从 Linux 2.5.45（2002 年）引入，稳定运行了二十多年。没人敢乱动这段代码——它太核心、太敏感了。</p>
 <p>但 2023 年，有人动了。</p>
 <p>三、罪魁祸首：2023 年那段\"好心\"的 commit</p>
-<p>2023 年 4 月 8 日，提交 <code>58c9b016e128</code> 合并进了主线。它试图优化 epoll 的清理路径------具体来说，是 <code>ep_remove()</code> 函数中 <code>file-&gt;f_ep</code> 指针的清理逻辑。</p>
+<p>2023 年 4 月 8 日，提交 <code>58c9b016e128</code> 合并进了主线。它试图优化 epoll 的清理路径——具体来说，是 <code>ep_remove()</code> 函数中 <code>file-&gt;f_ep</code> 指针的清理逻辑。</p>
 <p>改动意图是好的：减少锁持有时间，提高并发性能。</p>
-<p>问题在于，这段代码在 <code>file-&gt;f_lock</code> 下清除了 <code>file-&gt;f_ep</code> 指针后，<strong>仍然继续使用 <code>file</code> 对象</strong>去完成后续操作------做 <code>hlist_del_rcu()</code> 链表操作，然后才释放锁。</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// 简化后的漏洞代码</span>
-<span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">ep_remove</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">eventpoll</span><span class="w"> </span><span class="o">*</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="nb">struct</span><span class="w"> </span><span class="n">epitem</span><span class="w"> </span><span class="o">*</span><span class="n">epi</span><span class="p">)</span>
-<span class="p">{</span>
-<span class="w">    </span><span class="nb">struct</span><span class="w"> </span><span class="nb">file</span><span class="w"> </span><span class="o">*</span><span class="nb">file</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">epi</span><span class="o">-&gt;</span><span class="n">ffd</span><span class="p">.</span><span class="nb">file</span><span class="p">;</span>
-
-<span class="w">    </span><span class="n">ep_unregister_pollwait</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">);</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">unlikely</span><span class="p">(</span><span class="n">READ_ONCE</span><span class="p">(</span><span class="n">epi</span><span class="o">-&gt;</span><span class="n">dying</span><span class="p">)))</span>
-<span class="w">        </span><span class="k">return</span><span class="p">;</span>
-
-<span class="w">    </span><span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// 🔴 这里清除了 f_ep 指针！</span>
-<span class="w">    </span><span class="n">ep_remove_file</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">,</span><span class="w"> </span><span class="nb">file</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// 但 file 对象还在继续使用...</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ep_remove_epi</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">))</span>
-<span class="w">        </span><span class="c1">// ...</span>
-<span class="w">    </span><span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// ... 之后才返回</span>
-<span class="p">}</span>
-</code></pre></div>
-
-<p>这段代码看起来没什么大问题------确实，90% 的情况下它工作得很好。<strong>99.999% 的情况下都工作得很好。</strong></p>
+<p>问题在于，这段代码在 <code>file-&gt;f_lock</code> 下清除了 <code>file-&gt;f_ep</code> 指针后，<strong>仍然继续使用 <code>file</code> 对象</strong>去完成后续操作——做 <code>hlist_del_rcu()</code> 链表操作，然后才释放锁。</p>
+<p>// 简化后的漏洞代码
+static void ep_remove(struct eventpoll <em>ep, struct epitem </em>epi)
+{
+struct file *file = epi-&gt;ffd.file;</p>
+<p>ep_unregister_pollwait(ep, epi);
+if (unlikely(READ_ONCE(epi-&gt;dying)))
+return;</p>
+<p>spin_lock(&amp;file-&gt;f_lock);
+// 🔴 这里清除了 f_ep 指针！
+ep_remove_file(ep, epi, file);
+// 但 file 对象还在继续使用...
+if (ep_remove_epi(ep, epi))
+// ...
+spin_unlock(&amp;file-&gt;f_lock);
+// ... 之后才返回
+}</p>
+<p>这段代码看起来没什么大问题——确实，90% 的情况下它工作得很好。<strong>99.999% 的情况下都工作得很好。</strong></p>
 <p>但那 0.001% 的情况，恰好是一条潜在的 root 权限。</p>
 <p>四、漏洞解剖：六条指令宽的竞态窗口</p>
 <p>Bad Epoll 是一个经典的 Use-After-Free（UAF）竞争条件漏洞。它的触发路径极其精巧：</p>
@@ -231,12 +225,12 @@ epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
 <p>如果另一个线程/进程恰好在这个窗口内对这个 fd 调用 <code>close()</code>：</p>
 <ol>
 <li><code>close()</code> 触发内核的 <code>__fput()</code> 函数</li>
-<li><code>__fput()</code> 检查 <code>file-&gt;f_ep</code>------发现是 NULL，于是它<strong>跳过了</strong> <code>eventpoll_release_file()</code> 这个关键清理函数</li>
+<li><code>__fput()</code> 检查 <code>file-&gt;f_ep</code>——发现是 NULL，于是它<strong>跳过了</strong> <code>eventpoll_release_file()</code> 这个关键清理函数</li>
 <li><code>__fput()</code> 直接调用 <code>f_op-&gt;release</code>，<strong>释放了 <code>struct file</code> 对象</strong></li>
 <li>与此同时，<code>ep_remove()</code> 还在使用同一个 <code>file</code> 对象做 <code>hlist_del_rcu()</code> 链表操作</li>
 </ol>
 <p>这就是 UAF：<strong><code>ep_remove()</code> 用它认为还活着的指针，操作着已经被释放的内存</strong>。</p>
-<p>更危险的是，<code>struct file</code> 使用的是 <code>SLAB_TYPESAFE_BY_RCU</code> 内存分配策略，被释放的内存槽可能被 <code>alloc_empty_file()</code> 重新分配。攻击者可以利用这一点，让 <code>kmem_cache_free()</code> 错误地释放另一个 slab cache 的对象------这就是内核内存损坏的起点。</p>
+<p>更危险的是，<code>struct file</code> 使用的是 <code>SLAB_TYPESAFE_BY_RCU</code> 内存分配策略，被释放的内存槽可能被 <code>alloc_empty_file()</code> 重新分配。攻击者可以利用这一点，让 <code>kmem_cache_free()</code> 错误地释放另一个 slab cache 的对象——这就是内核内存损坏的起点。</p>
 <p>为什么难以发现</p>
 <p>这个竞争窗口有多窄？<strong>大约六条机器指令。</strong></p>
 <p>在现代化 4GHz CPU 上，这大约是 <strong>1.5 纳秒</strong>。如果用人来类比，相当于你眨一次眼的功夫，这个窗口已经开合了 1 亿次。</p>
@@ -244,77 +238,71 @@ epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
 <p>五、利用：99% 成功率不是吹的</p>
 <p>读到这儿你可能会想：窗口这么窄，实际利用是不是只能靠运气？</p>
 <p>Jaeyoung Chung 的答案是：<strong>不是。</strong></p>
-<p>他的利用策略非常聪明------可以概括为三个词：<strong>放大、重试、不崩溃</strong>。</p>
+<p>他的利用策略非常聪明——可以概括为三个词：<strong>放大、重试、不崩溃</strong>。</p>
 <p>放大窗口</p>
 <p>攻击者使用<strong>四个</strong>相互关联的 epoll 文件描述符：</p>
 <ul>
 <li>两个用于制造竞争（\"触发对\"）</li>
 <li>两个作为\"受害者\"（用于接收损坏的内存）</li>
 </ul>
-<p>通过精心编排 epoll 之间的依赖关系，攻击者有效<strong>放大</strong>了竞争窗口。不再是最初的六条指令------利用代码可以把窗口拉宽好几个数量级。</p>
+<p>通过精心编排 epoll 之间的依赖关系，攻击者有效<strong>放大</strong>了竞争窗口。不再是最初的六条指令——利用代码可以把窗口拉宽好几个数量级。</p>
 <p>重试而不崩溃</p>
 <p>内核漏洞利用最大的挑战不是成功，而是<strong>失败不 crash</strong>。如果每次失败都导致内核崩溃（kernel panic），攻击者无法反复尝试。</p>
-<p>Chung 的 exploit 设计得极其精巧：在竞争失败时，它<strong>优雅地回退</strong>而不损坏内核状态。这意味着攻击者可以在同一个系统上反复触发竞争，直到成功------每次失败只是安静地返回，不留痕迹。</p>
+<p>Chung 的 exploit 设计得极其精巧：在竞争失败时，它<strong>优雅地回退</strong>而不损坏内核状态。这意味着攻击者可以在同一个系统上反复触发竞争，直到成功——每次失败只是安静地返回，不留痕迹。</p>
 <p>最终效果</p>
 <p>在测试系统上，Chung 的 exploit 达到了 <strong>约 99% 的成功率</strong>。更令人警惕的是：</p>
 <ul>
 <li>它不需要 root 权限</li>
 <li>它可以从 Chrome 渲染器沙箱内部触发</li>
-<li>它可以在 Android 设备上实现 root------这对绝大多数 Linux 提权漏洞来说都不常见</li>
+<li>它可以在 Android 设备上实现 root——这对绝大多数 Linux 提权漏洞来说都不常见</li>
 </ul>
 <p>六、AI 发现了一个，但漏了另一个</p>
 <p>这个漏洞还有一个耐人寻味的\"彩蛋\"：</p>
-<p>2026 年初，Anthropic 的 AI 模型 Mythos 被用来审计 Linux 内核的 epoll 代码。Mythos 发现了一个 race condition------跟踪为 CVE-2026-43074，内核社区也及时打了补丁。</p>
+<p>2026 年初，Anthropic 的 AI 模型 Mythos 被用来审计 Linux 内核的 epoll 代码。Mythos 发现了一个 race condition——跟踪为 CVE-2026-43074，内核社区也及时打了补丁。</p>
 <p><strong>但是 Mythos 没有发现 Bad Epoll。</strong></p>
 <p>原因推测有三：</p>
 <ol>
 <li><strong>窗口更窄</strong>：Bad Epoll 的竞争窗口只有六条指令，远小于 Mythos 发现的另一个 bug。AI 模型可能倾向于发现触发条件更\"宽松\"的漏洞。</li>
 <li><strong>不容易触发 KASAN</strong>：KASAN（内核地址消毒器）是内核检测内存错误的主要工具。Bad Epoll 在另一个 bug 被修复后，不再触发 KASAN 告警，因为它走的是不同的代码路径。</li>
-<li><strong>修复掩盖问题</strong>：CVE-2026-43074 的补丁改了同一段代码，反而可能让 Bad Epoll 更难被发现------分析工具会认为\"这段代码已经修过了\"。</li>
+<li><strong>修复掩盖问题</strong>：CVE-2026-43074 的补丁改了同一段代码，反而可能让 Bad Epoll 更难被发现——分析工具会认为\"这段代码已经修过了\"。</li>
 </ol>
-<p>这提醒我们：<strong>AI 辅助安全分析虽然强大，但仍然是\"找已知模式\"------真正的 0-day 常常藏在\"已知模式\"之外。</strong></p>
+<p>这提醒我们：<strong>AI 辅助安全分析虽然强大，但仍然是\"找已知模式\"——真正的 0-day 常常藏在\"已知模式\"之外。</strong></p>
 <p>七、修复方案：一条微妙的 guard</p>
 <p>修复补丁 <code>a6dc643c6931</code> 的改动不大，但非常关键：</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// 修复前</span>
-<span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">ep_remove</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">eventpoll</span><span class="w"> </span><span class="o">*</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="nb">struct</span><span class="w"> </span><span class="n">epitem</span><span class="w"> </span><span class="o">*</span><span class="n">epi</span><span class="p">)</span>
-<span class="p">{</span>
-<span class="w">    </span><span class="nb">struct</span><span class="w"> </span><span class="nb">file</span><span class="w"> </span><span class="o">*</span><span class="nb">file</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">epi</span><span class="o">-&gt;</span><span class="n">ffd</span><span class="p">.</span><span class="nb">file</span><span class="p">;</span><span class="w">  </span><span class="c1">// 直接拿指针</span>
-
-<span class="w">    </span><span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
-<span class="w">    </span><span class="n">ep_remove_file</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">,</span><span class="w"> </span><span class="nb">file</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// 🔴 窗口：f_ep 已清，但 file 还在用</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ep_remove_epi</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">))</span>
-<span class="w">        </span><span class="c1">// ...</span>
-<span class="w">    </span><span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
-<span class="p">}</span>
-
-<span class="c1">// 修复后</span>
-<span class="k">static</span><span class="w"> </span><span class="n">void</span><span class="w"> </span><span class="n">ep_remove</span><span class="p">(</span><span class="nb">struct</span><span class="w"> </span><span class="n">eventpoll</span><span class="w"> </span><span class="o">*</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="nb">struct</span><span class="w"> </span><span class="n">epitem</span><span class="w"> </span><span class="o">*</span><span class="n">epi</span><span class="p">)</span>
-<span class="p">{</span>
-<span class="w">    </span><span class="nb">struct</span><span class="w"> </span><span class="nb">file</span><span class="w"> </span><span class="o">*</span><span class="nb">file</span><span class="w"> </span><span class="n">__free</span><span class="p">(</span><span class="n">fput</span><span class="p">)</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">NULL</span><span class="p">;</span>
-
-<span class="w">    </span><span class="c1">// ✅ 关键：用 epi_fget() 增加 file 引用计数</span>
-<span class="w">    </span><span class="nb">file</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">epi_fget</span><span class="p">(</span><span class="n">epi</span><span class="p">);</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span>!<span class="nb">file</span><span class="p">)</span>
-<span class="w">        </span><span class="k">return</span><span class="p">;</span><span class="w">  </span><span class="c1">// 如果拿不到引用，说明 eventpoll_release_file 已接手</span>
-
-<span class="w">    </span><span class="n">spin_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
-<span class="w">    </span><span class="n">ep_remove_file</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">,</span><span class="w"> </span><span class="nb">file</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// ✅ 现在 file 的引用计数保证了 __fput() 不会提前触发</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ep_remove_epi</span><span class="p">(</span><span class="n">ep</span><span class="p">,</span><span class="w"> </span><span class="n">epi</span><span class="p">))</span>
-<span class="w">        </span><span class="c1">// ...</span>
-<span class="w">    </span><span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="nb">file</span><span class="o">-&gt;</span><span class="n">f_lock</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// __free(fput) 自动释放引用</span>
-<span class="p">}</span>
-</code></pre></div>
-
+<p>// 修复前
+static void ep_remove(struct eventpoll <em>ep, struct epitem </em>epi)
+{
+struct file *file = epi-&gt;ffd.file;  // 直接拿指针</p>
+<p>spin_lock(&amp;file-&gt;f_lock);
+ep_remove_file(ep, epi, file);
+// 🔴 窗口：f_ep 已清，但 file 还在用
+if (ep_remove_epi(ep, epi))
+// ...
+spin_unlock(&amp;file-&gt;f_lock);
+}</p>
+<p>// 修复后
+static void ep_remove(struct eventpoll <em>ep, struct epitem </em>epi)
+{
+struct file *file __free(fput) = NULL;</p>
+<p>// ✅ 关键：用 epi_fget() 增加 file 引用计数
+file = epi_fget(epi);
+if (!file)
+return;  // 如果拿不到引用，说明 eventpoll_release_file 已接手</p>
+<p>spin_lock(&amp;file-&gt;f_lock);
+ep_remove_file(ep, epi, file);
+// ✅ 现在 file 的引用计数保证了 __fput() 不会提前触发
+if (ep_remove_epi(ep, epi))
+// ...
+spin_unlock(&amp;file-&gt;f_lock);
+// __free(fput) 自动释放引用
+}</p>
 <p>修复的核心思想是<strong>引用计数保护</strong>：在操作开始时，通过 <code>epi_fget()</code> 获取 <code>file</code> 对象的一个额外引用。这样：</p>
 <ul>
 <li>如果 <code>__fput()</code> 并发执行，它看到引用计数 > 1，不会释放对象</li>
 <li><code>ep_remove()</code> 完成所有操作后，<code>__free(fput)</code> 自动释放这个引用</li>
 <li>如果 <code>eventpoll_release_file()</code> 已经抢先清除了 <code>epi-&gt;dying</code>，则 <code>epi_fget()</code> 返回 NULL，<code>ep_remove()</code> 直接退出</li>
 </ul>
-<p>这是一条经典的\"持有引用，延迟释放\"的防护模式------在内核代码中很常见，但在这个位置缺失了三年。</p>
+<p>这是一条经典的\"持有引用，延迟释放\"的防护模式——在内核代码中很常见，但在这个位置缺失了三年。</p>
 <p>此外，还有两个相关修复补丁也被一并合入：</p>
 <ul>
 <li><code>ced39b6a8062</code></li>
@@ -334,20 +322,45 @@ epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
 <p>临时缓解</p>
 <p>由于 epoll 是内核核心组件，<strong>无法通过模块卸载或参数禁用</strong>来缓解。唯一的办法就是打补丁。</p>
 <p>各发行版补丁追踪：</p>
-<p>发行版            补丁状态               内核包</p>
-<hr />
-<p>Ubuntu 24.04      已回溯 6.8.x           linux-generic
-  RHEL 9            RHSA 评估中            kernel-5.14
-  Debian unstable   已合入 6.10-rc+        linux-image
-  Android GKI       已修复 AOSP 通用内核   android14-6.1+</p>
+<table>
+<thead>
+<tr>
+<th>发行版</th>
+<th>补丁状态</th>
+<th>内核包</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ubuntu 24.04</td>
+<td>已回溯 6.8.x</td>
+<td>linux-generic</td>
+</tr>
+<tr>
+<td>RHEL 9</td>
+<td>RHSA 评估中</td>
+<td>kernel-5.14</td>
+</tr>
+<tr>
+<td>Debian unstable</td>
+<td>已合入 6.10-rc+</td>
+<td>linux-image</td>
+</tr>
+<tr>
+<td>Android GKI</td>
+<td>已修复 AOSP 通用内核</td>
+<td>android14-6.1+</td>
+</tr>
+</tbody>
+</table>
 <p>九、几点思考① 性能优化的代价</p>
-<p>Bad Epoll 的根源是一次\"优化\"------减少锁持有时间、提高并发性能。内核的安全漏洞中，相当一部分来源于优化引入的边界条件问题。<strong>每一次优化，都是在为复杂性买单。</strong></p>
+<p>Bad Epoll 的根源是一次\"优化\"——减少锁持有时间、提高并发性能。内核的安全漏洞中，相当一部分来源于优化引入的边界条件问题。<strong>每一次优化，都是在为复杂性买单。</strong></p>
 <p>② AI 安全分析还很年轻</p>
-<p>Mythos 发现了一个 bug 而漏了另一个，这件事本身并不可耻------人类专家也会漏。但它清楚地划出了一条线：<strong>当前的 AI 安全分析擅长\"找相似\"，不擅长\"发现意外\"。</strong></p>
+<p>Mythos 发现了一个 bug 而漏了另一个，这件事本身并不可耻——人类专家也会漏。但它清楚地划出了一条线：<strong>当前的 AI 安全分析擅长\"找相似\"，不擅长\"发现意外\"。</strong></p>
 <p>③ epoll 该重写了吗？</p>
 <p>一个 2500 行的文件，二十多年的历史，两个平行的 race condition 在同一段代码里藏了三年。epoll 的代码复杂度已经积重难返。有人（包括我自己）开始讨论：<strong>epoll 是否应该被 io_uring 替代？</strong> 至少在新的应用开发中，长远的趋势已经很明显。</p>
 <p>④ Zero-day 的生命周期</p>
-<p>从 2023 年 4 月引入到 2026 年 4 月修复，Bad Epoll 潜伏了整整三年。这三年里，无数系统运行着有漏洞的内核------包括你的手机，在你的口袋里。</p>
+<p>从 2023 年 4 月引入到 2026 年 4 月修复，Bad Epoll 潜伏了整整三年。这三年里，无数系统运行着有漏洞的内核——包括你的手机，在你的口袋里。</p>
 <p>参考文献</p>
 <ol>
 <li>CVE-2026-46242 - NVD</li>
@@ -366,15 +379,13 @@ epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &amp;ev);
 </blockquote>
 <p>━━━ ━━━ ━━━</p>
 <p>*本文完。欢迎关注 LeisureLinux，获取更多深度技术解读。*</p>
-<p>\</p>
-<p>\</p>
-<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ip4h6wk68zatsdq39c" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="b8g5cggf0wquep5iww" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8xpz6txa8xceheu3nk" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8l7llvwftanka7bclq8" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318209&amp;idx=1&amp;sn=f2605216bdcd3edd17a78ed5b4c09b13&amp;scene=21#wechat_redirect" linktype="2" localeditorid="59x6875kjfva6k5wjk" target="_blank" textvalue="六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门">六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316128&amp;idx=1&amp;sn=85788b5c5f13f3685d6f21aa1a3f303e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="lsi38qec0oeb8yk3cw" target="_blank" textvalue="解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈">解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈</a>\</p>
-<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317377&amp;idx=4&amp;sn=0d151d01f65260ca40a275d9e7496416&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6iz9i1xvz6azq8kjk0" target="_blank" textvalue="彻底洞察 Linux 进程行为：strace 高阶实战手册">彻底洞察 Linux 进程行为：strace 高阶实战手册</a>\</p>
+<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ip4h6wk68zatsdq39c" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="b8g5cggf0wquep5iww" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317482&amp;idx=1&amp;sn=b50a45433008af99efb0eb80292fd954&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8xpz6txa8xceheu3nk" target="_blank" textvalue="Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)">Linux 内核潜伏型漏洞全解析：从 Netfilter 到 CVE-2026-31431 (Copy Fail)</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="8l7llvwftanka7bclq8" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318209&amp;idx=1&amp;sn=f2605216bdcd3edd17a78ed5b4c09b13&amp;scene=21#wechat_redirect" linktype="2" localeditorid="59x6875kjfva6k5wjk" target="_blank" textvalue="六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门">六年、360 个补丁：Linux 内核终于把 strncpy() 扫地出门</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316128&amp;idx=1&amp;sn=85788b5c5f13f3685d6f21aa1a3f303e&amp;scene=21#wechat_redirect" linktype="2" localeditorid="lsi38qec0oeb8yk3cw" target="_blank" textvalue="解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈">解构 NGINX 并发神话：从 epoll 内核原理到 ET/LT 模式的深度博弈</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317377&amp;idx=4&amp;sn=0d151d01f65260ca40a275d9e7496416&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6iz9i1xvz6azq8kjk0" target="_blank" textvalue="彻底洞察 Linux 进程行为：strace 高阶实战手册">彻底洞察 Linux 进程行为：strace 高阶实战手册</a></p>
 <h2 id="faq">常见问题（FAQ）</h2>
 <p><strong>Q1：这篇文章主要讲什么？</strong> 2026 年 4 月 24 日，Linus Torvalds 合入了一个提交号为 <code>a6dc643c6931</code> 的补丁。提交信息只有一行：「eventpoll: fix ep_remove struct eventpoll」。
 <strong>Q2：还有哪些关键事实？</strong> 此外，还有两个相关修复补丁也被一并合入： - <code>ced39b6a8062</code> - <code>ef4ca02e9536</code> 八、影响范围与修复建议受影响 - <strong>Linux 主线内核 ≥ 6.4</strong>（6.4 及以上所有版本，如果未回溯补丁） - <strong>Android 设备</strong>运行 6.6 系列或更新内核（包括当前的 Pixel 设备） - <strong>Linux 发行版</strong>：Ubu…

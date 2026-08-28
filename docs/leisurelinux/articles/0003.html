@@ -164,7 +164,6 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
       <a class="wx" href="https://mp.weixin.qq.com/s/4pCKzASmXK-J11So_kSVbw" rel="canonical">阅读原文（微信）↗</a>
     </div>
     <div class="content" itemprop="articleBody">
-<p>\</p>
 <blockquote>
 <p><strong>重大预警</strong>：Linux 内核惊现高危竞态漏洞 RtabRace（CVE-2026-68138），CVSS 评分高达 7.8，已有公开 PoC，本地未授权攻击者可轻易触发内核提权或拒绝服务。<strong>修复版本已在 7.1.6 和 7.2-rc5 发布，所有受影响系统必须立即升级！</strong>**</p>
 </blockquote>
@@ -173,28 +172,26 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>RtabRace 漏洞本质上是 Linux 内核流量控制（TC, Traffic-Control）子系统中<strong>全局资源管理不当</strong>引发的竞态条件。</p>
 <p><strong>核心问题位置</strong>：</p>
 <ul>
-<li><code>qdisc_get_rtab()</code> 和 <code>qdisc_put_rtab()</code> 函数</li>
+<li><code>qdisc_get_rtab()</code> 和 <code>qdisc_put_rtab()</code> 函数</li>
 <li>全局单链表：<code>qdisc_rtab_list</code></li>
 <li>非原子引用计数器：<code>refcnt</code></li>
 </ul>
 <p>② 锁机制失效</p>
 <p>历史上，RTNL 互斥锁（RTNL mutex）确保了列表操作的序列化，防止并发访问。但<strong>2019 年的内核改动打破了这一定律</strong>：</p>
 <ul>
-<li><code>cls_flower</code> 分类器被允许在<strong>无锁</strong>环境下运行</li>
+<li><code>cls_flower</code> 分类器被允许在<strong>无锁</strong>环境下运行</li>
 <li>关键序列化不变量被破坏</li>
 <li>多个 CPU 可并发操作同一全局结构</li>
 </ul>
 <p>③ 攻击路径</p>
 <p><strong>触发条件</strong>：</p>
-<div class="highlight"><pre><span></span><code># 任意本地用户（无需 root） unshare -Urn true  # ✅ 成功执行 = 存在暴露风险
-</code></pre></div>
-
+<h1 id="root-unshare-urn-true">任意本地用户（无需 root） unshare -Urn true  # ✅ 成功执行 = 存在暴露风险</h1>
 <p><strong>攻击步骤</strong>：</p>
 <ol>
 <li>创建用户命名空间和网络命名空间</li>
-<li>从<strong>不同 CPU</strong>并发发送两个以上 <code>RTM_NEWTFILTER</code> netlink 请求</li>
+<li>从<strong>不同 CPU</strong>并发发送两个以上 <code>RTM_NEWTFILTER</code> netlink 请求</li>
 <li>每个请求添加 flower 过滤器，使用<strong>相同速率表</strong>的警察（police）动作</li>
-<li>并发竞态导致 <code>qdisc_rtab_list</code> 与非原子 <code>refcnt</code> 被同时修改</li>
+<li>并发竞态导致 <code>qdisc_rtab_list</code> 与非原子 <code>refcnt</code> 被同时修改</li>
 <li><strong>双重释放</strong>或<strong>释放后使用</strong>（use-after-free）</li>
 </ol>
 <p><strong>后果</strong>：</p>
@@ -205,73 +202,99 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </ul>
 <p>━━━ ━━━ ━━━</p>
 <p>影响范围受影响内核版本</p>
-<p>版本范围          影响状态</p>
-<hr />
-<p><strong>5.1 - 7.1.5</strong>   ✅ <strong>脆弱</strong>
-  7.1.6+            ✅ 已修复（commit <code>fb29e1b41052</code>）
-  7.2-rc5+          ✅ 已修复（commit <code>f43ee0c0730d</code>）</p>
+<table>
+<thead>
+<tr>
+<th>版本范围</th>
+<th>影响状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>5.1 - 7.1.5</strong></td>
+<td>✅ <strong>脆弱</strong></td>
+</tr>
+<tr>
+<td>7.1.6+</td>
+<td>✅ 已修复（commit <code>fb29e1b41052</code>）</td>
+</tr>
+<tr>
+<td>7.2-rc5+</td>
+<td>✅ 已修复（commit <code>f43ee0c0730d</code>）</td>
+</tr>
+</tbody>
+</table>
 <p>主要发行版受影响情况</p>
-<p>发行版                       受影响版本   默认配置保护</p>
-<hr />
-<p><strong>Ubuntu 22.04 GA</strong>          5.15.0-187   部分靠分配器加固
-  <strong>Red Hat 9/10/NVIDIA 26</strong>   -            ✅ 补丁已出
-  <strong>CloudLinux 8/7 Hybrid</strong>    -            ❌ 无保护（默认启用 user namespace）
-  <strong>CloudLinux 9/10/8 LTS</strong>    -            ✅ 默认禁用 user namespace
-  <strong>Debian/Alma/Rocky</strong>        -            🔄 补丁开发中</p>
+<table>
+<thead>
+<tr>
+<th>发行版</th>
+<th>受影响版本</th>
+<th>默认配置保护</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Ubuntu 22.04 GA</strong></td>
+<td>5.15.0-187</td>
+<td>部分靠分配器加固</td>
+</tr>
+<tr>
+<td><strong>Red Hat 9/10/NVIDIA 26</strong></td>
+<td>-</td>
+<td>✅ 补丁已出</td>
+</tr>
+<tr>
+<td><strong>CloudLinux 8/7 Hybrid</strong></td>
+<td>-</td>
+<td>❌ 无保护（默认启用 user namespace）</td>
+</tr>
+<tr>
+<td><strong>CloudLinux 9/10/8 LTS</strong></td>
+<td>-</td>
+<td>✅ 默认禁用 user namespace</td>
+</tr>
+<tr>
+<td><strong>Debian/Alma/Rocky</strong></td>
+<td>-</td>
+<td>🔄 补丁开发中</td>
+</tr>
+</tbody>
+</table>
 <p><strong>验证方法</strong>：</p>
-<div class="highlight"><pre><span></span><code>uname -r  # 检查内核版本 sysctl user.max_user_namespaces  # 非 0 = 暴露
-</code></pre></div>
-
+<p>uname -r  # 检查内核版本 sysctl user.max_user_namespaces  # 非 0 = 暴露</p>
 <p>━━━ ━━━ ━━━</p>
 <p>修复方案优先级🚨 方案一：内核升级（最推荐）</p>
 <p><strong>立即行动</strong>：</p>
-<div class="highlight"><pre><span></span><code># Ubuntu/Debian sudo apt update &amp;&amp; sudo apt upgrade linux-image-generic  # RHEL/CentOS sudo dnf update kernel  # 验证修复 uname -r  # 确认 &gt;= 7.1.6 或发行版补丁版本
-</code></pre></div>
-
+<h1 id="ubuntudebian-sudo-apt-update-sudo-apt-upgrade-linux-image-generic-rhelcentos-sudo-dnf-update-kernel-uname-r-716">Ubuntu/Debian sudo apt update &amp;&amp; sudo apt upgrade linux-image-generic  # RHEL/CentOS sudo dnf update kernel  # 验证修复 uname -r  # 确认 &gt;= 7.1.6 或发行版补丁版本</h1>
 <p><strong>补丁 Commit</strong>：</p>
 <ul>
-<li>主主线：<code>f43ee0c0730d</code> (7.2-rc5)</li>
-<li>稳定分支：<code>fb29e1b41052</code> (7.1.6)</li>
+<li>主主线：<code>f43ee0c0730d</code> (7.2-rc5)</li>
+<li>稳定分支：<code>fb29e1b41052</code> (7.1.6)</li>
 </ul>
 <p>🛡️ 方案二：禁用未授权用户命名空间（临时措施）</p>
 <p><strong>CloudLinux 8/7 Hybrid 专用</strong>（无需重启）：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 临时禁用 sudo sysctl -p user.max_user_namespaces=0  # 永久修改 /etc/sysctl.d/99-disable-namespace.conf user.max_user_namespaces=0
-</code></pre></div>
-
+<h1 id="sudo-sysctl-p-usermax_user_namespaces0-etcsysctld99-disable-namespaceconf-usermax_user_namespaces0">临时禁用 sudo sysctl -p user.max_user_namespaces=0  # 永久修改 /etc/sysctl.d/99-disable-namespace.conf user.max_user_namespaces=0</h1>
 <p><strong>验证</strong>：</p>
-<div class="highlight"><pre><span></span><code>unshare -Urn true  # 若返回 &quot;Operation not permitted&quot; = 已修复
-</code></pre></div>
-
+<p>unshare -Urn true  # 若返回 "Operation not permitted" = 已修复</p>
 <p>🔥 方案三：KernelCare Livepatch（零停机）</p>
 <p><strong>CloudKernel 提供</strong>：</p>
-<div class="highlight"><pre><span></span><code># 检查补丁状态 kcarectl --patch-info | grep CVE-2026-68138
-</code></pre></div>
-
+<h1 id="kcarectlpatch-info-grep-cve-2026-68138">检查补丁状态 kcarectl——patch-info | grep CVE-2026-68138</h1>
 <p>━━━ ━━━ ━━━</p>
 <p>检测与监控实时攻击检测</p>
 <p><strong>监控系统</strong>：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 监控 netlink 请求激增 sudo ip monitor filter  # 检查用户命名空间创建异常 auditctl -w /proc/sys/user/max_user_namespaces -p w -k user_ns  # 监控 qdisc 相关内核函数调用（需要 eBPF）
-</code></pre></div>
-
+<h1 id="netlink-sudo-ip-monitor-filter-auditctl-w-procsysusermax_user_namespaces-p-w-k-user_ns-qdisc-ebpf">监控 netlink 请求激增 sudo ip monitor filter  # 检查用户命名空间创建异常 auditctl -w /proc/sys/user/max_user_namespaces -p w -k user_ns  # 监控 qdisc 相关内核函数调用（需要 eBPF）</h1>
 <p>系统完整性检查</p>
 <p><strong>每日检查脚本</strong>：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span>!/bin/bash # 保存为 /usr/local/bin/check-rtbracerace.sh  KERNEL=$(uname -r) NAMESPACE=$(sysctl -n user.max_user_namespaces)  # 阈值检查 if [[ &quot;$NAMESPACE&quot; != &quot;0&quot; ]]; then     echo &quot;⚠️ 警告：用户命名空间未禁用 (max=$NAMESPACE)&quot;     echo &quot;请立即采取临时缓解措施&quot;     exit 1 fi  # 内核版本 if [[ &quot;$KERNEL&quot; &lt; &quot;5.15.0-187&quot; &amp;&amp; &quot;$KERNEL&quot; &gt; &quot;5.15.0&quot; ]]; then     echo &quot;⚠️ 警告：内核版本可能受 RtabRace 影响&quot;     echo &quot;建议升级至安全版本&quot;     exit 1 fi  echo &quot;✅ 系统已受保护 (内核：$KERNEL, 命名空间：$NAMESPACE)&quot; exit 0
-</code></pre></div>
-
+<h1 id="binbash-usrlocalbincheck-rtbraceracesh-kerneluname-r-namespacesysctl-n-usermax_user_namespaces-if-namespace-0-then-echo-maxnamespace-echo-exit-1-fi-if-kernel-5150-187-kernel-5150-then-echo-rtabrace-echo-exit-1-fi-echo-kernel-namespace-exit-0">!/bin/bash # 保存为 /usr/local/bin/check-rtbracerace.sh  KERNEL=$(uname -r) NAMESPACE=$(sysctl -n user.max_user_namespaces)  # 阈值检查 if [[ "$NAMESPACE" != "0" ]]; then     echo "⚠️ 警告：用户命名空间未禁用 (max=$NAMESPACE)"     echo "请立即采取临时缓解措施"     exit 1 fi  # 内核版本 if [[ "$KERNEL" &lt; "5.15.0-187" &amp;&amp; "$KERNEL" &gt; "5.15.0" ]]; then     echo "⚠️ 警告：内核版本可能受 RtabRace 影响"     echo "建议升级至安全版本"     exit 1 fi  echo "✅ 系统已受保护 (内核：$KERNEL, 命名空间：$NAMESPACE)" exit 0</h1>
 <p><strong>Cron 定时任务</strong>（每日 6 点）：</p>
-<div class="highlight"><pre><span></span><code><span class="mf">0</span><span class="w"> </span><span class="mf">6</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="o">/</span><span class="nb">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">bin</span><span class="o">/</span><span class="n">check</span><span class="o">-</span><span class="n">rtbracerace</span><span class="mf">.</span><span class="n">sh</span><span class="w"> </span><span class="err">|</span><span class="w"> </span><span class="n">mail</span><span class="w"> </span><span class="o">-</span><span class="n">s</span><span class="s">&quot;RtabRace 安全状态检查&quot;</span><span class="w"> </span><span class="n">admin</span><span class="err">@</span><span class="n">company</span><span class="mf">.</span><span class="n">com</span>
-</code></pre></div>
-
+<p>0 6 * * * /usr/local/bin/check-rtbracerace.sh | mail -s"RtabRace 安全状态检查" admin@company.com</p>
 <p>━━━ ━━━ ━━━</p>
 <p>技术细节深挖Race Condition 触发时序图</p>
-<div class="highlight"><pre><span></span><code>CPU 0                    CPU 1   |                        |   | RTM_NEWTFILTER         |   | → qdisc_get_rtab()     |   | → 读取 RTAB 指针 P1    |   |                        | → RTM_NEWTFILTER   |                        | → qdisc_get_rtab()   |                        | → 读取同一 RTAB 指针 P1   | → 分配新 RTAB P2       |   | → qdisc_put_rtab()     |   | → refcnt--             |   | → refcnt==0 ? P2 释放  |─────────┐   |                        |         |   |                        | → refcnt--   |                        | → refcnt==0 ? P2 释放 (双重释放!) ⚠️   |                        |         |   |                        | → P2 新分配给其他数据结构   | → 使用 P2               |─────────┘   | → Use-After-Free!       ⚠️
-</code></pre></div>
-
+<p>CPU 0                    CPU 1   |                        |   | RTM_NEWTFILTER         |   | → qdisc_get_rtab()     |   | → 读取 RTAB 指针 P1    |   |                        | → RTM_NEWTFILTER   |                        | → qdisc_get_rtab()   |                        | → 读取同一 RTAB 指针 P1   | → 分配新 RTAB P2       |   | → qdisc_put_rtab()     |   | → refcnt——|   | → refcnt==0 ? P2 释放  |─────────┐   |                        |         |   |                        | → refcnt——|                        | → refcnt==0 ? P2 释放 (双重释放!) ⚠️   |                        |         |   |                        | → P2 新分配给其他数据结构   | → 使用 P2               |─────────┘   | → Use-After-Free!       ⚠️</p>
 <p>漏洞利用 PoC（概念验证）</p>
 <p><strong>已公开的 PoC 特征</strong>（Ubuntu 22.04）：</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// 伪代码示意 namespace_create(); socket(AF_NETLINK, SOCK_RAW, NETLINK_SOCK_DIAG); // 并发发送两个 RTM_NEWTFILTER，共享相同 police rate table // 触发 qdisc_rtab_list 竞态 → 内核 panic → 提权到 root</span>
-</code></pre></div>
-
+<p>// 伪代码示意 namespace_create(); socket(AF_NETLINK, SOCK_RAW, NETLINK_SOCK_DIAG); // 并发发送两个 RTM_NEWTFILTER，共享相同 police rate table // 触发 qdisc_rtab_list 竞态 → 内核 panic → 提权到 root</p>
 <p><strong>关键观察</strong>：</p>
 <ul>
 <li><strong>无需 SUID 二进制文件</strong></li>
@@ -282,24 +305,22 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>━━━ ━━━ ━━━</p>
 <p>最佳实践建议服务器加固 checklist</p>
 <ul>
-<li>[ ] <strong>1. 立即检查</strong>：<code>uname -r</code> 确认内核版本</li>
-<li>[ ] <strong>2. 升级内核</strong>：至安全版本或发行版补丁</li>
-<li>[ ] <strong>3. 禁用命名空间</strong>：<code>user.max_user_namespaces=0</code></li>
-<li>[ ] <strong>4. 审计日志</strong>：监控 <code>unshare</code> 命令调用</li>
-<li>[ ] <strong>5. 容器隔离</strong>：评估是否需 <code>--privileged</code></li>
-<li>[ ] <strong>6. 定期补丁</strong>：启用自动安全更新</li>
+<li>[ ] <strong>1. 立即检查</strong>：<code>uname -r</code> 确认内核版本</li>
+<li>[ ] <strong>2. 升级内核</strong>：至安全版本或发行版补丁</li>
+<li>[ ] <strong>3. 禁用命名空间</strong>：<code>user.max_user_namespaces=0</code></li>
+<li>[ ] <strong>4. 审计日志</strong>：监控 <code>unshare</code> 命令调用</li>
+<li>[ ] <strong>5. 容器隔离</strong>：评估是否需 <code>——privileged</code></li>
+<li>[ ] <strong>6. 定期补丁</strong>：启用自动安全更新</li>
 </ul>
 <p>云服务器注意事项</p>
 <p><strong>KVM 实例额外风险</strong>：</p>
 <ul>
-<li>KVM 独立漏洞 CVE-2026-68428 <strong>同时存在</strong></li>
+<li>KVM 独立漏洞 CVE-2026-68428 <strong>同时存在</strong></li>
 <li><strong>双重风险叠加</strong>：RtabRace + KVM UAF</li>
 <li><strong>建议</strong>：立即双线升级内核 + KVM 组件</li>
 </ul>
 <p><strong>虚拟化宿主机</strong>：</p>
-<div class="highlight"><pre><span></span><code><span class="gh">#</span> 确认 KVM 版本 modinfo kvm | grep version modinfo kvm_intel | grep version  # 检查 QEMU 配置 systemctl status libvirtd
-</code></pre></div>
-
+<h1 id="kvm-modinfo-kvm-grep-version-modinfo-kvm_intel-grep-version-qemu-systemctl-status-libvirtd">确认 KVM 版本 modinfo kvm | grep version modinfo kvm_intel | grep version  # 检查 QEMU 配置 systemctl status libvirtd</h1>
 <p>━━━ ━━━ ━━━</p>
 <p>结语</p>
 <p>RtabRace 漏洞揭示了一个残酷现实：<strong>2019 年的内核改动，7 年后的今天仍在造成安全威胁</strong>。这不仅是一次补丁升级，更是内核设计哲学的反思：</p>
@@ -308,9 +329,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 </blockquote>
 <p>作为 Linux 管理员，现在行动：</p>
 <ol>
-<li>✅ <strong>今天</strong>：检查所有服务器内核版本</li>
-<li>✅ <strong>本周</strong>：完成安全补丁升级</li>
-<li>✅ <strong>本月</strong>：建立自动化补管监控机制</li>
+<li>✅ <strong>今天</strong>：检查所有服务器内核版本</li>
+<li>✅ <strong>本周</strong>：完成安全补丁升级</li>
+<li>✅ <strong>本月</strong>：建立自动化补管监控机制</li>
 </ol>
 <p><strong>安全是持续的战斗，不是选项。</strong></p>
 <p>━━━ ━━━ ━━━</p>
@@ -318,12 +339,9 @@ span.linenos.special { color: #50fa7b; background-color: #6272a4; padding-left: 
 <p>版权说明：本文系原创分析，转载请注明出处。</p>
 <p>LeisureLinux · 技术、开源、自由软件</p>
 <p>https://freelamp.com</p>
-<p>\</p>
-<p>\</p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318642&amp;idx=3&amp;sn=e41a2a754012eeb3b60e8dc2e3dd2224&amp;scene=21#wechat_redirect" linktype="text" target="_blank">GhostLock：一个藏了 15 年的 Linux 内核提权漏洞，正在被全世界打补丁</a></p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="text" target="_blank">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a></p>
 <p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="text" target="_blank">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a></p>
-<p>\</p>
     </div>
     <div class="src">
       <div class="txt">
