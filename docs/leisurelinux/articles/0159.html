@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？ | LeisureLinux 公众号</title>
+<meta name="description" content="Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/p-6vU6s7bkcSykB7HS-TLA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？", "datePublished": "2026-06-01T19:46:00+08:00", "articleSection": "Linux/运维", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0159.html", "sameAs": "https://mp.weixin.qq.com/s/p-6vU6s7bkcSykB7HS-TLA", "isBasedOn": "https://mp.weixin.qq.com/s/p-6vU6s7bkcSykB7HS-TLA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Linux SLUB 分配器深度拆解：malloc 背后内核在干什么？</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-06-01T19:46:00+08:00">2026-06-01 19:46</time> · 分类 Linux/运维</div>
+    <div class="content" itemprop="articleBody">
+<p>\</p>
+<blockquote>
+<p><strong>读完本文，你会搞懂</strong>：你每次调用 <code>malloc()</code> 时，Linux 内核从哪个 slab 缓存里给你切出一块内存，SLUB 和 SLAB、SLOB 有什么区别，以及为什么说 SLUB 是当前内核的主流之选。</p>
+</blockquote>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>每个写过 C 语言的工程师都知道 <code>malloc()</code>。但很少有人问：当你在用户态调用 <code>malloc(64)</code> 时，内核那一层究竟发生了什么？</p>
+<p>\</p>
+<p>用户态的 <code>malloc()</code>（glibc ptmalloc / jemalloc / tcmalloc）已经是一套复杂的缓存体系------但最终，当你分配大块内存或 arena 耗尽时，它还是会通过 <code>mmap()</code> 或 <code>brk()</code> 向内核要内存。</p>
+<p>\</p>
+<p>而内核拿到这些物理页面后，如何管理大大小小的内核对象------进程描述符 <code>task_struct</code>、<code>inode</code>、<code>dentry</code>、网络 socket 缓冲区？这些对象尺寸小（几十到几百字节）、创建销毁频繁，直接用页分配器（buddy system）来管？太浪费了------一个 <code>task_struct</code> 不到 2KB，却要占用一整个 4KB 页面。</p>
+<p>\</p>
+<p>这就是 <strong>slab 分配器</strong> 的由来。</p>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>一、从 SLAB 到 SLUB：为什么需要专门的内核内存分配器？</p>
+<p>\</p>
+<p>先说一个关键事实：<strong>内核不能有外部碎片</strong>。</p>
+<p>\</p>
+<p>用户态的内存碎片，大不了进程退出就释放了。内核不同------内核对象生命周期差异巨大，有的存活几微秒，有的伴随系统整个运行周期。如果用页分配器直接切，很快就会出现「有足够空闲页，但没有连续空间能满足一个请求」的死局。</p>
+<p>\</p>
+<p><strong>slab 的思想非常简单：把同一类对象放在一起。</strong></p>
+<p>\</p>
+<p>每个「slab 缓存」只服务于一种固定大小的对象。比如 <code>kmalloc-64</code> 这个缓存只分配 64 字节的块，<code>kmalloc-128</code> 只分配 128 字节的块。从 buddy system 申请的物理页面被切成等尺寸的 slot，分配时直接取一个 slot，释放时还回去。</p>
+<p>\</p>
+<p><strong>SLAB（1994 年引入）</strong> 是 SunOS 的发明，包含三个概念：</p>
+<p>\</p>
+<ul>
+<li><strong>cache</strong>：一类对象的缓存（如 <code>task_struct_cache</code>）</li>
+<li><strong>slab</strong>：一个或多个连续的物理页，被切成等尺寸的 object</li>
+<li><strong>object</strong>：一个可分配的内存块</li>
+</ul>
+<p>\</p>
+<p>SLAB 的问题是：它维护了一个复杂的每 CPU 对象队列、着色（coloring）机制来提高缓存命中率，代码量巨大（\~4000 行），而且在大 NUMA 系统上维护开销极高。</p>
+<p>\</p>
+<p><strong>SLUB（2007 年合入 2.6.22）</strong> 的出现就是为了干掉 SLAB 的过度设计。Christoph Lameter 在提交时说了一句话：</p>
+<p>\</p>
+<blockquote>
+<p>\"SLUB 将 SLAB 的复杂性减少了约 60%，同时性能在大多数场景下相当或更好。\"</p>
+</blockquote>
+<p>\</p>
+<p>现在的 Linux 内核里：</p>
+<p>\</p>
+<ul>
+<li><strong>SLUB</strong>：默认分配器（几乎所有主流发行版）</li>
+<li><strong>SLAB</strong>：历史遗留，可选</li>
+<li><strong>SLOB</strong>：针对极小内存系统（嵌入式），2024 年已被移除</li>
+</ul>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>二、SLUB 核心数据结构：三个足够</p>
+<p>\</p>
+<p>SLUB 之所以简练，是因为它只用三个核心数据结构就描述了全部状态：</p>
+<p>\</p>
+<pre><code>struct kmem_cache {      ← 一种类型的 slab 缓存
+    struct slab *cpu_slab;  ← 当前 CPU 正在用的 slab
+    struct kmem_cache_node *node[MAX_NUMNODES]; ← 每 NUMA 节点的管理结构
+    ...
+};
+
+struct slab {             ← 一组连续的物理页面
+    struct list_head list;  ← 在 partial/full 链表中
+    unsigned long objects;  ← slab 中的对象总数
+    void *freelist;         ← 指向第一个空闲对象的指针
+    ...
+};
+</code></pre>
+<p>\</p>
+<p>关键的概念只有一个指针：<strong>freelist</strong>。</p>
+<p>\</p>
+<p>每个 slab 的空闲对象通过 freelist 指针串成一个单向链表。分配时，取 freelist 头部的对象，freelist 指向下一个空闲对象。释放时，把对象放回 freelist 头部。</p>
+<p>\</p>
+<p>就这么简单。没有 SLAB 里复杂的每 CPU 对象队列、没有着色数组。</p>
+<p>\</p>
+<p>#### 三种 slab 状态</p>
+<p>\</p>
+<p>一个 <code>kmem_cache</code> 管理的所有 slab 被分成三个链表：</p>
+<p>\</p>
+<pre><code>┌─────────────────────────────────────────────────┐
+│  kmem_cache                                       │
+│                                                   │
+│  partial  ──→ [slab] → [slab] → [slab]  ← 快分配 │
+│  full     ──→ [slab] → [slab]           ← 不能分 │
+│  (partial)└── 只有部分 object 被占用               │
+└─────────────────────────────────────────────────┘
+</code></pre>
+<p>\</p>
+<ul>
+<li><strong>full</strong>：所有 object 已被占用，不能分配新对象</li>
+<li><strong>partial</strong>：部分 object 空闲，可分配------这是分配性能的命脉</li>
+<li><strong>empty</strong>（没有单独链表，释放后自动放到 partial 末尾）：全空闲的 slab，但 SLUB 倾向于保留它</li>
+<li>\</li>
+</ul>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>三、分配路径：kmem_cache_alloc() 源码级追踪</p>
+<p>\</p>
+<p>当你调用 <code>kmalloc(64, GFP_KERNEL)</code> 时，内核从 <code>kmalloc-64</code> 这个 cache 里分配。让我们追踪 <code>kmem_cache_alloc()</code> 的完整路径（简化版）：</p>
+<p>\</p>
+<pre><code>// mm/slub.c - 极度简化，保留核心逻辑
+
+void *kmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags)
+{
+    void *object;
+    struct slab *slab;
+    unsigned long flags;
+
+    local_irq_save(flags);          // 关中断，防抢占
+
+    slab = s-&gt;cpu_slab;             // 1. 拿当前 CPU 正在用的 slab
+
+    if (unlikely(!slab || !slab-&gt;freelist)) {
+        // 2. 当前 slab 满了 → 从 partial 链表拿一个新的
+        slab = get_partial(s, node);
+        if (!slab) {
+            // 3. partial 也空了 → 从 buddy 系统申请新页
+            slab = new_slab(s, gfpflags);
+        }
+        s-&gt;cpu_slab = slab;
+    }
+
+    object = slab-&gt;freelist;                // 4. 取出 freelist 头部对象
+    slab-&gt;freelist = get_freepointer(s, object); // 5. freelist 指向下一个
+
+    local_irq_restore(flags);
+
+    return object;
+}
+</code></pre>
+<p>\</p>
+<p><strong>性能关键路径只有 4 步：</strong></p>
+<p>\</p>
+<ol>
+<li><strong>读 <code>cpu_slab</code></strong>------当前 CPU 正在用的 slab，这个 slab 大概率在 L1 cache 里</li>
+<li><strong>检查 freelist</strong>------唯一需要的分支预测</li>
+<li><strong>取出对象，更新指针</strong>------两条内存操作</li>
+<li><strong>返回</strong></li>
+</ol>
+<p>\</p>
+<p>在热路径上，这只需要 \~50-80 条 CPU 指令。这就是为什么 <code>kmalloc()</code> 在内核态如此之快------大多数情况下不涉及加锁，不涉及链表遍历，甚至不走 buddy system。</p>
+<p>\</p>
+<p>#### 关键函数：get_partial()</p>
+<p>\</p>
+<pre><code>static struct slab *get_partial(struct kmem_cache *s, int node)
+{
+    struct slab *slab;
+
+    // 先看当前 NUMA 节点的 partial 链表
+    slab = get_partial_node(s, &amp;s-&gt;node[node]);
+    if (slab)
+        return slab;
+
+    // 当前节点没有 → 从其他节点偷（内存访问代价高但可接受）
+    return get_any_partial(s, node);
+}
+</code></pre>
+<p>\</p>
+<p>这个「先本节点，再远程节点」的策略保证了 NUMA 亲和性------进程在哪颗 CPU 上跑，就从哪个 NUMA 节点分配内存，避免跨节点访问的延迟惩罚。</p>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>四、释放路径：对象归还 freelist</p>
+<p>\</p>
+<p>释放比分配更简单：</p>
+<p>\</p>
+<pre><code>void kmem_cache_free(struct kmem_cache *s, void *object)
+{
+    struct slab *slab;
+    unsigned long flags;
+
+    local_irq_save(flags);
+
+    slab = virt_to_slab(object);            // 1. 从虚拟地址反查 slab
+    set_freepointer(s, object, slab-&gt;freelist); // 2. 指向当前 fre
+    slab-&gt;freelist = object;                // 3. 对象成为新的 freelist 头
+
+    // 4. 如果 slab 从 full 变成 partial，移入 partial 链表
+    if (unlikely(slab_free_hook(s, slab, object)))
+        discard_slab(s, slab);
+
+    local_irq_restore(flags);
+}
+</code></pre>
+<p>\</p>
+<p>唯一的「重量级」操作是第一步 <code>virt_to_slab()</code>------需要通过 <code>struct page</code> 的 <code>slab_cache</code> 字段反查。但因为内核页表是直接映射的，<code>virt_to_page()</code> 只是一次数组索引查找，开销极小。</p>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>五、性能对比：为什么 SLUB 赢了</p>
+<p>\</p>
+<p>指标                      SLAB                        SLUB                           胜者</p>
+<hr />
+<p>代码量                    \~4000 行                   \~1500 行                      SLUB ✅
+  分配/释放延迟（热路径）   \~60-100 cycles             \~50-80 cycles                 SLUB ✅
+  NUMA 扩展性               差（每 CPU 队列维护复杂）   好（partial 链表 + 偷 slab）   SLUB ✅
+  内存开销                  较高（着色 + 队列元数据）   低（只维护 freelist）          SLUB ✅
+  调试能力                  <code>slabinfo</code>                  <code>slabtop</code> + debugfs            接近
+  大内存系统（>1TB）       慢                          优秀                           SLUB ✅</p>
+<p>\</p>
+<p>这就是为什么从 2007 年起，所有主流 Linux 发行版都默认使用 SLUB。它的设计哲学非常马斯克------质疑每一步存在的必要性，然后删掉所有不必要的东西。</p>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>六、实战：用 slabtop 诊断问题</p>
+<p>\</p>
+<p>你可以用 <code>slabtop</code> 命令实时查看系统 slab 使用情况：</p>
+<p>\</p>
+<pre><code>$ slabtop -o
+</code></pre>
+<p>\</p>
+<p>重点关注这几列：</p>
+<p>\</p>
+<ul>
+<li><strong>ACTIVE</strong>：正在使用的对象数</li>
+<li><strong>TOTAL</strong>：总对象数</li>
+<li><strong>SIZE</strong>：每个对象大小</li>
+<li><strong>CACHE NAME</strong>：缓存名称</li>
+</ul>
+<p>\</p>
+<p><strong>常见故障排查场景：</strong></p>
+<p>\</p>
+<ol>
+<li><strong>dentry/inode 缓存疯涨 → 文件句柄泄漏</strong></li>
+<li>\</li>
+</ol>
+<p>\</p>
+<p>如果 <code>dentry</code> 占用持续增长不回落，大概率是某个进程没有 close fd。\</p>
+<p>\</p>
+<ol>
+<li><strong>kmalloc-128 暴涨 → 可能是内核模块内存泄漏</strong></li>
+</ol>
+<p>\</p>
+<p>对比 <code>slabtop</code> 两次快照，看哪个 cache 的 TOTAL 在持续增长。</p>
+<p>\</p>
+<ol>
+<li><strong>清理可回收 slab 缓存</strong></li>
+<li>\</li>
+</ol>
+<p>\</p>
+<p>但注意：这只能清理完全空闲的 slab，partial slab 不会被回收。</p>
+<p>\</p>
+<hr />
+<p>\</p>
+<p>七、总结</p>
+<p>\</p>
+<p>总结三点：</p>
+<p>\</p>
+<ol>
+<li><strong>SLUB 是默认选择</strong>------内核里跑着 SLUB，你日常的 <code>malloc</code> → <code>brk</code> → 页分配器 → SLUB 是一条完整链路</li>
+<li><strong>核心设计极简</strong>------一个 <code>freelist</code> 指针搞定分配和释放，没有多余的复杂性</li>
+<li><strong>调试也不难</strong>------<code>slabtop</code> + <code>drop_caches</code> + 对比分析，基本能搞定 90% 的 slab 问题</li>
+</ol>
+<p>\</p>
+<blockquote>
+<p><strong>下一篇预告</strong>：我们讲 <strong>Page Cache</strong>------你 read() 一个文件，内核怎么从磁盘读到内存、page cache 如何避免重复 I/O、以及 dirty page 回写的完整路径。关注别错过。</p>
+</blockquote>
+<p>\</p>
+<hr />
+<p>\</p>
+<p><strong>你在工作中遇到过 slab 相关的 OOM 吗？或者排查过哪些诡异的内存问题？留言说说，我选 3 条置顶。</strong> 👇</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317269&amp;idx=1&amp;sn=0efb3259c6e56725d0e8e41973045acf&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2y0kx73qa1d5mqjnk0" target="_blank" textvalue="Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余">Linux 7.1 内核补丁：彻底解决 Sheaves 内存优化中的锁竞争与路径冗余</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316161&amp;idx=1&amp;sn=6096c58239f44a76fbefb502e0efe348&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1f9z3s0vkdlpwr9f5s" target="_blank" textvalue="LeisureLinux 硬核拆解：Persona 的底层逻辑">LeisureLinux 硬核拆解：Persona 的底层逻辑</a>\</p>
+<p>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这篇文章主要讲什么？</strong> ------------------------------------------------------------------------
+<strong>Q2：还有哪些关键事实？</strong> \" \ 现在的 Linux 内核里： \ - <strong>SLUB</strong>：默认分配器（几乎所有主流发行版） - <strong>SLAB</strong>：历史遗留，可选 - <strong>SLOB</strong>：针对极小内存系统（嵌入式），2024 年已被移除 \ ------------------------------------------------------------------------ …
+<strong>Q3：有哪些值得注意的细节？</strong> \ ------------------------------------------------------------------------ \ 七、总结 \ 总结三点： \ 1. <strong>SLUB 是默认选择</strong>------内核里跑着 SLUB，你日常的 <code>malloc</code> → <code>brk</code> → 页分配器 → SLUB 是一条完整链路 2. <strong>核心设计极…
+</strong>Q4：核心结论是什么？<em><em> 让我们追踪 <code>kmem_cache_alloc()</code> 的完整路径（简化版）： \ // mm/slub.c - 极度简化，保留核心逻辑 void </em>kmem_cache_alloc(struct kmem_cache </em>s, gfp_t gfpflags) { void <em>object; struct slab </em>slab; unsigned long fl…</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/p-6vU6s7bkcSykB7HS-TLA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

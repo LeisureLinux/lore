@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secure Boot 被破了「14 年中的 13 年」：一个老 shim 的 14 年长寿秘史 | LeisureLinux 公众号</title>
+<meta name="description" content="微软信任的加密钥匙被人保管了14年，没人换锁；——直到有人拿着钥匙试开了一批大门，大家才发现：哦，原来这是钥匙。ArsT">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/4GKUCtpF1hfjzH_xtH3hpA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Secure Boot 被破了「14 年中的 13 年」：一个老 shim 的 14 年长寿秘史", "datePublished": null, "articleSection": "安全/漏洞", "description": "微软信任的加密钥匙被人保管了14年，没人换锁；——直到有人拿着钥匙试开了一批大门，大家才发现：哦，原来这是钥匙。ArsT", "url": "https://freelamp.com/leisurelinux/articles/0053.html", "sameAs": "https://mp.weixin.qq.com/s/4GKUCtpF1hfjzH_xtH3hpA", "isBasedOn": "https://mp.weixin.qq.com/s/4GKUCtpF1hfjzH_xtH3hpA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Secure Boot 被破了「14 年中的 13 年」：一个老 shim 的 14 年长寿秘史</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<p>微软信任的加密钥匙被人保管了 14 年，没人换锁；</p>
+<p>------ 直到有人拿着钥匙试开了一批大门，大家才发现：哦，原来这是钥匙。</p>
+<p>Ars Technica 昨天发了一条标题很刺耳的文章------**《Microsoft Secure Boot has been broken for most of its existence》**。作者 Dan Goodin ,核心结论一句话:**14 年历史的 Secure Boot,有 13 年是「形同虚设」的**。</p>
+<p>这条消息的"主角"不是微软刚修好的某一个 CVE,也不是勒索软件家族新版本------而是一群**最早签发于 2013 年、至今仍被全球 UEFI 固件默认信任的旧 UEFI shim 二进制**。ESET 研究员的发现里，细节很多，我们一行一行拆开。</p>
+<p>本文脉络</p>
+<p>01</p>
+<p>事件背景：14 年里的 13 年</p>
+<p>02</p>
+<p>漏洞细节：CVE-2026-8863/-10797</p>
+<p>03</p>
+<p>启示：技术 vs 治理</p>
+<p>01 · CHAPTER ONE</p>
+<h3 id="_1">一、新闻的"主语"与"谓语"</h3>
+<p>\</p>
+<p>先把核心名词排个序:</p>
+<ul>
+<li>**Secure Boot**:UEFI 规范里从 2012 年开始标配的一项信任链机制，要求操作系统启动器必须用固件信任的密钥签名。 - **Microsoft Corporation UEFI CA 2011**:Secure Boot 诞生那年，微软为整个 UEFI 生态签发的**第三方 CA 证书**(因为 Secure Boot 信任链不能只认微软自己的平台密钥，要允许 Linux/macOS/第三方厂商签发的引导器)。 - **shim** :Linux 圈里的术语，Windows 引导链不直接用 shim;**shim 是 Linux 发行版用来"在 Secure Boot 下加载第一段不被微软直接信任的 GRUB"的"垫片"组件**。微软给 shim 签发一份代码签名证书，信任了"这堆 GRUB 干的事"。</li>
+</ul>
+<p>ESET 这次发现的，是**11 个 shim 二进制**(版本号 ≤ 0.9,意味着 2012 早期的旧版本)。它们的"户口"是这样的:</p>
+<ul>
+<li>全部用 Microsoft Corporation UEFI CA 2011 签发；- 最早 2013 年的版本；- **从未被微软加入 dbx(Forbidden Signatures Database,UEFI 黑名单)**; - 默认被几乎所有全球出货的 UEFI 固件信任。</li>
+</ul>
+<p>dbx 黑名单里至今还存着大家熟知的"BlackLotus 危害代码"、多年前被破的 Win bootloader,却**偏偏漏了**这 11 个直接影响安全链根基的二进制。**13 年里，这些 shim 在签发它们的证书下，既没人撤销也没人替换**。</p>
+<p>02 · CHAPTER TWO</p>
+<h3 id="_2">二、漏洞编号与修法细节</h3>
+<p>\</p>
+<p>这一事件在微软侧分了两个 CVE:</p>
+<p>项目描述**CVE-2026-8863**直接对应这 11 个老 shim 的漏洞，主要面向 Linux + Secure Boot 同时启用的环境**CVE-2026-10797**shim 的证书撤销机制本身被绕过------意味着仅靠"换 shim 名单"还不够，还需要做一次更深的证书处理**受影响场景**Windows + 启用了 Secure Boot 的 PC;Linux 发行版(尤其是 rhboot/shim 项目历史用户在用 UEFI CA 2011 签发的引导)**补丁范围**2026 年 6 月 9 日 Patch Tuesday,把这 11 个 shim 的 PE Authenticode SHA-256 加进 dbx</p>
+<p>注意一个**很多人会忽略的细节**:**dbx 黑名单本身就是 Secure Boot 撤销机制的"最重的一刀"**。一般个人安全厂商发现 bootkit,需要做的是：给微软提交证据 → 微软审定 → 把 SHA-256 写进 dbx → OEM 厂商把新 dbx 推到用户设备。要走完全链路，**平均周期 90 天起**。这一次，因为微软自己签发、自己漏签，链路从"提交-审-签-发"被压缩到十几小时。</p>
+<p>在 dbx 落地的同一天，微软也开始讲另一件事------**"Microsoft Corporation UEFI CA 2011" 这张证书本来就要 2026 年 6 月 27 日到期了**。两者叠加，等于微软把"硬底线(证书到期) + 软补丁(dbx 黑名单)"双线并行:</p>
+<ul>
+<li>**硬底线**:旧证书 2026-06-27 自然到期，所有 UEFI 固件不再信任新提交者用它签发的内容；- **软补丁**:旧证书期内已经签出来的 11 个老 shim,通过 dbx 显式撤销，**让"过期前已经签出去的旧 shim"也失效**。</li>
+</ul>
+<p>微软顺便引入了两张 2023 年版的新证书 **Microsoft UEFI CA 2023** 和 **Microsoft Option ROM UEFI CA 2023**,接替 2011 这条信任链。新证书设计上更"细粒度"------不只是按证书整体信任，而是配合 manifest 数据库来精确控制"哪一份二进制在哪台机器上能用"。</p>
+<p>03 · CHAPTER THREE</p>
+<h3 id="bootkit">三、这次的攻击模型:bootkit 是怎么"钻"进去的</h3>
+<p>\</p>
+<p>攻击链走完一遍，对很多从 Windows XP 时代走过来的工程师来说，看起来像"老酒装新瓶"------只是这次撬开了第一道门。</p>
+<p>(1) 物理接触 / 管理员执行                                              ↓                              攻击者把 11 个老 shim 中的 1 个刷进 EFI 分区                                              ↓                              UEFI 固件找到这个二进制 → 仍然信任 CA 2011                                              ↓                              这个 shim 加载任意未签名的第二阶段 (例如 bootkit.efi)                                              ↓                              bootkit 在 OS 启动前接管内核，植入持久化 rootkit                                              ↓                              OS 重装、换硬盘、刷 SSD 都清不掉</p>
+<p>三件事让这条链"威胁分级高"过 CVE 平均水平:</p>
+<p>01</p>
+<p>**固件级 + 持久化**。Bootkit 写入 EFI 分区，意味着擦 OS、重分区、换硬盘都不一定清得掉------是真正"重装系统也救不了你"那类威胁。</p>
+<p>02</p>
+<p>**Windows 与 Linux 同样受影响**。很多人有种错觉："Secure Boot 是 Windows 那套儿，Linux 用 shim 是另一套。"其实**来源的根证书是同一张 Microsoft Corporation UEFI CA 2011**------这条信任链就横跨两个生态。</p>
+<p>03</p>
+<p>**不需要 0day**。这次攻击**完全不需要破解任何 cryptography**。它的"破防"是社会工程 + 流程上的：微软签发了 → OEM 信任了 → 没人撤 → 大家默认它可信。</p>
+<p>请记下这第三点。这是下文所有"启示"的支点------**这次不是 crypto 漏洞，这是 governance 漏洞**。</p>
+<p>04 · CHAPTER FOUR</p>
+<h3 id="secure-boot">四、Secure Boot 失守其实不是"头一回"</h3>
+<p>\</p>
+<p>只看 2025-2026 这两年，Secure Boot 就有至少三起严重失守:</p>
+<ol>
+<li>CVE-2025-3052(DT Research,2025 年 6 月修复)</li>
+</ol>
+<p>制造商 DT Research 发布的固件工具因为**误用了微软签发的固件签名证书**,允许任何持有这台机器物理访问的人**关闭 Secure Boot**。受影响设备 **50 款**以上，覆盖教育、政企终端。</p>
+<ol>
+<li>CVE-2025-47827(IGEL,2025 年中)</li>
+</ol>
+<p>IGEL Linux 设备的某个**内核模块使用 SHA-1 哈希**(早已被认为不安全),被用于 Secure Boot 信任判定。等于把 21 世纪第一个十年的密码学困境，搬到了 2025 年的 Secure Boot 设备上。</p>
+<ol>
+<li>2022 年泄漏 → 2024 年披露的密钥事件</li>
+</ol>
+<p>超过 **200 款设备**的 Secure Boot 因为 2022 年一份签发密钥泄漏而失守------直到 2024 年 7 月由固件安全公司披露，大约有 **200 多款厂商代表的产品**(包括消费级和企业级)受影响。</p>
+<p>加上这次 14 年中的 13 年，Secure Boot 的真实形象是:</p>
+<p>**Secure Boot 的设计是健全的，但"谁来管 keys / 谁来补 dbx / 谁负责撤销" 这条治理线，在过去十几年的每一代都被打了个不轻的洞。**</p>
+<p>05 · CHAPTER FIVE</p>
+<h3 id="_3">五、对工程师和读者的启示</h3>
+<p>\</p>
+<p>这次事件不像 CVE-2026-31402 那种"协议语义错位"那种"智力活儿"。它是一份**检查清单**,逼所有人看清现状。</p>
+<ol>
+<li>"信任一份签发的二进制"和"信任签发者"是两回事</li>
+</ol>
+<p>整个 Secure Boot 这件事，逻辑高度像一份静态证书链 PKI------内核/固件/操作系统/浏览器，**都在按"被签出来的那份内容"做信任**。但 pkil 的常识是:</p>
+<p>一旦把签发证书的公钥烧进固件，这份信任就永远固化在硬件里。 想撤销必须把哈希加进 dbx。</p>
+<p>**治理成本是真实存在的**,不是漏洞修补。是供应商之间、责任链条之间 13 年里没人推动的事。</p>
+<ol>
+<li>"出厂即安全"不是免费的</li>
+</ol>
+<p>PC 厂商在 2012 年 Secure Boot 铺开时，默认信任了微软的 2011 CA 证书。这 14 年来，**没有一个 OEM 主动审视过"我出厂时默认信任的密钥，有没有变化 / 过期 / 撤过"**------直到这次 11 个 shim 直接让他们全吃哑巴亏。</p>
+<p>采购 IT 资产时，以前看 BIOS 版本、看 TPM、看 Secure Boot 是否启用------**今天之后，还应该问："你上次同步 dbx 是什么时候？"**</p>
+<ol>
+<li>备份"持久层"的隐喻被戳穿</li>
+</ol>
+<p>业内一讲到"持久化威胁",常常带上"系统重装都没用"的描述。这次事件把它**从议题变成现实**------ 一个老 shim,几行 EFI 二进制，就能装在你装 Windows 的同一个 NVMe 里，在 OS 启动前接管。</p>
+<p>提醒所有人:**对于涉及核心数据 / 财务 / VPN 凭据的机器，EFI 重灌、SPI 编程、芯片级验证才是真安全路径**。系统重装，从来只是"重新把客厅刷了一遍漆",而地基被动了手脚，你怎么刷也看不到。</p>
+<ol>
+<li>dbx 是"最贵的一刀"</li>
+</ol>
+<p>dbx 一旦更新，**全球 OEM 必须把新 dbx 推到所有在用户手上"还在保"和"已经停产"的设备**。这件事的成本几乎全部归 OEM------所以 OEM 一直在拖。</p>
+<p>有些 OEM 拖三五年都没把历史 dbx 更新推上来，这件事**不奇怪**,**这就是生态代价**。这次微软主动推"所有设备的 dbx 同步",本身就说明了生态里 OS 商 + OEM 之间的紧张关系。</p>
+<p>06 · CHAPTER</p>
+<h3 id="_4">结语</h3>
+<p>\</p>
+<p>Secure Boot 这次的故事，一点都不像技术漏洞------更像一部公司治理失误的剧本。ESET 把 11 个老 shim 翻出来，本质上是给整个 UEFI 生态做了一次 "你们忘了哪份材料，我帮你找回来" 的事。</p>
+<p>但更深的隐喻是: **凡是"信任一张证书"的工程，**Long-running **就始终**要有"撤销流程能跑通"的 commitment**。否则，15 年后大家还是会再来一次**"哦，原来这个钥匙还能用"**的集体发愣。</p>
+<p>**后记:**Secure Boot 设计坚挺了 14 年，但"谁来维护这份信任"这件事荒了 13 年。技术 vs. 治理------这次再明显不过:**再有美感的设计，在缺乏治理的时，也将以最丑陋的方式塌方。</p>
+<p>\</p>
+<p>我是 **{{老徐}}**,专注 IT 技术深度观察与前沿解读。 如果你觉得今天这篇有收获，欢迎**点赞、在看、转发**三连，我们下篇见。</p>
+<h3 id="_5"></h3>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317064&amp;idx=1&amp;sn=b5a5f5f2f531a34dbb957cb7226da152&amp;scene=21#wechat_redirect" linktype="2" localeditorid="17hybpj2wc59ccp7uo" target="_blank" textvalue="架构师视角的 Windows 运维闭环：Scoop 深度解析与供应链安全方案">架构师视角的 Windows 运维闭环：Scoop 深度解析与供应链安全方案</a><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317009&amp;idx=1&amp;sn=98a86d5ae876b030490ccf485a08638f&amp;scene=21#wechat_redirect" linktype="2" localeditorid="16smdnder9f648r30g" target="_blank" textvalue="技术深度解析：开源 GreenBoost 驱动实现 NVIDIA GPU 显存跨级扩展">技术深度解析：开源 GreenBoost 驱动实现 NVIDIA GPU 显存跨级扩展</a>\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316451&amp;idx=1&amp;sn=1278160d6c9df1504824cb6692886998&amp;scene=21#wechat_redirect" linktype="2" localeditorid="5ahexosje8d2cehz8qo" target="_blank" textvalue="深度解析：Linux 玩家如何应对 2026 UEFI 安全启动证书大更迭？">深度解析：Linux 玩家如何应对 2026 UEFI 安全启动证书大更迭？</a>\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316447&amp;idx=1&amp;sn=df49296d5684ead1aeae7deb232345de&amp;scene=21#wechat_redirect" linktype="2" localeditorid="cfbwrba4si7h8bfnk" target="_blank" textvalue="紧急扩散：UEFI 安全启动证书 6 月到期，你的系统准备好了吗？">紧急扩散：UEFI 安全启动证书 6 月到期，你的系统准备好了吗？</a><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316314&amp;idx=1&amp;sn=03ec83f58e55cf277eb0fc73004db6a2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="tp90nxg3tvsj3flpmo" target="_blank" textvalue="离机即毁：利用 TPM 2.0 与 UKI 锁定 Linux 镜像的物理生存权">离机即毁：利用 TPM 2.0 与 UKI 锁定 Linux 镜像的物理生存权</a>\
+<a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315588&amp;idx=1&amp;sn=dd195448a0a5d64d827c2eb023a72969&amp;scene=21#wechat_redirect" linktype="2" localeditorid="7eqkg9avho83cqf4sg0" target="_blank" textvalue="GRUB 2.14 重磅发布！支持 EROFS、告别 2038 危机，Linux 引导迎来大升级导语：">GRUB 2.14 重磅发布！支持 EROFS、告别 2038 危机，Linux 引导迎来大升级导语：</a>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这篇文章主要讲什么？</strong> ------ 直到有人拿着钥匙试开了一批大门，大家才发现：哦，原来这是钥匙。
+<strong>Q2：「一、新闻的"主语"与"谓语"」这部分主要讲了什么？</strong> \
+<strong>Q3：「二、漏洞编号与修法细节」这部分主要讲了什么？</strong> \
+<strong>Q4：「三、这次的攻击模型:bootkit 是怎么"钻"进去的」这部分主要讲了什么？</strong> \
+<strong>Q5：「四、Secure Boot 失守其实不是"头一回"」这部分主要讲了什么？</strong> \</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/4GKUCtpF1hfjzH_xtH3hpA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

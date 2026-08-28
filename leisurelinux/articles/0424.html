@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>别再瞎布 485 线了！从原理到施工，一篇真正讲明白的 485 总线干货 | LeisureLinux 公众号</title>
+<meta name="description" content="别再瞎布 485 线了！从原理到施工，一篇真正讲明白的 485 总线干货">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/-nLPLfVuDSUt826NSvPm7g">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "别再瞎布 485 线了！从原理到施工，一篇真正讲明白的 485 总线干货", "datePublished": null, "articleSection": "开源/工具", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0424.html", "sameAs": "https://mp.weixin.qq.com/s/-nLPLfVuDSUt826NSvPm7g", "isBasedOn": "https://mp.weixin.qq.com/s/-nLPLfVuDSUt826NSvPm7g", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">别再瞎布 485 线了！从原理到施工，一篇真正讲明白的 485 总线干货</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 开源/工具</div>
+    <div class="content" itemprop="articleBody">
+<p>大家在做中央空调多联机、变频器、楼宇自控、机房监控项目时，一定都被一个东西折磨过：\
+RS485 通信。\
+\
+要么搜不到设备，要么时断时续，要么远距离就乱码，甚至一上电整条总线直接瘫痪。\
+出了问题，先怀疑设备坏了，最后查来查去，80% 都是：\
+线没选对、拓扑乱接、终端电阻乱加、主从关系没搞懂。\
+\
+今天这篇，不讲虚的、不堆公式，只讲工程现场真正能用的干货：\
+RS485 原理、Master/Slave 主从、手拉手拓扑、线缆选型、终端电阻、施工规范，再把 RS232 一起讲透。\
+看完这一篇，你就是现场最懂 485 的那个人。\</p>
+<h2 id="_1"></h2>
+<h2 id="rs485">一、先把概念说清：RS485 到底是什么？</h2>
+<p>很多人一上来就把<strong>485 和 Modbus 混为一谈</strong>，这是最基础的误区。</p>
+<ul>
+<li><strong>RS485：是物理层标准</strong>只负责一件事：通过两根线，把电信号稳定、远距离传出去。</li>
+<li><strong>Modbus：是应用层协议</strong>是设备之间 "说话的语法"。</li>
+</ul>
+<p>可以简单理解：</p>
+<ul>
+<li><strong>485 = 公路</strong></li>
+<li><strong>Modbus / 空调私有协议 / 变频器协议 = 路上跑的车</strong></li>
+</ul>
+<p>我们平时说的 485 通信，本质就是：<strong>半双工、差分信号、抗干扰强、最远可走 1200 米、一主多从的总线结构。</strong></p>
+<h2 id="_2"></h2>
+<h2 id="_3"></h2>
+<h2 id="485-master-slave">二、485 的灵魂：Master / Slave 主从机制</h2>
+<p>RS485 是<strong>半双工共享总线</strong>：同一时间，只能有一个设备 "说话"，否则就会电平打架、总线崩溃。所以它有一条铁律：</p>
+<h3 id="1-master"><strong>一条总线，只能有 1 个 Master（主机）</strong></h3>
+<ul>
+<li><strong>Master（主机）</strong>主动发问、主动轮询、拥有绝对话语权。比如：中央空调外机、PLC、监控主机。</li>
+<li><strong>Slave（从机）</strong>只响应、不主动发数据。比如：空调内机、变频器、仪表、传感器。</li>
+</ul>
+<h3 id="_4">重点：主机不是设置出来的，是代码行为决定的</h3>
+<ul>
+<li>谁<strong>主动轮询、主动发指令</strong>→ 谁就是主机</li>
+<li>谁<strong>只等点名、只回复</strong>→ 谁就是从机</li>
+</ul>
+<h3 id="_5">极端情况：从机 "造反" 会怎样？</h3>
+<p>如果某台内机 / 从机擅自主动发数据，就会出现：<strong>总线电平冲突 → 通信乱码 → 整条总线瘫痪</strong>这也是为什么空调、变频器的从机程序，都会被锁死 "不主动上行"。</p>
+<h2 id="_6"></h2>
+<h2 id="_7"></h2>
+<h2 id="_8">三、拓扑结构：为什么只能用「手拉手」？</h2>
+<p>485 只有一种<strong>标准、稳定、推荐</strong>的布线方式：</p>
+<h3 id="_9"><strong>手拉手（菊花链）</strong></h3>
+<p>结构非常简单：主机 → 设备 1 → 设备 2 → 设备 3 → ... → 末端很多人理解错了：</p>
+<ul>
+<li><strong>布线是手拉手串联走法</strong></li>
+<li><strong>电气上，所有设备都是并联挂在 A/B 总线上</strong></li>
+</ul>
+<h3 id="_10">特点你必须懂：</h3>
+<ul>
+<li>有头有尾，<strong>不是闭合环路</strong></li>
+<li>单台设备损坏，<strong>不影响整条总线</strong></li>
+<li>中间<strong>线缆断开</strong>→ 断线后面的设备全部失联</li>
+<li>严禁：星形、T 型分支、树形拓扑（信号反射直接炸）</li>
+</ul>
+<h3 id="ring">再顺便说清：环路（Ring）是什么？</h3>
+<p>环路是首尾相接、断线可自动绕行，可靠性极高，但成本高、芯片复杂。<strong>空调、楼宇、普通工控几乎不用</strong>，只在地铁、电厂等工业级高可靠场景使用。</p>
+<h2 id="_11"></h2>
+<h2 id="_12"></h2>
+<h2 id="120">四、线缆选型：为什么必须是 120Ω 屏蔽双绞线？</h2>
+<p>通信不稳、远距离乱码，90% 是线用错了。</p>
+<h3 id="485">485 标准线缆：</h3>
+<p><strong>RVSP 2×0.5 屏蔽双绞线特性阻抗：120Ω</strong></p>
+<h3 id="120_1">为什么必须 120Ω？</h3>
+<p>RS485 是高速差分信号，走到总线末端会<strong>反射</strong>，反射波叠加会导致波形畸变、通信失败。</p>
+<ul>
+<li><strong>终端电阻 = 线缆特性阻抗</strong></li>
+<li>485 标准线 = 120Ω</li>
+<li>终端电阻 = 120Ω</li>
+</ul>
+<p>这就叫<strong>阻抗匹配</strong>。</p>
+<h3 id="_13">和网线对比：</h3>
+<ul>
+<li>超五类网线阻抗：<strong>100Ω</strong>，不匹配</li>
+<li>短距离临时用可以，<strong>长距离必出问题</strong></li>
+<li>485 专用线：屏蔽、双绞、抗干扰、阻抗标准</li>
+<li>价格只贵一点点，稳定性强十倍</li>
+</ul>
+<h2 id="_14"></h2>
+<h2 id="120-1">五、终端电阻：120Ω 只装 1 个，别乱装</h2>
+<p>这是工地最常犯的错：<strong>每台设备都加终端电阻，加完直接通信崩掉。</strong></p>
+<h3 id="_15">正确规范只有一句话：</h3>
+<ul>
+<li>只在<strong>总线最开头 或 最末端</strong></li>
+<li>加装<strong>1 个 120Ω 终端电阻</strong></li>
+<li>中间设备，<strong>一个都不要加</strong></li>
+</ul>
+<p>作用：<strong>吸收信号反射，保证长距离、高波特率通信稳定。</strong></p>
+<h2 id="_16"></h2>
+<h2 id="485_1">六、一条 485 总线能带多少台从机？</h2>
+<ul>
+<li>标准 485 芯片：<strong>最多 32 个节点</strong></li>
+<li>工业增强型芯片：可支持 64/128/256</li>
+<li><strong>工程安全值：16～32 台最稳妥</strong></li>
+</ul>
+<p>放到空调场景里就是：<strong>1 台外机（Master）带 16～32 台内机（Slave）配 1 台协议转换器</strong></p>
+<h2 id="_17"></h2>
+<h2 id="485_2">七、485 布线施工黄金规范（直接发给工人）</h2>
+<ol>
+<li>必须用<strong>RVSP 120Ω 屏蔽双绞线</strong></li>
+<li>必须<strong>手拉手布线</strong>，严禁星形、分支</li>
+<li><strong>A 接 A，B 接 B</strong>，严禁接反</li>
+<li>终端电阻<strong>120Ω 只装 1 个，在首尾</strong></li>
+<li>屏蔽层<strong>单端接地</strong>，禁止两端接地</li>
+<li>严禁与 220V 强电<strong>同管、同槽</strong></li>
+<li>一条总线<strong>只能 1 个主机</strong></li>
+<li>从机<strong>绝不主动发数据</strong></li>
+<li>距离超 1200 米，加 485 中继器</li>
+<li>设备尽量共地，减少电位差干扰</li>
+</ol>
+<h1 id="_18"></h1>
+<h1 id="_19"></h1>
+<h1 id="rs232">扩展：RS232 是什么？工业还在用吗？</h1>
+<p>很多人看完 485，都会问：<strong>RS232 和它有啥区别？</strong></p>
+<h2 id="rs232_1">一、RS232 一句话理解</h2>
+<p><strong>RS232 = 点对点、近距离、一对一的串口通信。</strong>就像<strong>两个人打电话</strong>：只能你说我听、我说你听，<strong>不能拉一群人一起聊</strong>。</p>
+<ul>
+<li>3 根线：TX 发送、RX 接收、GND 地</li>
+<li>单端信号，抗干扰能力弱</li>
+<li>距离短：<strong>最远也就 15 米</strong></li>
+<li>只能<strong>1 对 1 通信</strong>，没有总线概念</li>
+</ul>
+<h2 id="_20"></h2>
+<h2 id="rs232-vs-rs485">二、RS232 vs RS485 一张表看懂</h2>
+<p>表格</p>
+<p>项目           RS232                    RS485</p>
+<hr />
+<p>通信方式       点对点                   一主多从、总线
+  接线           TX、RX、GND（3 线）      A、B 双线
+  距离           最长约 15 米             最长可达 1200 米
+  抗干扰能力     较弱                     很强（差分信号）
+  能带多少设备   只能 1 对 1              最多 32/128/256 个节点
+  主要用途       调试、配置、本地短连接   空调、变频器、楼宇、工业现场</p>
+<h2 id="_21"></h2>
+<h2 id="rs232_2">三、工业现在还在用 RS232 吗？</h2>
+<p><strong>用，但只用于调试、配置、机柜内短距一对一。现场总线、长距离、多设备控制，一律 RS485。</strong></p>
+<h2 id="_22"></h2>
+<h2 id="_23"></h2>
+<h2 id="6">最后总结：记住这 6 句，工控串口再也不翻车</h2>
+<ol>
+<li><strong>485 是硬件总线，Modbus 是协议，不是一回事</strong></li>
+<li><strong>一主多从，半双工，从机不能主动说话</strong></li>
+<li><strong>标准拓扑只有手拉手，不是环路</strong></li>
+<li><strong>线必须 120Ω 屏蔽双绞，终端电阻 120Ω</strong></li>
+<li><strong>一条总线建议带 16～32 台设备，稳定第一</strong></li>
+<li><strong>232 用于调试，485 用于工业现场</strong></li>
+</ol>
+<p>\
+以后再做空调改造、楼宇自控、变频器监控，别再瞎布 485 线了，按这篇来，少走 90% 的弯路。\
+\
+如果你在现场遇到 485 疑难问题，\
+欢迎在评论区留言，我们一起聊透工控底层逻辑。\
+\
+关注我，下期继续分享：\
+协议转换器、Modbus 网关、空调集中控制实战避坑指南。或许也可以讲讲我做电力物联网网关的心路历程。等待你评论区点播。\</p>
+<p>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这篇文章主要讲什么？</strong> 大家在做中央空调多联机、变频器、楼宇自控、机房监控项目时，一定都被一个东西折磨过：\ RS485 通信。\ \ 要么搜不到设备，要么时断时续，要么远距离就乱码，甚至一上电整条总线直接瘫痪。
+<strong>Q2：「一、先把概念说清：RS485 到底是什么？」这部分主要讲了什么？</strong> 很多人一上来就把<strong>485 和 Modbus 混为一谈</strong>，这是最基础的误区。
+<strong>Q3：「二、485 的灵魂：Master / Slave 主从机制」这部分主要讲了什么？</strong> RS485 是<strong>半双工共享总线</strong>：同一时间，只能有一个设备 "说话"，否则就会电平打架、总线崩溃。
+<strong>Q4：「</strong>一条总线，只能有 1 个 Master（主机）」这部分主要讲了什么？<strong> - </strong>Master（主机）<strong>主动发问、主动轮询、拥有绝对话语权。
+</strong>Q5：「重点：主机不是设置出来的，是代码行为决定的」这部分主要讲了什么？<strong> - 谁</strong>主动轮询、主动发指令<strong>→ 谁就是主机 - 谁</strong>只等点名、只回复**→ 谁就是从机</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/-nLPLfVuDSUt826NSvPm7g" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

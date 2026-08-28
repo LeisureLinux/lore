@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化 | LeisureLinux 公众号</title>
+<meta name="description" content="读完本文，你会搞懂：为什么古老如X11这种协议，也有人从零开始用Rust重写；在Linux内核、桌面显示、编译器工具链三">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/hpW4PVuMd0XQEnw7l62JkA">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化", "datePublished": null, "articleSection": "AI/Agent", "description": "读完本文，你会搞懂：为什么古老如X11这种协议，也有人从零开始用Rust重写；在Linux内核、桌面显示、编译器工具链三", "url": "https://freelamp.com/leisurelinux/articles/0118.html", "sameAs": "https://mp.weixin.qq.com/s/hpW4PVuMd0XQEnw7l62JkA", "isBasedOn": "https://mp.weixin.qq.com/s/hpW4PVuMd0XQEnw7l62JkA", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">当 Rust 开始吃掉整个 Linux 底层：X11、内核、编译器一起锈化</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<blockquote>
+<p><strong>读完本文，你会搞懂：为什么古老如 X11 这种协议，也有人从零开始用 Rust 重写；在 Linux 内核、桌面显示、编译器工具链三个维度上，Rust 的渗透已经走到哪一步了。</strong></p>
+</blockquote>
+<p>━━━ ━━━ ━━━</p>
+<p>一个不服输的项目：yserver</p>
+<p>2026 年初，开发者 Jos Dehaes 在 GitHub 上开源了一个名为 <strong>yserver</strong> 的项目------一个从零开始用 Rust 写的 X11 服务器。版本号已经标到了 1.0。</p>
+<p>这不是给博物馆观赏用的。yserver 已经能跑起完整的 MATE、Xfce、Cinnamon 桌面环境，支持 FVWM3、e16、Window Maker 等窗口管理器。支持的 X11 扩展列表一长串：RandR、DRI3、GLX、Composite、MIT-SHM......几乎涵盖了现代桌面所需的核心能力。</p>
+<p>!yserver 运行截图</p>
+<p>它的实现思路很\"锋利\"：</p>
+<ul>
+<li><strong>不兼容旧包袱</strong>：直接砍掉非 TrueColor 视觉模式、间接 GLX、DDX 驱动 ABI------这些都是 X.Org 三十年累积下来几乎没人用的历史残骸。</li>
+<li><strong>直接硬件加速</strong>：通过 DRM/KMS + Vulkan 渲染，不走中间层。</li>
+<li><strong>无 Root 特权</strong>：使用 <code>libseat</code> 做 seat 管理，安全模型干净。</li>
+<li><strong>配合 AI 编码</strong>：这个项目的开发大量依赖 Claude Code 辅助------这也是项目快速成型的关键因素。</li>
+</ul>
+<p>（仓库地址：，MIT 许可证）</p>
+<p>但必须诚实地说，yserver <strong>不是 X.Org 的 drop-in 替代品</strong>。它的安全模型还不完整------当前版本不会阻止客户端读取其他客户端的窗口内容。但方向清晰：先跑起来，再修安全。</p>
+<p>X.Org 的困境</p>
+<p>X.Org 是 Linux 桌面的\"看门人\"协议（X11 的实际参考实现），但它的处境相当尴尬。</p>
+<ul>
+<li>代码库始建于 1980 年代，主显示服务器来自 2004 年 fork 的 XFree86 4.4 RC2</li>
+<li>超过 <strong>60 万行 C 代码</strong>，维护者极度稀缺</li>
+<li>内存安全性差：一个 X11 客户端可以通过恶意请求触发服务端任意内存读取</li>
+<li>大量遗留协议逻辑（非 TrueColor、X 键盘扩展的老版本......）占着代码面积，实际零使用</li>
+</ul>
+<p>业界其实早就知道 X.Org 是个\"火坑\"。Wayland 的出现就是对这个事实的回应------不修了，干脆重来。但 Wayland 本身也不是完美解决方案：远程桌面协议支持不完整、xwayland 还需要跑一个 X 服务、NVIDIA 专有驱动的兼容性问题持续存在。</p>
+<p><strong>所以，回到原点重写一个现代的 X11 服务器，这个想法并不荒谬。</strong></p>
+<p>不止是显示器：Rust 在 Linux 内核的\"正式化\"</p>
+<p>yserver 不是一个孤立事件。往前看一个更大的趋势：<strong>Rust 在 Linux 底层基础设施的渗透正在加速，而且是全栈的。</strong></p>
+<p>2025 年 12 月，东京的 Kernel Maintainers Summit 上，维护者 Steven Rostedt 宣布：Rust 成为内核<strong>正式</strong>的第二种编程语言------全场零反对。Greg Kroah-Hartman 在 Rust Week 2026 上说得更直接：</p>
+<blockquote>
+<p>\"Rust is no longer an experiment.\"</p>
+<p>\"Rust is becoming an official standard.\"</p>
+</blockquote>
+<p>到 2026 年，内核中 Rust 代码约 <strong>25,000 行</strong>------相对于 C 语言的 3400 万行确实微不足道。但关键不在于量，而在于<strong>正在被 Rust 接管的子系统清单</strong>：</p>
+<p>子系统                说明</p>
+<hr />
+<p>PHY 驱动              网络物理层驱动，最先受益
+  Null Block 驱动       块设备层样板
+  Android Binder 驱动   Android 用户态/内核 IPC
+  Apple AGX GPU 驱动    Asahi Linux 项目，M1/M2 GPU
+  Nova GPU 驱动         NVIDIA Turing 架构的开源驱动，分 <code>nova-core</code> 和 <code>nova-drm</code> 两个 crate</p>
+<p>这些子系统的共同特征是什么？<strong>与不受信任的外部输入打交道，或者涉及复杂硬件状态的 C 语言\"漏洞沼泽\"</strong>。用 Rust 写驱动，直接消除了 NULL 指针解引用、use-after-free、缓冲区溢出这几类在 C 驱动中长期居高不下的漏洞来源。</p>
+<p>Greg Kroah-Hartman 在 Rust Week 的演讲中特别提到：<strong>每天报告的漏洞大多来自 C 代码中的人为错误</strong>。Rust 的编译期安全保证，恰好能堵住这些系统性的缺陷。</p>
+<p>工具链的\"第三只脚\"：gccrs</p>
+<p>说了这么多 Rust 在内核的好处，但有一个实际瓶颈：Linux 内核的构建系统深度依赖 GCC。Rust 官方编译器 rustc 背后是 LLVM，这意味着：</p>
+<ol>
+<li>交叉编译到 GCC 独占的架构（比如某些嵌入式平台）存在障碍</li>
+<li>内核的 GCC 插件生态（如 GCC Plugin 安全检测）无法覆盖 Rust 代码</li>
+<li>只能用\"双工具链\"模式：C 用 GCC，Rust 用 LLVM/rustc</li>
+</ol>
+<p>gccrs 项目的目标就是打破这个局面------<strong>在 GCC 中实现一个 Rust 前端</strong>，让 GCC 也能编译 Rust 代码。</p>
+<p>2026 年的 gccrs 进展很快：</p>
+<ul>
+<li>已经可以编译 <code>core</code> crate 上的嵌入式 Rust 程序</li>
+<li>2025 年 7 月实现了 SipHash（来自 <code>core</code> 库）的\"真实代码\"编译</li>
+<li>正在推进 <code>alloc</code> crate 和 Rust-for-Linux crates 的支持，目标是用 GCC 编整个内核</li>
+<li><code>offset_of!()</code> 宏------一个 Rust-for-Linux 特有的基础设施------已实现完成</li>
+<li>RustConf 2026 上有一场题为 <strong>\"用 gccrs 编译 Linux 内核\"</strong> 的演讲被接受</li>
+</ul>
+<p>需要注意的是，gccrs <strong>还没有完整的借用检查器</strong>。项目计划集成 Polonius（Rust 官方的下一代借用检查器），这是关键的最后一个大拼图。</p>
+<p>2026 年有望交付的<strong>可用版本</strong>，意味着什么？意味着未来编译内核不再需要分两套工具链。C 和 Rust 在同一个 GCC 命令行、同一套 Makefile 规则、同一种 <code>.o</code> 输出中完成。</p>
+<p>Rust 2026 版本，为内核量身定制</p>
+<p>Rust 本身也在回应内核的需求。Rust 2026 edition 的几个旗舰特性------<strong>Field Projections、In-place Initialization</strong>------直接来自于 Linux 内核社区的诉求。</p>
+<ul>
+<li><strong>Field Projections</strong>：解决 Rust 所有权模型下内核常见的内存布局需求</li>
+<li><strong>In-place Initialization</strong>：让 Rust 可以在栈上零开销初始化结构体------对内核这种有严格栈大小的场景是关键</li>
+<li><strong>Supertrait auto impl</strong>：让 trait 的派生更加自然，减少手写样板代码</li>
+</ul>
+<p>此外，Polonius（下一代借用检查器）正在走向稳定化。C++ 互操作性、扩展的 async trait 支持也在推进。</p>
+<p>有意思的是，Rust 和 C 的内核开发者正在<strong>双向奔赴</strong>：C 一侧有 Coccinelle 等静态分析工具做安全扫描，Rust 一侧在向 GCC 工具链靠拢。两种语言不是替代关系，而是互补------未来内核里 C 负责存量，Rust 负责增量和新接入。</p>
+<p>小结：从 X11 到内核，逻辑是一样的</p>
+<p>回到 yserver 这个项目，它的核心逻辑和内核用 Rust 写驱动一模一样：</p>
+<blockquote>
+<p><strong>C 语言的\"历史包袱\"太重了。对新项目来说，与其在旧代码上修修补补，不如用 Rust 重新定义基础设施的「安全上限」。</strong></p>
+</blockquote>
+<p>当然，yserver 距离\"能用\"和\"好用\"还有很长距离。安全模型要补，Wayland 兼容性要考虑，还有整个 Linux 发行版生态习惯的改变。</p>
+<p>但它像一面镜子，反映出开源社区的一个微妙情绪：<strong>我们受够了。</strong></p>
+<p>受够了 X.Org 的老旧安全、受够了 C 驱动的 NULL 指针、受够了双工具链的割裂。而 Rust------无论你喜不喜欢它------提供了一个现成的、经过工业验证的出路。</p>
+<p>最有趣的时代从来不是某样东西完全被替代，而是新老共存的过渡期。我们现在就在这个过渡期里。</p>
+<p>━━━ ━━━ ━━━</p>
+<blockquote>
+<p><strong>后记：</strong> yserver 曾因大量使用 Claude Code 辅助编码而引发讨论。有人认为这是 AI 写代码的正面样本，有人担心人类可维护性。我的看法是：<strong>工具从来不做决定，决定权在写那些代码的人手里。</strong> yserver 能跑起 Xfce 就是最好的证明------任何有效的路线都值得讨论，而不是因为\"AI 写的\"就打标签。</p>
+</blockquote>
+<p>━━━ ━━━ ━━━</p>
+<p>*本文参考来源：*</p>
+<ol>
+<li>*GitHub - joske/yserver: https://github.com/joske/yserver, MIT License*</li>
+<li>*ItsFOSS, \"New X11 Server Written in Rust\", 2026*</li>
+<li>*Linuxiac, \"yserver: A Modern X11 Server From Scratch in Rust\", 2026*</li>
+<li>*RustConf 2026 Accepted Talks - \"Compiling the Linux Kernel with gccrs\"*</li>
+<li>*gccrs 项目状态报告, https://github.com/Rust-GCC/gccrs*</li>
+<li>*Greg Kroah-Hartman, Rust Week 2026 主题演讲*</li>
+<li>*Kernel Maintainers Summit 2025 (Tokyo): Rust approved as kernel language*</li>
+<li>*Rust 2026 Edition Roadmap, https://rust-lang.org*</li>
+<li>*Linux 内核 Rust 子系统进展, dev.to &amp; medium.com 专题报道, 2026*</li>
+</ol>
+<p>*本文完。欢迎关注 LeisureLinux，获取更多深度技术解读。*</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317527&amp;idx=1&amp;sn=13420895bd27de00e09b43d220e54129&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ej8j6piklqdubxpdz4" target="_blank" textvalue="用 Rust 重写的 Bash: Brush v0.4的重大更新">用 Rust 重写的 Bash: Brush v0.4的重大更新</a></p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316929&amp;idx=1&amp;sn=71005aabd243ab5cd99c2e59e10ab1cb&amp;scene=21#wechat_redirect" linktype="2" localeditorid="799qvk44lwkwf2j86ww" target="_blank" textvalue="Rust Coreutils 0.7 发布：性能大跃进与架构深层优化">Rust Coreutils 0.7 发布：性能大跃进与架构深层优化</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317277&amp;idx=1&amp;sn=30b8c319fab567c8ffdfd293a94bf78a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2j89xxdgo0clnxv6kg" target="_blank" textvalue="10款比传统 Linux 工具更快的 Rust 替代品深度解读">10款比传统 Linux 工具更快的 Rust 替代品深度解读</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315932&amp;idx=1&amp;sn=d9ca7448d40db1492ff36d169a5ded68&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2t36jskgpf3heys6ark" target="_blank" textvalue="一个号称比 homebrew 快20倍的 zerobrew ，由 rust 语言编写">一个号称比 homebrew 快20倍的 zerobrew ，由 rust 语言编写</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="dwj46wti75ubjgdgcg" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这篇文章主要讲什么？</strong> 2026 年初，开发者 Jos Dehaes 在 GitHub 上开源了一个名为 <strong>yserver</strong> 的项目------一个从零开始用 Rust 写的 X11 服务器。版本号已经标到了 1.0。
+<strong>Q2：还有哪些关键事实？</strong> 支持的 X11 扩展列表一长串：RandR、DRI3、GLX、Composite、MIT-SHM......几乎涵盖了现代桌面所需的核心能力。
+<strong>Q3：有哪些值得注意的细节？</strong> 但关键不在于量，而在于<strong>正在被 Rust 接管的子系统清单</strong>： 子系统 说明 --------------------- ----------------------------------------------------------------------- PHY 驱动 网络物理层驱动，最先受益 Null Block 驱动 块设备层样板 Andr…
+<strong>Q4：核心结论是什么？</strong> ()` 宏------一个 Rust-for-Linux 特有的基础设施------已实现完成 - RustConf 2026 上有一场题为 <strong>\"用 gccrs 编译 Linux 内核\"</strong> 的演讲被接受 需要注意的是，gccrs <strong>还没有完整的借用检查器</strong>。</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/hpW4PVuMd0XQEnw7l62JkA" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

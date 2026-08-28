@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Let&#x27;s Encrypt 在交叉签名根证书事件后暂停证书签发 | LeisureLinux 公众号</title>
+<meta name="description" content="Let&#x27;s Encrypt 在交叉签名根证书事件后暂停证书签发">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/h3zec99BsPkbUPRbvtpT5A">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Let's Encrypt 在交叉签名根证书事件后暂停证书签发", "datePublished": null, "articleSection": "Linux/运维", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0200.html", "sameAs": "https://mp.weixin.qq.com/s/h3zec99BsPkbUPRbvtpT5A", "isBasedOn": "https://mp.weixin.qq.com/s/h3zec99BsPkbUPRbvtpT5A", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Let&#x27;s Encrypt 在交叉签名根证书事件后暂停证书签发</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 Linux/运维</div>
+    <div class="content" itemprop="articleBody">
+<p>关于 Let\'s Encrypt 在 2026 年 5 月 8 日突发的证书签发中断事件，这是一次由于根证书架构升级引发的连锁反应。\
+作为运维和架构师，我们需要穿透表象，分析其底层的<strong>Generation X/Y</strong>根证书切换逻辑。</p>
+<p>\</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMsumoVvHIOOpjlZFDsXiaQ1IIAe6xcjh8FlIMBiaaP5xUCOP0THz20g3leOCCZ8PH4H4RqdZpHGVPZs3olxQXe1bdWefhUazBRVOc/640?wx_fmt=jpeg" /></p>
+<h3 heading="true" id="事件背景gen-x-到-gen-y-的跨代跃迁">事件背景：Gen X 到 Gen Y 的跨代跃迁</h3>
+<p>Let\'s Encrypt 正在推进从旧的<strong>Generation X</strong>根证书架构向更现代的<strong>Generation Y</strong>架构迁移。</p>
+<ul>
+<li>•<strong>Generation X</strong>: 现有的 ISRG Root X1/X2，已服役约 10 年。受限于某些根证书库（如 Mozilla）的 15 年有效期限制，必须开始更替。</li>
+<li>•<strong>Generation Y</strong>: 新一代根证书，专为服务器验证优化（去除了客户端验证支持以减小 TLS 握手体积）。\
+    为了保证平滑过渡，Let\'s Encrypt 使用了**交叉签名（Cross-Signing）**技术，即用旧的 Gen X 根证书去签名新的 Gen Y 根证书，确保那些尚未更新系统根库的老旧设备也能信任新的证书链。</li>
+</ul>
+<h3 heading="true" id="故障核心交叉签名炸弹">故障核心：交叉签名"炸弹"</h3>
+<p>2026 年 5 月 8 日 18:37 UTC，工程师发现 Gen X 根证书交叉签名 Gen Y 根证书的环节出现严重逻辑或配置错误。</p>
+<ol>
+<li>1.<strong>紧急停机</strong>：官方立即通过 HTTP 503 错误代码关停了 ACME API 接口（acme-v02.api.letsencrypt.org），导致全球范围内的证书申请和自动续期中断。</li>
+<li>2.<strong>回滚逻辑</strong>：为了在排查问题的同时恢复业务，Let\'s Encrypt 强行将 tlsserver（45 天有效期 profile）和 shortlived（160 小时有效期 profile）的签发逻辑<strong>回滚到旧的 Generation X 架构</strong>。</li>
+<li>3.<strong>恢复现状</strong>：经过约 2.5 小时的抢修，签发服务恢复，但此时签出的证书链不再包含预期的 Gen Y 中间证书。</li>
+</ol>
+<h3 heading="true" id="架构师視角潜在风险与影响分析">架构师視角：潜在风险与影响分析</h3>
+<p>此次事件并非简单的"断网"，它对现代自动化运维架构提出了挑战：</p>
+<h4 heading="true" id="证书有效期缩短的容错瓶颈">1. 证书有效期缩短的容错瓶颈</h4>
+<p>此次故障恰逢 Let\'s Encrypt 推进<strong>45 天短期证书</strong>（甚至 shortlived 模式下的<strong>6 天证书</strong>）实验阶段。</p>
+<ul>
+<li>•<strong>Buffer 消失</strong>：对于 90 天证书，2 小时的停机几乎无感。但对于每 2.5 天就要自动续期的 shortlived 证书，2 小时的中断会极大消耗续期窗口的容错余量。</li>
+<li>•<strong>监控警报</strong>：如果你的 Prometheus 或 Zabbix 监控的是 ACME 续期脚本的 Exit Code，在此期间应能看到大量 503 错误。</li>
+</ul>
+<h4 heading="true" id="证书链一致性检查chain-of-trust">2. 证书链一致性检查（Chain of Trust）</h4>
+<p>由于官方执行了回滚，2026 年 5 月 8 日晚间签发的证书可能与 5 月 7 日签发的证书具有不同的中间证书路径。</p>
+<ul>
+<li>•<strong>风险点</strong>：如果你在 Nginx/Apache 配置中手动 Hardcode 了中间证书（Intermediate Certificate）或使用了某些证书钉选（HPKP/Pinning）策略，可能会导致 TLS 握手失败。</li>
+</ul>
+<h4 heading="true" id="后续-5-月-13-日的大变更">3. 后续 5 月 13 日的大变更</h4>
+<p>此次事故距离原定的 2026 年 5 月 13 日"三大变更"（默认切到 Gen Y、45 天证书普及、停止客户端验证支持）仅剩 5 天。</p>
+<blockquote>
+<p><strong>注意</strong>：官方已提示原定 5 月 13 日的部分 Gen Y 迁移计划可能会受此事故影响而推迟。</p>
+</blockquote>
+<h3 heading="true" id="运维建议">运维建议</h3>
+<ul>
+<li>
+<p>•<strong>检查续期日志</strong>：使用 vim 查看 /var/log/letsencrypt/letsencrypt.log，搜索 2026-05-08 期间是否有 503 报错，确保受影响的域名在服务恢复后已成功续期。</p>
+</li>
+<li>
+<p>•<strong>验证证书链</strong>：</p>
+<pre><code>openssl s_client -connect yourdomain.com:443 -showcerts
+</code></pre>
+<p>确认当前的 Issuer 是否仍然是 R3 或 R10/11 (Gen X 分支)，而不是尚未稳定的 Gen Y 分支。</p>
+</li>
+<li>
+<p>•<strong>多 CA 冗余</strong>：对于高可用场景，建议在 ACME 客户端（如 certbot 或 acme.sh）中配置备用 CA（如 ZeroSSL 或 Google Trust Services），以规避 Let\'s Encrypt 单点基础设施故障。</p>
+</li>
+</ul>
+<blockquote>
+<p>本文由 AI 生成，仅供参考，请仔细甄别，谨慎投资。</p>
+</blockquote>
+<p>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316840&amp;idx=1&amp;sn=5f1c50261c1c92f6facfeaf8cc27e57d&amp;scene=21#wechat_redirect" linktype="2" localeditorid="tv8hwzszz846ynoetc" target="_blank" textvalue="从动态挑战到声明式授权：ACME 协议的零信任演进与 DNS-PERSIST-01 实践">从动态挑战到声明式授权：ACME 协议的零信任演进与 DNS-PERSIST-01 实践</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315508&amp;idx=1&amp;sn=9ff6f993aef7c82512cee9da7014ea75&amp;scene=21#wechat_redirect" linktype="2" localeditorid="7ptc12kw4bypd8daq68" target="_blank" textvalue="告别“不安全”警告！3分钟读懂 ACME 协议，让你的网站免费自动续期">告别"不安全"警告！3分钟读懂 ACME 协议，让你的网站免费自动续期</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317539&amp;idx=2&amp;sn=f6e7cabddd7fd90ce3b0b582c65115e4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="13pk34emubjzc6wu8sg" target="_blank" textvalue="深度解析：当 CRL 过期，为何信创电脑会集体“断网”？">深度解析：当 CRL 过期，为何信创电脑会集体"断网"？</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317265&amp;idx=1&amp;sn=26ce286816eca88ec64ce3dc452ba5ce&amp;scene=21#wechat_redirect" linktype="2" localeditorid="gyyxzxxgt1l7ikv6rk" target="_blank" textvalue="从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进">从 SNI 泄露到 ECH 全链路加密：OpenSSL 4.0 强制驱动的 DNS 架构演进</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317013&amp;idx=1&amp;sn=bec40c65ad0f90d41f4edc8359611dbc&amp;scene=21#wechat_redirect" linktype="2" localeditorid="l1q4jgubu5zsgxpzb4" target="_blank" textvalue="全球统一执行！2029年TLS证书有效期锁死47天">全球统一执行！2029年TLS证书有效期锁死47天</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316916&amp;idx=1&amp;sn=6ff2a879795b17bfc55215182aece806&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2lo2dy8wpdn5xfhd6o" target="_blank" textvalue="核心威胁模型：供应链所有权劫持 (Supply Chain Ownership Hijack)">核心威胁模型：供应链所有权劫持 (Supply Chain Ownership Hijack)</a>\</p>
+<p>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这篇文章主要讲什么？</strong> 关于 Let\'s Encrypt 在 2026 年 5 月 8 日突发的证书签发中断事件，这是一次由于根证书架构升级引发的连锁反应。\ 作为运维和架构师，我们需要穿透表象，分析其底层的<strong>Generation X/Y</strong>根证书切换逻辑。
+<strong>Q2：「故障核心：交叉签名"炸弹" {#故障核心交叉签名炸弹 heading="true"}」这部分主要讲了什么？</strong> 2026 年 5 月 8 日 18:37 UTC，工程师发现 Gen X 根证书交叉签名 Gen Y 根证书的环节出现严重逻辑或配置错误。
+<strong>Q3：「架构师視角：潜在风险与影响分析 {#架构师視角潜在风险与影响分析 heading="true"}」这部分主要讲了什么？</strong> 此次事件并非简单的"断网"，它对现代自动化运维架构提出了挑战：
+<strong>Q4：「运维建议 {#运维建议 heading="true"}」这部分主要讲了什么？</strong> - •<strong>检查续期日志</strong>：使用 vim 查看 /var/log/letsencrypt/letsencrypt.log，搜索 2026-05-08 期间是否有 503 报错，确保受影响的域名在服务恢复后已成功续期。</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/h3zec99BsPkbUPRbvtpT5A" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

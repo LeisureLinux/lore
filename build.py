@@ -1512,6 +1512,19 @@ def main():
     else:
         print("ℹ️  未找到 lore/leisurelinux.html，跳过导航页复制（运行更新脚本后会生成）")
 
+    # 复制公众号全文镜像页目录（若有）到 docs/，供 Bot 抓取（GEO 全文可读）
+    src_art = LORE_DIR / "leisurelinux" / "articles"
+    if src_art.is_dir():
+        dst_art = DOCS_DIR / "leisurelinux" / "articles"
+        if dst_art.exists():
+            _shutil.rmtree(dst_art)
+        _shutil.copytree(src_art, dst_art)
+        cnt = sum(1 for _ in dst_art.glob("*.html"))
+        print(f"✅ 复制全文镜像页：docs/leisurelinux/articles/（{cnt} 篇）")
+        total_files += cnt
+    else:
+        print("ℹ️  未找到 lore/leisurelinux/articles/，跳过全文镜像页复制（运行 build_articles.py 后会生成）")
+
     print(f"\n🎉 构建完成！共生成 {total_files} 个文件（含 SEO/GEO 优化）")
 
 

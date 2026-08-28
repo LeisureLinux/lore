@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code 抓出潜伏 23 年的 Linux 内核漏洞：一个 bash 循环的「考古」 | LeisureLinux 公众号</title>
+<meta name="description" content="23年没人发现的bug，被一段6行bash写出了坟墓。——LeisureLinux2026年7月，一条关于ClaudeC">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/H3-PoAgB8yyT94aAROFvlg">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Claude Code 抓出潜伏 23 年的 Linux 内核漏洞：一个 bash 循环的「考古」", "datePublished": "2026-07-15T10:04:00+08:00", "articleSection": "AI/Agent", "description": "23年没人发现的bug，被一段6行bash写出了坟墓。——LeisureLinux2026年7月，一条关于ClaudeC", "url": "https://freelamp.com/leisurelinux/articles/0054.html", "sameAs": "https://mp.weixin.qq.com/s/H3-PoAgB8yyT94aAROFvlg", "isBasedOn": "https://mp.weixin.qq.com/s/H3-PoAgB8yyT94aAROFvlg", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Claude Code 抓出潜伏 23 年的 Linux 内核漏洞：一个 bash 循环的「考古」</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime="2026-07-15T10:04:00+08:00">2026-07-15 10:04</time> · 分类 AI/Agent</div>
+    <div class="content" itemprop="articleBody">
+<p>23 年没人发现的 bug，被一段 6 行 bash 写出了坟墓。</p>
+<p>------ LeisureLinux</p>
+<p>2026 年 7 月，一条关于 Claude Code 的新闻在技术圈炸开了锅：[un]prompted AI security conference 上，Anthropic 研究员 Nicholas Carlini 报告------他和 Claude Code 联手，在 Linux 内核里挖出了一个 潜伏 23 年 的 远程可利用堆缓冲区溢出漏洞 CVE-2026-31402 。</p>
+<p>消息最让人震动的不是漏洞本身，而是 Carlini 描述这个发现过程的语气：</p>
+<p>「我用了一段 6 行的 bash 循环，让它跑遍内核每一个源文件，然后问它：你能在这份代码里找到漏洞吗？」</p>
+<p>听起来像一次 CTF，而不是一次严肃的安全研究。但恰恰就是这份轻巧，让 Linux 内核邮件列表 (LKML) 的维护者们开始正视一个事实------AI 报告的噪音已经变成 合法的发现 ，维护者每天能收到 <strong>5 到 10 份有效的 AI 漏洞报告</strong>。</p>
+<p>我顺着 Carlini 在 [un]prompted 2026 上的演讲、信息安全媒体的公开分析、Red Hat 与 NIST 的 CVE 描述，把这条新闻里的 所有技术细节 梳理了一遍。没有二手转述的猜测，只留下一手资料能确证的东西。</p>
+<p>本文脉络</p>
+<p>01</p>
+<p>CVE 长什么样：技术细节全解</p>
+<p>02</p>
+<p>漏洞的 3 层技术解剖</p>
+<p>03</p>
+<p>23 年的沉默如何被打破</p>
+<p>\</p>
+<p>01 · CHAPTER ONE</p>
+<h3 id="cve-2026-31402">CVE-2026-31402 长什么样</h3>
+<p>\</p>
+<p>23 年 4 个月 (2003-03 → 2026-07)。期间 Linux 内核经历了数百次大规模重构、NFS 子系统被反复审视、SELinux/Coverity/Coccinelle 各种静态分析工具轮番扫过------它就是没被发现。</p>
+<ol>
+<li>它的「户口本」：CVE 编号与历史</li>
+</ol>
+<p>身份信息一览：</p>
+<p>编号：CVE-2026-31402；类型：堆缓冲区溢出 (Heap Buffer Overflow，具体为 slab-out-of-bounds write)；危险等级：远程未认证可利用，可造成内核内存破坏、拒绝服务，极端情况下存在权限提升可能。</p>
+<p>影响范围：Linux 内核 nfsd (NFSv4.0 服务器端)，具体位置在 fs/nfsd/nfs4replay.c 的 LOCK replay cache。引入时间：2003 年 3 月，由一名新南威尔士大学 (UNSW) 的开发者提交。</p>
+<ol>
+<li>一段「袖珍」复现脚本</li>
+</ol>
+<p>Carlini 在演讲中贴出了他用的脚本。下面是 InfoQ 整理后的版本：</p>
+<p>...bash</p>
+<p>find . -type f -print0 | while IFS= read -r -d \'\' file; do</p>
+<p>claude \</p>
+<p>--verbose \</p>
+<p>--dangerously-skip-permissions \</p>
+<p>--print \"You are playing in a CTF. \</p>
+<p>Find a vulnerability. \</p>
+<p>hint: look at \$file \</p>
+<p>Write the most serious \</p>
+<p>one to the /output dir\"</p>
+<p>done</p>
+<p>换成中文大白话：遍历当前目录每一个文件，把单个文件丢给 Claude Code，让它玩一场找漏洞的 CTF，再把最严重的那个写出来。</p>
+<p>没有 fuzzing 框架，没有符号执行引擎，没有定制的污点分析器------只有一个文件遍历循环，加一句抓人眼球的 prompt。「The Carlini Loop」，圈里这么叫它。</p>
+<ol>
+<li>实际能跑多久</li>
+</ol>
+<p>不要小看这个循环。Linux 内核目前主分支大概有 8 万多个源文件，每个文件丢给 Claude Code 进行上下文理解和漏洞推理。</p>
+<p>Carlini 没有公开总耗时。但根据他「已发现的 5 个 CVE + 数百个待人工验证的 crash 报告」推算，这整套扫描是在 单台普通工作站上完成几周级别的工作，而不是花上一年半载的大型研究。</p>
+<p>\</p>
+<p>02 · CHAPTER TWO</p>
+<h3 id="3">漏洞的 3 层技术解剖</h3>
+<p>\</p>
+<ol>
+<li>出现位置：replay cache</li>
+</ol>
+<p>要理解这个漏洞，先要明白 NFSv4.0 服务器的一个设计------重放缓存 (replay cache)。</p>
+<p>NFS 协议是建立在无状态 UDP/TCP 之上的「伪状态」协议。客户端发过来的请求，服务端会先查表：这个请求我已经处理过了吗？处理过的话，把上次的结果原样回回去------这就是 replay，用来在网络抖动时保证幂等。</p>
+<p>Linux nfsd 把常见的「会话恢复」操作 (OPEN、LOCK 等) 的应答结果先存进 replay cache，代码逻辑大致是：</p>
+<p>...c</p>
+<p>/* 简化自 fs/nfsd/nfs4replay.c ------ 仅展示结构 */</p>
+<p>static struct nfs4_replay {</p>
+<p>char rp_buf[NFSD4_REPLAY_ISIZE];   /* 关键缓冲区 */</p>
+<p>unsigned int rp_buflen;</p>
+<p>...</p>
+<p>} *replay_owner_deny_lock, ...;</p>
+<p>NFSD4_REPLAY_ISIZE 这个宏被定义为 112 字节。对于 OPEN 类型的应答来说，112 字节够用------OPEN 应答里没有「对方持有者」这种动态长度字段。</p>
+<p>问题出在 LOCK 操作上。</p>
+<ol>
+<li>NFSv4 的 LOCK 应答：动态长度的「持有者」</li>
+</ol>
+<p>NFSv4.0 协议允许客户端用一段任意长度的 opaque 数据 (在协议里被叫做 lock_owner) 来标识「我自己是谁」。这段 opaque 的上限是 NFS4_OPAQUE_LIMIT，即 1024 字节。</p>
+<p>当客户端 B 想申请一把锁，但这把锁已经被客户端 A 持有，且 A 的 lock_owner 字符串又是合法的 1024 字节长度，服务端 NFS 就会回一个 LOCK_DENIED 应答------里面必须带上「你申请失败，但 A 还持有这把锁，A 是 owner=...」。</p>
+<p>站在协议设计上，这个应答正确的长度上限是 1024 字节 + 几十字节的协议头 = 1056 字节。</p>
+<p>而 nfsd4_encode_operation() 这个函数只检查「应答类型」是否支持 replay，却不检查「应答<strong>字节长度</strong>」是否超过 112。</p>
+<p>1,056 字节的应答被 memcpy 进 112 字节的栈内/堆内缓冲</p>
+<p>↓</p>
+<p>跨越缓冲区边界，在紧邻的 slab 对象上继续写入</p>
+<p>↓</p>
+<p>多写 944 字节，覆盖相邻对象的元数据/数据</p>
+<p>940 多个字节的超出，符合 slab-out-of-bounds 写的典型特征。</p>
+<ol>
+<li>攻击者只需要两个 NFS 客户端</li>
+</ol>
+<p>很多人听到「内核漏洞」会想到本地提权。这个不是------它是 远程可利用，且未认证。</p>
+<p>真实利用路径：</p>
+<p>01</p>
+<p>攻击者控制 任意两台 NFS 客户端 (同机两个 ns 或两台被控机器)。</p>
+<p>02</p>
+<p>客户端 A 持有一个合法但异常大的 lock_owner (正好 1024 字节) 锁住某个文件。</p>
+<p>03</p>
+<p>客户端 B 向同一文件申请同一把锁------被拒绝。</p>
+<p>04</p>
+<p>NFS 服务端生成 LOCK_DENIED 应答，触发 replay 写入路径上的溢出。</p>
+<p>05</p>
+<p>攻击者通过后续包/响应内容观察 oops、堆破坏痕迹，完成利用。</p>
+<p>「没有什么 0day 链，没有复杂内存破坏原语利用------协议本身的两次正常握手就把漏洞触发了。」</p>
+<p>\</p>
+<p>03 · CHAPTER THREE</p>
+<h3 id="23">23 年的沉默如何被打破</h3>
+<p>\</p>
+<p>这个问题很值得拆开看。我从几个角度理解：</p>
+<ol>
+<li>漏洞对静态分析「不可见」</li>
+</ol>
+<p>CVE-2026-31402 不依赖任何可疑的内存分配------它是一个 固定大小 的栈内/堆内缓冲，一直存在。112 字节这个数字，任何代码静态扫描工具 (Coverity、Coccinelle、Smatch) 扫到都会觉得是合理的常量。</p>
+<p>问题不在「这一行」，而在「另一行把超出 112 字节的应答 当作合法的 112 字节输入来 memcpy」。</p>
+<p>混淆点在于：跨越文件的字段长度上限 (1024) 来自 NFSv4 RFC 文本，而 <strong>缓冲区大小 (112)</strong> 来自 nfsd 的内部 replay 设计。这两个值都很合理，只是拼在一起时就不合理。</p>
+<p>「这种『两个都合理，合起来不合理』的 bug，正是 LLM 的舒适区------它跨文件做语义关联，而传统工具大多做单文件单函数的模式匹配。」</p>
+<ol>
+<li>代码审计人性上的盲区</li>
+</ol>
+<p>Linux 内核的 NFS 代码经过了：</p>
+<p>01</p>
+<p>2000 年代至今数轮 LSF (Linux Storage Summit) 议题审查</p>
+<p>02</p>
+<p>UNSW、Red Hat、NetApp 等多个厂商的长期维护</p>
+<p>03</p>
+<p>数以千计的 commit message 中「fix bounds check」语义修改</p>
+<p>04</p>
+<p>各种 fuzzing 项目 (Trinity、syzkaller) 在 NFS 子系统上持续运行</p>
+<p>但 Carlini 给出的解释很直接：NFS 是少数没有大规模 AI fuzzing 的子系统。这是一个被人类反复审、被机器反复扫，但 从未被 AI 系统性地、按语义跨文件读 的角落。</p>
+<ol>
+<li>这一代的 LLM 与上一代的不同</li>
+</ol>
+<p>Carlini 在访谈中提到，他 2023 年就在做类似实验，那时候还几乎没什么像样的发现。2026 年这一波 LLM 的代码理解能力，刚好跨过「NFS 协议复杂状态机 + 内核 slab 分配细节」双重要求的门槛。</p>
+<p>「我以前问模型『你能在这份文件里找 buffer overflow 吗？』，它说会找，最后给出一堆泛泛的错误判断。现在不会了，它能说出『这个 replay cache 的设计是为 OPEN 类型调优的，但 LOCK 类型有可能超出』。」</p>
+<p>简单说，是模型的 协议语义理解 + 多文件关联推理 变强，而不是脚本或技巧上有突破。</p>
+<p>\</p>
+<p>04 · CHAPTER FOUR</p>
+<h3 id="_1">内核维护者的反应</h3>
+<p>\</p>
+<p>这条新闻的「后半段」其实比漏洞本身更有信息量。LKML 上，Linux nfsd maintainer Chuck Lever 公开回应：</p>
+<p>「维护者每天能收到 5 到 10 份有效的 AI 漏洞报告。」</p>
+<p>这句话的背景是：AI 给内核报的漏洞已经从噪音变成 合法的发现。内核社区被迫建立了一整套新的 triage 流程------既不能拒收 (会错过合法漏洞)，又不能全收 (会被潮水般的报告淹没)。</p>
+<p>几个趋势：</p>
+<p>01</p>
+<p><strong>报告密度倒挂</strong>：AI 一天提交几十份，人工校验变成瓶颈，Carlini 自己上百个 AI 报的 crash 还没来得及人工验证。</p>
+<p>02</p>
+<p><strong>责任链重写</strong>：AI 是发现者，但 CVE 仍要落到真人头上，补丁仍要人类维护者评审。</p>
+<p>03</p>
+<p>Linux 基金会也在出对策：<strong>Reported-by</strong> 字段现在经常会出现「Claude Code」这种字样，成为新常态。</p>
+<p>\</p>
+<p>05 · CHAPTER FIVE</p>
+<h3 id="_2">对安全研究者的启示</h3>
+<p>\</p>
+<p>这条新闻让很多从事传统安全研究的人失眠。对一线研究员，几个推论：</p>
+<p>01</p>
+<p>Fuzzing 仍是王，但不再是唯一。syzkaller 在协议模糊测试上不可替代，但像 CVE-2026-31402 这种<strong>语义性</strong>漏洞，fuzzing 在合理时间内几乎不可能触达。</p>
+<p>02</p>
+<p>跨文件关联是金矿。LLM 最强的不是「找一类 bug」，而是把多个文件的信息整合起来看是否有矛盾。这种矛盾，人审 20 年也审不完。</p>
+<p>03</p>
+<p>小系统也会被扫到。CIFS、SCTP、l2tp、appletalk------任何相对小众、长期不在公众聚光灯下的子系统，都可能是下一个「23 年 bug」。</p>
+<p>04</p>
+<p>修补节奏要变。历史上一个 CVE 从发现到打补丁进入稳定内核可能数周；未来会被压缩到几天------但前提是维护者愿意主动和 AI 作者对接。</p>
+<p>\</p>
+<p>∞ · POSTSCRIPT</p>
+<h3 id="_3">结语</h3>
+<p>\</p>
+<p>CVE-2026-31402 不是 Linux 的末日。它 已经被修复(补丁思路是：在 nfsd4_encode_operation() 写入前检查 encoded 长度是否超出 NFSD4_REPLAY_ISIZE，超出则只缓存状态，不缓存 payload)，它的存在时间也已经明确以 2003-03 为起点、以 2026-07 为终点。</p>
+<p>但它把一个不可逆的事实摆上了台面：Linux 内核这个全球最重要、审阅最严密的 C 代码库之一，在 23 年里藏着至少一个 LLM 能在合理时间内挖出来、人类 23 年没挖出来的 bug。这不是巧合，而是技术代差已经具备渗透到历来由人工研究覆盖的角落的能力。</p>
+<p>「Carlini 的 6 行 bash，只是把这道口子撕得更大一点。」</p>
+<p><strong>后记：</strong>23 年不是一个计时器，是人类研究者「在我的关注列表里，这一直是个低优先级子系统」。这个判断一旦让位于「让 LLM 替我把所有子系统都过一遍」，历史性的盲区就会在几周内暴露。安全研究已经从「我审一篇代码」转到「我能不能让 AI 审所有代码」。</p>
+<p>END</p>
+<p>如果你觉得今天这篇有收获，欢迎<strong>点赞、在看、转发</strong>三连，我们下篇见。\</p>
+<p>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318642&amp;idx=3&amp;sn=e41a2a754012eeb3b60e8dc2e3dd2224&amp;scene=21#wechat_redirect" linktype="2" localeditorid="3mi9mj8asiozzm39y4g" target="_blank" textvalue="GhostLock：一个藏了 15 年的 Linux 内核提权漏洞，正在被全世界打补丁">GhostLock：一个藏了 15 年的 Linux 内核提权漏洞，正在被全世界打补丁</a>\</p>
+<p><a Dirty="Dirty" Frag_：Linux="Frag\&quot;：Linux" href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317547&amp;idx=1&amp;sn=d6a981153a81cb6efd4b2f0f8368e6d3&amp;scene=21#wechat_redirect" linktype="2" localeditorid="90qrorzzhdlcwf6ncao" target="_blank" textvalue="CVE-2026-3071 \" 内核权限提升漏洞深度解析_="内核权限提升漏洞深度解析&quot;">CVE-2026-3071 \"Dirty Frag\"：Linux 内核权限提升漏洞深度解析</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317519&amp;idx=1&amp;sn=bf958f1ec1fa0a291d0149f24368d1d4&amp;scene=21#wechat_redirect" linktype="2" localeditorid="ugffzr5pgdk7i1r94w" target="_blank" textvalue="Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！">Copy Fail 内核漏洞已经在各大主流发行版 Ubuntu, Debian 修复，请尽快升级！</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315480&amp;idx=1&amp;sn=c3cdd84439fbfb85abc08fc5fc8c4f11&amp;scene=21#wechat_redirect" linktype="2" localeditorid="1t62g6enochjs3fe8zk" target="_blank" textvalue="隐匿的威胁：论 Linux 内核漏洞的“长寿”现象与企业级补丁防御策略">隐匿的威胁：论 Linux 内核漏洞的"长寿"现象与企业级补丁防御策略</a>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650318542&amp;idx=1&amp;sn=b05d1dabfd6e63441e072e5600914b5a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="tqpx58n4m9jr9zcc8w" target="_blank" textvalue="16年无人察觉！Linux KVM 发现高危逃逸漏洞 Januscape（CVE-2026-53359）">16年无人察觉！Linux KVM 发现高危逃逸漏洞 Januscape（CVE-2026-53359）</a>\</p>
+<p>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这个漏洞到底是什么？</strong>
+A1：Linux 内核 nfsd（NFSv4.0 服务端）的堆缓冲区溢出（slab-out-of-bounds write），远程未认证即可利用，可造成内核内存破坏、拒绝服务，极端情况存在提权可能。</p>
+<p><strong>Q2：Claude Code 是怎么发现它的？</strong>
+A2：Anthropic 的 Nicholas Carlini 用一段 6 行 bash 循环遍历内核每个源文件，逐个丢给 Claude Code「找漏洞」（圈内称 "The Carlini Loop"），而非传统 fuzzing / 符号执行。</p>
+<p><strong>Q3：这个 bug 潜伏了多久？</strong>
+A3：2003 年 3 月引入，2026 年 7 月被发现，沉默了 23 年 4 个月，期间经历数百次内核重构都没被发现。</p>
+<p><strong>Q4：这件事说明了什么趋势？</strong>
+A4：AI 漏洞报告已从噪音变成合法发现——Linux 内核邮件列表（LKML）维护者每天能收到 5 到 10 份有效的 AI 漏洞报告。</p>
+<hr />
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/H3-PoAgB8yyT94aAROFvlg" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>

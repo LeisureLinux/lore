@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arm 推进 Linux 内核适配 128 位页表条目扩展 &#x27;FEAT_D128&#x27; | LeisureLinux 公众号</title>
+<meta name="description" content="Arm 推进 Linux 内核适配 128 位页表条目扩展 &#x27;FEAT_D128&#x27;">
+<link rel="canonical" href="https://mp.weixin.qq.com/s/91335YYad1SlmJgyRBL80A">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Article", "headline": "Arm 推进 Linux 内核适配 128 位页表条目扩展 'FEAT_D128'", "datePublished": null, "articleSection": "安全/漏洞", "description": null, "url": "https://freelamp.com/leisurelinux/articles/0184.html", "sameAs": "https://mp.weixin.qq.com/s/91335YYad1SlmJgyRBL80A", "isBasedOn": "https://mp.weixin.qq.com/s/91335YYad1SlmJgyRBL80A", "author": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}, "publisher": {"@type": "Organization", "name": "LeisureLinux", "alternateName": "LeisureLinux 公众号", "url": "https://mp.weixin.qq.com"}}
+</script>
+<style>
+  :root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a8;--acc:#6ea8fe;--bd:#262b33}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);line-height:1.75;
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 18px 64px}
+  h1{font-size:24px;line-height:1.4;margin:0 0 8px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:20px}
+  .content{font-size:16px}
+  .content h2{font-size:20px;margin-top:28px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+  .content h3{font-size:17px;margin-top:22px}
+  .content pre{background:#161a21;border:1px solid var(--bd);border-radius:10px;
+       padding:14px;overflow:auto;font-size:13px}
+  .content code{background:#161a21;padding:2px 6px;border-radius:5px;font-size:13px}
+  .content pre code{background:none;padding:0}
+  .content blockquote{border-left:3px solid var(--acc);margin:14px 0;padding:4px 14px;color:var(--mut)}
+  .content img{max-width:100%}
+  .content a{color:var(--acc)}
+  .src{margin-top:36px;background:#171a21;border:1px solid var(--bd);border-radius:12px;
+       padding:16px;color:var(--mut);font-size:14px}
+  .src a{color:var(--acc);font-weight:600}
+  .top{margin-bottom:18px}
+  .top a{color:var(--mut);font-size:13px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/leisurelinux.html">← LeisureLinux 文章索引</a></div>
+  <article itemscope itemtype="https://schema.org/Article">
+    <h1 itemprop="headline">Arm 推进 Linux 内核适配 128 位页表条目扩展 &#x27;FEAT_D128&#x27;</h1>
+    <div class="meta">发布于 <time itemprop="datePublished" datetime=""></time> · 分类 安全/漏洞</div>
+    <div class="content" itemprop="articleBody">
+<blockquote>
+<p>ARM 架构正在通过 FEAT_D128 扩展，为 Linux 内核引入 128 位页表条目（PTE）。这不仅是地址空间位宽的简单翻倍，更是为了应对未来超大规模内存、机密计算（Confidential Computing）以及更细粒度的内存安全机制而进行的架构级重构。</p>
+</blockquote>
+<p>\</p>
+<p><img alt="" src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMssQ1wj4A4fcXPDibr8GicwONJn0h5W7O07muljR1xzWS1KExQvoNxicJYEV3Dnynyc7HOHfFH8uSrlq7Gz2mTPuxYdAITTzdIrdr8/640?wx_fmt=jpeg" /></p>
+<h2 heading="true" id="核心驱动力为何需要-128-位页表">1. 核心驱动力：为何需要 128 位页表？</h2>
+<p>在现有的 ARMv8/v9 AArch64 架构中，页表条目（PTE）固定为 64 位。虽然目前的 52 位物理地址（PA）已经能支持高达 4PB 的内存，但随着技术演进，瓶颈开始显现：</p>
+<ul>
+<li>•<strong>扩展物理地址（PA）边界</strong>：FEAT_D128 将支持超过 52 位的物理地址空间，为未来 Exascale 级别的内存容量铺路。</li>
+<li>•<strong>元数据膨胀（Attribute Growth）</strong>：这是最直接的原因。内存标记（MTE）、权限叠加（Permission Overlays）、机密计算的 Realm 管理位等，已经将 64 位 PTE 中的空闲位（Available Bits）挤占殆尽。</li>
+<li>•<strong>安全性增强</strong>：更宽的 PTE 允许存储更复杂的加密签名和访问控制属性。</li>
+</ul>
+<h2 heading="true" id="关键技术架构d128-的实现逻辑">2. 关键技术架构：D128 的实现逻辑</h2>
+<h3 heading="true" id="新的翻译格式">2.1 新的翻译格式</h3>
+<p>FEAT_D128 引入了一种全新的描述符格式。不同于以往的 VMSAv8-64，D128 采用了 128 位的对齐块。这要求 MMU 的页表遍历器（Translation Table Walker）必须支持单次 128 位的原子读取，以防止页表读取时的撕裂（Tearing）现象。</p>
+<h3 heading="true" id="寄存器与控制位的变更">2.2 寄存器与控制位的变更</h3>
+<p>为了启用 128 位格式，内核需要操作一系列新的系统寄存器（如 VTCR_EL2 或 TCR2_EL1 中的新字段）。同时，这种格式是<strong>可选切换</strong>的，这意味着内核可以在传统的 64 位 PTE 和新的 128 位 PTE 之间根据硬件支持情况进行协商。</p>
+<h2 heading="true" id="linux-内核的适配挑战">3. Linux 内核的适配挑战</h2>
+<p>ARM 官方近期向 Linux 社区提交的补丁（Patchsets）揭示了适配的复杂性：</p>
+<h3 heading="true" id="内存管理单元-mmu-抽象层">3.1 内存管理单元 (MMU) 抽象层</h3>
+<p>Linux 内核的 pgtable.h 长期以来假设 pte_t 的大小与原生字长一致（long）。引入 128 位 PTE 意味着内核需要处理：</p>
+<ul>
+<li>•<strong>非原生类型的 PTE 操作</strong>：在 64 位 CPU 上操作 128 位数据，需要使用 __int128 或成对的 64 位寄存器。</li>
+<li>•<strong>对齐要求</strong>：页表页的分配必须严格遵守 128 位（16 字节）对齐，否则会触发对齐异常（Alignment Fault）。</li>
+</ul>
+<h3 heading="true" id="性能开销">3.2 性能开销</h3>
+<ul>
+<li>•<strong>缓存压力</strong>：页表条目翻倍直接导致 TLB 未命中时的缓存占用翻倍。页表遍历延迟可能会增加，这对性能敏感型应用（如高性能数据库）是严峻考验。</li>
+<li>•<strong>指令集依赖</strong>：内核需要利用 ARMv8.4-LSE 或更高级别的 LDP/STP 指令来保证 128 位操作的原子性。</li>
+</ul>
+<h2 heading="true" id="安全视角权限控制的精细化">4. 安全视角：权限控制的精细化</h2>
+<p>从安全分析师的角度看，FEAT_D128 最大的价值在于它提供的<strong>额外属性位</strong>。</p>
+<ul>
+<li>•<strong>增强型内存染色 (MTE)</strong>：可以存储更复杂的染色信息，降低碰撞率。</li>
+<li>•<strong>细粒度权限 (Fine-Grained Permissions)</strong>：传统的读/写/执行权限已不足以应对复杂的侧信道攻击。多出来的位可以用于定义更严格的"影子栈"权限或特定域的隔离属性。</li>
+</ul>
+<h2 heading="true" id="行业影响与演进趋势">5. 行业影响与演进趋势</h2>
+<p>FEAT_D128 不仅仅是 ARM 的自嗨。随着 CXL (Compute Express Link) 协议的普及，异构计算节点共享海量内存成为常态。128 位页表是支持<strong>全局一致性内存地址空间</strong>的基石。\
+目前，Linux 内核的初步支持主要集中在框架搭建和基础翻译流程上。对于普通开发者而言，这在短期内是透明的；但对于从事虚拟化（KVM）、安全固件（TrustZone/Realm）以及驱动开发的工程师，这是必须掌握的技术断代。</p>
+<p>\</p>
+<h3 id="section-headingtrue">{#section heading="true"}</h3>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650316435&amp;idx=1&amp;sn=e196e45ca9a42e7375efa5ce509b062a&amp;scene=21#wechat_redirect" linktype="2" localeditorid="vn2a3io9w74mqzl0cg" target="_blank" textvalue="Google 自研 ARM 处理器再下一城：Axion 架构 N4A 实例正式开启公测">Google 自研 ARM 处理器再下一城：Axion 架构 N4A 实例正式开启公测</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317309&amp;idx=1&amp;sn=270780692d54ad6d03000dec1afbcc78&amp;scene=21#wechat_redirect" linktype="2" localeditorid="hh01kugw45sxoraneo" target="_blank" textvalue="谷歌TPU全栈产品演进与技术架构深度研究报告：面向下一代智能体AI的算力底座">谷歌TPU全栈产品演进与技术架构深度研究报告：面向下一代智能体AI的算力底座</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317226&amp;idx=1&amp;sn=3023899b9e865a5ff10ba8b770be091b&amp;scene=21#wechat_redirect" linktype="2" localeditorid="2xy5g5gnpycg9669kw" target="_blank" textvalue="内核纪元新篇章：Linux 7.0 深度技术解析与架构演进">内核纪元新篇章：Linux 7.0 深度技术解析与架构演进</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317339&amp;idx=1&amp;sn=5f56922706b62176b33973ebc925edac&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xglkehdr7ffkulyio0" target="_blank" textvalue="苹果统一内存是终点吗？Linux 祭出 CXL 3.1 开启“机柜级”UMA 时代">苹果统一内存是终点吗？Linux 祭出 CXL 3.1 开启"机柜级"UMA 时代</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650317143&amp;idx=1&amp;sn=0a50479db149798a88e028fa2f1d9794&amp;scene=21#wechat_redirect" linktype="2" localeditorid="6c9hcicgb7m80g1beo" target="_blank" textvalue="AI 屠龙：全球最安全 OS 破防，内核级“逻辑重构攻击”复盘">AI 屠龙：全球最安全 OS 破防，内核级"逻辑重构攻击"复盘</a>\</p>
+<p>\</p>
+<p><a href="https://mp.weixin.qq.com/s?__biz=MzA5NzgyNzA0MA==&amp;mid=2650315916&amp;idx=1&amp;sn=091dc857d3dcb4cf91338d50fefd57b2&amp;scene=21#wechat_redirect" linktype="2" localeditorid="xs8iay527qljy0w00" target="_blank" textvalue="别再让内核当“中间商”：深度解析 Linux DAX 零拷贝技术">别再让内核当"中间商"：深度解析 Linux DAX 零拷贝技术</a>\</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+<p>\</p>
+<h2 id="faq">常见问题（FAQ）</h2>
+<p><strong>Q1：这篇文章主要讲什么？</strong> ![](https://mmbiz.qpic.cn/sz_mmbiz_jpg/VRq5bn9tMssQ1wj4A4fcXPDibr8GicwONJn0h5W7O07muljR1xzWS1KExQvoNxicJYEV3Dnynyc7HOHfFH8uSrlq7Gz2mTPuxYdAITTzdIrdr8/640?
+<strong>Q2：「核心驱动力：为何需要 128 位页表？ {#核心驱动力为何需要-128-位页表 heading="true"}」这部分主要讲了什么？</strong> 在现有的 ARMv8/v9 AArch64 架构中，页表条目（PTE）固定为 64 位。
+<strong>Q3：「关键技术架构：D128 的实现逻辑 {#关键技术架构d128-的实现逻辑 heading="true"}」这部分主要讲了什么？</strong> ### 2.1 新的翻译格式 {#新的翻译格式 heading="true"}
+<strong>Q4：「2 寄存器与控制位的变更 {#寄存器与控制位的变更 heading="true"}」这部分主要讲了什么？</strong> 为了启用 128 位格式，内核需要操作一系列新的系统寄存器（如 VTCR_EL2 或 TCR2_EL1 中的新字段）。
+<strong>Q5：「Linux 内核的适配挑战 {#linux-内核的适配挑战 heading="true"}」这部分主要讲了什么？</strong> ARM 官方近期向 Linux 社区提交的补丁（Patchsets）揭示了适配的复杂性：</p>
+    </div>
+    <div class="src">
+      <p>本文整理自微信公众号 <b>LeisureLinux</b> 的原创内容（Linux / AI / 安全 硬核技术）。</p>
+      <p>· <a href="https://mp.weixin.qq.com/s/91335YYad1SlmJgyRBL80A" rel="canonical">阅读原文（微信公众号）</a></p>
+      <p>· 关注公众号 <b>LeisureLinux</b>，第一时间获取技术深度内容。</p>
+    </div>
+  </article>
+</div>
+</body>
+</html>
