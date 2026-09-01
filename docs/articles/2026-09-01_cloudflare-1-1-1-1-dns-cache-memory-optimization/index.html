@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>省下 100 TB 内存：Cloudflare 怎么把 1.1.1.1 的 DNS 缓存条目砍到一半 — FreeLAMP.com</title>
+  <meta name="description" content="Cloudflare 把 1.1.1.1 的 DNS 缓存单条内存砍 56%、整集群释放 100 TB 的 5 步内存优化逐条复盘：Vec→Box、合并 record 列表、Option owner、enum 分裂、wire format。">
+  <meta name="keywords" content="DNS, Cloudflare, 1.1.1.1, Rust, 内存优化, 数据结构, 缓存, jemalloc">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-01">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-01_cloudflare-1-1-1-1-dns-cache-memory-optimization/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="省下 100 TB 内存：Cloudflare 怎么把 1.1.1.1 的 DNS 缓存条目砍到一半">
+  <meta property="og:description" content="Cloudflare 把 1.1.1.1 的 DNS 缓存单条内存砍 56%、整集群释放 100 TB 的 5 步内存优化逐条复盘：Vec→Box、合并 record 列表、Option owner、enum 分裂、wire format。">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-01_cloudflare-1-1-1-1-dns-cache-memory-optimization/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-01">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="DNS">
+  <meta property="article:tag" content="DNS">
+  <meta property="article:tag" content="Cloudflare">
+  <meta property="article:tag" content="1.1.1.1">
+  <meta property="article:tag" content="Rust">
+  <meta property="article:tag" content="内存优化">
+  <meta property="article:tag" content="数据结构">
+  <meta property="article:tag" content="缓存">
+  <meta property="article:tag" content="jemalloc">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="省下 100 TB 内存：Cloudflare 怎么把 1.1.1.1 的 DNS 缓存条目砍到一半">
+  <meta name="twitter:description" content="Cloudflare 把 1.1.1.1 的 DNS 缓存单条内存砍 56%、整集群释放 100 TB 的 5 步内存优化逐条复盘：Vec→Box、合并 record 列表、Option owner、enum 分裂、wire format。">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "省下 100 TB 内存：Cloudflare 怎么把 1.1.1.1 的 DNS 缓存条目砍到一半",
+  "description": "Cloudflare 的 Big Pineapple 平台同时存着 2500 亿条 DNS 缓存，1 字节/条的小浪费就是 250 GB。文章详细讲了他们用 5 步把单条内存从 953 字节压到 420 字节（−56%），整集群释放约 100 TB 内存，插入吞吐 +43%、查询延迟 −19%。改动涉及 Vec→Box<[T]>、合并三个 record 列表、CNAME 时再存 owner、按 record 类型大小拆 enum、最后用 wire format 字节存 record——每一步都顺带让 CPU cache line 更友好。本文逐条复盘 + 点评。",
+  "datePublished": "2026-09-01",
+  "dateModified": "2026-09-01",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-01_cloudflare-1-1-1-1-dns-cache-memory-optimization/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "DNS, Cloudflare, 1.1.1.1, Rust, 内存优化, 数据结构, 缓存, jemalloc"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "省下 100 TB 内存：Cloudflare 怎么把 1.1.1.1 的 DNS 缓存条目砍到一半",
+        "item": "https://freelamp.com/articles/2026-09-01_cloudflare-1-1-1-1-dns-cache-memory-optimization/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-01">2026-09-01</div>
+        <h1 class="post-title" itemprop="headline">省下 100 TB 内存：Cloudflare 怎么把 1.1.1.1 的 DNS 缓存条目砍到一半</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/DNS/">DNS</a><a itemprop="keywords" href="/tags/Cloudflare/">Cloudflare</a><a itemprop="keywords" href="/tags/1.1.1.1/">1.1.1.1</a><a itemprop="keywords" href="/tags/Rust/">Rust</a><a itemprop="keywords" href="/tags/%E5%86%85%E5%AD%98%E4%BC%98%E5%8C%96/">内存优化</a><a itemprop="keywords" href="/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/">数据结构</a><a itemprop="keywords" href="/tags/%E7%BC%93%E5%AD%98/">缓存</a><a itemprop="keywords" href="/tags/jemalloc/">jemalloc</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>Cloudflare 1.1.1.1 的 Big Pineapple 平台同时承载着 1.1.1.1、Gateway DNS、DNS Firewall、AS112 等多条 DNS 业务线，每时每刻存着 <strong>2500 亿条</strong> DNS 缓存。在这种规模下，<strong>每条目浪费 1 字节 = 全集群多花 250 GB 内存</strong>。本文逐条复盘他们如何用 5 步把单条目内存从 953 字节压到 420 字节（−56%），整集群释放约 100 TB——同时插入吞吐 +43%、查询延迟 −19%。原文：<a href="https://blog.cloudflare.com/dns-cache-memory-optimization-1111/">blog.cloudflare.com</a>（作者：Sebastiaan Neuteboom，2026-08-27）。</blockquote>
+---
+<h2>一、规模到底有多大</h2>
+<p>Big Pineapple 是 1.1.1.1 背后的统一 DNS 平台。任何时刻它的缓存里都有 <strong>2500 亿</strong> 条目。</p>
+<blockquote>想象一下：每条目多 1 字节，整集群就多 250 GB 内存。这不是"省着用"的问题——这是 2500 亿倍放大后的"重力学"。</blockquote>
+他们用 5 步改造 DNS 缓存的内存布局，把单条目从 953 字节压到 420 字节，<strong>节省 56%</strong>。全集群加起来释放约 100 TB——相当于 130 台 <a href="https://blog.cloudflare.com/gen13-config/">Gen 13 服务器</a>的总内存。
+<p>更妙的是，缓存还更快了：插入吞吐 +43%，查询延迟 −19%。少分配、内存布局更紧凑，<strong>速度和空间同时拿到了</strong>。</p>
+<h2>二、我们到底在缓存什么</h2>
+<p>冷启动时，Big Pineapple 是个空缓存。DNS 请求涌入，缓存逐渐填满；达到上限就淘汰老条目或不热门的。</p>
+<p>具体容量因数据中心而异。当客户端开启 <a href="https://en.wikipedia.org/wiki/EDNS_Client_Subnet">EDNS Client Subnet (ECS)</a> 时，权威服务器会按客户端网络返回不同答案，所以同一个查询要缓存多个版本——条目数翻倍，内存也跟着翻倍。本文要讲的几招优化，对 ECS 流量大的机房收益尤其明显。</p>
+<p>每条目是一个 KV 对。<strong>Key</strong> 标识查询是什么：</p>
+<pre><code class="rust">pub struct CacheKey {
+    qname: Name,
+    qtype: Rtype,
+    authenticated: bool,
+    tag: Vec<u8>,
+}
+</code></pre>
+<p><strong>Value</strong> 存的是 DNS 响应本身：answer / authority / additional 三段，外加创建时间、命中次数、TTL 等元数据：</p>
+<pre><code class="rust">pub struct CacheEntry {
+    timestamp: UnixTimeStamp,
+    pub inception: Instant,
+    pub ttl: Ttl,
+    pub hits: u32,
+    pub answers: Vec<Record>,
+    pub authority: Vec<Record>,
+    pub additional: Vec<Record>,
+    pub errors: Vec<ExtendedError>,
+    ...
+}
+</code></pre>
+<p>两个结构体都有改进空间——里面不少字段类型在"已经存进缓存"之后就<strong>根本不需要原本那部分开销</strong>了。</p>
+<blockquote>📌 <strong>解读</strong>：Cloudflare 在 Big Pineapple 之前还有一篇 <a href="https://blog.cloudflare.com/big-pineapple-intro/">《How Rust and Wasm power Cloudflare's 1.1.1.1》</a> 讲过这个平台本身的架构，本文聚焦在缓存层的数据结构改造。理解这个区别——"业务已经稳定→开始抠数据结构"——很重要：这是大型系统从"能跑"到"极致高效"的典型阶段。</blockquote>
+<h2>三、怎么测内存</h2>
+<p>为了量化每一步的收益，他们做了一组基准测试：用随机生成的数据填满缓存，分布尽量贴近线上：56% 的 <code>A</code> 记录、25% 的 <code>AAAA</code>、19% 的 <code>TXT</code>，每条目 1–4 条记录。</p>
+<p><code>TXT</code> 在基准里当"所有非 A/AAAA 记录类型"的替身，大小随机 64–224 字节，跟实际变长记录类型的平均响应大小差不多。</p>
+<p>内存用量用<strong>自研全局分配器</strong>（包装 Rust 的 <code>System</code> 分配器）统计，精确到"每条目分配了几次、共多大"。同时还测了插入吞吐和查询延迟，确保省内存不是以性能为代价换来的。</p>
+<p>这套输入<strong>逼近线上但不复制线上</strong>。进程内存还受流量配比、缓存占用率、分配器状态、缓存外其他内存消耗影响。所以真正上线时，他们又量了<strong>整进程常驻内存</strong>。</p>
+<blockquote>📌 <strong>解读</strong>：基准里"用 <code>TXT</code> 代替所有非 A/AAAA 记录"是个很聪明的小技巧——基准不需要覆盖每种 record 类型的全部解析路径，只要那个"变长字符串开销"的成本特征对得上。Cloudflare 这种规模的系统做优化，最值钱的不是代码量，是<strong>这种"在何处停止建模"的判断</strong>。</blockquote>
+<h2>四、第一步：<code>Vec</code> 的隐藏税</h2>
+<p><code>Vec<T></code> 内部存三个字段：堆数据指针、当前长度、总容量。<code>push</code> 时如果 <code>len == cap</code> 就重新分配，否则就追加。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M1171ECV1YR5KPQ90P5KWCTQ.png">Vec 的三个字段</a></p>
+<p>但 DNS 响应一旦写进缓存就<strong>再也不会改了</strong>——<code>cap</code> 字段根本没意义，但每个 <code>Vec</code> 还要为它付 8 字节。同理，堆上预留的多余空间也浪费了：能装 8 个的 <code>Vec</code> 只装了 5 个，堆上有 3 个空槽。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M1171TF66D0RDY101KB6WX7J.png">Vec 预留空间浪费</a></p>
+<p>换成 <code>Box<[T]></code> 就都解决了：它创建后不能增长，所以不需要 <code>cap</code> 字段、也不需要预留空间。<code>String</code> 同理，换成 <code>Box<str></code> 把 <code>cap</code> 丢掉。</p>
+<p>一个 cache entry 里有 <strong>8 个 <code>Vec</code>/<code>String</code> 字段</strong>。全换成 <code>Box<[T]></code> / <code>Box<str></code>，<strong>单条目省 64 字节</strong>，顺带把 <code>Vec</code> 预留的那部分堆空间也省了。乘以 2500 亿条 = <strong>15 TB+</strong>。</p>
+<blockquote>📌 <strong>解读</strong>：这就是 Rust 标准库里 <code>Box<[T]></code> 存在的全部理由。<code>Vec<T></code> 是为"还要变长"准备的；缓存条目不是。Rust 把"创建后大小固定"的场景单独建模成 <code>Box<[T]></code>，本质上是在类型层面告诉你"这玩意儿不会再长了"——编译器、阅读者、分配器都从中受益。这种"把不变量编码进类型"是 Rust 写系统代码最舒服的地方之一。</blockquote>
+<h2>五、第二步：少几个列表、少几个指针</h2>
+<p>原本 answer / authority / additional 是<strong>三个独立列表</strong>。换成一个连续列表，<strong>每段开头用 2 字节 <code>u16</code> 偏移</strong>就行。每段条目数 <code>u16</code> 装得下，所以偏移 2 字节够用；而一个独立 <code>Box<[T]></code> 要 8 字节指针 + 8 字节长度。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M11729F5HH4PQEXGEQBD4SKG.png">三个 list 合并为 offsets</a></p>
+<p>少掉两个列表（每个 8+8 = 16 字节），换成两个 2 字节偏移——<strong>单条目省 28 字节</strong>。</p>
+<p>但实操中省的不止 28 字节。Rust 会按对齐要求插 padding，把结构体大小向上对齐到对齐数的整数倍——去掉一个小字段可能顺手把 padding 也去了。例如他们把几个 bool 字段压到一个 <a href="https://docs.rs/bitflags/latest/bitflags/">bitflag</a> 里，结构体缩小的量比这些 bool 自身加起来还多。</p>
+<blockquote>📌 <strong>解读</strong>：所谓"省下 N 字节"在这里其实是个保守数字。Rust 的 <code>repr(rust)</code> 布局对 padding 没那么激进，但有系统性。<code>#[repr(C)]</code> 会让布局更可预测但更紧凑不一定——文章里的处理思路是：先以行为为单位算账，再用 <code>cargo bloat</code> / <code>sizeof</code> 看实际缩水。<strong>这跟 x86_64 ABI 的对齐规则直接相关</strong>：8 字节字段必须 8 字节对齐，所以一个结构体里删了某个 8 字节字段后，整体大小可能不变（因为它本来就是 8 字节对齐），也可能掉 8 字节——看后面那个字段的对齐要求。</blockquote>
+<h2>六、第三步：能不要的 owner，就不要</h2>
+<p>每条 DNS 记录都有一个 owner（它属于哪个域名）。多数情况下 owner 跟被查询的域名<strong>完全一致</strong>——比如查 <code>example.com A</code>：</p>
+<pre><code class="">$ dig example.com A
+<p>;; ANSWER SECTION:
+example.com.        300    IN    A        198.51.100.1
+example.com.        300    IN    A        198.51.100.2
+</code></pre></p>
+<p>但有 <code>CNAME</code> 时，owner 会变：</p>
+<pre><code class="">$ dig example.com A
+<p>;; ANSWER SECTION:
+example.com.        300    IN    CNAME    cdn.example.com.
+cdn.example.com.    300    IN    A        198.51.100.1
+cdn.example.com.    300    IN    A        198.51.100.2
+</code></pre></p>
+<p>DNS 协议在线上格式（wire format）里用<strong>名字压缩</strong>（<a href="https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4">RFC 1035 §4.1.4</a>）处理重复 owner：第二次出现时，存一个 2 字节指针指回第一次出现的位置。<code>www.example.com</code> 编码成 <code>www</code> + 指回 <code>example.com</code> 那次的指针。</p>
+<p>线上格式这样玩很省。但缓存里，他们<strong>老老实实把完整 owner 存在每条 record 上</strong>——查缓存时跟着压缩指针走，延迟太大。<strong>用内存换速度</strong>。</p>
+<p>可问题来了：大多数记录的 owner 跟被查域名是同一个。那 owner 字段对它们来说<strong>纯属浪费</strong>。优化后是这样：</p>
+<pre><code class="rust">pub struct Record {
+    owner: Option<Box<Name>>,
+    class: Class,
+    ttl: Ttl,
+    rtype: Rtype,
+    data: RecordData,
+}
+</code></pre>
+<p><code>owner</code> 是 <code>None</code> 时，构造响应时直接从 cache key 把被查域名填回去——<strong>省掉一次堆分配</strong>。这意味着 record 不再是"自包含"的，但 cache key 在每次查缓存时本来就在手边。owner 不一样时（比如 CNAME 后的 A 记录），<code>Some(...)</code> 存指向完整名字的堆指针。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M1172Q50SZ00545BWCNAAP2S.png">Option<Box<Name>> 优化</a></p>
+<p>实测大部分缓存记录的 owner 跟被查域名一样——<strong>绝大多数条目完全不需要为 owner 做堆分配</strong>。</p>
+<blockquote>📌 <strong>解读</strong>：<code>Option<Box<T>></code> 这种"两层包装"在 Rust 里看起来啰嗦，实际上是经典的"用判别式 + 指针"省空间写法——<code>None</code> 时是"零指针 + 一个字节判别"（加上 padding），<code>Some</code> 时是一个真实指针。如果直接 <code>Box<T></code> + 一个 bool flag，至少多 8 字节；用 <code>Option</code> 把判别式和指针绑一起，反而是 8/16 字节两种状态。<strong>标准库 <code>Option</code> 的 niche optimization</strong>（对 <code>Box<T></code> 这种"指针永远非 null"的类型，把 <code>None</code> 编成"零指针"）正是这件事的工程化实现。</blockquote>
+<h2>七、第四步：enum 的大小</h2>
+<p>Rust 的 enum 是<strong>代数数据类型（ADT）</strong>：每个变体可以带不同数据，但 enum 本身的 size <strong>等于最大变体的 size</strong>。</p>
+<pre><code class="rust">pub enum Option<T> {
+    Some(T),
+    None,
+}
+</code></pre>
+<p><code>Option</code> 要么是 <code>Some(T)</code> 要么是 <code>None</code>。两个变体占同样多空间。enum 里存一个 tag 标识当前是哪个变体，后面紧跟足够装最大变体的空间；变体是 <code>None</code> 时，那部分空间就空着。</p>
+<p>DNS record data 很自然写成 enum：</p>
+<pre><code class="rust">pub enum RecordData {
+    A(Ipv4Addr),
+    Aaaa(Ipv6Addr),
+    Txt(Txt),
+    Naptr(Naptr),
+    Svcb(Svcb),
+    // ...
+}
+</code></pre>
+<p>但 enum 总跟最大变体一样大。这里最大的是 <code>NAPTR</code>——136 字节，3 个变长文本字段、1 个域名、2 个整数。加 tag 和 padding，<strong>整个 enum 144 字节</strong>。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M11731ZGD3390K0YFH8CHPWC.png">RecordData enum 144 字节</a></p>
+<p>而 <code>A</code> 只要 4 字节，<code>AAAA</code> 要 16 字节。<strong>A+AAAA 占 80% 流量</strong>——大多数 record 在 padding 上浪费 120 字节。<strong>一条 cache entry 装多条 record，这浪费累积起来极快</strong>。</p>
+<h3>7.1 把大变体 Box 出去</h3>
+<p>解法：把 enum 的<strong>大变体装 Box</strong>，移到独立堆分配。enum 里就只留一个 8 字节堆指针，真实数据在堆上按需分配。</p>
+<pre><code class="rust">pub enum RecordData {
+    // 小且常见的变体就地存
+    A(Ipv4Addr),
+    Aaaa(Ipv6Addr),
+    // 大变体丢到堆上
+    Txt(Box<Txt>),
+    Naptr(Box<Naptr>),
+    Svcb(Box<Svcb>),
+    // ...
+}
+</code></pre>
+<p>对 <code>A</code> / <code>AAAA</code> 来说，<strong>单 record 省 120 字节</strong>。<code>TXT</code> / <code>CNAME</code> 这些"小变体"也受益：enum 还是 24 字节，但堆分配按真实数据尺寸来，不用 padding 到 144 字节。最大变体 <code>NAPTR</code> 反而<strong>多了一点</strong>——多了一次堆指针和分配开销。但 <code>NAPTR</code> 实际很少见，<strong>这笔账划算</strong>。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M1173F6HNANE82T98F4MZ2YE.png">Box 后的内存布局</a></p>
+<p>但 Box 不是免费的。</p>
+<h3>7.2 Box 的代价</h3>
+<p>第一个代价是<strong>分配器开销</strong>。每个 box 变体都是独立堆分配，分配器会向上对齐到 size class。Big Pineapple 用 <a href="https://jemalloc.net/">jemalloc</a>——专门为多线程、高分配负载设计的分配器，把相似大小的分配归到固定 bin。<code>TXT</code> 申请 32 字节正好落 32-byte bin，零浪费；<code>MX</code> 申请 40 字节向上对齐到 48，<strong>浪费 8 字节</strong>。</p>
+<p>第二个代价是<strong>内存局部性差</strong>。没 Box 时，record enum 值在一块连续内存里。Box 后，每个 box 变体都在各自的堆区域。读的时候要先跟指针——<strong>指针落在远离 entry 其他部分的地方，CPU 就得去取新的 cache line</strong>。几百万个 entry 一累加，box 的数据散落在堆各处，<strong>不挤在一起</strong>。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M1173Y9TP7GJE9TZJ9P3G8R2.png">Box 后的内存分散</a></p>
+<p>两个代价单独都不致命，<strong>但都消掉就有可观的内存和延迟双收</strong>——下一节正是这件事。</p>
+<blockquote>📌 <strong>解读</strong>：这一节是 Cloudflare 团队最诚实的部分。Box 看起来很美——把"大变体挤占 enum 空间"治了，但引入了<strong>指针追逐 + 缓存行 miss</strong>。在 L1 缓存 32 KB / L2 几百 KB / L3 几十 MB 的典型层级里，<strong>一条 cache line 64 字节</strong>——一次 miss 就是从主存取 64 字节（延迟约 100 ns，比 L1 慢 30+ 倍）。这条 memcached/Redis 类系统在 1.7 版本之后反复做"小对象压缩 + slab 紧凑化"的根本原因——同样思路 Cloudflare 在 1.1.1.1 的 Rust 代码里自己手做了一遍。</blockquote>
+<h2>八、第五步：用 wire format 存 record</h2>
+<p>直觉上，下一步应该是把整个 DNS 响应按 wire format 存，每次查询时只改 message ID 之类的 per-client 字段。但这条路有麻烦：DNSSEC 记录只在客户端设了 <a href="https://www.cloudflare.com/learning/dns/dnssec/how-dnssec-works/">DO (DNSSEC OK)</a> flag 时才出现。要么缓存两份（带 DNSSEC / 不带），要么从已构造好的 message 里把它们筛掉——都不优雅。还有个成本：每次查都要重新解析整个 message，而 enum 方案已经存了"已解析"的 record，省掉了这一步。</p>
+<p>折中方案：<strong>record data 用裸字节存</strong>，cache entry 的其他字段仍是结构化的。原来的"<code>Vec<enum variant></code>"换成<strong>单个 <code>Box<[u8]></code></strong>——每条 record 编码成"2 字节长度前缀 + 裸字节"。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M11749PX9A28DBGYB03Z48HN.png">wire format 存 record</a></p>
+<p>这同时干掉了两件事：<strong>per-variant enum 开销</strong>和<strong>前一步 Box 引入的多次堆分配</strong>。数据也变紧凑了——CPU cache 局部性更好。</p>
+<p>代价：record <strong>不能再随机索引</strong>。要顺序遍历整个 buffer。这给 round-robin 切 <code>A</code>/<code>AAAA</code> 之类功能加了点复杂度，但单 entry 里 record 数量本来就不多，<strong>这点成本可以忽略</strong>。</p>
+<p>构造响应时，大部分 record 类型<strong>直接从 buffer 拷到出站 message</strong>。原来每条解析过的 record 都要按字段序列化回 DNS wire format——现在 <code>A</code> / <code>AAAA</code> / <code>TXT</code> / 所有 DNSSEC 类型<strong>直接 copy 编码好的字节过去</strong>。只有带域名的 record（<code>CNAME</code> / <code>NS</code> / <code>MX</code> / <code>SOA</code>）还要解析，因为要做 DNS name compression。但<strong>能直接 copy 的 record 是流量大头</strong>——这一步<strong>减少了查缓存路径的工作量</strong>。加上内存局部性变好，<strong>实测查缓存延迟再降 5%</strong>。</p>
+<p>构造 record data buffer 用的是<strong>跨 cache 插入复用的 scratchspace buffer</strong>。之前的写入已经把 buffer 撑大了，后面很少需要再分配。record 大小不一，没序列化完之前不知道精确要多大。record 进 scratchspace 后，再 <code>Box<[u8]></code> 一次性 <code>memcpy</code>——把"每条 record 一次 box"换成"整个 record data 一次 box"。顺带避开 <code>Vec<u8></code> 缩容时分配器没法回收尾部的浪费。<strong>基准里光这一步就让插入吞吐 +13%</strong>。</p>
+<blockquote>📌 <strong>解读</strong>：这是一个很经典的"<strong>用长度前缀把变长记录变定长切片</strong>"技巧。Go 的 <code>binary.Read</code>、<code>Protobuf</code> 的 wire format、Cap'n Proto 全是这个套路。<strong>每条 record 前 2 字节长度 = 数组不会失联</strong>——长度已知，结构化字段和字节流可以混存。对 Rust 来说更妙的是 <code>Box<[u8]></code> + 自定义 <code>Read</code> 实现可以零拷贝解析大部分类型（<code>A</code> 直接读 4 字节成 <code>Ipv4Addr</code>，<code>AAAA</code> 读 16 字节，<strong>完全没有中间表示</strong>）。这就解释了为什么"按 wire format 存"反而不比 enum 慢——还更快。</blockquote>
+<h2>九、效果：每条记录 953 → 420 字节</h2>
+<p>下面是基准和线上数据。</p>
+<p><strong>生产数据</strong>：下图是 Big Pineapple 实例在 p90 / p98 / p99 的常驻内存。第一条虚线（2026-05-18）是发布开始日，第二条（2026-07-06）是所有服务发布完成日。每个发布都引入了上述一项或多项优化，所以内存是<strong>阶梯式</strong>下降，不是一刀切。</p>
+<p>!<a href="https://blog.cloudflare.com/_emdash/api/media/file/01M1174QR0ZH0HWEQBS50Q5641.png">生产内存阶梯下降</a></p>
+<p>每次发布，新启动的实例从空缓存开始，缓存填满后内存才稳定。所以<strong>稳定平台期的值</strong>比刚启动的低谷更代表稳态内存。</p>
+<table>
+<tr><th>指标</th><th>发布前</th><th>发布后</th><th>变化</th></tr>
+<tr><td><strong>p99 常驻内存</strong></td><td>9.3 GB</td><td>5.3 GB</td><td><strong>−43%</strong></td></tr>
+<tr><td><strong>p90 常驻内存</strong></td><td>6.5 GB</td><td>3.8 GB</td><td><strong>−42%</strong></td></tr>
+</table>
+<p>缓存越满的实例，<strong>绝对节省越大</strong>。</p>
+<p><strong>基准数据</strong>：5 步优化让单条目内存从 953 字节 → 420 字节，<strong>−56%</strong>。单条目分配总量从 1.1 KB → 461 字节，<strong>−58%</strong>。</p>
+<table>
+<tr><th>指标</th><th>优化前</th><th>优化后</th><th>变化</th></tr>
+<tr><td>单条目净内存</td><td>953 字节</td><td>420 字节</td><td><strong>−56%</strong></td></tr>
+<tr><td>单条目分配量</td><td>1.1 KB</td><td>461 字节</td><td><strong>−58%</strong></td></tr>
+<tr><td>插入吞吐</td><td>625,000 条/秒</td><td>893,000 条/秒</td><td><strong>+43%</strong></td></tr>
+<tr><td>查询延迟</td><td>828 ns</td><td>670 ns</td><td><strong>−19%</strong></td></tr>
+</table>
+<p>线上降幅比基准小，因为常驻内存里除了缓存还有进程的其他部分。<strong>发布稳定后，整集群工作集内存总共下降约 100 TB</strong>。</p>
+<blockquote>📌 <strong>解读</strong>：这个 −56% / −58% / +43% / −19% 的"全胜"在工程上很少见——通常内存优化要么靠<strong>空间换时间</strong>（cache 池化、压缩），要么靠<strong>时间换空间</strong>（LRU 淘汰），两边都赚只可能是一开始就有"代码改对了<strong>同时</strong>消除了拖累"的事。Cloudflare 这次正是这样：他们改的每个点（<code>Vec</code>→<code>Box</code>、合并列表、Option owner、Box 大变体、wire format）<strong>都是既减小体积又减少分配数</strong>——而每次"少分配"对 CPU cache 是双赢（少 load 指令 + 少指针追逐 + 少 cache line miss）。这是教科书级的"<strong>内存布局是性能</strong>"。</blockquote>
+<h2>十、下一步怎么用省下的内存</h2>
+<p>Cloudflare 计划把省下的内存<strong>全部投回去</strong>——<strong>增大缓存容量</strong>但不增加总内存。结果：缓存命中率提升、向上游权威服务器的查询量下降——<strong>更少的回源 = 更低的延迟 = 更低的回源成本</strong>。</p>
+<p>他们还在继续抠这个缓存本身。</p>
+<p>---</p>
+<h2>十一、点评：100 TB 是怎么"省"出来的</h2>
+<p>把 Cloudflare 的故事拆开看，其实就是一句话：<strong>在 2500 亿这个量级下，每个 byte 都被乘以 2500 亿</strong>。这给所有写"高基数 KV 存储"的工程师一份很清晰的 checklist：</p>
+<ol>
+<li>1. <strong><code>Vec</code>/<code>String</code> 一定需要 <code>cap</code> 吗？</strong>如果不再增长，<code>Box<[T]></code> / <code>Box<str></code> 既省字段又省预留空间。</li>
+<li>2. <strong>同类容器能合并吗？</strong>三个 <code>Vec<Record></code> → 一个 <code>Box<[u8]></code> + 偏移，省的不是 28 字节，是结构体 padding 之外的指针追逐。</li>
+<li>3. <strong>有"基本相同"的字段吗？</strong>Option / 指针 / nil 判别——能压成 niche optimization 就压。</li>
+<li>4. <strong>enum 变体大小差几个数量级？</strong>大变体 Box 出去，但<strong>要算清 cache line 成本</strong>。</li>
+<li>5. <strong>能不能直接存 wire format？</strong>配合长度前缀 + 零拷贝读，<strong>结构化表示反而是累赘</strong>。</li>
+</ol>
+每一步单独看都不惊艳：<strong>64 + 28 + 一堆 Option + 一些 Box + 一点 Box<[u8]></strong>。但叠起来就达到 −56% / −58%，顺手 +43% / −19%。这就是"内存布局是性能"的具体含义——<strong>不是某一个微优化神奇地消灭瓶颈，是几百个小决策在每一层 cache 上同时让出空间</strong>。
+<p>如果你也在写类似规模的服务（DNS、CDN 元数据、Kubernetes apiserver 的 etcd 缓存、Service Mesh 的 xDS 推送……），同样的故事可以复刻：<strong>先量，后改</strong>。Cloudflare 的整套方法论就两句话——</p>
+<ol>
+<li>1. <strong>别猜，拿基准量</strong>。自研 <code>GlobalAlloc</code> 包装器是 50 行代码的工程，能让"每条目字节数"变成可测量的指标，而不是"看起来差不多"。</li>
+<li>2. <strong>别赌，跑生产</strong>。基准里 −56% 到生产 −43% 之间的差，是非缓存内存部分——<strong>只有上线了才看得到</strong>。</li>
+</ol>
+省下 100 TB 的从来不是某一个天才想法，是 5 步"每步都不起眼"加起来。
+<p>---</p>
+<h2>参考</h2>
+<ul>
+<li>原文：<a href="https://blog.cloudflare.com/dns-cache-memory-optimization-1111/">How we saved 100 terabytes of memory by optimizing 1.1.1.1's DNS cache</a></li>
+<li>原文作者：Sebastiaan Neuteboom，Cloudflare</li>
+<li>平台背景：<a href="https://blog.cloudflare.com/big-pineapple-intro/">How Rust and Wasm power Cloudflare's 1.1.1.1</a></li>
+<li>标准与协议：<a href="https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4">RFC 1035 §4.1.4 (DNS message name compression)</a>、<a href="https://en.wikipedia.org/wiki/EDNS_Client_Subnet">EDNS Client Subnet</a></li>
+<li>工程工具：<a href="https://jemalloc.net/">jemalloc</a>、<a href="https://docs.rs/bitflags/latest/bitflags/">Rust <code>bitflags</code></a></li>
+</ul>
+<blockquote><strong>本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源。</strong></blockquote>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-01_cloudflare-1-1-1-1-dns-cache-memory-optimization/",
+      title: "\u7701\u4e0b 100 TB \u5185\u5b58\uff1aCloudflare \u600e\u4e48\u628a 1.1.1.1 \u7684 DNS \u7f13\u5b58\u6761\u76ee\u780d\u5230\u4e00\u534a"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
