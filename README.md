@@ -17,7 +17,10 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-02 | [LWN 时隔近五年再次涨价：9 月 15 日生效，四档订阅平均上浮约 20%](https://freelamp.com/articles/2026-09-02_lwn-subscription-price-increase/) | LWN · 独立媒体 · 订阅制 · 通胀 · 爬虫对抗 |
 | 2026-08-31 | [Debian 11 "bullseye" LTS 正式 EOL：今天之后没有安全更新了，老系统何去何从？](https://freelamp.com/articles/2026-08-31_debian-11-bullseye-lts-eol/) | Debian · LTS · EOL · 升级路径 · bookworm |
+| 2026-08-26 | [LibreOffice 26.8 正式发布：206 位贡献者合力，重点死磕排版质量、复杂文字与文档交换](https://freelamp.com/articles/2026-08-26_libreoffice-26-8-release/) | LibreOffice · 排版器 · 双向文本 · OOXML · 零 AI |
+| 2026-08-26 | [systemd 262-rc1 发布：嵌入兜底 unit、PID 1 静态容器、TPM/SEV-SNP/TDX 全栈机密计算加码](https://freelamp.com/articles/2026-08-26_systemd-262-rc1/) | systemd · PID 1 · NUMA · TPM · SEV-SNP · TDX · 机密计算 |
 | 2026-08-08 | [OpenAI Astra 触发《准备度框架》"关键级"红线：被强按暂停键的下一代网络安全前沿模型](https://freelamp.com/articles/2026-08-08_openai-astra-critical-cyber/) | AI 安全 · Critical 阈值 · Daybreak · 漏洞利用链 |
 | 2026-08-08 | [GRR：谷歌开源的远程取证与应急响应框架——Flow / Hunt / osquery 一篇讲清](https://freelamp.com/articles/2026-08-08_grr-rapid-response/) | 应急响应 · 取证 · osquery · 开源 |
 | 2026-08-06 | [181 个 CVE 一起修：Debian LTS 的 Linux 5.10.262-1 更新，和它告诉我们的内核稳定性真相](https://freelamp.com/articles/2026-08-06_dla-4717-1-linux-kernel-5.10/) | CVE · Linux Kernel · LTS |
