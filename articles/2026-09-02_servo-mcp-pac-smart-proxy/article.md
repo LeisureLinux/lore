@@ -148,7 +148,7 @@ import { existsSync, statSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
-const SERVO_BIN = "/home/axu/.local/bin/servo-fetch";
+const SERVO_BIN = "~/.local/bin/servo-fetch";
 const PAC_URL = "https://wpad.freelamp.com/wpad.dat";
 const PAC_CACHE = join(process.env.HOME, ".cache/servo/wpad.dat");
 const PAC_MAX_AGE_MIN = 30;
@@ -213,7 +213,7 @@ function runServoFetch(args, env) {
     },
     "servo": {
       "command": "node",
-      "args": ["/home/axu/bin/servo-mcp-proxy.mjs"]
+      "args": ["~/bin/servo-mcp-proxy.mjs"]
     }
   }
 }
@@ -257,6 +257,6 @@ function runServoFetch(args, env) {
 
 ---
 
-**完整代码**：`/home/axu/bin/servo-mcp-proxy.mjs`（290 行 Node）+ `~/.pi/agent/mcp.json`。改 mcp.json 之前会自动备份到 `.bak.<timestamp>`，改完起不来的话一键回滚。
+**完整代码**：`~/bin/servo-mcp-proxy.mjs`（290 行 Node）+ `~/.pi/agent/mcp.json`。改 mcp.json 之前会自动备份到 `.bak.<timestamp>`，改完起不来的话一键回滚。
 
 如果你也想给 AI 装个"自己上网"的能力，欢迎留言交流你的代理拓扑和 PAC 方案——智能分流这块几乎每个团队都不一样，但骨架可以复用。
