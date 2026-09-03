@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起 — FreeLAMP.com</title>
+  <meta name="description" content="EXT4 Linux 7.3 是 2026 年 8 月合并窗口早期提交的性能大版本。本文详解三块独立改动叠加带来的性能收益：(1) VFS iomap 由 Christian Brauner 主导，把 iomap_ops 的 iomap_begin/iomap_end 双回调改成单一 iomap_next 迭代器，13">
+  <meta name="keywords" content="EXT4, Linux 7.3, IOmap, iterator 模型, 小 I/O 简单 DIO, 并行 DIO 写, ext4_mb_prefetch, buffered I/O 切换 iomap">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-08-19">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-08-19_ext4-linux-7.3/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起">
+  <meta property="og:description" content="EXT4 Linux 7.3 是 2026 年 8 月合并窗口早期提交的性能大版本。本文详解三块独立改动叠加带来的性能收益：(1) VFS iomap 由 Christian Brauner 主导，把 iomap_ops 的 iomap_begin/iomap_end 双回调改成单一 iomap_next 迭代器，13">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-08-19_ext4-linux-7.3/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-08-19">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="EXT4">
+  <meta property="article:tag" content="EXT4">
+  <meta property="article:tag" content="Linux 7.3">
+  <meta property="article:tag" content="IOmap">
+  <meta property="article:tag" content="iterator 模型">
+  <meta property="article:tag" content="小 I/O 简单 DIO">
+  <meta property="article:tag" content="并行 DIO 写">
+  <meta property="article:tag" content="ext4_mb_prefetch">
+  <meta property="article:tag" content="buffered I/O 切换 iomap">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起">
+  <meta name="twitter:description" content="EXT4 Linux 7.3 是 2026 年 8 月合并窗口早期提交的性能大版本。本文详解三块独立改动叠加带来的性能收益：(1) VFS iomap 由 Christian Brauner 主导，把 iomap_ops 的 iomap_begin/iomap_end 双回调改成单一 iomap_next 迭代器，13">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起",
+  "description": "EXT4 Linux 7.3 的性能提升不是单一改动，而是三块独立工作碰头：VFS iomap 重写（Christian Brauner 把 iomap 从 begin/end 双回调改成单一 iomap_next 迭代器模型，13 个文件系统全栈切换）、简单 DIO 路径（Fengnan Chang 把 4K 随机读从 1.92M 提到 2.19M IOPS）、EXT4 buffered I/O 切 iomap（Zhang Yi v5 系列，大块写 +35%~+105%），加上 Ted Ts'o 主 pull 的并行 DIO 写、fallocate 跳过预取、overwrite up-to-date folio 优化。本文详解每块的改动、性能数据与运维升级建议。",
+  "datePublished": "2026-08-19",
+  "dateModified": "2026-08-19",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-08-19_ext4-linux-7.3/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "EXT4, Linux 7.3, IOmap, iterator 模型, 小 I/O 简单 DIO, 并行 DIO 写, ext4_mb_prefetch, buffered I/O 切换 iomap"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起",
+        "item": "https://freelamp.com/articles/2026-08-19_ext4-linux-7.3/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-08-19">2026-08-19</div>
+        <h1 class="post-title" itemprop="headline">EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/EXT4/">EXT4</a><a itemprop="keywords" href="/tags/Linux%207.3/">Linux 7.3</a><a itemprop="keywords" href="/tags/IOmap/">IOmap</a><a itemprop="keywords" href="/tags/iterator%20%E6%A8%A1%E5%9E%8B/">iterator 模型</a><a itemprop="keywords" href="/tags/%E5%B0%8F%20I/O%20%E7%AE%80%E5%8D%95%20DIO/">小 I/O 简单 DIO</a><a itemprop="keywords" href="/tags/%E5%B9%B6%E8%A1%8C%20DIO%20%E5%86%99/">并行 DIO 写</a><a itemprop="keywords" href="/tags/ext4_mb_prefetch/">ext4_mb_prefetch</a><a itemprop="keywords" href="/tags/buffered%20I/O%20%E5%88%87%E6%8D%A2%20iomap/">buffered I/O 切换 iomap</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote><strong>原始出处</strong>：Phoronix + LKML VFS pull request + EXT4 pull request<br>
+<strong>发布日期</strong>：2026 年 8 月 19 日（合并窗口早期）<br>
+<strong>作者</strong>：Christian Brauner（VFS iomap）、Ted Ts'o（EXT4 maintainer）<br>
+<strong>关键 PR</strong>：<br>
+  - VFS iomap：[GIT PULL 08/18 for v7.3] vfs iomap（Christian Brauner）<br>
+  - EXT4：ext4: use iomap for regular file's buffered I/O path v5（Zhang Yi）<br>
+  - EXT4 主 pull：EXT4 feature pull request for Linux 7.3（Ted Ts'o）<br>
+<strong>Phoronix 报道</strong>：https://www.phoronix.com/news/EXT4-Linux-7.3<br>
+<strong>翻译/解读</strong>：LeisureLinux<br>
+<strong>关键词</strong>：EXT4 Linux 7.3、IOmap 并行 DIO、parallel direct I/O、ext4_mb_prefetch</blockquote>
+<h2>引言：三件套叠在一起</h2>
+<p>EXT4 Linux 7.3 这一波的"性能提升"不是单一改动，而是 <strong>三块独立的工作在合并窗口早期碰头</strong>：</p>
+<ol>
+<li>1. <strong>VFS IOmap 重写</strong>（Christian Brauner）：把 iomap 从 <code>iomap_begin/iomap_end</code> 双回调改成单一的 <code>iomap_next()</code>，彻底切换到 iterator 模型；并补上小 I/O 的简单 DIO 路径。</li>
+<li>2. <strong>EXT4 buffered I/O 切到 iomap</strong>（Zhang Yi）：用 32 个 patch 把 EXT4 buffered read/write/writeback/mmap 路径从 buffer_head 搬到 iomap。</li>
+<li>3. <strong>EXT4 主 pull</strong>（Ted Ts'o）：并行 DIO 写、<code>ext4_mb_prefetch()</code> 用 <code>fallocate()</code> 优化、overwrite 已 up-to-date folio 路径优化、若干稳定性修复。</li>
+</ol>
+三件叠加让 7.3 成为 EXT4 近几年性能收益最大的版本。但要理解每一块的"为什么"，得先回看 IOmap。
+<p>---</p>
+<h2>一、IOmap：VFS 层的"地图框架"</h2>
+<h3>1.1 IOmap 是什么</h3>
+<p>IOmap（include/linux/iomap.h）是 VFS 子系统里一个通用的"逻辑文件偏移 → 物理磁盘位置"映射框架。它不归某个文件系统所有——EXT4 / XFS / Btrfs / EXT2 / EROFS / F2FS / GFS2 / HPFS / FUSE / exFAT / ZoneFS / NTFS / NTFS3 / block device mapping 全部用。</p>
+<p>它的核心 API 是：</p>
+<pre><code class="c">struct iomap_ops {
+    iomap_begin(...);  // 开始一段映射
+    iomap_end(...);    // 结束一段映射
+};
+</code></pre>
+<p>调用方 <code>iomap_iter()</code> 通过这两个回调走完一次映射迭代。</p>
+<h3>1.2 老设计的代价</h3>
+<p>老设计里 <code>iomap_iter()</code> 只把 <code>iomap_begin</code> / <code>iomap_end</code> 当<strong>函数指针</strong>用。每一步迭代都是一次间接调用，编译器<strong>不能内联</strong>。</p>
+<p>Joanne Koong 把这一点改成了单一 <code>iomap_next()</code> 回调：</p>
+<pre><code class="c">struct iomap_ops {
+    iomap_next(...);   // 完成上一段映射 + 产生下一段
+};
+</code></pre>
+<p>调用方 <code>iomap_iter()</code> 现在能把 <code>->iomap_next</code> 作为<strong>编译期常量</strong>传进来，编译器能直接把它内联。<strong>每次迭代省一次间接调用</strong>，所有支持的文件系统都受益。</p>
+<h3>1.3 受益范围</h3>
+<p>VFS pull 列出的转换名单：</p>
+<pre><code class="">xfs, btrfs, ext4, ext2, erofs, f2fs, gfs2, hpfs,
+ fuse, exfat, zonefs, ntfs, ntfs3, block device mapping
+</code></pre>
+<p>13 个文件系统 + 块设备层全部切换。commit 数与 diff 规模：</p>
+<pre><code class="">29 files changed, 569 insertions(+), 159 deletions(-)
+</code></pre>
+<p>净 +410 行——看着增加不多，但配合下面的 DIO 路径修改是大头。</p>
+<p>---</p>
+<h2>二、小 I/O 简单 DIO 路径：把 1.92M → 2.19M IOPS</h2>
+<h3>2.1 瓶颈来源</h3>
+<p>Bytedance 工程师 Fengnan Chang 发现：PCIe Gen5 NVMe 上跑 4K 随机读时，<strong>单核 io_uring poll mode</strong> 跑到：</p>
+<ul>
+<li>裸块设备：~3.2M IOPS</li>
+<li>经过 EXT4：~1.92M IOPS</li>
+<li>经过 XFS：~1.92M IOPS</li>
+</ul>
+差距 1.28M IOPS。profile 显示 <code>__iomap_dio_rw()</code>、<code>iomap_iter()</code>、<code>iomap_dio_bio_iter()</code>、<code>kfree()</code> 在 top。
+<p>也就是说：<strong>小块 DIO 路径上的开销，被 IOmap 的间接调用 + 多次 kfree + bio 分配路径放大</strong>。</p>
+<h3>2.2 简单 DIO 路径</h3>
+<p>Fengnan Chang 加了一个<strong>轻量级 DIO 路径</strong>，触发条件：</p>
+<ul>
+<li>I/O size ≤ inode blocksize</li>
+<li>文件未加密</li>
+<li>一些列其他限制</li>
+</ul>
+满足时，bio 走专用 bioset，整段 cacheline 对齐单次分配，<strong>完成回调 inline 运行</strong>，没有 <code>kfree</code>、没有间接调用、没有状态机。
+<h3>2.3 性能数据（fio 测试）</h3>
+<table>
+<tr><th>队列深度</th><th>libaio</th><th>io_uring</th><th>io_uring poll（QD 256）</th></tr>
+<tr><td><strong>提升</strong></td><td>4%（QD ≥ 64）</td><td>约 5%</td><td>最高 10%</td></tr>
+</table>
+<p>EXT4 从 1.92M → <strong>2.19M IOPS</strong>（单核 io_uring poll，4K 随机读）。</p>
+<p>注意这只是单核、单工作负载，<strong>多核线性扩展后差距会更大</strong>。配合下一节的 EXT4 buffered I/O 切 iomap，提升进一步叠加。</p>
+<p>---</p>
+<h2>三、EXT4 buffered I/O 切到 iomap：32 patch 系列</h2>
+<h3>3.1 为什么这次切换重要</h3>
+<p>EXT4 一直是 buffer_head 路径的老用户——EXT3 时代就是这样设计的。但内核整体已经迁移到 iomap 框架，EXT4 是少数剩下的"异类"。Zhang Yi 在 v5 patch 系列里把 buffer_head 路径全部换成 iomap：</p>
+<pre><code class="">Patch 01-03: 简化 truncate，drop 掉 EOF 零块时不必要的 ordered I/O
+Patch 04-21: 扩展 ext4_map_blocks()，实现 iomap buffered read/write/writeback/mmap/部分块零
+Patch 22-30: 处理 unaligned EOF 文件扩展时 zeroing 与 i_disksize 更新的顺序
+Patch 31-32: 启用 iomap buffered I/O 路径
+</code></pre>
+<h3>3.2 实测数据</h3>
+<p>测试环境：4 核 VM（Intel Xeon Platinum 8380），150GB RAM-backed virtual-io 块设备。</p>
+<p><strong>写性能</strong>（MiB/s）节选：</p>
+<table>
+<tr><th>配置</th><th>ext4+bh</th><th>ext4+iomap</th><th>delta</th></tr>
+<tr><td>异步 4k</td><td>170</td><td>176</td><td>+4%</td></tr>
+<tr><td>异步 64k</td><td>1816</td><td>1981</td><td>+9%</td></tr>
+<tr><td>异步 1m</td><td>4295</td><td>5780</td><td><strong>+35%</strong></td></tr>
+<tr><td>异步 64k + writeback</td><td>734</td><td>957</td><td><strong>+30%</strong></td></tr>
+<tr><td>异步 1m + writeback</td><td>1460</td><td>1683</td><td>+15%</td></tr>
+<tr><td>异步 64k + RWF_DONTCACHE</td><td>415</td><td>698</td><td><strong>+68%</strong></td></tr>
+<tr><td>异步 1m + RWF_DONTCACHE</td><td>1404</td><td>2883</td><td><strong>+105%</strong></td></tr>
+<tr><td>异步 64k + OW（覆盖写）</td><td>1776</td><td>1867</td><td>+5%</td></tr>
+<tr><td>异步 1m + OW</td><td>4105</td><td>4879</td><td>+19%</td></tr>
+</table>
+<p><strong>读性能</strong>（MiB/s）节选：</p>
+<table>
+<tr><th>场景</th><th>BS</th><th>ext4+bh</th><th>ext4+iomap</th><th>delta</th></tr>
+<tr><td>READ HOLE</td><td>64k</td><td>2011</td><td>2116</td><td>+5%</td></tr>
+<tr><td>READ DATA（无 page cache）</td><td>64k</td><td>741</td><td>768</td><td>+4%</td></tr>
+<tr><td>READ DATA</td><td>1m</td><td>1143</td><td>1210</td><td>+6%</td></tr>
+</table>
+<p><strong>关键结论</strong>：大块 I/O 显著提升（部分场景 +105%），小块同步/非缓存场景轻微回退（-7%~-15%），读性能差异不大。</p>
+<h3>3.3 已观察到的稳定性结论</h3>
+<p>xfstests-bld 在 <code>-g auto / fast_commit / 64k</code> 三种配置下：</p>
+<ul>
+<li><strong>无新增失败</strong>。</li>
+<li>仅一个 known issue：<code>generic/127</code> 偶发失败，根因在 MM 大 folio 拆分逻辑（另修）。</li>
+</ul>
+这意味着切 iomap 的<strong>兼容性已经过 xfstests 验证</strong>，剩下的只是优化空间。
+<p>---</p>
+<h2>四、EXT4 主 pull：并行 DIO + 多块分配器 + overwrite</h2>
+<p>EXT4 主 feature pull request 由 Ted Ts'o 提交。三件性能改进 + 一批稳定性修复：</p>
+<h3>4.1 并行 direct I/O 写</h3>
+<pre><code class="plaintext">"Allowing parallel direct I/O writes where previously were being 
+too conservative when checking if it was safe to avoid requiring 
+an exclusive lock."
+</code></pre>
+<p>老逻辑里 EXT4 在判断"是否需要独占锁"时过于保守，导致并行 DIO 写被序列化。新逻辑放宽判断，让真正能并发的写并行执行——<strong>对数据库、Docker volume、VM image 这些 DIO 重负载是直接收益</strong>。</p>
+<h3>4.2 ext4_mb_prefetch() 用 fallocate() 优化</h3>
+<p><code>ext4_mb_prefetch()</code> 是 EXT4 多块分配器的预取逻辑，目的是减少分配时的锁竞争。新逻辑：<strong>当 fallocate() 已经预留空间时，跳过预取</strong>。</p>
+<p>实测里 fallocate() 路径下能省掉一批不必要的预取扫描，对预分配大文件的场景（如数据库 table space）有可见收益。</p>
+<h3>4.3 Overwrite to up-to-date folio</h3>
+<p>EXT4 之前在处理"覆盖一个已经 up-to-date 的 folio"时走了完整 mballoc 路径。新逻辑识别这种 case 提前返回，避免冗余扫描。</p>
+<h3>4.4 稳定性</h3>
+<ul>
+<li>避免可能的 soft lockup 与 RCU stall 条件。</li>
+<li>若干 bug fix（包括 <code>ext4_da_map_blocks()</code> stale delalloc extent、短 iomap buffered write 路径、<code>data_error=abort</code> 边缘 case、<code>punch hole</code> 与 writeback 竞态等）。</li>
+</ul>
+---
+<h2>五、对文件系统生态的整体影响</h2>
+<p>EXT4 切 iomap 后，剩下的"buffer_head 异类"已经不多了。Linux 文件系统基本全面 iomap 化。这意味着：</p>
+<ul>
+<li><strong>新文件系统</strong>（EROFS、ZoneFS 等）从第一天起就走 iomap，性能基线更高。</li>
+<li><strong>新硬件优化</strong>（PCIe Gen5、CXL、新型内存）只需要在 iomap 层做一次，所有文件系统受益。</li>
+<li><strong>bug 修复</strong>一次生效全栈，不用每个 fs 单独修。</li>
+</ul>
+XFS 在这次 IOmap 迭代里也完成切换。Btrfs、NTFS、NTFS3 一并完成。F2FS / GFS2 / HPFS / FUSE / exFAT / ZoneFS / EXT2 / block device mapping 都跟进。
+<p>---</p>
+<h2>六、性能数据横向对比</h2>
+<p>Phoronix 测试 + Zhang Yi 实测综合：</p>
+<table>
+<tr><th>工作负载</th><th>7.2 性能</th><th>7.3 性能</th><th>提升来源</th></tr>
+<tr><td>4K 随机读（单核 io_uring poll，Gen5 NVMe）</td><td>1.92M IOPS</td><td>2.19M IOPS</td><td>简单 DIO 路径</td></tr>
+<tr><td>大块顺序写（异步）</td><td>1816 MiB/s</td><td>1981 MiB/s</td><td>iomap + buffered I/O 切换</td></tr>
+<tr><td>大块顺序写 + writeback</td><td>734 MiB/s</td><td>957 MiB/s</td><td>同上</td></tr>
+<tr><td>大块 RWF_DONTCACHE</td><td>415 MiB/s</td><td>698 MiB/s</td><td>同上</td></tr>
+<tr><td>并行 DIO 写</td><td>串行化</td><td>并行化</td><td>主 pull</td></tr>
+<tr><td>多块预取（fallocate 场景）</td><td>全跑</td><td>跳过冗余</td><td>主 pull</td></tr>
+</table>
+<blockquote>注：上面数据来自不同测试（Phoronix + Zhang Yi），并非同一硬件；只是看出趋势。</blockquote>
+---
+<h2>七、对运维的影响</h2>
+<h3>7.1 该不该升级</h3>
+<p><strong>值得升级的场景</strong>：
+<ul>
+<li>数据库 / VM image / Docker volume 跑在 PCIe Gen5 NVMe 上。</li>
+<li>用 DIO 写（很多 DBMS 默认就是 O_DIRECT）。</li>
+<li>大块顺序写密集（备份、视频处理）。</li>
+<li>想用 xfstests 验证过的稳定性。</li>
+</ul>
+<strong>观望场景</strong>：
+<ul>
+<li>小块随机写（罕见性能回退）。</li>
+<li>极特殊 sync 路径（极少数 -7%~-15% 的回退）。</li>
+</ul>
+<h3>7.2 升级前要做的事</h3></p>
+<pre><code class="bash"># 1. 备份 + snapshot
+btrfs subvolume snapshot / /snap-ext4-pre73
+<h1>2. xfstests 验证（如果你有环境）</h1>
+xfstests-bld -g auto,fast_commit,64k
+<h1>3. 关注 dmesg 中的 EXT4 警告</h1>
+dmesg -w | grep -i ext4
+<h1>4. 性能基线对比</h1>
+fio --name=before --rw=randread --bs=4k --iodepth=256 --ioengine=io_uring --filename=/dev/nvme0n1 --runtime=60
+</code></pre>
+<h3>7.3 回滚路径</h3>
+<p>7.3 是 mainline，未合入任何稳定分支。如果用 mainline + 自编译，建议保留：</p>
+<ul>
+<li>原内核 .config + bzImage 备份</li>
+<li>原 initramfs 备份</li>
+<li>启动器（grub / systemd-boot）保留 old entry</li>
+</ul>
+万一性能回退明显，切回上一个稳定内核即可。
+<p>---</p>
+<h2>八、为什么这次性能收益这么大？</h2>
+<p>回头看，EXT4 Linux 7.3 不是"一个大特性"，而是<strong>几代增量改进碰到一起</strong>：</p>
+<table>
+<tr><th>改动</th><th>单独价值</th><th>叠加价值</th></tr>
+<tr><td><strong>IOmap iterator 模型</strong></td><td>消除间接调用</td><td>全栈受益</td></tr>
+<tr><td><strong>简单 DIO 路径</strong></td><td>单核 +14% IOPS</td><td>Gen5 NVMe 用户立即看到</td></tr>
+<tr><td><strong>buffered I/O 切 iomap</strong></td><td>大块写 +35%~+105%</td><td>与 DIO 路径叠加</td></tr>
+<tr><td><strong>并行 DIO</strong></td><td>DIO 写并行化</td><td>数据库场景受益</td></tr>
+<tr><td><strong>fallocate 跳过预取</strong></td><td>减少扫描</td><td>预分配场景受益</td></tr>
+</table>
+<p>这种"积少成多"是 Linux 内核最常见也最难预测的版本——单独看每一个都不惊人，叠在一起就让 EXT4 跨了一档。</p>
+<p>---</p>
+<h2>九、关注下一个版本</h2>
+<p>EXT4 切 iomap 后，下一步看点：</p>
+<ul>
+<li><strong>ext4_iomap + writeback 路径</strong>进一步优化（小块同步场景的回退需要补回）。</li>
+<li><strong>data=ordered mode</strong> 在 iomap 路径下的完整支持（v5 系列暂时 always queue ioend worker 简化逻辑，未来还要补）。</li>
+<li><strong>新 ioend 基础设施</strong>：Zhang Yi 在 patch 16 已经为新 ioend 框架迁移铺路。</li>
+</ul>
+预计 7.4 / 7.5 会看到更彻底的 iomap 化收益。
+<p>---</p>
+<p><strong>参考资料</strong>：</p>
+<ol>
+<li>1. Phoronix EXT4 Linux 7.3：https://www.phoronix.com/news/EXT4-Linux-7.3</li>
+<li>2. Phoronix IOmap Linux 7.3：https://www.phoronix.com/news/IOmap-Linux-7.3-Faster</li>
+<li>3. Phoronix Faster Small Direct Linux 7.3：https://www.phoronix.com/news/Linux-7.3-Faster-Small-Direct</li>
+<li>5. LKML VFS iomap pull：[GIT PULL 08/18 for v7.3] vfs iomap</li>
+<li>4. LKML ext4 iomap v5：ext4: use iomap for regular file's buffered I/O path v5</li>
+<li>5. Linux 7.3 源码：https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git</li>
+<li>6. xfstests-bld：https://github.com/tytso/xfstests-bld</li>
+</ol>
+---
+<p><em>本文基于 Phoronix 报道、LKML VFS iomap pull request、Zhang Yi ext4 iomap v5 系列与社区资料整理，旨在为中国开发者提供快速理解和参考。</em></p>
+<p><em>作者观点不代表任何厂商立场，仅供技术讨论参考。性能数据基于公开测试，不同硬件 / 文件系统 / 工作负载配置可能有所差异。</em></p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-08-19_ext4-linux-7.3/",
+      title: "EXT4 Linux 7.3\uff1aIOmap \u8f6c\u6362\u843d\u5730\u3001\u5e76\u884c DIO \u5199\u3001\u4e3b pull request \u4e09\u4ef6\u5957\u53e0\u5728\u4e00\u8d77"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

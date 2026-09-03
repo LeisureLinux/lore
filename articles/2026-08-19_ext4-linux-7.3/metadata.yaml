@@ -1,0 +1,17 @@
+---
+title: "EXT4 Linux 7.3：IOmap 转换落地、并行 DIO 写、主 pull request 三件套叠在一起"
+date: 2026-08-19
+author: LeisureLinux
+tags:
+  - EXT4
+  - Linux 7.3
+  - IOmap
+  - iterator 模型
+  - 小 I/O 简单 DIO
+  - 并行 DIO 写
+  - ext4_mb_prefetch
+  - buffered I/O 切换 iomap
+summary: "EXT4 Linux 7.3 的性能提升不是单一改动，而是三块独立工作碰头：VFS iomap 重写（Christian Brauner 把 iomap 从 begin/end 双回调改成单一 iomap_next 迭代器模型，13 个文件系统全栈切换）、简单 DIO 路径（Fengnan Chang 把 4K 随机读从 1.92M 提到 2.19M IOPS）、EXT4 buffered I/O 切 iomap（Zhang Yi v5 系列，大块写 +35%~+105%），加上 Ted Ts'o 主 pull 的并行 DIO 写、fallocate 跳过预取、overwrite up-to-date folio 优化。本文详解每块的改动、性能数据与运维升级建议。"
+description: "EXT4 Linux 7.3 是 2026 年 8 月合并窗口早期提交的性能大版本。本文详解三块独立改动叠加带来的性能收益：(1) VFS iomap 由 Christian Brauner 主导，把 iomap_ops 的 iomap_begin/iomap_end 双回调改成单一 iomap_next 迭代器，13 个文件系统（xfs、btrfs、ext4、ext2、erofs、f2fs、gfs2、hpfs、fuse、exfat、zonefs、ntfs、ntfs3、block device mapping）一次性切换；(2) Bytedance 工程师 Fengnan Chang 加的简单 DIO 路径，让 4K 随机读在 PCIe Gen5 NVMe + 单核 io_uring poll mode 下从 1.92M IOPS 提升到 2.19M IOPS（+14%），fio 数据显示 libaio QD≥64 +4%、io_uring ~5%、io_uring poll QD 256 最高 +10%；(3) Zhang Yi v5 patch 系列把 EXT4 buffered I/O 路径从 buffer_head 搬到 iomap，xfstests-bld 验证无新增失败，大块写 +35%~+105%。Ted Ts'o 的 EXT4 主 pull 进一步加上并行 DIO 写（避免对独占锁过于保守）、ext4_mb_prefetch() 用 fallocate() 跳过冗余预取、overwrite to up-to-date folio 优化，以及若干稳定性修复（避免 soft lockup/RCU stall）。本文含升级建议、回滚路径、性能数据横向对比与对未来 7.4/7.5 的展望。"
+published: true
+---
