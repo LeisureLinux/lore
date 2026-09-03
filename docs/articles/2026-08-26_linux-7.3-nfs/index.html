@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux 7.3 NFS 改进：客户端 / 服务端双向发力——服务端目录委派、客户端 I/O 优化、NFSv4.2 缓存控制 — FreeLAMP.com</title>
+  <meta name="description" content="Linux 7.3 NFS 是 2026 年 8 月合并窗口接近结束时的服务端 + 客户端双向发力版本。服务端（NFSD）由 Chuck Lever 主导，最重要的变化包括：(1) 支持 NFSv4.1 目录委派（CB_NOTIFY 回调 + FSNOTIFY 机制，让服务端用内核 FSNOTIFY 监控目录，在目录变">
+  <meta name="keywords" content="Linux 7.3 NFS, CB_NOTIFY, 目录委派, NFSv4.2 缓存控制, pernode 线程池, NFS/localio 优化, flexfiles 数据服务器">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-08-26">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-08-26_linux-7.3-nfs/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Linux 7.3 NFS 改进：客户端 / 服务端双向发力——服务端目录委派、客户端 I/O 优化、NFSv4.2 缓存控制">
+  <meta property="og:description" content="Linux 7.3 NFS 是 2026 年 8 月合并窗口接近结束时的服务端 + 客户端双向发力版本。服务端（NFSD）由 Chuck Lever 主导，最重要的变化包括：(1) 支持 NFSv4.1 目录委派（CB_NOTIFY 回调 + FSNOTIFY 机制，让服务端用内核 FSNOTIFY 监控目录，在目录变">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-08-26_linux-7.3-nfs/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-08-26">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="Linux 7.3 NFS">
+  <meta property="article:tag" content="Linux 7.3 NFS">
+  <meta property="article:tag" content="CB_NOTIFY">
+  <meta property="article:tag" content="目录委派">
+  <meta property="article:tag" content="NFSv4.2 缓存控制">
+  <meta property="article:tag" content="pernode 线程池">
+  <meta property="article:tag" content="NFS/localio 优化">
+  <meta property="article:tag" content="flexfiles 数据服务器">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Linux 7.3 NFS 改进：客户端 / 服务端双向发力——服务端目录委派、客户端 I/O 优化、NFSv4.2 缓存控制">
+  <meta name="twitter:description" content="Linux 7.3 NFS 是 2026 年 8 月合并窗口接近结束时的服务端 + 客户端双向发力版本。服务端（NFSD）由 Chuck Lever 主导，最重要的变化包括：(1) 支持 NFSv4.1 目录委派（CB_NOTIFY 回调 + FSNOTIFY 机制，让服务端用内核 FSNOTIFY 监控目录，在目录变">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Linux 7.3 NFS 改进：客户端 / 服务端双向发力——服务端目录委派、客户端 I/O 优化、NFSv4.2 缓存控制",
+  "description": "Linux 7.3 合并窗口接近关闭，NFS 客户端与服务端 pull request 都已合入。服务端（NFSD）这一波最重磅：支持 NFSv4.1 目录委派（CB_NOTIFY 回调 + FSNOTIFY），同时把传统服务线程池换成 per-node 模型；客户端（NFS）这一波以 bug fix 为主，亮点是 NFS/localio 的 I/O 提交优化与 NFSv4.2 新增'禁止客户端缓存'语义。本文详解服务端 200+ 文件 / 6000+ 新增行、客户端 100+ 修复的所有具体改动、运维升级建议与下一个版本的关注点。",
+  "datePublished": "2026-08-26",
+  "dateModified": "2026-08-26",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-08-26_linux-7.3-nfs/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Linux 7.3 NFS, CB_NOTIFY, 目录委派, NFSv4.2 缓存控制, pernode 线程池, NFS/localio 优化, flexfiles 数据服务器"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Linux 7.3 NFS 改进：客户端 / 服务端双向发力——服务端目录委派、客户端 I/O 优化、NFSv4.2 缓存控制",
+        "item": "https://freelamp.com/articles/2026-08-26_linux-7.3-nfs/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-08-26">2026-08-26</div>
+        <h1 class="post-title" itemprop="headline">Linux 7.3 NFS 改进：客户端 / 服务端双向发力——服务端目录委派、客户端 I/O 优化、NFSv4.2 缓存控制</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Linux%207.3%20NFS/">Linux 7.3 NFS</a><a itemprop="keywords" href="/tags/CB_NOTIFY/">CB_NOTIFY</a><a itemprop="keywords" href="/tags/%E7%9B%AE%E5%BD%95%E5%A7%94%E6%B4%BE/">目录委派</a><a itemprop="keywords" href="/tags/NFSv4.2%20%E7%BC%93%E5%AD%98%E6%8E%A7%E5%88%B6/">NFSv4.2 缓存控制</a><a itemprop="keywords" href="/tags/pernode%20%E7%BA%BF%E7%A8%8B%E6%B1%A0/">pernode 线程池</a><a itemprop="keywords" href="/tags/NFS/localio%20%E4%BC%98%E5%8C%96/">NFS/localio 优化</a><a itemprop="keywords" href="/tags/flexfiles%20%E6%95%B0%E6%8D%AE%E6%9C%8D%E5%8A%A1%E5%99%A8/">flexfiles 数据服务器</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote><strong>原始出处</strong>：Phoronix + LKML NFS client + NFSD pull requests<br>
+<strong>发布日期</strong>：2026 年 8 月 26 日（合并窗口接近结束）<br>
+<strong>作者</strong>：Trond Myklebust（NFS 客户端维护者，Hammerspace）、Chuck Lever（NFSD 维护者）<br>
+<strong>关键 PR</strong>：<br>
+  - 客户端：[GIT PULL] Please pull NFS client fixes for Linux 7.3（Trond Myklebust）<br>
+  - 服务端：[GIT PULL NFSD updates for v7.3]（Chuck Lever）<br>
+<strong>Phoronix 报道</strong>：https://www.phoronix.com/news/Linux-7.3-NFS<br>
+<strong>翻译/解读</strong>：LeisureLinux<br>
+<strong>关键词</strong>：Linux 7.3 NFS、CB_NOTIFY、目录委派、NFSv4.2 缓存控制、pernode 线程池、flexfiles 数据服务器</blockquote>
+<h2>引言：服务端为主，客户端为辅</h2>
+<p>Linux 7.3 合并窗口接近关闭，NFS 客户端与服务端的 pull request 都已合入。这次的特点是<strong>两端各干各的，没有统一主题</strong>：</p>
+<ul>
+<li><strong>服务端（NFSD）</strong>这一波最重磅：支持 NFSv4.1 <strong>目录委派</strong>（CB_NOTIFY 回调 + FSNOTIFY），同时把传统服务线程池换成 <strong>per-node 模型</strong>。</li>
+<li><strong>客户端（NFS）</strong>这一波以 bug fix 为主，亮点是 <strong>NFS/localio 的 I/O 提交优化</strong>与 <strong>NFSv4.2 新增"禁止客户端缓存"语义</strong>。</li>
+</ul>
+服务端侧重"新功能 + 性能优化"，客户端侧重"稳定性 + 一处可见的性能提升"。两端加起来<strong>约 200+ 文件改动、6000+ 新增 / 1700+ 删除</strong>——服务端更重，客户端更轻。
+<p>---</p>
+<h2>一、整体改动规模</h2>
+<table>
+<tr><th>维度</th><th>客户端 (NFS)</th><th>服务端 (NFSD)</th></tr>
+<tr><td><strong>维护者</strong></td><td>Trond Myklebust</td><td>Chuck Lever</td></tr>
+<tr><td><strong>commit 数</strong></td><td>约 100+</td><td>约 300+</td></tr>
+<tr><td><strong>核心主题</strong></td><td>bug fix + I/O 优化</td><td>CB_NOTIFY + pernode + netlink 统计</td></tr>
+<tr><td><strong>新功能</strong></td><td>NFSv4.2 缓存控制、NFS/localio I/O 优化</td><td>NFSv4.1 目录委派、pernode 线程模型、netlink stats</td></tr>
+<tr><td><strong>新协议文档</strong></td><td>nfs4_1.x</td><td>nfsd.yaml + nfs4_1.x</td></tr>
+</table>
+<p>---</p>
+<h2>二、服务端：CB_NOTIFY + 目录委派</h2>
+<h3>2.1 背景</h3>
+<p>NFSv4.1 引入的"委派"（delegation）让服务端把文件 / 目录的操作授权给客户端独占访问，避免所有操作都回服务端。NFSv4.0/4.1 支持<strong>文件委派</strong>，但<strong>目录委派</strong>一直缺位——服务端没法高效感知"目录里有谁加了 / 删了 / 改名"。</p>
+<p>这次补齐的关键是 <strong>CB_NOTIFY</strong> 回调（RFC 8881bis 草案里的扩展）：</p>
+<ul>
+<li>服务端用内核的 <strong>FSNOTIFY</strong> 机制监控目录。</li>
+<li>当目录被修改（添加 / 删除 / 重命名 / 属性变更）时，服务端立即回调客户端，让客户端取消之前持有的目录委派。</li>
+</ul>
+效果：客户端拿到的目录视图始终和服务端真实状态一致，避免缓存过期。
+<h3>2.2 实现细节</h3>
+<p>服务端这次的改动横跨 fsnotify 标记、回调编码、通知处理等多个层面：</p>
+<ul>
+<li><code>nfsd: allow nfsd to get a dir lease with an ignore mask</code> — 给目录租赁加忽略位。</li>
+<li><code>nfsd: update the fsnotify mark when setting or removing a dir delegation</code> — fsnotify 标记同步。</li>
+<li><code>nfsd: add callback encoding and decoding linkages for CB_NOTIFY</code> — 回调编解码。</li>
+<li><code>nfsd: add notification handlers for dir events</code> — 事件处理。</li>
+<li><code>nfsd: apply the notify mask to the delegation when requested</code> — 通知掩码应用。</li>
+<li><code>nfsd: send basic file attributes in CB_NOTIFY</code> — 回传属性。</li>
+</ul>
+<h3>2.3 其他服务端改动</h3>
+<p>服务端这一波远不止 CB_NOTIFY。Chuck Lever 拉了一批改动：</p>
+<ul>
+<li><strong>pernode 线程池取代传统服务线程池</strong>：内核开发者认为 per-node 模式更适合现代多 socket、多节点主机的 NFS 工作负载。</li>
+<li><strong>新增 <code>sunrpc: route to a populated pool in svc_pool_for_cpu()</code></strong> — 保证 auto-distribute 时每个 pool 有至少一个线程。</li>
+<li><strong>NFSv4 回调操作按 netns 计数</strong>：<code>nfsd: count NFSv4 callback operations per netns</code> + 通过 netlink 暴露。</li>
+<li><strong>NFSv4 异步 COPY 改造</strong>：<code>nfsd: split nfsd4_copy into transient and durable async copy objects</code>，把 copy offload stateid 提升为一等公民（first-class nfs4_stid）。</li>
+<li><strong>多批 bug fix</strong>：包含 UAF、stale stateid、copy-notify 状态校验、xattr 派生错误处理等。</li>
+</ul>
+<h3>2.4 lockd 修复</h3>
+<p>服务端还附了一批 lockd（NFS 文件锁服务）的修复：</p>
+<ul>
+<li>Michael Bommarito：nlm_inspect_file 跨 nfsd_ssc_lock 释放的 walk 重启。</li>
+<li>NeilBrown：<code>nfsd4_create_file()</code> 的 fh_compose 错 dentry 修复、<code>nfsd_file_do_acquire()</code> 不使用未打开文件。</li>
+<li>Nikol Kuklev：<code>nfsd4_setattr</code> 委派时间戳属性的 NULL deref 修复。</li>
+<li>Olga Kornievskaia：<strong>NLMv4 GRANTED_MSG</strong> 处理修复。</li>
+<li>Oscar Ou：nlmsvc_match_ip() 互换参数修复、保留同一 owner 的多个 NLM_SHARE grants。</li>
+<li>Robbie Ko：NFSv2/3 SETATTR/CREATE 时间字段越界拒绝；统一 NSEC_PER_SEC 使用。</li>
+<li>Scott Mayhew：write_threads() 错误返回值修正。</li>
+<li>Zhenghang Xiao：委派释放时设 SC_STATUS_FREED。</li>
+</ul>
+---
+<h2>三、客户端：I/O 优化 + NFSv4.2 缓存控制</h2>
+<h3>3.1 NFS/localio I/O 提交优化</h3>
+<p>NFS/localio 是 6.12 起支持的优化路径——客户端和服务端在同一台机器时绕开网络栈直读本地页缓存。Linux 7.3 这次优化集中在<strong>内存非压力路径下的 I/O 提交</strong>：</p>
+<pre><code class="plaintext">"optimise I/O submission when not doing memory reclaim"
+</code></pre>
+<p>也就是说，常规路径下 I/O 提交更快。这对<strong>本地 NFS 部署 + 大量小 I/O 场景</strong>（如容器镜像分发、CI artifact 缓存）有直接收益。</p>
+<p>同时移除 <code>nfs_local_commit</code> 里的重复 wait 代码（<code>NFS/localio: Remove duplicate wait code</code>）。</p>
+<h3>3.2 NFSv4.2 缓存控制</h3>
+<p>新加服务端指示：让服务端主动告知客户端"这部分文件数据<strong>不允许</strong>客户端缓存"。对应的客户端支持：</p>
+<pre><code class="plaintext">"NFSv4.2: Allow the server to specify that file data may not be cached"
+</code></pre>
+<p>服务端管理员可以更精细地控制<strong>强一致性敏感</strong>的文件，避免缓存造成的过期数据问题。对<strong>数据库文件、实时生成的报告</strong>这种场景有意义。</p>
+<h3>3.3 一批 bug fix</h3>
+<p>Trond Myklebust 拉的客户端修复，按主题分：</p>
+<p><strong>Stable fixes</strong>：
+<ul>
+<li>SunRPC client code use-after-free 修复</li>
+<li>NFSv4 委派哈希表泄漏</li>
+<li>lockd lockowner 分配失败的 NULL deref</li>
+<li>SunRPC TLS 握手完成竞态</li>
+<li>NFSv4.1/pNFS layout 仍使用判断错误符号检查</li>
+<li>NFSv4.1 pnfs_layout_process() layout segment 泄漏</li>
+</ul>
+<strong>其他修复</strong>：
+<ul>
+<li>SunRPC：rpcbind client NULL 检查、共享 socket 回调加 <code>READ_ONCE/WRITE_ONCE</code> 注解</li>
+<li>NFSv4：<code>nfs_inode_set_delegation()</code> 错误路径应返回 delegation</li>
+<li>NFSv4：使用 <code>clear_and_wake_up_bit()</code> 替代手工逻辑</li>
+<li>NFSv4：<code>nfs4_alloc_client()</code> 错误路径释放 IDR 分配</li>
+<li>NFS：<code>nfs_inode_remove_request()</code> 在 NULL 检查前的 folio 解引用修复</li>
+<li>NFS：延迟委派返回修复</li>
+<li>NFSv4：与 umount 竞态的状态管理器修复</li>
+<li>pNFS/blocklayout：parse failure 上的设备泄漏</li>
+<li>pNFS：在 layout recall 时若服务端不要求，避免取消 in-flight I/O</li>
+<li>NFSv4/flexfiles：报告取消的 I/O 为 layout error</li>
+<li>NFSv4/flexfiles：NFSv4.0 数据服务器的 NULL deref 修复</li>
+<li>NFSv4：<code>nfs4_delete_lease()</code> 错误参数修复</li>
+<li>NFSv3：<code>nfs_atomic_open_v23()</code> 几个 symlink 问题修复</li>
+<li>NFSv4.1：回调代码未初始化变量修复</li>
+<li>NFSv4.2：LAYOUTSTATS send buffer exhaustion 修复</li>
+</ul>
+<strong>功能与清理</strong>：
+<ul>
+<li>NFSv4.2：服务端指示文件数据不可缓存</li>
+<li>NFS/localio：I/O 提交优化</li>
+<li>NFS/localio：移除 <code>nfs_local_commit</code> 重复 wait 代码</li>
+<li>NFSv4/flexfiles：支持 loosely coupled NFSv4.x 数据服务器</li>
+<li>NFSv4/pnfs：数据服务器缓存按 NFS 版本键控</li>
+</ul>
+---</p>
+<h2>四、对 Linux 7.3 NFS 的整体评价</h2>
+<h3>4.1 服务端是大头</h3>
+<p>Linux 7.3 的 NFSD 改动<strong>远大于客户端</strong>：</p>
+<ul>
+<li><strong>目录委派</strong>补齐 NFSv4.1 的设计意图（文件委派 + 目录委派 = 一致的客户端缓存视图）。</li>
+<li><strong>pernode 线程模型</strong>让 NFS 服务在 NUMA-aware 主机上跑得更高效。</li>
+<li><strong>netlink 统计暴露</strong>让 Prometheus 监控 NFS 服务状态成为可能（之前只能用 <code>/proc/net/rpc/nfsd</code>）。</li>
+</ul>
+<h3>4.2 客户端以稳定为主</h3>
+<p>客户端的"大特性"是 NFSv4.2 缓存控制，但这是<strong>协议层语义</strong>的扩展，客户端实现简单。剩下都是 bug fix——但每一个都对生产环境重要（NFSv4 委派泄漏、pNFS layout segment 泄漏、copy offload 状态校验等都是运维会撞到的问题）。</p>
+<h3>4.3 实战影响</h3>
+<table>
+<tr><th>场景</th><th>服务端 7.3 影响</th><th>客户端 7.3 影响</th></tr>
+<tr><td><strong>本地 NFS（容器 / VM）</strong></td><td>pernode 线程模型更友好</td><td>NFS/localio I/O 提交优化</td></tr>
+<tr><td><strong>网络 NFS（共享存储）</strong></td><td>目录委派改善客户端缓存一致性</td><td>一批稳定性修复</td></tr>
+<tr><td><strong>数据库场景（NFSv4.2）</strong></td><td>服务端可发"禁止缓存"</td><td>客户端支持新语义</td></tr>
+<tr><td><strong>多客户端高并发</strong></td><td>pernode 模型减少锁竞争</td><td>flexfiles 数据服务器版本键控</td></tr>
+<tr><td><strong>异步 COPY 链路</strong></td><td>first-class stateid</td><td>LAYOUTSTATS buffer 修复</td></tr>
+</table>
+<p>---</p>
+<h2>五、Trond 给 Linus 的 commit message 风波</h2>
+<p>这次客户端 pull 在邮件列表里还有个小插曲——Trond 的 commit message 写得过于简洁，Linus 吐槽：</p>
+<blockquote>"For example, just to look at that first bullet point: why have that 'SunRPC:' thing at all? It adds no value. This is a NFS client merge message, and the line goes on to say 'fixes for the sunrpc client code'."</blockquote>
+<blockquote>"Please don't make me do that. Give me that overview of what happened and what matters. And it's ok to say 'And misc fixes' for things that really doesn't matter and people who care should just look at the individual commits."</blockquote>
+Linus 自己做了点编辑才合并。维护者风格的差异在这里挺有意思——Linux 内核合并窗口对 commit message 质量有要求。
+<p>---</p>
+<h2>六、关注下一个版本</h2>
+<p>Linux 7.3 NFS 这波落地后，下一步看点：</p>
+<ul>
+<li><strong>目录委派（CB_NOTIFY）</strong>在生产环境的实际一致性效果——是否能减少客户端的缓存过期问题。</li>
+<li><strong>pernode 线程模型</strong>是否需要进一步调优（不同 NUMA 拓扑下的表现）。</li>
+<li><strong>netlink stats</strong>能否在监控体系里铺开（Prometheus exporter、Netdata 插件等）。</li>
+<li><strong>flexfiles loosely coupled 数据服务器</strong>——这是 pNFS 灵活性提升的重要一步，后续版本会有更多场景适配。</li>
+</ul>
+---
+<h2>七、对运维的影响</h2>
+<h3>7.1 服务端升级</h3>
+<ul>
+<li><strong>NFS 服务端升级到 7.3 后</strong>，会自动启用 pernode 线程模型，无需配置。</li>
+<li><strong>目录委派</strong>默认开启（前提是 NFSv4.1+）。</li>
+<li><strong>监控集成</strong>：如果有 Prometheus NFS exporter，建议升级到支持 netlink stats 的版本。</li>
+</ul>
+<h3>7.2 客户端升级</h3>
+<ul>
+<li><strong>NFS 客户端升级到 7.3 后</strong>立即拿到所有稳定性修复（特别推荐有 pNFS / NFSv4 委派 / 异步 COPY 场景的环境升级）。</li>
+<li><strong>NFS/localio 优化</strong>对容器 / VM 镜像分发场景有可见收益。</li>
+<li><strong>NFSv4.2 缓存控制</strong>需要服务端 + 客户端都升级到 7.3 才生效。</li>
+</ul>
+<h3>7.3 测试建议</h3>
+<pre><code class="bash"># 服务端：观察目录委派是否生效
+cat /proc/fs/nfsd/threads
+nfsstat -s
+<h1>客户端：观察 NFS/localio 路径</h1>
+cat /sys/fs/nfs/localio
+cat /proc/mounts | grep nfs
+<h1>监控 netlink 暴露的 NFSv4 回调统计（如果工具支持）</h1>
+nfsd-client-event  # nfs-ganesha 或第三方工具
+</code></pre>
+<p>---</p>
+<p><strong>参考资料</strong>：</p>
+<ol>
+<li>1. Phoronix Linux 7.3 NFS：https://www.phoronix.com/news/Linux-7.3-NFS</li>
+<li>2. LKML NFS client pull：[GIT PULL] Please pull NFS client fixes for Linux 7.3</li>
+<li>3. LKML NFSD pull：[GIT PULL NFSD updates for v7.3]</li>
+<li>4. pbxscience 解读：Linux 7.3 Merges NFS Improvements</li>
+<li>5. Linux 7.3 源码：https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git</li>
+<li>6. Linux NFS 客户端仓库：git://git.linux-nfs.org/projects/trondmy/linux-nfs.git</li>
+</ol>
+---
+<p><em>本文基于 Phoronix 报道、LKML NFS client + NFSD pull request 与社区资料整理，旨在为中国开发者提供快速理解和参考。</em></p>
+<p><em>作者观点不代表任何厂商立场，仅供技术讨论参考。NFS 7.3 服务端与客户端改动规模差异较大，性能数据依工作负载与硬件配置可能有所差异。</em></p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-08-26_linux-7.3-nfs/",
+      title: "Linux 7.3 NFS \u6539\u8fdb\uff1a\u5ba2\u6237\u7aef / \u670d\u52a1\u7aef\u53cc\u5411\u53d1\u529b\u2014\u2014\u670d\u52a1\u7aef\u76ee\u5f55\u59d4\u6d3e\u3001\u5ba2\u6237\u7aef I/O \u4f18\u5316\u3001NFSv4.2 \u7f13\u5b58\u63a7\u5236"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
