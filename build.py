@@ -894,7 +894,7 @@ def render_article_items(articles):
         if isinstance(date, datetime):
             date = date.strftime('%Y-%m-%d')
         article_url = f"{SITE_URL}/articles/{slug}/"
-        tags_html = ''.join([f'<a href="/tags/{quote(tag)}/">{tag}</a>' for tag in tags])
+        tags_html = ''.join([f'<a href="/tags/{quote(str(tag))}/">{tag}</a>' for tag in tags])
         article_html = f"""      <li class="article-item">
         <a href="articles/{slug}/">
           <div class="article-date">{date}</div>
@@ -989,7 +989,7 @@ def build_article_page(article):
     
     canonical_url = f"{SITE_URL}/articles/{article['slug']}/"
     
-    tags_html = ''.join([f'<a itemprop="keywords" href="/tags/{quote(tag)}/">{tag}</a>' for tag in tags])
+    tags_html = ''.join([f'<a itemprop="keywords" href="/tags/{quote(str(tag))}/">{tag}</a>' for tag in tags])
 
     # 去掉正文开头的重复标题（页面顶部 post-title 已展示标题）
     article_content = re.sub(r'^\s*#\s+[^\n]*\n?', '', article['content'], count=1, flags=re.MULTILINE)
@@ -1054,7 +1054,7 @@ def build_tag_pages(articles):
 
     written = []
     for tag, tagged_articles in tag_map.items():
-        tag_url = f"/tags/{quote(tag)}/"
+        tag_url = f"/tags/{quote(str(tag))}/"
         items = []
         for article in sorted(tagged_articles, key=lambda x: x['metadata'].get('date', ''), reverse=True):
             meta = article['metadata']
@@ -1206,7 +1206,7 @@ def generate_sitemap(articles):
             if tag not in seen_tags:
                 seen_tags.add(tag)
                 urls.append({
-                    'loc': f"{SITE_URL}/tags/{quote(tag)}/",
+                    'loc': f"{SITE_URL}/tags/{quote(str(tag))}/",
                     'changefreq': 'weekly',
                     'priority': '0.6'
                 })
