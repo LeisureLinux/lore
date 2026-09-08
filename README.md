@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-08 | [dpkg 1.23.8 上手解析——半年一发的累积版本，进入 unstable](https://freelamp.com/articles/2026-09-08_dpkg-1.23.8-accepted-unstable/) | dpkg · Debian · unstable · Sid · 包管理 |
+| 2026-09-08 | [Debian 13 "trixie" 13.7 Point Release 即将发布——9 月 12 日上线，上百项修复 + 90+ CVE 安全补丁](https://freelamp.com/articles/2026-09-08_debian-13-point-release-13.7-sua-286-1/) | Debian · trixie · Point Release · CVE |
 | 2026-09-02 | [LWN 时隔近五年再次涨价：9 月 15 日生效，四档订阅平均上浮约 20%](https://freelamp.com/articles/2026-09-02_lwn-subscription-price-increase/) | LWN · 独立媒体 · 订阅制 · 通胀 · 爬虫对抗 |
 | 2026-08-31 | [Debian 11 "bullseye" LTS 正式 EOL：今天之后没有安全更新了，老系统何去何从？](https://freelamp.com/articles/2026-08-31_debian-11-bullseye-lts-eol/) | Debian · LTS · EOL · 升级路径 · bookworm |
 | 2026-08-26 | [LibreOffice 26.8 正式发布：206 位贡献者合力，重点死磕排版质量、复杂文字与文档交换](https://freelamp.com/articles/2026-08-26_libreoffice-26-8-release/) | LibreOffice · 排版器 · 双向文本 · OOXML · 零 AI |
@@ -62,17 +64,25 @@ lore/
 
 ## 📝 发布流程
 
-```
-写 Markdown → 提交到 articles/ → GitHub Actions 自动构建 → 发布到公众号 + GitHub Pages
-```
-
-构建命令（本地预览）：
+本仓库使用 GitHub Pages **legacy 模式**（source = `main` 分支的 `docs/` 目录）：
+线上 [freelamp.com](https://freelamp.com) 内容**直接来自 main 分支的 `docs/` 产物**，
+push 到 main 后由 GitHub 自动重建发布。
 
 ```bash
+# 1) 写文章：articles/YYYY-MM-DD_slug/{article.md, metadata.yaml}
+# 2) 本地生成静态站点（会清空并重建 docs/）
 pip install pyyaml
 python build.py
-# 生成的站点位于 docs/ 目录
+# 3) 提交产物并推送
+git add docs/
+git commit -m "publish: <文章标题>"
+git push origin main      # GitHub 自动从 docs/ 重建 Pages
 ```
+
+> ⚠️ 注意：
+> - 只提交 `articles/*.md` 源文件**不会**上线，必须同时提交 `docs/` 产物。
+> - `.github/workflows/deploy.yml` 里的 `actions/deploy-pages` 在 legacy 模式下不生效，仅用于校验构建是否报错。
+> - 站点根目录静态文件（`jd_root.txt` / `googlec29651f57d804644.html` / `favicon.ico` 等）以仓库根为源，由 `build.py` 的 `static_files` 列表复制到 `docs/`。
 
 ## 🤖 LLM / AI 集成
 
