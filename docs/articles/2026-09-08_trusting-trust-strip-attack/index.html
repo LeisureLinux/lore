@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>一条被污染的 strip：为什么可复现构建挡不住它 — FreeLAMP.com</title>
+  <meta name="description" content="基于 arXiv:2607.24888《Trusting-Trust Attack against an Entire Linux Distribution through Binary Manipulation》（Malka, Sharma, Monperrus, Zacchiroli, Zimmermann, 20">
+  <meta name="keywords" content="供应链安全, Trusting Trust, reproducible builds, 可复现构建, NixOS, GNU strip, binutils, 二进制安全, 译文">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-08">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-08_trusting-trust-strip-attack/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="一条被污染的 strip：为什么可复现构建挡不住它">
+  <meta property="og:description" content="基于 arXiv:2607.24888《Trusting-Trust Attack against an Entire Linux Distribution through Binary Manipulation》（Malka, Sharma, Monperrus, Zacchiroli, Zimmermann, 20">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-08_trusting-trust-strip-attack/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-08">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="供应链安全">
+  <meta property="article:tag" content="供应链安全">
+  <meta property="article:tag" content="Trusting Trust">
+  <meta property="article:tag" content="reproducible builds">
+  <meta property="article:tag" content="可复现构建">
+  <meta property="article:tag" content="NixOS">
+  <meta property="article:tag" content="GNU strip">
+  <meta property="article:tag" content="binutils">
+  <meta property="article:tag" content="二进制安全">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="一条被污染的 strip：为什么可复现构建挡不住它">
+  <meta name="twitter:description" content="基于 arXiv:2607.24888《Trusting-Trust Attack against an Entire Linux Distribution through Binary Manipulation》（Malka, Sharma, Monperrus, Zacchiroli, Zimmermann, 20">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "一条被污染的 strip：为什么可复现构建挡不住它",
+  "description": "Ken Thompson 1984 年图灵奖演讲提出的「信任的信任」攻击，长期被默认是编译器的专利。这篇论文用 GNU strip——一个既不读源码也不生成源码的普通构建工具——证明事实并非如此：在 NixOS 的 bootstrap 里，只需替换二进制种子中的一个 strip，就能让后门逐代自我传播，最终在真实 nixpkgs 上后门掉 3790 / 3799 个 ELF 二进制，而源码自始至终保持干净。本文翻译解读论文，并重点回答两个反直觉的问题：为什么 reproducible builds（可复现构建）防不住工具链自身被污染？以及攻击者如何产出一个「通过可复现验证」却已被污染的二进制。",
+  "datePublished": "2026-09-08",
+  "dateModified": "2026-09-08",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-08_trusting-trust-strip-attack/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "供应链安全, Trusting Trust, reproducible builds, 可复现构建, NixOS, GNU strip, binutils, 二进制安全, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "一条被污染的 strip：为什么可复现构建挡不住它",
+        "item": "https://freelamp.com/articles/2026-09-08_trusting-trust-strip-attack/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-08">2026-09-08</div>
+        <h1 class="post-title" itemprop="headline">一条被污染的 strip：为什么可复现构建挡不住它</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E4%BE%9B%E5%BA%94%E9%93%BE%E5%AE%89%E5%85%A8/">供应链安全</a><a itemprop="keywords" href="/tags/Trusting%20Trust/">Trusting Trust</a><a itemprop="keywords" href="/tags/reproducible%20builds/">reproducible builds</a><a itemprop="keywords" href="/tags/%E5%8F%AF%E5%A4%8D%E7%8E%B0%E6%9E%84%E5%BB%BA/">可复现构建</a><a itemprop="keywords" href="/tags/NixOS/">NixOS</a><a itemprop="keywords" href="/tags/GNU%20strip/">GNU strip</a><a itemprop="keywords" href="/tags/binutils/">binutils</a><a itemprop="keywords" href="/tags/%E4%BA%8C%E8%BF%9B%E5%88%B6%E5%AE%89%E5%85%A8/">二进制安全</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote><strong>一句话总结</strong>：Ken Thompson 1984 年提出的「信任的信任」（Trusting-Trust）攻击，长期被默认是编译器的专利。这篇论文用 <code>strip</code>——一个既不读源码、也不生成源码的普通构建工具——证明事实并非如此：在 NixOS 的 bootstrap 里，只需替换二进制种子中的一个 strip，就能让后门逐代自我传播，最终在真实 nixpkgs 上后门掉 3790 / 3799 个 ELF 二进制，而源码自始至终保持干净。更反直觉的是：可复现构建（reproducible builds）非但防不住它，反而会「复现」这个后门，等于给它背书。</blockquote>
+2026 年 7 月 27 日，一篇论文登上 arXiv（编号 2607.24888）：《Trusting-Trust Attack against an Entire Linux Distribution through Binary Manipulation》。作者里有一个名字格外扎眼——<strong>Stefano Zacchiroli</strong>，Debian 前项目领袖、reproducible builds（可复现构建）运动的发起人之一。
+<p>这是「自己人」用一场真实攻击，捅穿了「自己人」多年建立的防线。</p>
+<h2>一、1984 年的那个「鸡生蛋」问题</h2>
+<p>Ken Thompson 在 1984 年图灵奖演讲里埋了个经典难题：一个<strong>被妥协的编译器</strong>，会在编译 <code>login</code> 这类敏感程序时注入后门，并且在编译「编译器自己的干净源码」时，<strong>重新注入后门</strong>。</p>
+<p>于是哪怕你把源码里的恶意代码全删光，用这个被污染过的二进制重编一次，后门照样复生。源码审计再多人看（"Given enough eyeballs, all bugs are shallow"），也没用——因为<strong>你盯着的那份源码是对的，错的是「造这份源码的工具」本身</strong>。</p>
+<p>三十多年来，这个攻击被默认是<strong>编译器的专利</strong>。</p>
+<h2>二、核心突破：载体从「编译器」换成了 <code>strip</code></h2>
+<p>这篇论文的杀手锏，是把载体换成 <code>strip</code>——binutils 里的一个后处理工具，在构建的 fixup phase 剥离可执行文件的符号与调试信息。</p>
+<table>
+<tr><th>维度</th><th>Thompson 的编译器</th><th>本文的 strip</th></tr>
+<tr><td>处理对象</td><td>只碰自己编译的语言</td><td>碰<strong>所有语言的成品 ELF</strong>（C/Python/Rust/Go/Lua 通吃）</td></tr>
+<tr><td>识别方式</td><td>匹配源码特征（会被代码演进打断）</td><td>只看宿主文件名（basename），对源码改动免疫</td></tr>
+<tr><td>植入方式</td><td>生成代码</td><td><strong>纯 ELF 二进制改写</strong>（不碰源码）</td></tr>
+<tr><td>后继关系</td><td>编译「编译器」</td><td>strip「strip」自己</td></tr>
+</table>
+<p>关键差别在于：编译器只影响它编译的那门语言；而 <code>strip</code> 在 fixup phase <strong>例行对每个包的产物拥有写权限</strong>，且它自己也经历「被 strip 重建」的过程——这条「自己重建自己」的链条，论文称之为 <strong>successor edge</strong>。</p>
+<h2>三、攻击怎么搭：三段 ELF 手术，不碰任何原始字节</h2>
+<p>攻击者只需替换 bootstrap 二进制种子里的<strong>一个</strong> strip，分三步改写 ELF：</p>
+<ol>
+<li>1. <strong>Append</strong>：把 payload 追加到真实 strip 的文件尾（此刻还没被映射进内存）；</li>
+<li>2. <strong>Repurpose</strong>：把一段空闲的 <code>PT_NOTE</code> 段头「改造」成指向 payload 的可执行 <code>PT_LOAD</code> 段——现代链接器默认会生成 <code>.note.gnu.build-id</code>，所以有现成的闲置 note 可利用；</li>
+<li>3. <strong>Redirect</strong>：改 <code>e_entry</code> 让内核先跳 payload（执行完再跳回原入口），改 <code>e_shoff</code> 指向新建的 section 表，让 <code>.payload</code> 段看起来合法，骗过 nixpkgs 的后处理。</li>
+</ol>
+payload 是一个<strong>不链接 libc 的 freestanding 程序</strong>，直接调内核；它靠读 <code>NIX_BUILD_TOP</code> 环境变量判断「沙箱内装死、沙箱外发作」。原型只打印一句 <code>You've been pwned!</code> 作为感染标记。
+<h2>四、实验结果：一个种子，端掉 3790 个二进制</h2>
+<p>用真实 nixpkgs revision（binutils 2.44，x86_64-linux）验证：</p>
+<ul>
+<li><strong>可构建性零影响</strong>：成功产出完整图形安装 ISO——1199 个包、3799 个可调用 ELF、6.16 GB；</li>
+<li><strong>覆盖率近乎 100%</strong>：3799 个里 <strong>3790 个</strong>正常调用即打印感染标记；唯一漏网的是 <strong>firefox 147.0.3</strong>，因为它的 recipe 显式传了 <code>--disable-strip --disable-install-strip</code>，跳过了 strip 阶段；</li>
+<li><strong>不破坏功能</strong>：gnome-shell、mutter 等全是被污染 strip 构建出来的，跑 NixOS 图形功能测试<strong>零失败</strong>。</li>
+</ul>
+最阴的一手在流程上：<strong>seed 在 stdenv 建成后离开了依赖闭包</strong>——攻击源头消失了，payload 却永久留在了最终工具链里。
+<h2>五、疑问一：为什么可复现构建防不住「工具链自身被污染」</h2>
+<p>这是最关键的一点。可复现构建的防御逻辑是：</p>
+<blockquote>独立 rebuilder 用一套<strong>受信任的干净工具链</strong>重建，比对输出是否比特级一致。一致，就说明「二进制忠实对应源码」。</blockquote>
+它有一个<strong>隐藏前提：工具链是诚实的</strong>。它验证的是「源码 ↔ 二进制」的对应关系，<strong>不是「工具链是否被污染」</strong>。
+<p>一旦 bootstrap seed 里的 strip 已经被污染：</p>
+<ol>
+<li>1. 用这个被污染的 seed 重建 → 因为构建是<strong>确定性</strong>的，会<strong>比特级复现同一个后门</strong>；</li>
+<li>2. rebuilder 手里拿到的 seed 同样是那套被污染的种子 → 也产出<strong>同一个后门二进制</strong>；</li>
+<li>3. 两边比对<strong>一致</strong> → 检查通过 → 后门被「合法化」。</li>
+</ol>
+所以严格说，这不是「可复现构建被绕过」，而是<strong>它从来就没把『工具链自身被污染』放进威胁模型</strong>。确定性在这里不帮你识别差异，反而让后门「可复现」，等于给恶意二进制发了一张「通过验证」的背书——<strong>防御变成了助攻</strong>。
+<h2>六、疑问二：坏蛋如何产出「符合可复现」的污染二进制</h2>
+<p>这里有一个更隐蔽的前提，也是论文为什么<strong>刻意选 NixOS</strong>、并把威胁模型严格限定为「替换 binary seed」的原因。</p>
+<p>单是「坏蛋自己产出污染二进制」还不够致命——可复现构建的杀手锏，本来是「<strong>别人能独立重建、当场比对揭穿你</strong>」。两种情况天壤之别：</p>
+<table>
+<tr><th>攻击点</th><th>rebuilder 会怎样</th><th>可复现构建挡得住吗</th></tr>
+<tr><td>黑进某开发者的<strong>构建机</strong>，装脏 strip</td><td>rebuilder 用自己<strong>干净的</strong> strip 重建</td><td>产物<strong>不一致</strong> → 能揭穿</td></tr>
+<tr><td>污染<strong>共享的 bootstrap seed</strong>（全生态共同的起点）</td><td>rebuilder <strong>也从这个脏 seed 起步</strong></td><td>产物<strong>一致</strong> → 看不出来</td></tr>
+</table>
+<p>可复现构建的成立，依赖「rebuilder 的工具链是<strong>独立且干净</strong>的」。而 bootstrap seed 是集中发布、人人共用的那几十个预编译二进制——一旦它被污染，「独立重建」就退化成「<strong>集体复现同一个污染</strong>」。</p>
+<p>这，正是你直觉里那个问题的完整答案：<strong>坏蛋拿一套标准、干净、可复现的源码，用被污染的 strip 在构建时注入后门，产出一个「比特级可复现」的二进制——而下游所有 rebuilder 因为都从同一个脏种子起步，只会复现出同一个污染，比对永远一致。</strong></p>
+<p>请再留意一处：论文里<strong>源码从头到尾 100% 干净</strong>，污染是 strip 在 fixup phase 构建时注入成品 ELF 的。审计 recipe、审计源码、审计依赖，全都看不到问题——这就是「信任的信任」被完整移植过来的精髓。</p>
+<h2>七、三道防线的边界，缝在哪里</h2>
+<table>
+<tr><th>防线</th><th>信任边界</th><th>盲区</th></tr>
+<tr><td><strong>Reproducible builds</strong></td><td>假设工具链诚实</td><td>工具链被污染时，只会「复现」污染</td></tr>
+<tr><td><strong>Diverse double-compiling</strong>（Wheeler）</td><td>只多样化「编译器」</td><td>覆盖不到 strip/patchelf 这类后处理工具</td></tr>
+<tr><td><strong>Bootstrappable builds</strong>（Guix/Camlboot）</td><td>把 seed 缩到最小、从源码重建工具链</td><td>目前只重建「编译器 + 语言运行时」，strip/patchelf 未纳入</td></tr>
+</table>
+<p>所以论文真正的结论，不是「修可复现构建」，而是<strong>重新划定信任边界</strong>：从「编译器」扩张到「所有会改写二进制、且会自我重建的构建工具」。修复方向是把 strip、patchelf 这类工具，也纳入 full-source bootstrap 的孵化范围。</p>
+<h2>八、点评与启示</h2>
+<ol>
+<li>1. <strong>这是「自己人反水」级别的一刀。</strong> Zacchiroli 是可复现构建的旗手，现在联合署名证明它挡不住 trusting-trust。这不是攻击者喊话，是防御方主动交底——对供应链安全界的震撼，比一次漏洞披露更大。</li>
+</ol>
+<ol>
+<li>2. <strong>攻击面从「编译器」泛化到了「整个构建工具链」。</strong> 论文 6.2 节直接点出下一个候选载体清单：<code>patchelf</code>（同样满足三个条件）、<code>install</code>/<code>cp</code>（<code>make install</code> 写二进制字节），以及更隐蔽的 <code>wrapper</code> 架构。凡「碰二进制、又被自己重建」的工具，都是潜在载体。</li>
+</ol>
+<ol>
+<li>3. <strong>现实危害度要打折，战略信号要放大。</strong> 原型刻意留了明显标记（<code>.payload</code> section、固定打印）方便检测，作者也承认真实攻击者会「休眠多年再激活」。所以这不是今天就能用的武器，但它<strong>废掉了一个长期被视为金标准的叙事</strong>：光靠「源码可审计 + 可复现构建」已经不够了。</li>
+</ol>
+<ol>
+<li>4. <strong>对国内信创的启示尤其直接。</strong> 信创/国产操作系统大量依赖「二进制发行 + 交叉编译 + 预置工具链」，供应链环节多、bootstrap 过程往往不透明。这篇论文恰好提供了一份<strong>审计清单</strong>：你的发行版 bootstrap seed 里，有哪些「碰二进制的后处理工具」？它们有没有从源码重新孵化？——这个问题，比「源码是不是国产」更接近要害。</li>
+</ol>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-08_trusting-trust-strip-attack/",
+      title: "\u4e00\u6761\u88ab\u6c61\u67d3\u7684 strip\uff1a\u4e3a\u4ec0\u4e48\u53ef\u590d\u73b0\u6784\u5efa\u6321\u4e0d\u4f4f\u5b83"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
