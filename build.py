@@ -883,7 +883,7 @@ def render_article_items(articles):
     """渲染一页文章列表的 <li>，同时返回对应 ItemList 结构（position 从 1 起）"""
     articles_html = []
     item_list_elements = []
-    sorted_articles = sorted(articles, key=lambda x: x['metadata'].get('date', ''), reverse=True)
+    sorted_articles = sorted(articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True)
     for idx, article in enumerate(sorted_articles, 1):
         meta = article['metadata']
         slug = article['slug']
@@ -1056,7 +1056,7 @@ def build_tag_pages(articles):
     for tag, tagged_articles in tag_map.items():
         tag_url = f"/tags/{quote(str(tag))}/"
         items = []
-        for article in sorted(tagged_articles, key=lambda x: x['metadata'].get('date', ''), reverse=True):
+        for article in sorted(tagged_articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True):
             meta = article['metadata']
             slug = article['slug']
             date = meta.get('date', '')
