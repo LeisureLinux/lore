@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Read the Docs 遭史上最大 DDoS：550 万次/分钟，打了十天 — FreeLAMP.com</title>
+  <meta name="description" content="Read the Docs DDoS 攻击复盘译文与解读：缓存命中率才是胜负手、惩罚箱规则、不用 Under Attack Mode 的取舍、给 404/重定向加短缓存、Nginx rewrite 迁到边缘、WAF 规则纳入 Terraform 版本控制，以及对国内镜像站与文档站的防御参照。">
+  <meta name="keywords" content="译文, DDoS, 安全, CDN, 基础设施">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-10">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-10_readthedocs-ddos-attack/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Read the Docs 遭史上最大 DDoS：550 万次/分钟，打了十天">
+  <meta property="og:description" content="Read the Docs DDoS 攻击复盘译文与解读：缓存命中率才是胜负手、惩罚箱规则、不用 Under Attack Mode 的取舍、给 404/重定向加短缓存、Nginx rewrite 迁到边缘、WAF 规则纳入 Terraform 版本控制，以及对国内镜像站与文档站的防御参照。">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-10_readthedocs-ddos-attack/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-10">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="译文">
+  <meta property="article:tag" content="译文">
+  <meta property="article:tag" content="DDoS">
+  <meta property="article:tag" content="安全">
+  <meta property="article:tag" content="CDN">
+  <meta property="article:tag" content="基础设施">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Read the Docs 遭史上最大 DDoS：550 万次/分钟，打了十天">
+  <meta name="twitter:description" content="Read the Docs DDoS 攻击复盘译文与解读：缓存命中率才是胜负手、惩罚箱规则、不用 Under Attack Mode 的取舍、给 404/重定向加短缓存、Nginx rewrite 迁到边缘、WAF 规则纳入 Terraform 版本控制，以及对国内镜像站与文档站的防御参照。">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Read the Docs 遭史上最大 DDoS：550 万次/分钟，打了十天",
+  "description": "Read the Docs 官方复盘 2026 年 6 月史上最大 DDoS 攻击：峰值 550 万次请求/分钟、约 100 倍正常基线，持续近十天，来自全球数百万 IP、数百 ASN，TLS 参数随机化规避 JA3/JA4，专打缓存未命中面（404/302）。含完整攻防细节、防御策略与五条关键结论。",
+  "datePublished": "2026-09-10",
+  "dateModified": "2026-09-10",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-10_readthedocs-ddos-attack/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "译文, DDoS, 安全, CDN, 基础设施"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Read the Docs 遭史上最大 DDoS：550 万次/分钟，打了十天",
+        "item": "https://freelamp.com/articles/2026-09-10_readthedocs-ddos-attack/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-10">2026-09-10</div>
+        <h1 class="post-title" itemprop="headline">Read the Docs 遭史上最大 DDoS：550 万次/分钟，打了十天</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a><a itemprop="keywords" href="/tags/DDoS/">DDoS</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%85%A8/">安全</a><a itemprop="keywords" href="/tags/CDN/">CDN</a><a itemprop="keywords" href="/tags/%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD/">基础设施</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>本文译自 Read the Docs 官方博客文章《Understanding the Recent DDoS Attack Against Read the Docs》，作者 David Fischer，2026 年 9 月 8 日发布。原文链接：https://about.readthedocs.com/blog/2026/09/2026-ddos-attack/</blockquote>
+2026 年 6 月中下旬，Read the Docs 遭遇了其历史上规模最大、最复杂的分布式拒绝服务（DDoS）攻击。峰值时，基础设施被打到<strong>每分钟超过 550 万次请求</strong>，约为正常基线的 100 倍。
+<p>事件持续近十天，考验了他们的基础设施、边缘防御和事件响应流程。与过去见过的简单流量洪水不同，这次攻击分布更广、对防御的适应速度极快，而且<strong>刻意打击绕过缓存的区域</strong>。</p>
+<p>如今这个小小的运维团队终于恢复了正常作息，他们决定把这类攻击的解剖、为什么现有的速率限制只能部分缓解、以及哪些策略真正帮助他们（大部分时间）维持了可用性，完整写出来。</p>
+<h2>DDoS 攻击的演化</h2>
+<p>Read the Docs 历史上对爬虫一直很宽容，基于 IP 的速率限制解决了大部分滥用问题。大约两年前开始，随着 <a href="https://about.readthedocs.com/blog/2024/07/ai-crawlers-abuse/">AI 爬虫</a> 越来越普遍，滥用量显著上升，<a href="https://people.kernel.org/monsieuricon/creepy-crawlies">开发基础设施社区的其他成员</a>似乎也在遇到同样的问题。把一个 AI 生成的爬虫接到代理网络后面，变得非常简单。</p>
+<p>他们的防御本来适应得还算轻松，但 6 月这次攻击的规模是此前任何一次遭遇的<strong>10 倍以上</strong>。</p>
+<h2>攻击的关键特征</h2>
+<table>
+<tr><th>特征</th><th>具体表现</th></tr>
+<tr><td>巨量</td><td>峰值每分钟 550 万次请求，正常日峰值不到 10 万次/分钟</td></tr>
+<tr><td>全球分布</td><td>恶意请求来自全球数百万个唯一 IP、数百个网络（ASN），既包括住宅 IP 段，也包括大小主机商</td></tr>
+<tr><td>头部与 TLS 随机化</td><td>系统性地随机化 HTTP 请求头和 TLS 连接参数，规避基于签名的过滤（JA3/JA4）</td></tr>
+<tr><td>自动 CDN 防御的局限</td><td>Read the Docs 使用 Cloudflare，自动 DDoS 防护拦截了部分「已知僵尸网络」流量，但很大一部分穿过了第一道检查，打到速率限制与 WAF 规则</td></tr>
+<tr><td>缓存规避</td><td>攻击者主动寻找并打击会导致缓存未命中的 URL，例如唯一路径的不存在页面（404）和临时重定向（302）</td></tr>
+<tr><td>自适应行为</td><td>一旦实施封禁或限速，僵尸网络就调整请求速率，轮换目标路径、把流量摊到更大的 IP 池里，试探防御边界</td></tr>
+</table>
+<h3>规模与广度</h3>
+<p>以往的小型 DDoS 或大型分布式爬虫，通常会在某个维度上集中——要么来自少数国家，要么集中在少数 IP 段，要么只有少量浏览器签名。<strong>这次攻击是真正的全球化，所有国家同时发起</strong>。当速率限制规则是按 Cloudflare 每个接入点（colo）应用时，这就是一场噩梦：很难写出既能限制分布式攻击、又不会误伤从单一 IP 或子网以合理速率抓取的合法爬虫的规则。</p>
+<p>在攻击者集中打击重定向的某个时刻，他们用足够大的流量压垮了一个<strong>硬编码的 Nginx 重定向</strong>（一条简单的 <code>rewrite</code> 正则指令），即便基础设施在水平扩展，也出现了请求丢弃。而这样一条 Nginx 重定向规则本身轻松能扛每秒数千次请求。</p>
+<p>除地理上扩散外，攻击还覆盖了 Read the Docs 的多个业务面：公共社区文档、商业托管文档，以及需要登录的作者后台面板。</p>
+<p>虽然可以用 Cloudflare 的「Under Attack Mode」给所有访客（无论合法与否）弹一个 JavaScript 挑战，但他们不想这么做——这会打断每一个 API 集成，给数十万真实文档读者制造大量摩擦。最终他们依靠速率限制、定向挑战，配合更多缓存和把更多功能推到边缘来解决。</p>
+<blockquote>「如果没有 Cloudflare，我们根本扛不住这次攻击。」</blockquote>
+<h3>适应他们的防御</h3>
+<p>Read the Docs 大量使用 Cloudflare 做缓存和限速。他们通过 <a href="https://developer.hashicorp.com/terraform">Terraform</a> 管理着几十条速率限制规则，基于 IP、数千个主机名和数十万个子域、ASN、浏览器指纹，以及这些的组合。</p>
+<p>攻击始于少数几个域——攻击者在那里发现了未被边缘缓存、由 Python 后端（而非 Nginx）服务的 302 临时重定向。几分钟内运维团队就被短时中断叫醒（用户不一定察觉，因为缓存中的文档还在正常服务），大约半小时内他们把这些重定向改为由 Cloudflare 在边缘提供。他们以为事情就此结束，结果攻击者在接下来的一周半里换着花样试探各种主机和服务。</p>
+<p>攻击者会先拉高流量以探明限速阈值，然后退回去等限速窗口过期。这被称为 <strong>yo-yo 模式</strong>，目的是最大化自动扩展基础设施的<strong>财务成本</strong>，并造成间歇性服务降级。攻击者清楚他们在用带限速的 WAF，也知道怎么在规则之下造成最大破坏。</p>
+<h2>防御容量型 DDoS</h2>
+<p>抵御每分钟数百万次的洪水，需要纵深防御：边缘缓存、Web 应用防火墙、速率限制、本地缓存和请求指纹。<strong>最快的请求，是 CDN 或 WAF 直接服务掉的那个。</strong></p>
+<h3>边缘缓存</h3>
+<p>第一道防线，也是他们本来就用得很重的一环，是合理的 CDN，并确保尽可能少的请求打到源站。用 CDN 提供文档有很多好处：对 Read the Docs 而言，文档站点很少变动，所以缓存相当激进，但在新文档推送到 git 并重建时会清除该站点的缓存。CDN 也让离源站更远的用户获取文档更快。</p>
+<p>然而，攻击者试探防御时，很快就能<strong>通过 CDN 的响应速度判断哪些请求被缓存、哪些没有</strong>。这意味着只要找到少数几个未缓存的请求，攻击者就有了突破口。他们仍在排查更多未缓存的路径和端点，但对重定向和正常 200 响应都设置<strong>极短生命周期的缓存</strong>（用 <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control"><code>Cache-Control</code> 头</a>）也会对这类攻击有帮助。</p>
+<h3>速率限制与指纹</h3>
+<p>由于不想给所有用户弹 JavaScript 挑战，他们用了<strong>定向速率限制规则</strong>——把<a href="https://developers.cloudflare.com/bots/concepts/bot-score/">机器人概率评分</a>与单 IP 限速结合，对可疑流量发起挑战，同时让合法用户和守规矩的爬虫不受打扰地浏览。他们判断：<strong>宁可放过一部分恶意流量，也不愿去挑战真实用户。</strong></p>
+<p>防御不该关注请求<strong>来自哪里</strong>（IP、国家），而应关注请求<strong>长什么样</strong>：</p>
+<ul>
+<li><strong>密码套件与 TLS 异常</strong>：自动化爬虫和机器人客户端经常呈现与浏览器不同的异常 TLS 连接。Cloudflare 的机器人检测有<a href="https://developers.cloudflare.com/bots/additional-configurations/detection-ids/scraping-detections/">专门的工具</a>来检测这些。</li>
+<li><strong>坏请求太多</strong>：合法用户和好爬虫几乎总是拿到成功（200）响应，而不是重定向或 404。由于 200 总是被缓存，它们几乎从不构成问题。当看到过多更昂贵的请求（如重定向或 404）时，就开始对浏览器指纹、ASN、甚至整个特定域名限速。他们把这套规则称为「<strong>惩罚箱（penalty box）</strong>」，认为它大概是在攻击不断变化中自动缓解攻击的<strong>最大功臣</strong>。</li>
+<li><strong>协议不一致</strong>：恶意工具常声明现代 User-Agent 字符串，却使用较老的 HTTP/1.1 连接。可惜这次不一致没什么用——攻击<strong>全部走 HTTP/2 和 HTTP/3</strong>。</li>
+<li><strong>客户端指纹</strong>：所有使用 Golang HTTP 客户端、或用相同 TLS 密码套件的 Python requests 模块的人，都会有相同的 <a href="https://developers.cloudflare.com/bots/additional-configurations/ja3-ja4-fingerprint/">JA4 指纹</a>。这种指纹针对浏览器或工具，不针对用户。而攻击者随机化了 TLS 参数，所以这类指纹在这次攻击中帮助也不大。</li>
+<li><strong>IP 段分类</strong>：他们仍在做的一件事，是把更多 IP 段分类、给不同类别各自的限额。对 Read the Docs 这种接收大量自动化流量、又希望放行爬虫的服务，来自 Amazon、Google Cloud、Azure 等主要云 ASN 的流量应该比住宅或小型主机商有更高的限额。</li>
+</ul>
+<h3>给用户留一条逃生通道</h3>
+<p>他们做的一个决定是：<strong>始终给真实用户留一条逃生通道</strong>。Read the Docs 极少直接封禁特定 IP 或 User-Agent。他们「最坏」的处理就是一个 JavaScript 挑战，而用户一旦通过挑战，接下来一天左右几乎不会再被挑战。</p>
+<h2>经验与关键结论</h2>
+<p>2026 年 6 月的这次 DDoS 攻击强化了几条运行高流量基础设施的关键结论：</p>
+<ul>
+<li><strong>对分布式攻击而言，IP 封禁已经过时</strong>：僵尸网络或大型爬虫使用代理服务，让简单的 IP 封禁毫无用处。这点他们早就知道，但这次事件再次印证。防御需要在 IP 之外有更广的限速维度（ASN、主机名等）。</li>
+<li><strong>激进缓存</strong>：缓存一切——无论是一个简单静态文件、一个 404，还是一次临时重定向。哪怕只设几分钟的短缓存窗口，也能确保这些资源无法被用来攻击基础设施。CDN 和大多数 Web 框架的默认设置，不是 Read the Docs 这类服务想要的。</li>
+<li><strong>保护缓存未命中面</strong>：攻击者会主动搜索不可缓存的路径（如动态重定向、搜索端点、404）。能缓存就缓存，不能缓存就尽量在边缘处理掉。</li>
+<li><strong>定向挑战胜过钝器</strong>：把机器人管理启发式与限速结合，让他们能以对合法用户最小的影响缓解攻击。</li>
+<li><strong>基础设施即代码是必需的</strong>：通过 Terraform 管理边缘与 WAF 规则，使他们能快速、安全地审查、测试、版本化和上线复杂的过滤规则。</li>
+</ul>
+他们仍在看到来自攻击 IP 段的少量背景流量，但基础设施如今的状态比攻击前强得多。随着 AI 工具和代理网络让这类攻击变得更便宜、更易获取，<strong>它们不再是大企业的专属</strong>，正在成为任何高知名度公共服务的基础现实。运维团队恢复了整夜睡眠，但他们把这看作一次「延长的缓刑」，而不是攻击已成过去。
+<p>---</p>
+<h2>我们的解读：这次攻防的胜负手，全在「缓存命中率」上</h2>
+<p><strong>1. 整篇文章最有价值的一句话是「最快的请求，是 CDN 或 WAF 直接服务掉的那个」。</strong> 这次攻击的本质不是「流量大」，而是「攻击者找到了所有不能被边缘吃掉的请求」。550 万次/分钟听起来是带宽问题，实际是<strong>缓存命中率问题</strong>——攻击者用几百万个 IP 分散请求、把 TLS 参数随机化，把「你是谁」这条判断维度彻底废掉；剩下唯一还成立的判断维度就是「这个请求本身贵不贵」。这就是为什么「惩罚箱」规则（对 404、302 这类昂贵请求限速）成了最大功臣：它不试图识别攻击者，只试图<strong>让攻击不划算</strong>。</p>
+<p><strong>2. 值得所有国内技术团队记下的三条具体动作。</strong> 一是<strong>给 404 和重定向加短缓存</strong>（哪怕 60 秒），这条改动成本极低但收益极高——大多数团队的 CDN 默认配置恰恰不会缓存错误页和跳转，这等于主动给攻击者留了一个稳定的放大器；二是<strong>把 Nginx 的 rewrite 规则迁到边缘</strong>，文章里那条硬编码重定向被打垮就是活生生的例子：任何绕过 CDN 直连源站的处理路径，都是攻击面；三是<strong>把 WAF 规则纳入版本控制</strong>（他们用 Terraform），因为临时手改规则的团队在攻击持续十天、规则需要反复迭代时会迅速失控。</p>
+<p><strong>3. 「不用 Under Attack Mode」这个决定，比它看起来更值得学习。</strong> 全站弹 JS 挑战是行业标准做法，技术上能立刻止血，代价是把所有 API 集成打断、让数十万真实读者卡在验证页。Read the Docs 选择<strong>容忍一部分恶意流量通过</strong>，换取真实用户体验不受损。这是一个明确的取舍，而不是能力不足——对小团队而言，真正的难点是<strong>敢于接受「放过去一部分」这个不完美的结果</strong>，而不是追求「拦截率 100%」。</p>
+<p><strong>4. 对国内文档站、开源镜像站、包管理仓库的直接参照。</strong> 信创与国产开源基础设施里，镜像站和文档站是最典型的「高价值低防护」目标：它们通常流量不大、预算不多、运维人少，但一旦被打，影响面覆盖整个开发者生态。文章给的三条建议可以直接照搬——<strong>CDN 前置 + 激进缓存 + 错误页也缓存</strong>；同时提醒一点：这次攻击覆盖了社区文档、商业托管、作者后台三个面，说明<strong>攻击者会专门挑「最贵的那个入口」</strong>（需要登录、需要动态渲染、无法缓存的接口）。国内镜像站需要自查的是：同步接口、搜索接口、包列表接口这些动态端点，是否有独立的限速和熔断策略。</p>
+<p><strong>5. 最该警惕的是结尾那句「延长的缓刑」。</strong> 攻击成本正在被 AI 工具和代理网络大幅拉低，从「大企业专属」变成「任何高知名度公共服务的基线现实」。这意味着防御设计的前提要变：<strong>不是假设「我们不会被攻击」，而是假设「我们随时在被打」，把可用性预算按常态化的对抗来规划</strong>。对运维团队来说，这意味着监控要看的不再只是「服务是否在线」，而是「<strong>未缓存请求速率</strong>是否异常」——文章里那个「45k 未缓存请求/分钟」的 Slack 告警，就是这类指标的一个很好的落地样本。
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-10_readthedocs-ddos-attack/",
+      title: "Read the Docs \u906d\u53f2\u4e0a\u6700\u5927 DDoS\uff1a550 \u4e07\u6b21/\u5206\u949f\uff0c\u6253\u4e86\u5341\u5929"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
