@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>libzmq 支持了 VSOCK：ZMQ 应用从此可以跑进 Hypervisor 通信面 — FreeLAMP.com</title>
+  <meta name="description" content="译文与解读：libzmq 的 VSOCK 支持（PR #4822）与 pyzmq-vsock。覆盖 AF_VSOCK 地址族（CID、端口、stream/datagram、VMADDR_CID_LOCAL loopback）、libzmq 传输抽象成色、vsock://@:5555 Hello World 实操、Cur">
+  <meta name="keywords" content="ZeroMQ, libzmq, VSOCK, AF_VSOCK, pyzmq, KVM, 虚拟化, CurveZMQ, 译文">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-10">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-10_libzmq-vsock-pyzmq/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="libzmq 支持了 VSOCK：ZMQ 应用从此可以跑进 Hypervisor 通信面">
+  <meta property="og:description" content="译文与解读：libzmq 的 VSOCK 支持（PR #4822）与 pyzmq-vsock。覆盖 AF_VSOCK 地址族（CID、端口、stream/datagram、VMADDR_CID_LOCAL loopback）、libzmq 传输抽象成色、vsock://@:5555 Hello World 实操、Cur">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-10_libzmq-vsock-pyzmq/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-10">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="ZeroMQ">
+  <meta property="article:tag" content="ZeroMQ">
+  <meta property="article:tag" content="libzmq">
+  <meta property="article:tag" content="VSOCK">
+  <meta property="article:tag" content="AF_VSOCK">
+  <meta property="article:tag" content="pyzmq">
+  <meta property="article:tag" content="KVM">
+  <meta property="article:tag" content="虚拟化">
+  <meta property="article:tag" content="CurveZMQ">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="libzmq 支持了 VSOCK：ZMQ 应用从此可以跑进 Hypervisor 通信面">
+  <meta name="twitter:description" content="译文与解读：libzmq 的 VSOCK 支持（PR #4822）与 pyzmq-vsock。覆盖 AF_VSOCK 地址族（CID、端口、stream/datagram、VMADDR_CID_LOCAL loopback）、libzmq 传输抽象成色、vsock://@:5555 Hello World 实操、Cur">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "libzmq 支持了 VSOCK：ZMQ 应用从此可以跑进 Hypervisor 通信面",
+  "description": "AF_VSOCK 是专为 guest 与 hypervisor/host 通信设计的套接字地址族（Linux 4.8+，前身 VMware VMCI），AWS Nitro Enclaves 靠它通信。Rémi Jouannet 给 libzmq 提交 PR #4822 补上 vsock 传输（照 VMCI 代码复制粘贴级别），并 fork pyzmq 提供 pyzmq-vsock 轮子。所有 ZMQ 绑定语言由此解锁 AF_VSOCK，req/rep、pub/sub 与 Curve 认证全部继承。本文为原文译文，附 loopback Hello World 与 Curve+asyncio 实操，以及通信面隔离、传输与语义解耦、国产虚拟化 guest agent 参照的解读。",
+  "datePublished": "2026-09-10",
+  "dateModified": "2026-09-10",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-10_libzmq-vsock-pyzmq/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "ZeroMQ, libzmq, VSOCK, AF_VSOCK, pyzmq, KVM, 虚拟化, CurveZMQ, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "libzmq 支持了 VSOCK：ZMQ 应用从此可以跑进 Hypervisor 通信面",
+        "item": "https://freelamp.com/articles/2026-09-10_libzmq-vsock-pyzmq/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-10">2026-09-10</div>
+        <h1 class="post-title" itemprop="headline">libzmq 支持了 VSOCK：ZMQ 应用从此可以跑进 Hypervisor 通信面</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/ZeroMQ/">ZeroMQ</a><a itemprop="keywords" href="/tags/libzmq/">libzmq</a><a itemprop="keywords" href="/tags/VSOCK/">VSOCK</a><a itemprop="keywords" href="/tags/AF_VSOCK/">AF_VSOCK</a><a itemprop="keywords" href="/tags/pyzmq/">pyzmq</a><a itemprop="keywords" href="/tags/KVM/">KVM</a><a itemprop="keywords" href="/tags/%E8%99%9A%E6%8B%9F%E5%8C%96/">虚拟化</a><a itemprop="keywords" href="/tags/CurveZMQ/">CurveZMQ</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>译文来源：Rémi Jouannet 博客《Use VSOCK with libzmq》（blog.remijouan.net）。原文：<https://blog.remijouan.net/posts/libzmq-vsock-pyzmq/></blockquote>
+<h2>VSOCK 是什么</h2>
+<p>VSOCK 已不算新东西——<strong>Linux 4.8 起进入内核</strong>。它的前身是 VMware 开发的 VMCI。<code>AF_VSOCK</code> 是一个套接字地址族，和 <code>AF_INET</code>、<code>AF_UNIX</code> 并列，专为<strong>虚拟机（guest）与宿主机（hypervisor/host）之间</strong>的通信设计，同一台宿主机上的多个 guest 之间也可以互通。在这之前，这类通信走的是串口——Proxmox 的 <a href="https://pve.proxmox.com/wiki/Qemu-guest-agent">qemu-guest-agent</a> 就是典型例子。</p>
+<p>VSOCK 用起来的观感是"<strong>Unix socket 的形态 + TCP/UDP 的特性</strong>"：有地址、有端口，也分流式（stream）和数据报（datagram）两种。</p>
+<ul>
+<li>地址是 32 位的"上下文标识符"（CID），保留值包括 <code>VMADDR_CID_ANY</code>、<code>VMADDR_CID_HYPERVISOR</code>、<code>VMADDR_CID_LOCAL</code>（5.6 新增）、<code>VMADDR_CID_HOST</code>；</li>
+<li>端口也是 32 位，<strong>1024 以下需要 root</strong>——和 TCP/UDP 一个脾气；</li>
+<li>同一个 CID 可以靠不同端口跑多路通信。</li>
+</ul>
+参考手册：<a href="https://man7.org/linux/man-pages/man7/vsock.7.html">vsock(7)</a>。
+<p>多年下来 VSOCK 生态在缓慢生长：Python/C/Go/Rust 都有支持，AWS 的 <strong>Nitro Enclaves</strong> 就靠它做 enclave 与宿主的通信。相关资源：</p>
+<ul>
+<li>socat 的 vsock 支持（<a href="https://stefano-garzarella.github.io/posts/2021-01-22-socat-vsock/">Stefano Garzarella</a>）</li>
+<li>Go 的 <a href="https://mdlayher.com/blog/linux-vm-sockets-in-go/">VM sockets</a>、Rust 的 <a href="https://github.com/rust-vsock/tokio-vsock">tokio-vsock</a></li>
+<li><a href="https://docs.python.org/3/library/socket.html#socket.AF_VSOCK">Python socket.AF_VSOCK</a></li>
+</ul>
+<h2>libzmq 里的 VSOCK：一次"照抄式"贡献</h2>
+<p>问题在于：想用 VSOCK 时你手里只有<strong>最底层的绑定</strong>——poll、recv、send、bind、listen 全要自己来。这时候自然想起 <a href="https://zeromq.org/">ZeroMQ</a>：它在几乎所有类型的 socket 上封装了消息模式和工程实践，甚至带安全特性（<a href="http://curvezmq.org/">CurveZMQ</a>）。</p>
+<p>作者的意外发现是：libzmq 里有 <a href="https://libzmq.readthedocs.io/en/latest/zmq_vmci.html">VMCI 实现</a>，却<strong>没有 VSOCK</strong>。于是他提交了 <a href="https://github.com/zeromq/libzmq/pull/4822">PR #4822</a>——照着 VMCI 的代码"复制粘贴"级别地补上了 VSOCK。</p>
+<p>这个组合的价值：</p>
+<table>
+<tr><th>能力</th><th>说明</th></tr>
+<tr><td>语言全解锁</td><td>所有有 libzmq 绑定的语言（Python/Ruby/Node.js/Perl/Java/Lua…）都直接能用 <code>AF_VSOCK</code></td></tr>
+<tr><td>模式继承</td><td>req/rep、pub/sub 等 ZMQ 消息模式跑在 VSOCK 上</td></tr>
+<tr><td>安全继承</td><td>Curve 认证直接可用</td></tr>
+<tr><td>嵌入式友好</td><td>libzmq 发布节奏慢但极稳，很容易按特定 commit 静态编译进嵌入式系统</td></tr>
+</table>
+<p>正式版尚需时日，作者先 fork 了 pyzmq 按最新 libzmq commit 构建：<a href="https://github.com/remijouannet/pyzmq-vsock">pyzmq-vsock</a>。</p>
+<h2>动手：先在 loopback 上跑通 Hello World</h2>
+<p>Linux 5.6 起有 loopback CID（<code>VMADDR_CID_LOCAL</code>），<strong>不用真开 VM 就能测</strong>。ZMQ 里用 <code>@</code> 直接绑定 loopback。要模拟真实 guest/host 场景，QEMU 命令行加一个 vsock 设备即可（libvirt 同理）：</p>
+<pre><code class="sh">export CID=100
+/usr/local/bin/qemu-system-x86_64 \
+    ...
+    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=$CID
+</code></pre>
+<p>服务端（REP）与客户端（REQ），改动只有 URI——<code>vsock://@:5555</code>：</p>
+<pre><code class="python"># rep.py —— Hello World server
+import time
+import zmq
+<p>context = zmq.Context()
+socket = context.socket(zmq.REP)
+socket.bind("vsock://@:5555")</p>
+<p>while True:
+    message = socket.recv()
+    print(f"Received request: {message}")
+    time.sleep(1)          # 模拟干活
+    socket.send(b"World")
+</code></pre></p>
+<pre><code class="python"># req.py —— Hello World client
+import zmq
+<p>context = zmq.Context()
+print("Connecting to hello world server…")
+socket = context.socket(zmq.REQ)
+socket.connect("vsock://@:5555")</p>
+<p>for request in range(5):
+    socket.send(b"Hello")
+    message = socket.recv()
+    print(f"Received reply {request} [ {message} ]")
+</code></pre></p>
+<pre><code class="sh"># vsock_loopback 大概率没加载：
+<h1>sudo modprobe vsock_loopback</h1>
+<p>python3 -m venv venv
+venv/bin/pip install <pyzmq-vsock 的 manylinux wheel></p>
+<p>venv/bin/python3 rep.py &
+venv/bin/python3 req.py
+<h1>Sending request 0 …</h1>
+<h1>Received request: b'Hello'</h1>
+<h1>Received reply 0 [ b'World' ]</h1>
+<h1>...循环 5 次，全部成功</h1>
+</code></pre></p>
+<h2>进阶：Curve 认证 + asyncio（生产形态）</h2>
+<p>Hello World 之后，生产大概率是 <strong>asyncio + Curve</strong>。作者把 pyzmq 官方的 <a href="https://github.com/zeromq/pyzmq/blob/main/examples/security/asyncio-ironhouse.py">asyncio-ironhouse</a> 示例改到了 VSOCK 上：先 <code>zmq.curve_keypair()</code> 生成三组密钥（server、client、client2）存 JSON；REP 侧 <code>curve_server = True</code>（<strong>必须在 bind 之前设置</strong>），绑 <code>vsock://@:9000</code>，用 <code>AsyncioAuthenticator</code> 只放行已知 client key；REQ 侧带上自己的密钥对和 server 公钥去 connect。</p>
+<p>跑起来，认证通过时：</p>
+<pre><code class="sh">[DEBUG] ALLOWED (CURVE) domain=* client_key=b'HhdIwzo4=…'
+[DEBUG] ZAP reply code=b'200' text=b'OK'
+[INFO] Received b'Hello'
+[INFO] Ironhouse test OK
+</code></pre>
+<p>换成未授权密钥，服务端直接拒绝：</p>
+<pre><code class="sh">[DEBUG] DENIED (CURVE) domain=<em> client_key=b'P4//#^+&</em>…'
+[DEBUG] ZAP reply code=b'400' text=b'Unknown key'
+<h1>客户端侧：No reply: server rejected this client key</h1>
+</code></pre>
+<h2>我们的解读</h2>
+<p><strong>VSOCK 的价值是"通信面隔离"。</strong> guest 与 host 之间不需要虚拟网卡、不经过网络栈、不占 IP 规划——这既是便利更是安全边界：guest 无法把 vsock 当跳板去扫 host 的网络。对 enclave、沙箱 agent、guest agent 这类"宿主与受控方点对点对话"的场景，VSOCK 是比 TCP 更贴合的传输层。AWS Nitro Enclaves 选它不是偶然。</p>
+<p><strong>ZMQ 的核心设计此时显现红利：传输与语义解耦。</strong> libzmq 把传输层做成可插拔（inproc/ipc/tcp/pgm/vmci/vsock…），应用层的消息模式、认证、重连逻辑一行不改。这次贡献的成本低到"照抄 VMCI"，正说明传输抽象的成色——对应用开发者，从 <code>tcp://@:5555</code> 换到 <code>vsock://@:5555</code> 只是换了个 URI。</p>
+<p><strong>两个现实提醒：</strong> 一是 libzmq 发版保守，VSOCK 还在 master，生产要用得像作者一样按 commit 自建（pyzmq-vsock 的 wheel 可以直接用）；二是踩坑点很集中——<code>vsock_loopback</code> 模块要手动 modprobe、<code>curve_server</code> 必须在 bind 之前设置、端口 1024 以下要 root。</p>
+<p><strong>对国产虚拟化生态的参照：</strong> Proxmox/KVM 系（含国内基于 KVM 的私有云、信创虚拟化平台）里，guest agent 通信长期依赖串口方案。VSOCK + ZMQ 这套组合给出了一个更现代、可加密、可订阅推送的替代模板，值得做云平台 agent 和 EDR/探针类产品的团队参考。</p>
+<p>---</p>
+<p><em>参考：<a href="https://blog.remijouan.net/posts/libzmq-vsock-pyzmq/">原文</a> · <a href="https://github.com/zeromq/libzmq/blob/master/doc/zmq_vsock.adoc">libzmq vsock 文档</a> · <a href="https://github.com/zeromq/libzmq/pull/4822">PR #4822</a></em>
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png" alt="联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴</div>
+      </div>
+      <a class="buy-btn" href="https://union-click.jd.com/jdc?e=618%7Cpc%7C&amp;p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-10_libzmq-vsock-pyzmq/",
+      title: "libzmq \u652f\u6301\u4e86 VSOCK\uff1aZMQ \u5e94\u7528\u4ece\u6b64\u53ef\u4ee5\u8dd1\u8fdb Hypervisor \u901a\u4fe1\u9762"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
