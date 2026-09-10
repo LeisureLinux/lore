@@ -29,7 +29,7 @@ SITE_AUTHOR = "LeisureLinux"
 # 1) 在 https://union.jd.com/ 登录联盟后台，选商品「获取推广链接」得到 jdc 长链。
 # 2) 每篇文章 front-matter 可用 jd_url: 指定该文的京东推广链接（覆盖全局默认）。
 # 3) 未指定时回退到全局 JD_BUY_URL；两者都留空则该文不显示「京东购买」卡片。
-JD_BUY_URL = "https://union-click.jd.com/jdc?e=618%7Cpc%7C&p=JF8BAZsJK1olWAcFV15YDEweC18IGloXWQ4KU1ZVC0wnRzBQRQQlBENHFRxWFlVWQDEXR0ROCBlQCgJDVBtKXnFYSR5NGlIcUVoabhJnX2dda1lNVQF3Cj4PfSxNBylaRDxwDxhaCwsJQVRORjNVFRlPGQoEPTsEVhQUUQ9hUA5MNFV7UBtYUh5Oajx9YgtCKWNsVgUHADBMezhxGCxMFHpSNCgqHw9IWzFXRgtKCGNKFQpRCFxLUzdXeQFRUQYDVVxZAEMQC2cLHGtpLnxHIywiXClsYR9OfQxNVHBJJ1ktBEcnAl8LGlgWXQMFUF9UOHsXBF9YdVMdVQQFXVhVDEkeM244G10cWgYHU19UC00VB18PG1IlHwYLXVhZDk0WC2wKElMQXgAyZG5eOEwXCnsOaRpHSQBwZG5eDnsUM18KGloRVDYyitPtcT5qCioBRC90HEV0Lx8VXZWas356a1sRXAATZFg0bRJJXGxaezJeCF9rBydZTU5NVjZhSC5sDVF2MTBfUxEfeDRwTCIWKl9LKA49fjwnBl8PHVolXDY"
+JD_BUY_URL = "https://u.jd.com/xaBU17X"
 JD_BUY_TITLE = "联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴"
 JD_BUY_IMG = "https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png"
 
@@ -936,7 +936,7 @@ def render_pager(page_num, total_pages):
 
 def build_index_pages(articles):
     """生成首页(index.html) + 分页页(page/N/index.html)，返回 [(相对路径, html), ...]"""
-    sorted_articles = sorted(articles, key=lambda x: x['metadata'].get('date', ''), reverse=True)
+    sorted_articles = sorted(articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True)
     total_pages = max(1, (len(sorted_articles) + PAGE_SIZE - 1) // PAGE_SIZE)
     pages = []
     for page_num in range(1, total_pages + 1):
@@ -1175,7 +1175,7 @@ def generate_sitemap(articles):
     })
 
     # 文章页
-    for article in sorted(articles, key=lambda x: x['metadata'].get('date', ''), reverse=True):
+    for article in sorted(articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True):
         meta = article['metadata']
         date = meta.get('date', '')
         if isinstance(date, datetime):
