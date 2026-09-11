@@ -35,6 +35,13 @@ JD_BUY_TITLE = "五谷磨房中秋礼遇季"
 # 线上地址 https://freelamp.com/jd-wugu-zhongqiu.jpg（92x92 object-fit:cover 展示）
 JD_BUY_IMG = "https://freelamp.com/jd-wugu-zhongqiu.jpg"
 
+# ================= 腾讯云 CPS 广告位（可选） =================
+# 在每篇文章正文第一个 </blockquote> 后插入推广横幅；TC_AD_URL 留空则全文不插入。
+TC_AD_URL = "https://curl.qcloud.com/QchufVI3"
+TC_AD_TITLE = "【腾讯云】Lighthouse助力跨境电商业务扬帆出海"
+# 横幅物料：仓库根目录 tc-crossborder-1200x90.png，经 static_files 复制到 docs/
+TC_AD_IMG = "https://freelamp.com/tc-crossborder-1200x90.png"
+
 
 def jd_buy_html(url: str, title: str = "", img: str = "") -> str:
     """生成文章底部「京东购买」CPS 推广卡片；url 为空时返回空串（不渲染）。
@@ -70,6 +77,40 @@ def jd_buy_html(url: str, title: str = "", img: str = "") -> str:
         f'      <a class="buy-btn" href="{href}" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>\n'
         '    </div>\n'
     )
+
+
+def tc_ad_html() -> str:
+    """生成腾讯云 CPS 推广横幅 div；TC_AD_URL 为空时返回空串（不插入）。"""
+    url = (TC_AD_URL or "").strip()
+    if not url:
+        return ""
+    t = html.escape((TC_AD_TITLE or "").strip())
+    im = html.escape((TC_AD_IMG or "").strip())
+    href = url.replace('&', '&amp;')
+    return (
+        '\n    <!-- 腾讯云 CPS 推广横幅 -->\n'
+        '    <div class="tc-ad">\n'
+        '      <span class="tc-ad-label">推广</span>\n'
+        f'      <a href="{href}" target="_blank" rel="nofollow noopener sponsored" title="{t}">\n'
+        f'        <img src="{im}" alt="{t}" loading="lazy" decoding="async">\n'
+        '      </a>\n'
+        '    </div>\n'
+    )
+
+
+def inject_tc_ad(content_html: str) -> str:
+    """在正文第一个 </blockquote> 后插入腾讯云推广横幅；无 blockquote 或未配置则原样返回。
+    只插一次：多数 blockquote 是引言后的「译自…」来源注，插在其后位于正文上部；
+    避免在多引用文章里重复堆叠广告。"""
+    ad = tc_ad_html()
+    if not ad:
+        return content_html
+    marker = '</blockquote>'
+    idx = content_html.find(marker)
+    if idx == -1:
+        return content_html
+    end = idx + len(marker)
+    return content_html[:end] + ad + content_html[end:]
 
 
 # ================= 百度统计 (Baidu Tongji) 配置 =================
@@ -512,6 +553,17 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
     @media (max-width: 520px) {{
       .buy-card.buy-card-prod {{ flex-wrap: wrap; }}
       .buy-card.buy-card-prod .buy-btn {{ width: 100%; text-align: center; }}
+    }}
+    .tc-ad {{ margin: 20px 0 24px; }}
+    .tc-ad .tc-ad-label {{
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }}
+    .tc-ad a {{ display: block; border-radius: 8px; overflow: hidden; }}
+    .tc-ad a:hover {{ opacity: 0.92; }}
+    .tc-ad img {{
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
     }}
     .share-bar {{
       display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
@@ -995,7 +1047,7 @@ def build_article_page(article):
 
     # 去掉正文开头的重复标题（页面顶部 post-title 已展示标题）
     article_content = re.sub(r'^\s*#\s+[^\n]*\n?', '', article['content'], count=1, flags=re.MULTILINE)
-    content_html = markdown_to_html(article_content)
+    content_html = inject_tc_ad(markdown_to_html(article_content))
     
     # 生成 JSON-LD
     json_ld = build_json_ld(meta, canonical_url, article['content'])
@@ -1517,6 +1569,7 @@ def main():
         "leisurelinux-qrcode.jpeg",  # LeisureLinux 公众号关注二维码
         "jd_root.txt",  # 京东联盟域名验证
         "jd-wugu-zhongqiu.jpg",  # 京东购买卡片商品图（五谷磨房中秋礼遇季）
+        "tc-crossborder-1200x90.png",  # 腾讯云 CPS 推广横幅（跨境电商专属特惠）
         # 可在此添加其他验证文件，如：
         # "BingSiteAuth.xml",  # Bing 验证
     ]
