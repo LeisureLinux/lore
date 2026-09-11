@@ -29,9 +29,11 @@ SITE_AUTHOR = "LeisureLinux"
 # 1) 在 https://union.jd.com/ 登录联盟后台，选商品「获取推广链接」得到 jdc 长链。
 # 2) 每篇文章 front-matter 可用 jd_url: 指定该文的京东推广链接（覆盖全局默认）。
 # 3) 未指定时回退到全局 JD_BUY_URL；两者都留空则该文不显示「京东购买」卡片。
-JD_BUY_URL = "https://u.jd.com/xaBU17X"
-JD_BUY_TITLE = "联想笔记本电脑小新Air15 3代酷睿Core5 320 16G 512G 120Hz高刷触控屏 学生办公轻薄本 国家补贴"
-JD_BUY_IMG = "https://img14.360buyimg.com/n1/s450x450_jfs/t1/486282/25/12569/87007/6a75561fF052d9b50/00833203202b8437.png"
+JD_BUY_URL = "https://u.jd.com/xOZRcdz"
+JD_BUY_TITLE = "五谷磨房中秋礼遇季"
+# 商品图：从京东活动页 banner 裁出的方图，经 static_files 复制到 docs/，
+# 线上地址 https://freelamp.com/jd-wugu-zhongqiu.jpg（92x92 object-fit:cover 展示）
+JD_BUY_IMG = "https://freelamp.com/jd-wugu-zhongqiu.jpg"
 
 
 def jd_buy_html(url: str, title: str = "", img: str = "") -> str:
@@ -1514,6 +1516,7 @@ def main():
         "favicon.ico",  # 站点图标
         "leisurelinux-qrcode.jpeg",  # LeisureLinux 公众号关注二维码
         "jd_root.txt",  # 京东联盟域名验证
+        "jd-wugu-zhongqiu.jpg",  # 京东购买卡片商品图（五谷磨房中秋礼遇季）
         # 可在此添加其他验证文件，如：
         # "BingSiteAuth.xml",  # Bing 验证
     ]
