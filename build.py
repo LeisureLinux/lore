@@ -98,6 +98,53 @@ def tc_ad_html() -> str:
     )
 
 
+# ================= 腾讯云 WorkBuddy footer 广告位（可选） =================
+# 所有页面 footer 顶部插入推广条；WB_FOOTER_AD_URL 留空则全站不插入。
+WB_FOOTER_AD_URL = "https://cloud.tencent.com/act/cps/redirect?redirect=6871&cps_key=67b706032429841cde38a5f27b3aca89&from=console&cps_promotion_id=103055"
+WB_FOOTER_AD_TITLE = "【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月"
+# 物料：仓库根目录 workbuddy-logo.jpg（800x800 方形 logo），经 static_files 复制到 docs/
+WB_FOOTER_AD_IMG = "https://freelamp.com/workbuddy-logo.jpg"
+
+
+def footer_ad_html() -> str:
+    """生成 footer 腾讯云 WorkBuddy CPS 推广条（内联样式，自包含）；URL 为空时返回空串。"""
+    url = (WB_FOOTER_AD_URL or "").strip()
+    if not url:
+        return ""
+    t = html.escape((WB_FOOTER_AD_TITLE or "").strip())
+    im = html.escape((WB_FOOTER_AD_IMG or "").strip())
+    href = url.replace('&', '&amp;')
+    return (
+        '\n      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->\n'
+        '      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;'
+        'border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;'
+        'display:flex;align-items:center;gap:12px;">\n'
+        f'        <a href="{href}" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1">'
+        f'<img src="{im}" alt="" loading="lazy" decoding="async" '
+        'style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>\n'
+        f'        <a href="{href}" target="_blank" rel="nofollow noopener sponsored" title="{t}" '
+        f'style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;'
+        f'font-weight:600;line-height:1.55;text-align:left;">{t}</a>\n'
+        f'        <a href="{href}" target="_blank" rel="nofollow noopener sponsored" '
+        'style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;'
+        'font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>\n'
+        '      </div>\n'
+    )
+
+
+# 预生成 footer 推广条 HTML，供四个页面模板的 footer 复用
+WB_FOOTER_AD = footer_ad_html()
+
+
+def inject_footer_ad(html_text: str) -> str:
+    """把 footer 推广条插到单行 <footer> 标签前（用于导航页与公众号全文镜像页）。
+    已含推广条或未配置 URL 时原样返回。"""
+    ad = WB_FOOTER_AD.strip()
+    if not ad or "<footer>" not in html_text or "WorkBuddy CPS footer" in html_text:
+        return html_text
+    return html_text.replace("<footer>", ad + "\n    <footer>", 1)
+
+
 def inject_tc_ad(content_html: str) -> str:
     """在正文第一个 </blockquote> 后插入腾讯云推广横幅；无 blockquote 或未配置则原样返回。
     只插一次：多数 blockquote 是引言后的「译自…」来源注，插在其后位于正文上部；
@@ -334,6 +381,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
+{WB_FOOTER_AD}
       <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
       <p class="beian" style="margin-top: 8px; font-size: 12px;">
@@ -679,6 +727,7 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
+{WB_FOOTER_AD}
       <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
       <p class="beian" style="margin-top: 8px; font-size: 12px;">
@@ -750,6 +799,7 @@ TAG_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
+{WB_FOOTER_AD}
       <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
       <p class="beian" style="margin-top: 8px; font-size: 12px;">
@@ -1010,6 +1060,7 @@ def build_index_pages(articles):
             rel_next = f'<link rel="next" href="{page_url(page_num + 1)}">' if page_num < total_pages else ''
             relpath = f"page/{page_num}/index.html"
         html = INDEX_TEMPLATE.format(
+            WB_FOOTER_AD=WB_FOOTER_AD,
             analytics_snippet=analytics_html(),
             site_url=SITE_URL,
             site_name=SITE_NAME,
@@ -1077,6 +1128,7 @@ def build_article_page(article):
     jd_img = (meta.get('jd_img') or JD_BUY_IMG or '').strip()
 
     return ARTICLE_TEMPLATE.format(
+        WB_FOOTER_AD=WB_FOOTER_AD,
         analytics_snippet=analytics_html(),
         jd_buy_html=jd_buy_html(jd_url, jd_title, jd_img),
         title=title,
@@ -1126,6 +1178,7 @@ def build_tag_pages(articles):
         </a>
       </li>""")
         html = TAG_TEMPLATE.format(
+            WB_FOOTER_AD=WB_FOOTER_AD,
             analytics_snippet=analytics_html(),
             tag=tag,
             count=len(tagged_articles),
@@ -1463,6 +1516,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
 
   <footer>
     <div class="container">
+{WB_FOOTER_AD}
       <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
       <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
       <p class="beian" style="margin-top: 8px; font-size: 12px;">
@@ -1480,6 +1534,7 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
 def build_about_page():
     """生成「关于 FreeLAMP」页面（网站历史 + 作者介绍）"""
     return ABOUT_TEMPLATE.format(
+        WB_FOOTER_AD=WB_FOOTER_AD,
         analytics_snippet=analytics_html(),
         site_url=SITE_URL,
         site_name=SITE_NAME,
@@ -1570,6 +1625,7 @@ def main():
         "jd_root.txt",  # 京东联盟域名验证
         "jd-wugu-zhongqiu.jpg",  # 京东购买卡片商品图（五谷磨房中秋礼遇季）
         "tc-crossborder-1200x90.png",  # 腾讯云 CPS 推广横幅（跨境电商专属特惠）
+        "workbuddy-logo.jpg",  # 腾讯云 WorkBuddy CPS footer 推广条 logo
         # 可在此添加其他验证文件，如：
         # "BingSiteAuth.xml",  # Bing 验证
     ]
@@ -1588,8 +1644,10 @@ def main():
     import shutil as _shutil
     src_nav = LORE_DIR / "leisurelinux.html"
     if src_nav.exists():
-        _shutil.copy2(src_nav, DOCS_DIR / "leisurelinux.html")
-        print("✅ 复制导航页：docs/leisurelinux.html")
+        nav_text = src_nav.read_text(encoding="utf-8")
+        (DOCS_DIR / "leisurelinux.html").write_text(
+            inject_footer_ad(nav_text), encoding="utf-8")
+        print("✅ 复制导航页：docs/leisurelinux.html（含 footer 推广条）")
         total_files += 1
     else:
         print("ℹ️  未找到 lore/leisurelinux.html，跳过导航页复制（运行更新脚本后会生成）")
@@ -1601,8 +1659,12 @@ def main():
         if dst_art.exists():
             _shutil.rmtree(dst_art)
         _shutil.copytree(src_art, dst_art)
-        cnt = sum(1 for _ in dst_art.glob("*.html"))
-        print(f"✅ 复制全文镜像页：docs/leisurelinux/articles/（{cnt} 篇）")
+        cnt = 0
+        for p in dst_art.glob("*.html"):
+            p.write_text(inject_footer_ad(p.read_text(encoding="utf-8")),
+                         encoding="utf-8")
+            cnt += 1
+        print(f"✅ 复制全文镜像页：docs/leisurelinux/articles/（{cnt} 篇，含 footer 推广条）")
         total_files += cnt
     else:
         print("ℹ️  未找到 lore/leisurelinux/articles/，跳过全文镜像页复制（运行 build_articles.py 后会生成）")
