@@ -1,0 +1,395 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+      <span leaf="">QUOTE</span>
+    </p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">既然这些操作大多数根本不阻塞，为什么要一上来就付出代价把它们</span>
+      <span style="border-bottom:2px solid #F97316;"><span leaf="">punt 到 io-wq</span></span>
+      <span leaf="">？</span>
+    </p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+      <span leaf="">—— Jens Axboe</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 32px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">io_uring 的作者、Linux block 子系统维护者 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Jens Axboe</span></span>
+      <span leaf=""> 又在周五放出「疯狂补丁」。这次不是改 ring buffer，而是直接动摇了 io_uring 处理「可能阻塞的系统调用」的核心假设。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">他的答案很简单：</span>
+      <strong style="color:#27272A;"><span leaf="">先 inline 执行；如果它真的阻塞了，就让 io-wq worker 穿上提交者的「身份外衣」返回用户态，原任务转身去当 io-wq worker。</span></strong>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+      <span leaf="">本文看点</span>
+    </p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">「身份切换」机制：阻塞时不是换线程，而是换身份</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">QD1 延迟最高降 87%，元数据 IOPS 提升数倍</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">并非所有场景都赢：高队列深度下的 regression</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">01</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">THE PROBLEM</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">io_uring 太谨慎了</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">io_uring 的目标之一，是让 submitter 不在内核里阻塞。策略是：能走非阻塞路径的 opcode，直接在 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">io_uring_enter()</span></span>
+      <span leaf=""> 里 inline 完成；不能走的，统统 punt 到 io-wq 后台线程，做完再通过 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">task_work</span></span>
+      <span leaf=""> 通知原任务。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这套机制在真正会阻塞的 IO 上没问题。但 Axboe 指出，有很多操作</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">在常见场景下根本不会阻塞</span></span>
+      <span leaf="">，却被无条件异步化：</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">fsync</span> / <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">fdatasync</span> 命中 page cache、没有脏页时</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">statx</span> 命中 dcache，不需要下盘</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">openat</span> 带 <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">O_TMPFILE</span>，不需要真正创建文件</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">4</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">renameat</span>、<span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">fadvise</span>、xattr 等元数据操作</span></p>
+      </section>
+    </section>
+
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+      <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+        <span leaf="">「这些操作本可以几微秒 inline 完成，却要先唤醒 io-wq worker、上下文切换、再 task_work 回调一圈。Sad story。」</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">02</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">THE MECHANISM</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">Inline + Identity Handoff</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">RFC 补丁的核心思路可以拆成两步：</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">不再无条件 punt</strong>：对这些「被迫异步」的 opcode，先在内核里 inline 执行。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">真的阻塞时再换身份</strong>：提交任务已经深陷内核，请求栈都在它身上，没法再搬工作。那能搬的是<strong style="color:#27272A;">身份</strong>。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">具体机制大致是：当 inline 执行遇到阻塞时，一个空闲的 io-wq worker 接管提交任务的</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">用户可见身份</span></span>
+      <span leaf="">——tid、信号状态、credentials、调度属性、cgroup、用户寄存器状态。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这个 worker 继续完成 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">io_uring_enter()</span></span>
+      <span leaf=""> 并返回用户态，用户程序看到同一个 tid 回来，无感知；原任务则被「转换」成 io-wq worker，继续把剩下的 IO 做完，然后加入 worker pool。</span>
+    </p>
+
+    <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 10px 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+        <span leaf="">Axboe 提到，大约 20 年前内核圈里有过类似尝试。当时没成，现在借着 io_uring 的成熟路径再次拿出来试。</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">03</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">THE NUMBERS</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">QD1 延迟大幅下降，元数据吞吐数倍提升</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">测试环境是 virtme-ng guest，8 vCPU，non-debug x86 config，基于 7.3-rc2。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">QD1 单操作延迟</span>
+    </p>
+
+    <section style="margin:0 10px 28px;">
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:10px 0;background:#27272A;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;font-weight:700;color:#fff;margin:0;line-height:1.4;"><span leaf="">操作</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;font-weight:700;color:#fff;margin:0;line-height:1.4;"><span leaf="">原 punt</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;font-weight:700;color:#fff;margin:0;line-height:1.4;"><span leaf="">inline + handoff</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;font-weight:700;color:#fff;margin:0;line-height:1.4;"><span leaf="">降低</span></p></section>
+      </section>
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:8px 0;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">fsync ext4</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">32 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">4 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">87%</span></p></section>
+      </section>
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:8px 0;background:#FAFAFA;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">statx ext4</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">35 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">8 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">77%</span></p></section>
+      </section>
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:8px 0;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">fadvise ext4</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">32 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">6 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">82%</span></p></section>
+      </section>
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:8px 0;background:#FAFAFA;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">openat ext4</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">181 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">88 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">51%</span></p></section>
+      </section>
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:8px 0;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">renameat ext4</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">115 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">72 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">38%</span></p></section>
+      </section>
+      <section style="display:flex;border-bottom:1px solid #E4E4E7;padding:8px 0;background:#FAFAFA;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">renameat tmpfs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">61 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">21 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">66%</span></p></section>
+      </section>
+      <section style="display:flex;padding:8px 0;">
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">openat tmpfs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">54 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#52525B;margin:0;line-height:1.5;"><span leaf="">22 µs</span></p></section>
+        <section style="flex:1;padding:0 8px;"><p style="font-size:13px;color:#F97316;font-weight:700;margin:0;line-height:1.5;"><span leaf="">60%</span></p></section>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">最显眼的是 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">fsync</span></span>
+      <span leaf=""> / </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">fadvise</span></span>
+      <span leaf=""> / </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">statx</span></span>
+      <span leaf=""> 这一类「命中缓存就不会阻塞」的操作：以前被 io-wq 的线程切换和回调拖成几十微秒，现在 inline 后只剩个位数微秒。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">tmpfs 上更夸张</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">在内存文件系统上，没有真实块设备延迟，线程切换的 overhead 被放得最大：</span>
+    </p>
+
+    <section style="margin:0 10px 28px;">
+      <section style="display:flex;justify-content:space-between;">
+        <section style="flex:1;border:1px solid #E4E4E7;padding:22px 12px;margin-right:8px;text-align:center;">
+          <p style="font-size:32px;font-weight:900;color:#27272A;margin:0 0 6px;line-height:1;letter-spacing:-1px;"><span leaf="">681%</span></p>
+          <p style="font-size:11px;color:#A1A1AA;margin:0;letter-spacing:1px;"><span leaf="">fsync tmpfs QD1 IOPS 提升</span></p>
+        </section>
+        <section style="flex:1;border:1px solid #E4E4E7;padding:22px 12px;margin-right:8px;text-align:center;">
+          <p style="font-size:32px;font-weight:900;color:#27272A;margin:0 0 6px;line-height:1;letter-spacing:-1px;"><span leaf="">378%</span></p>
+          <p style="font-size:11px;color:#A1A1AA;margin:0;letter-spacing:1px;"><span leaf="">statx tmpfs QD1 IOPS 提升</span></p>
+        </section>
+        <section style="flex:1;border:1px solid #E4E4E7;padding:22px 12px;text-align:center;">
+          <p style="font-size:32px;font-weight:900;color:#27272A;margin:0 0 6px;line-height:1;letter-spacing:-1px;"><span leaf="">222%</span></p>
+          <p style="font-size:11px;color:#A1A1AA;margin:0;letter-spacing:1px;"><span leaf="">openat O_TMPFILE tmpfs QD1</span></p>
+        </section>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这说明：当后端本身非常快时，io_uring 的「异步化税」原本比「实际 IO 税」还高。inline + handoff 把这些税基本省掉了。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">但并非所有场景都赢</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">高队列深度下，某些重负载出现了回落：</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">fsync ext4</span> QD32：比原方案慢 65%（15K 对 42K IOPS）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">openat O_TMPFILE ext4</span> QD8/QD32：分别慢 44%/49%</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;">statx ext4</span> QD32：慢 29%</span></p>
+      </section>
+    </section>
+
+    <section style="background:#FAFAFA;border-top:2px solid #27272A;padding:18px 22px;margin:0 10px 24px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;">
+        <span leaf="">NOTE</span>
+      </p>
+      <p style="font-size:14px;color:#52525B;margin:0;line-height:1.8;">
+        <span leaf="">Axboe 把补丁标为 RFC，原因之一就是这些高 QD 下的 regression 还需要调。Identity handoff 在「单个操作阻塞概率低」时非常赚，但在高并发、真的会阻塞的场景，线程切换的税可能换了一种形式回来。</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">04</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">WHY IT MATTERS</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">为什么值得认真读</span>
+        </h3>
+      </section>
+    </section>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">它可能把 io_uring 的适用范围再扩大一圈。数据库、容器、构建系统、文件同步工具会少写很多绕路。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">「阻塞就换身份」</strong>是个通用思路，会改变我们对 sync syscall 性能天花板的认知。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">它提醒我们 io_uring 还在快速演进。Linux v7.4 cycle 如果能合入，又会有一批 benchmark 重新洗牌。</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">05</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">EXPECTATION</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">落地预期</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">Axboe 说目标是争取在 </span>
+      <strong style="color:#27272A;"><span leaf="">Linux v7.4</span></strong>
+      <span leaf=""> 周期进入主线。目前仍是 RFC，regressions 没修完，代码审查也刚开始。对生产环境来说，</span>
+      <strong style="color:#27272A;"><span leaf="">现在观望即可</span></strong>
+      <span leaf="">；但如果你是内核开发者、做存储/数据库性能工作，或者就是 io_uring 爱好者，这组补丁的演进值得盯紧。</span>
+    </p>
+
+    <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 10px 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+        <span leaf="">io_uring 正在学会「赌一把」——赌这些操作不会阻塞；赌输了，就优雅地把身份交给 worker，自己继续干活。这个赌法，看起来像是未来的方向。</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">译自 Phoronix / Michael Larabel / 2026-09-11。原文标题：Linux IO_uring Sees Some Crazy Patches That Deliver Very Nice Improvements。</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 LeisureLinux，关注 Linux、开源与信创安全，把复杂的技术讲清楚。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+        <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+        <span leaf="">三连，我们下篇见。</span>
+      </p>
+      <p style="margin-top:16px;font-size:15px;color:#A1A1AA;margin-bottom:0;">
+        <span leaf="">—— LeisureLinux</span>
+      </p>
+    </section>
+  </section>
+
+</section>
