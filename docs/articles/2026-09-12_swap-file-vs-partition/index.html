@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批驳「别再建 swap 分区了」：swap 文件和 swap 分区到底差在哪 — FreeLAMP.com</title>
+  <meta name="description" content="swap 文件与 swap 分区在 4K 页直接 IO 路径上确实几乎等价，但内核里有 5 处分叉：大页 swap slot 只对块设备开放（2024 年新能力）、物理布局不保证连续、CoW FS 约束、可用时机与 TRIM、运维可见性。桌面用 swapfile 没毛病，靠的是负载模型而非等价。">
+  <meta name="keywords" content="Linux, 内核, swap, 内存管理, mTHP, 系统调优">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-12">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-12_swap-file-vs-partition/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="批驳「别再建 swap 分区了」：swap 文件和 swap 分区到底差在哪">
+  <meta property="og:description" content="swap 文件与 swap 分区在 4K 页直接 IO 路径上确实几乎等价，但内核里有 5 处分叉：大页 swap slot 只对块设备开放（2024 年新能力）、物理布局不保证连续、CoW FS 约束、可用时机与 TRIM、运维可见性。桌面用 swapfile 没毛病，靠的是负载模型而非等价。">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-12_swap-file-vs-partition/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-12">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="Linux">
+  <meta property="article:tag" content="Linux">
+  <meta property="article:tag" content="内核">
+  <meta property="article:tag" content="swap">
+  <meta property="article:tag" content="内存管理">
+  <meta property="article:tag" content="mTHP">
+  <meta property="article:tag" content="系统调优">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="批驳「别再建 swap 分区了」：swap 文件和 swap 分区到底差在哪">
+  <meta name="twitter:description" content="swap 文件与 swap 分区在 4K 页直接 IO 路径上确实几乎等价，但内核里有 5 处分叉：大页 swap slot 只对块设备开放（2024 年新能力）、物理布局不保证连续、CoW FS 约束、可用时机与 TRIM、运维可见性。桌面用 swapfile 没毛病，靠的是负载模型而非等价。">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "批驳「别再建 swap 分区了」：swap 文件和 swap 分区到底差在哪",
+  "description": "swap 文件与 swap 分区在 4K 页直接 IO 路径上确实几乎等价，但内核里有 5 处分叉：大页 swap slot 只对块设备开放（2024 年新能力）、物理布局不保证连续、CoW FS 约束、可用时机与 TRIM、运维可见性。桌面用 swapfile 没毛病，靠的是负载模型而非等价。",
+  "datePublished": "2026-09-12",
+  "dateModified": "2026-09-12",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-12_swap-file-vs-partition/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Linux, 内核, swap, 内存管理, mTHP, 系统调优"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "批驳「别再建 swap 分区了」：swap 文件和 swap 分区到底差在哪",
+        "item": "https://freelamp.com/articles/2026-09-12_swap-file-vs-partition/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-12">2026-09-12</div>
+        <h1 class="post-title" itemprop="headline">批驳「别再建 swap 分区了」：swap 文件和 swap 分区到底差在哪</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Linux/">Linux</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8/">内核</a><a itemprop="keywords" href="/tags/swap/">swap</a><a itemprop="keywords" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/">内存管理</a><a itemprop="keywords" href="/tags/mTHP/">mTHP</a><a itemprop="keywords" href="/tags/%E7%B3%BB%E7%BB%9F%E8%B0%83%E4%BC%98/">系统调优</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>社群里流传着一篇 gist《Stop making swap partitions—use swap files instead!》，核心主张是：swap 文件和 swap 分区的性能「二十多年没有差别」，因此 swap 文件「在各方面都更好」。这个结论对大多数场景成立，但它给出的理由站不住，适用范围也被写得太绝对。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<blockquote>针对 gist <a href="https://gist.github.com/joshenders/c4960cec9c63a7b7d68ffa9543356c43">joshenders/swap.md — Stop making swap partitions, use swap files instead</a></blockquote>
+<h2>0. 先把话说明白</h2>
+<p>那个 gist 的核心论点是：</p>
+<blockquote>Swap files have had the same performance characteristics as swap partitions for more than 20 years… They're better in every way.</blockquote>
+<strong>一半对，一半错。</strong>
+<ul>
+<li>「性能相同」在 <strong>ext4/xfs + 4K 页 + 预分配 + SSD</strong> 这个限定条件下，基本成立。它不是玄学，内核注释白纸黑字写着。</li>
+<li>但「better in every way」和「20 年没变」是错的。当前内核（6.x master）里，swap 文件和 swap 分区至少有 <strong>5 处路径分叉</strong>，其中一条是 <strong>2024 年才合入、且只对块设备生效</strong> 的能力，能带来几十个百分点的 swap 吞吐差距。</li>
+<li><strong>而这 5 条差异，在桌面 Linux 上基本都不触发</strong>——所以「桌面用 swapfile 完全没毛病」这个实践结论是对的，只是理由不是「两者性能永远相同」，而是「桌面的负载模型根本踩不到那些分叉」。详见第 4 节。</li>
+</ul>
+下面按「它对在哪 → 它错在哪 → 差多少 → 桌面为什么没毛病 → 怎么选」来拆。
+<p>---</p>
+<h2>1. 它对的部分：为什么 swap 文件确实不慢</h2>
+<p>很多人的直觉是「文件在文件系统里，每次读写都要过 VFS、过 journal、过块分配器，肯定慢」。<strong>这个直觉是 2002 年之前的正确认知，现在是错的。</strong></p>
+<p>关键在 <code>swapon</code> 期间做的一次性预处理。内核源码 <code>mm/swapfile.c</code>：</p>
+<pre><code class="c">/*
+ * Whether the swapdev is an S_ISREG file or an S_ISBLK blockdev, the swap
+ * extent rbtree operates in PAGE_SIZE disk blocks.  Both S_ISREG and S_ISBLK
+ <em> swapfiles are handled </em>identically* after swapon time.
+ *
+ * For S_ISREG swapfiles, setup_swap_extents() will walk all the file's blocks
+ * and will parse them into a rbtree, in PAGE_SIZE chunks.  If some stray
+ * blocks are found which do not fall within the PAGE_SIZE alignment
+ * requirements, they are simply tossed out - we will never use those blocks
+ * for swapping.
+ * ...
+ * The amount of disk space which a single swap extent represents varies.
+ * Typically it is in the 1-4 megabyte range.  So we can have hundreds of
+ * extents in the rbtree. - akpm.
+ */
+</code></pre>
+<p>机制要点：</p>
+<ol>
+<li>1. <code>swapon</code> 时，内核把 swap 文件<strong>所有的物理块映射</strong>一次性读出来，建成一棵 <code>swap_extent</code> 红黑树（<code>generic_swapfile_activate()</code>）。</li>
+<li>2. 运行期 <code>swap_writepage()</code> / <code>swap_read_folio()</code> 只做两件事：用 <code>map_swap_page()</code> 把「swap slot 偏移」换算成「磁盘 LBA」，然后<strong>直接向块设备发 bio</strong>。</li>
+<li>3. 这条路径 <strong>不经过</strong> VFS 写路径、不经过 page cache、不经过文件系统 journal、不触发块分配。</li>
+</ol>
+所以对 4K 页的读写来说，swap 文件和 swap 分区走的几乎是同一段代码。gist 引用的那段注释是真实的。
+<p><strong>但请注意注释的措辞</strong>：<code>handled identically</code> 指的是 <strong>swap extent 层</strong>。这不是「所有路径都相同」的承诺，而下面这些地方内核是显式分叉的。</p>
+<p>---</p>
+<h2>2. 它错的部分：内核里真实存在的 5 处分叉</h2>
+<h3>2.1 大页换出：swap 文件根本拿不到 order > 0 的 slot（最重要）</h3>
+<p>这是最硬的一条，而且它<strong>正好戳破「20 年没变」</strong>——这项能力 2024 年才进主线。</p>
+<p>当前 master <code>mm/swapfile.c</code>，<code>cluster_alloc_swap_entry()</code>：</p>
+<pre><code class="c">struct folio *folio = ...;
+unsigned int order = likely(folio) ? folio_order(folio) : 0;
+unsigned int offset = SWAP_ENTRY_INVALID, found = SWAP_ENTRY_INVALID;
+<p>/*
+ * Swapfile is not block device so unable
+ * to allocate large entries.
+ */
+if (order && !(si->flags & SWP_BLKDEV))
+    return 0;
+</code></pre></p>
+<p>而 <code>SWP_BLKDEV</code> 只有块设备才会被置位：</p>
+<pre><code class="c">if (S_ISBLK(inode->i_mode)) {
+    si->bdev = I_BDEV(inode);
+    ...
+    si->flags |= SWP_BLKDEV;
+} else if (S_ISREG(inode->i_mode)) {
+    si->bdev = inode->i_sb->s_bdev;   // 普通文件：没有 SWP_BLKDEV
+}
+</code></pre>
+<p><strong>后果</strong>：</p>
+<ul>
+<li>现代内核默认开 mTHP（multi-size THP，常见 64K 匿名大页）。内存回收时，内核想把一个 64K folio <strong>整体</strong>换出，需要在 swap 里找 <code>order=4</code>（16 个连续 slot）的空间。</li>
+<li>在 swap <strong>分区</strong>上，只要设备是非旋转设备（SSD/NVMe），分配器能给出连续 slot，大页整体落盘。</li>
+<li>在 swap <strong>文件</strong>上，分配器直接返回 0 → 内核只能先 <code>split_huge_page()</code> 拆成 16 个 4K 页，再一页一页换出。</li>
+</ul>
+代价是什么？Ryan Roberts 在合入该系列（<a href="https://lwn.net/ml/linux-kernel/20240311150058.1122862-1-ryan.roberts@arm.com">PATCH v4 0/6 Swap-out mTHP without splitting</a>，2024-03）时的实测数据，Ampere Altra / 8 vCPU / 35G 块设备做 swap，usemem 70 进程压测相对 4K 基线的提升：
+<table>
+<tr><th>分配粒度</th><th>改前（拆分）</th><th>改后（不拆分）</th></tr>
+<tr><td>4K page</td><td>0.0%</td><td>+1.4%</td></tr>
+<tr><td>64K mTHP</td><td><strong>−14.6%</strong></td><td><strong>+44.2%</strong></td></tr>
+<tr><td>2M THP</td><td>+87.4%</td><td>+97.7%</td></tr>
+</table>
+<p>也就是说：<strong>用 swap 文件，你会长期停在「64K mTHP 反而更慢 15%」那一列，并且永远拿不到后面那 +44%</strong>。因为换出时被拆散，换入时也就无法大页回填，TLB 效率、IO 合并、碎片度全部受损。</p>
+<blockquote>桌面视角：这条是唯一能造成几十个百分点差距的分叉，但<strong>桌面通常踩不到</strong>（默认 THP=madvise、khugepaged 合并率低、mTHP 基本不开）。详见 4.3。</blockquote>
+这一条同时说明：gist 拿 2005 年的 LKML 邮件当「20 年无差别」的证据，逻辑上不成立——内核 swap 子系统这几年一直在动，而且<strong>新动的方向恰好是「块设备独占」</strong>。
+<h3>2.2 物理布局与碎片：分区是 O(1) 且连续，文件是红黑树且可能散</h3>
+<ul>
+<li><strong>分区</strong>：<code>add_swap_extent(sis, 0, sis->max, 0)</code> —— 整个 swap 区是<strong>一条 extent</strong>。地址换算一次加法搞定，并且 LBA 天然连续。</li>
+<li><strong>文件</strong>：extent 数量取决于文件系统当时能给你什么。上面那段 akpm 的注释自己就说了「typically 1-4MB range，可以有 hundreds of extents」。每次 IO 多一次红黑树查找（纳秒级，CPU 开销本身不值一提），<strong>真正的问题是底层块是否连续</strong>。</li>
+</ul>
+在一个用了 70% 的 ext4 上 <code>fallocate</code> 出来的 8G swap 文件，很可能被切成几十上百段。后果：
+<table>
+<tr><th>场景</th><th>顺序 vs 随机的实际差距（数量级）</th></tr>
+<tr><td>HDD 顺序读</td><td>150–200 MB/s</td></tr>
+<tr><td>HDD 4K 随机读</td><td>100–200 IOPS ≈ 0.4–0.8 MB/s</td></tr>
+</table>
+<p>swap 的访问模式本来是最怕随机的（缺页是同步的、延迟直接压在进程上）。内核的 swap readahead / cluster 机制能救一部分，但救不了物理块的随机分布。<strong>在机械盘上，一个碎片化的 swap 文件和一个连续的 swap 分区，体感差距是倍数级，不是百分点级。</strong></p>
+<p>顺带一提：swapon 时那些「不满足 PAGE_SIZE 对齐」的块会被直接丢弃（注释里的 "tossed out"）——碎片文件还会<strong>白白损失一部分容量</strong>。</p>
+<p>自查命令：</p>
+<pre><code class="sh">sudo filefrag -e /swapfile     # 看 physical extents 数量
+swapon --show=NAME,TYPE,SIZE,USED,PRIO
+</code></pre>
+<h3>2.3 复杂文件系统上的约束与递归风险</h3>
+<p>这一类是「分区能做到、文件做不到或很危险」的硬边界：</p>
+<ul>
+<li><strong>btrfs</strong>：有 <code>swap_activate</code> 回调（走 <code>SWP_ACTIVATED</code> 分支，不是通用路径）。它会 flush delalloc、锁 extent、<strong>pin 住整个 block group</strong>。约束：文件必须 <code>nocow</code>、不能压缩、不能有 reflink/快照、不能跨多设备 chunk。更麻烦的是：<strong><code>btrfs balance</code> / 碎片整理会移动物理块</strong>，而内核 swapon 时缓存的块映射不会更新 → 写坏内存数据。所以规矩是「balance 前必须先 swapoff」。</li>
+<li><strong>ZFS</strong>：<strong>根本不支持 swapfile</strong>（gist 评论区那位 FreeBSD committer / ZFS contributor 也确认了）。原因是 ZFS 没有稳定的 bmap，且 ARC 自身占内存，swap 页面换出到 ZFS 支持的文件时会和 ARC 抢内存，形成递归争用，严重时直接冻机。</li>
+<li><strong>overlayfs / loop 设备上的文件</strong>：不支持或强烈不建议，因为没有稳定的底层块映射。</li>
+<li><strong>极端内存压力下的递归分配</strong>：文件系统的元数据读写本身需要内存。内存见底时，「要回收内存 → 得换出 → 换出要走 FS 元数据路径 → 又需要内存」的回路，在 ext4/xfs 上已经用 mempool / <code>PF_MEMALLOC</code> 基本堵住，但在 ZFS、btrfs、多设备栈上依然是真实事故源。<strong>swap 分区这条回路不存在。</strong></li>
+</ul>
+<h3>2.4 生命周期：可用时机、休眠、TRIM</h3>
+<table>
+<tr><th>维度</th><th>swap 分区</th><th>swap 文件</th></tr>
+<tr><td>可用时机</td><td>可在 initramfs 阶段启用，早于根 FS 挂载</td><td>必须等文件系统挂载后，早期 OOM 窗口存在</td></tr>
+<tr><td>休眠（hibernate）</td><td>直接指定 resume 设备</td><td>需 <code>resume_offset</code>，加密/LVM 下配置繁琐</td></tr>
+<tr><td>discard/TRIM</td><td>支持 <code>discard=once</code> / <code>discard=pages</code>，直接向设备发 discard</td><td>依赖文件系统 discard 实现；且这些块在 FS 眼里长期「已占用」，SSD FTL 不知道内容已失效 → GC 效率下降、写放大上升</td></tr>
+<tr><td>底层通知</td><td><code>swap_slot_free_notify</code> 只发给块设备（<code>if (si->flags & SWP_BLKDEV)</code>）</td><td>不通知</td></tr>
+</table>
+<p>TRIM 那条值得展开：swap 分区在启用时可以一次性把整个区域 discard 掉，SSD 立刻知道这些块是可擦除的空白；swap 文件占用的块在文件系统位图里是「已分配」，FTL 拿不到任何提示，只能等文件系统 trim 或文件删除。对长期重度使用 swap 的 SSD 服务器，这是<strong>随时间累积</strong>的性能衰减。</p>
+<h3>2.5 运维可见性</h3>
+<ul>
+<li><code>df</code> 里多出的几十 GB（gist 把它算成缺点，其实这是「容量被真实占用」的诚实表现）；</li>
+<li>备份、<code>rsync</code>、快照、容器镜像打包时都要显式排除 swapfile；</li>
+<li>快照（LVM/btrfs/虚拟机快照）会把 swap 内容一起冻进去，恢复后可能拿到一份和内存状态不一致的 swap 镜像。</li>
+</ul>
+---
+<h2>3. gist 论证方式本身的问题</h2>
+<ol>
+<li>1. <strong>诉诸时间而非事实。</strong>「20 年前就一样了」不构成「现在也一样」。反例就在眼前：mTHP 不拆分换出是 2024 年合入的，且明确只对块设备生效。</li>
+<li>2. <strong>扩大解释了内核注释。</strong>swap.h 里那句 <code>Apart from setup, they're handled identically</code> 限定在 swap extent 映射层；分配器（order > 0）、释放通知、discard、早期可用性这些地方内核是显式按 <code>SWP_BLKDEV</code> 分叉的。</li>
+<li>3. <strong>「better in every way」过于绝对。</strong>ZFS 环境、overlayfs、机械盘、依赖 mTHP 的负载，至少这四类场景下它不成立。</li>
+</ol>
+当然，该给的也要给：<strong>对绝大多数人——云主机、普通桌面、ext4/xfs、SSD、4G~8G 应急 swap——gist 的结论（用 swap 文件）是对的</strong>，弹性、免分区表、易扩容的收益远大于那点理论差异。问题不在结论，在于把它写成了普适真理。
+<p>---</p>
+<h2>4. 为什么桌面 Linux 用 swapfile 基本没毛病</h2>
+<p>「用 ext4 + 4K 页 + SSD」只是一半的答案，而且是<strong>次要的那一半</strong>。真正的答案是<strong>负载模型</strong>：桌面的 swap 用法，恰好绕开了前面所有 5 条分叉的触发条件。</p>
+<h3>4.1 桌面的 swap 是「保险」，不是「带宽」</h3>
+<p>服务器上 swap 是持续工作的第二级存储：数据库 buffer pool、JVM heap 的冷页不停换进换出，吞吐和延迟直接进入 SLA。</p>
+<p>桌面完全不是这样：</p>
+<ul>
+<li><strong>换出是异步的</strong>：内存回收由 kswapd 在后台做，进程几乎不感知。真正同步的只有 swap-in（缺页）。</li>
+<li><strong>换出的是真冷页</strong>：浏览器后台标签、开了一整天没再碰的 IDE 插件、库文件的匿名页。6.1+ 的 MGLRU 让「哪些页冷」判断得比以前准得多，桌面日常几乎不会把热页误换出去。</li>
+<li><strong>流量极小</strong>：健康桌面的 <code>pswpout/s</code> 常年是 0，只在开大型工程/开几十个标签/临时压内存时burst 一下。一天可能就几百 MB。</li>
+</ul>
+一个「一天搬运几百 MB、且搬运时用户不会盯着延迟」的通道，你去纠结它 3% 还是 15% 的效率差，没有意义。
+<h3>4.2 SSD/NVMe 把「随机 vs 顺序」的惩罚从 100 倍降到无感</h3>
+<p>第 2.2 条说碎片化会让顺序 IO 变随机——这话在机械盘上是致命的，在 SSD 上基本不成立。看<strong>绝对延迟</strong>而不是吞吐比：</p>
+<table>
+<tr><th>介质</th><th>4K 随机读延迟（QD1，量级）</th><th>换入 100MB 冷页的体感</th></tr>
+<tr><td>HDD</td><td>~10 ms</td><td>分钟级，窗口拖不动，明显卡死</td></tr>
+<tr><td>SATA SSD</td><td>~0.1 ms</td><td>一两秒， barely noticeable</td></tr>
+<tr><td>NVMe</td><td>~0.05–0.1 ms</td><td>亚秒级，基本无感</td></tr>
+</table>
+<p>同一份「碎片化 swapfile vs 连续分区」的物理布局差异，在 HDD 上体现为每次缺页多付 10ms（用户能数出来），在 NVMe 上体现为多付 0.05ms（没人感知得到）。<strong>差异本身没变，是介质的绝对延迟把它稀释掉了。</strong></p>
+<p>而且 SSD 还有个隐藏优势：FTL 本来就把 LBA 随机重映射到 NAND 物理页，「文件在逻辑上连不连续」对 NAND 来说没有物理意义——HDD 那个「顺序 = 磁头不跳」的前提在 SSD 上直接消失。</p>
+<h3>4.3 桌面基本碰不到大页 swap 的分叉（但要说准）</h3>
+<p>第 2.1 条是唯一能造成几十个百分点差距的，桌面为什么躲得过？</p>
+<ul>
+<li>主流发行版默认 <code>/sys/kernel/mm/transparent_hugepage/enabled = madvise</code>。只有显式 <code>MADV_HUGEPAGE</code> 的程序（数据库、DPDK、部分 JVM 配置）才会去拿 THP，<strong>浏览器、IDE、办公套件默认都不申请</strong>。</li>
+<li>即使 <code>always</code>，khugepaged 要在「内存规整成功 + 2M 对齐 + 访问模式稳定」时才合并成功。桌面进程的内存是碎的、生命周期是短的，实际 THP 覆盖率通常很低。</li>
+<li>至于 mTHP（64K/16K），桌面发行版普遍没开（<code>hugepages-64kB/enabled</code> 多为 never/inherit 但实际少有匿名 mTHP）。</li>
+</ul>
+<strong>但这里要给个诚实的边界</strong>：如果你的桌面常年开 64K mTHP（部分发行版/调优脚本会开）、或者你在本机跑大模型推理、大型 C++ 编译、QEMU/KVM 虚机（这些会吃 THP），那么第 2.1 条的亏你照样会吃。判断方法很简单：
+<pre><code class="sh">grep -E 'thp_swpout|thp_swpout_fallback|thp_split' /proc/vmstat
+</code></pre>
+<p><code>thp_swpout_fallback</code> 长期非零增长，就说明大页在换出时被迫拆分了——那时就该考虑 swap 分区。</p>
+<h3>4.4 ext4/xfs + fallocate：让「碎片」这条也基本不成立</h3>
+<p>第 2.2 条成立的前提是「文件被切成很多段」。桌面规避起来很容易：</p>
+<ul>
+<li>用 <code>fallocate</code>（不是 <code>dd</code>），并且在<strong>系统刚装好、文件系统还很空</strong>的时候建 → ext4 的多块分配器能一次给出 MB 级连续 extent。</li>
+<li>内核注释说单条 extent 典型是 1–4MB，8G swapfile 落在几十条 extent 内完全正常 → 红黑树查找是纳秒级，相对 NVMe 的 0.1ms IO 延迟，噪声都算不上。</li>
+<li>结果：走 <code>generic_swapfile_activate()</code> 建好 extent 表，运行期直发 bio，路径和分区一致。</li>
+</ul>
+反过来说，这也是唯一需要你<strong>主动做对</strong>的一步：在用了三年的满盘 ext4 上 <code>fallocate</code> 一个 16G 文件，段数可能上百，那才是真会痛的情况。
+<h3>4.5 桌面的运维收益是压倒性的</h3>
+<p>理论差异趋近于零时，工程决策就看操作性：</p>
+<table>
+<tr><th>维度</th><th>swap 文件</th><th>swap 分区</th></tr>
+<tr><td>装机</td><td>不用预留、不用动分区表</td><td>必须提前规划，事后调整要 shrink/move</td></tr>
+<tr><td>改容量</td><td>两条命令，分钟级</td><td>需要空闲空间 + 分区工具，风险高</td></tr>
+<tr><td>多系统/多发行版</td><td>各用各的文件，互不干扰</td><td>分区表争抢，容易误格</td></tr>
+<tr><td>双系统 + Windows</td><td>无影响</td><td>多一个 NTFS 看不懂的分区</td></tr>
+<tr><td>休眠</td><td>Ubuntu 等发行版默认就用 swapfile（配 <code>resume_offset</code>）</td><td>可行但分区号要固定</td></tr>
+<tr><td>云镜像/自动装机</td><td>镜像里塞一个文件即可，不用按盘大小算分区</td><td>需要按磁盘尺寸动态分区</td></tr>
+</table>
+<p>桌面的核心诉求是<strong>省事 + 可改</strong>，swap 文件在这两点上是碾压的。</p>
+<h3>4.6 桌面 swapfile 的正确姿势</h3>
+<pre><code class="sh"># 1) 预分配（关键：用 fallocate，别用 dd；尽量在文件系统较空时建）
+sudo fallocate -l 8G /swapfile          # 或 mkswap --size 8G --file /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap defaults 0 0' | sudo tee -a /etc/fstab
+<h1>2) 确认碎片程度：extents 数量越少越好</h1>
+sudo filefrag -e /swapfile
+<h1>3) 桌面推荐：zram 打头阵，磁盘 swap 只兜底</h1>
+<h1>   Fedora/openSUSE 默认开 zram；Ubuntu 可 sudo apt install zram-tools</h1>
+<h1>   zram 压缩比通常 2-3:1，且完全不碰磁盘 → 桌面卡顿的性价比最优解</h1>
+<h1>4) 参数（桌面保守值）</h1>
+sudo sysctl -w vm.swappiness=10          # SSD/NVMe 桌面；内存紧张可 20-60
+sudo sysctl -w vm.watermark_boost_factor=1
+</code></pre>
+<p>避坑清单：</p>
+<ul>
+<li><strong>btrfs 桌面（openSUSE 等）</strong>：swapfile 必须 <code>chattr +C</code>（nocow）、禁压缩、不能放在会被快照的子卷里；<code>btrfs balance</code> 前必须 <code>swapoff</code>。做不到就用分区。</li>
+<li><strong>别放在</strong> LVM 快照源、网络文件系统、overlayfs、loop 设备、ZFS 上。</li>
+<li><strong>装了 64G+ 内存还开 32G swap</strong>：没必要。桌面「少量内存 + zram + 2-8G 磁盘兜底」通常是最优组合。</li>
+</ul>
+<h3>4.7 桌面什么情况下还是该用分区</h3>
+<table>
+<tr><th>情形</th><th>原因</th></tr>
+<tr><td>系统盘是机械盘</td><td>随机 IO 惩罚是 100 倍级，碎片 swapfile 会真的卡</td></tr>
+<tr><td>内存 ≤ 4G 且重度依赖 swap</td><td>swap 变成主通道，任何百分比差异都会被放大</td></tr>
+<tr><td>跑大模型 / 大编译 / 虚拟机 / 数据库</td><td>这些会吃 THP，第 2.1 条分叉真实触发</td></tr>
+<tr><td>btrfs + 要做 balance/快照</td><td>见 2.3</td></tr>
+<tr><td>需要休眠且发行版没帮你配好</td><td>分区的 resume 配置更简单可靠</td></tr>
+</table>
+<p>---</p>
+<h2>5. 怎么选</h2>
+<table>
+<tr><th>场景</th><th>建议</th></tr>
+<tr><td>桌面 Linux（ext4/xfs + SSD/NVMe + swap 只当兜底）</td><td><strong>swap 文件</strong>，理由见第 4 节（不是因为等价，是因为踩不到那些分叉）</td></tr>
+<tr><td>云主机 / 容器，ext4/xfs，SSD，swap 只是保险</td><td><strong>swap 文件</strong>，gist 的建议成立</td></tr>
+<tr><td>需要频繁增减 swap 容量</td><td><strong>swap 文件</strong>（分区改大小要动分区表）</td></tr>
+<tr><td>机械盘 / 混合盘承重 swap</td><td><strong>swap 分区</strong>（保证连续，避免碎片文件把顺序 IO 变随机）</td></tr>
+<tr><td>大量使用 THP / mTHP 的负载（数据库、大内存 JVM/编译农场）</td><td><strong>swap 分区</strong>，且放在 SSD 上，否则大页换出全部退化成 4K</td></tr>
+<tr><td>ZFS / btrfs（尤其要做 balance、快照）</td><td><strong>swap 分区</strong>（ZFS 不支持 swapfile；btrfs 用 swapfile 前必须 nocow，且 balance 前 swapoff）</td></tr>
+<tr><td>内存吃紧、早期就可能 OOM</td><td><strong>swap 分区</strong>（initramfs 阶段即可用）</td></tr>
+<tr><td>需要休眠到磁盘</td><td>两者都行，但<strong>分区更简单可靠</strong></td></tr>
+<tr><td>长期重度 swap 的 SSD 服务器</td><td><strong>swap 分区 + <code>discard=once</code></strong>，控制写放大</td></tr>
+<tr><td>小内存机器 / 嵌入式 / 容器</td><td>先上 <strong>zram / zswap</strong>，比纠结文件还是分区收益大得多</td></tr>
+</table>
+<p>---</p>
+<h2>6. 想自己量一量</h2>
+<pre><code class="sh"># 1) 看 swap 文件碎片程度（extent 越多越糟）
+sudo filefrag -e /swapfile
+<h1>2) 看大页配置与拆分情况</h1>
+cat /sys/kernel/mm/transparent_hugepage/hugepages-64kB/enabled
+grep -E 'thp_split|thp_swpout' /proc/vmstat
+<h1>3) 换页吞吐与延迟</h1>
+vmstat 1                 # si/so 列
+sar -B 1                 # pswpin/s pswpout/s
+<h1>4) 直接量 swap 路径耗时</h1>
+sudo bpftrace -e 'kprobe:swap_writepage { @s = hist(nsecs); }'
+<h1>5) 对照实验：同样的压力，分别在 swap 文件 / swap 分区上跑，</h1>
+<h1>   比较 pswpout/s 与 pswpin/s 的稳态值，以及应用 P99 延迟</h1>
+</code></pre>
+<p>---</p>
+<h2>7. 一句话总结</h2>
+<blockquote>swap 文件和 swap 分区在「4K 页的直接 IO 路径」上确实几乎等价——但 swap 文件<strong>拿不到大页 swap slot</strong>（2024 年这条路径只对块设备开放）、<strong>物理布局不保证连续</strong>、<strong>在 CoW/复杂 FS 上有额外约束和递归风险</strong>、<strong>可用时机更晚且 TRIM 语义更差</strong>。</blockquote>>
+<blockquote><strong>桌面 Linux 用 swapfile 没毛病</strong>，不是因为两者在所有维度等价，而是因为：桌面 swap 只当保险（异步、冷页、流量极小）；NVMe/SSD 把随机 IO 的绝对延迟压到感知阈值以下（0.1ms vs HDD 的 10ms）；桌面默认拿不到 THP/mTHP，踩不到大页分叉；ext4 + <code>fallocate</code> 建在空盘上，extent 数量本来就少。四条叠加，理论差异全部落进噪声里，swapfile 在可运维性上的压倒性优势就成了决定性因素。</blockquote>>
+<blockquote>gist 的结论对大多数场景是对的，但它给出的理由（「20 年没差别」）是错的，适用范围也被写成了「every way」。</blockquote>
+---
+<h2>参考</h2>
+<ul>
+<li>内核源码：<code>mm/swapfile.c</code>（<code>setup_swap_extents()</code> / <code>cluster_alloc_swap_entry()</code> / <code>swapon()</code> 中的 <code>SWP_BLKDEV</code> 分支）、<code>include/linux/swap.h</code>（<code>struct swap_extent</code> 注释、<code>SWP_*</code> 标志）</li>
+<li>Ryan Roberts, <em>[PATCH v4 0/6] Swap-out mTHP without splitting</em>, LKML, 2024-03</li>
+<li>Andrew Morton 关于 swap extent rbtree 的注释（原文见上）</li>
+<li>内核文档：<code>Documentation/admin-guide/sysctl/vm.rst</code>（swappiness）、<code>Documentation/power/swsusp.rst</code>（休眠与 swap）</li>
+</ul>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-12_swap-file-vs-partition/",
+      title: "\u6279\u9a73\u300c\u522b\u518d\u5efa swap \u5206\u533a\u4e86\u300d\uff1aswap \u6587\u4ef6\u548c swap \u5206\u533a\u5230\u5e95\u5dee\u5728\u54ea"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
