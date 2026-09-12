@@ -1,0 +1,688 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+      <span leaf="">QUOTE</span>
+    </p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">swap 文件和 swap 分区在 4K 页的 IO 路径上几乎等价，但内核里还有</span>
+      <span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">五条只对块设备开放的岔路</span></span>
+      <span leaf="">。桌面用着没毛病，靠的不是等价，是踩不到。</span>
+    </p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+      <span leaf="">—— LeisureLinux</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 32px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">社群里流传着一篇 gist，标题很硬气：《Stop making swap partitions—use swap files instead!》。核心主张两条：</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">swap 文件和 swap 分区的性能「二十多年没有差别」</span></span>
+      <span leaf="">，所以 swap 文件「在各方面都更好」。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">我的看法是：</span>
+      <strong style="color:#27272A;"><span leaf="">结论对大多数场景成立，但它的理由站不住，适用范围也写得太绝对。</span></strong>
+      <span leaf="">前半句「性能差别极小」在限定条件下是真的，后半句「二十多年没变」则是把历史结论当成了现状证明。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+      <span leaf="">本文看点</span>
+    </p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">那句内核注释究竟承诺了什么</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">五条真实分叉，最狠一条 2024 年才出现</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">桌面为什么可以放心用 swap 文件</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">01</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">WHAT IS TRUE</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">它对的部分：swap 文件确实不慢</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-top:24px;margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">很多人的直觉是「文件在文件系统里，读写都要过 VFS、过 journal、过块分配器，肯定慢」。这个直觉是</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">2002 年之前</span></span>
+      <span leaf="">的正确认知，现在已经过时了。关键在 swapon 期间做的一次性预处理。</span>
+    </p>
+
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 8px;letter-spacing:2px;font-weight:500;">
+        <span leaf="">KERNEL SOURCE · mm/swapfile.c</span>
+      </p>
+      <p style="font-size:14px;color:#3F3F46;margin:0 0 10px;line-height:1.8;text-align:justify;">
+        <span leaf="">Whether the swapdev is an S_ISREG file or an S_ISBLK blockdev, the swap extent rbtree operates in PAGE_SIZE disk blocks. Both S_ISREG and S_ISBLK swapfiles are handled identically after swapon time.</span>
+      </p>
+      <p style="font-size:14px;color:#3F3F46;margin:0;line-height:1.8;text-align:justify;">
+        <span leaf="">Typically it is in the 1-4 megabyte range. So we can have hundreds of extents in the rbtree. — akpm</span>
+      </p>
+    </section>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">swapon 时，内核把 swap 文件所有的物理块映射一次性读出来，建成一棵 swap_extent 红黑树。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">运行期只做两件事：把 slot 偏移换算成磁盘 LBA，然后直接向块设备发 bio。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">这条路径不经过 VFS 写路径、page cache、文件系统 journal，也不触发块分配。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">所以对</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">4K 页</span></span>
+      <span leaf="">的读写来说，两者走的几乎是同一段代码。gist 引用的注释是真实的——但请注意它的措辞：</span>
+      <strong style="color:#27272A;"><span leaf="">identically 限定在 swap extent 映射层</span></strong>
+      <span leaf="">，这不是「所有路径都相同」的承诺。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">02</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">WHERE THEY DIFFER</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">五处真实分叉，最狠一条 2024 年才出现</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">2.1　大页换出：swap 文件拿不到 order &gt; 0 的 slot</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">当前内核 mm/swapfile.c 的 cluster_alloc_swap_entry() 里有一行，注释写得很直白：</span>
+    </p>
+
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">/* Swapfile is not block device so unable to allocate large entries. */</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">if (order &amp;&amp; !(si-&gt;flags &amp; SWP_BLKDEV)) return 0;</span>
+      </p>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">而 SWP_BLKDEV 只有块设备才会被置位。后果是：内存回收时内核想把 64K 的 mTHP 整体换出，需要连续 16 个 slot；swap</span>
+      <strong style="color:#27272A;"><span leaf="">分区</span></strong>
+      <span leaf="">能给，swap</span>
+      <strong style="color:#27272A;"><span leaf="">文件</span></strong>
+      <span leaf="">直接返回 0，内核只能先把大页拆成 16 个 4K 页再一页一页写。</span>
+    </p>
+
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">分配粒度</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">拆分（swap 文件现状）</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">不拆分（SSD 分区）</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">4K page</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">0.0%</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">+1.4%</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">64K mTHP</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">−14.6%</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">+44.2%</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">2M THP</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">+87.4%</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">+97.7%</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p style="font-size:12px;color:#A1A1AA;text-align:center;margin:0 10px 28px;letter-spacing:0.5px;">
+      <span leaf="">— 数据来源：Ryan Roberts，Swap-out mTHP without splitting，LKML 2024-03</span>
+    </p>
+
+    <section style="border-left:3px solid #F97316;padding:14px 0 14px 22px;margin:0 10px 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+        <span leaf="">用 swap 文件，你会长期停在「64K 大页反而更慢 15%」那一列，而且永远拿不到后面那个 +44%。</span>
+      </p>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这一条同时戳破了「二十多年没差别」的说法：</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">mTHP 不拆分换出是 2024 年才合入主线的</span></span>
+      <span leaf="">，而且新方向恰好是「块设备独占」。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">2.2　物理布局：分区一条 extent，文件可能有几百条</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">分区是 add_swap_extent(sis, 0, sis-&gt;max, 0) 一条搞定，地址换算一次加法，LBA 天然连续。文件则取决于文件系统当时能给你什么——akpm 在同一段注释里承认可以有</span>
+      <span style="background:#F4F4F5;padding:1px 6px;border-radius:2px;font-weight:600;color:#3F3F46;"><span leaf="">hundreds of extents</span></span>
+      <span leaf="">。更麻烦的是那些不满足 PAGE_SIZE 对齐的块会被直接丢弃，碎片文件还会白白损失容量。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">在一块用了七成的 ext4 上 fallocate 出来的 8G 文件，很可能被切成几十上百段。对机械盘而言，这意味着</span>
+      <strong style="color:#27272A;"><span leaf="">本该顺序的 swap 流变成随机 IO</span></strong>
+      <span leaf="">：顺序 150–200 MB/s 对上 4K 随机的 100–200 IOPS，是量级差，不是百分点差。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">2.3　CoW 与复杂文件系统：约束和递归风险</span>
+    </p>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">btrfs</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">走 swap_activate 分支，会 flush delalloc、锁 extent、pin 住 block group；文件必须 nocow、禁压缩、不能有 reflink 和快照。更要命的是 balance 会移动物理块，而内核缓存的映射不会更新——balance 前必须先 swapoff。</span>
+      </p>
+    </section>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">ZFS</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">根本不支持 swapfile。没有稳定 bmap，且 ARC 自己吃内存，换出路径会和 ARC 抢内存形成递归争用，严重时直接冻机。</span>
+      </p>
+    </section>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">递归分配</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">文件系统元数据读写本身要内存。内存见底时「要回收内存→得换出→换出要走 FS 元数据路径→又要内存」，ext4/xfs 上已用 mempool 基本堵住，但 ZFS、btrfs、多设备栈上仍是真实事故源。swap 分区没有这条回路。</span>
+      </p>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">2.4　生命周期：时机、休眠与 TRIM</span>
+    </p>
+
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">维度</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">swap 分区</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">swap 文件</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">可用时机</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">initramfs 阶段即可用</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">须等文件系统挂载</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">TRIM</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">discard=once 直发设备</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">依赖 FS，块长期标记已占用</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">休眠</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">指定 resume 设备即可</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">需 resume_offset，加密下繁琐</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">TRIM 那条容易被忽略：swap 分区启用时可以一次性 discard 整片区域，SSD 立刻知道这些块可擦除；swap 文件占用的块在文件系统位图里是「已分配」，FTL 拿不到任何提示，只能等文件系统 trim 或文件删除。</span>
+      <strong style="color:#27272A;"><span leaf="">对长期重度用 swap 的 SSD 服务器，这是随时间累积的写放大。</span></strong>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">2.5　运维可见性</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">df 里凭空多出几十 GB、备份与 rsync 要显式排除、快照会把 swap 内容一起冻进去——恢复后可能拿到一份与内存状态不一致的 swap 镜像。这些都是小事，但它们真实存在。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">03</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">FLAWED ARGUMENT</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">它论证方式上的三个问题</span>
+        </h3>
+      </section>
+    </section>
+
+    <section style="margin-top:24px;margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">诉诸时间而非事实。「二十年前就一样」不构成「现在也一样」，反例就是 2024 年那条只对块设备开放的新路径。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">扩大解释内核注释。identically 限定在 swap extent 层；分配器 order、释放通知、discard、早期可用性这些地方内核是显式按 SWP_BLKDEV 分叉的。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">「better in every way」太绝对。ZFS 环境、overlayfs、机械盘、依赖大页的负载，这四类场景它都不成立。</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">04</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">DESKTOP REALITY</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">为什么桌面 Linux 用 swap 文件没毛病</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-top:24px;margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">「因为是 ext4、4K 页、SSD」——这只是一半答案，而且是次要的那一半。真正的答案是</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">负载模型</span></span>
+      <span leaf="">：桌面的 swap 用法，恰好绕开了上面所有五条分叉的触发条件。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.1　桌面的 swap 是保险，不是带宽</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">服务器上 swap 是持续工作的二级存储，吞吐和延迟直接进 SLA。桌面完全不同：换出由 kswapd 在后台</span>
+      <strong style="color:#27272A;"><span leaf="">异步</span></strong>
+      <span leaf="">完成，同步的只有缺页换入；换出的是真冷页，6.1 之后的 MGLRU 让「哪些页冷」判断得比过去准得多；流量也极小，健康桌面的 pswpout 常年是 0，一天可能就几百 MB。</span>
+    </p>
+
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+      <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+        <span leaf="">「一个一天只搬几百 MB、搬运时用户并不盯着延迟看的通道，去纠结它 3% 还是 15% 的效率差，没有意义。」</span>
+      </p>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.2　SSD 把随机惩罚从一百倍稀释到无感</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">第 2.2 条说碎片化会让顺序变随机，在机械盘上致命，在 SSD 上基本不成立。关键要看</span>
+      <span style="background:linear-gradient(180deg,transparent 60%,#E4E4E7 60%);font-weight:700;color:#27272A;"><span leaf="">绝对延迟而不是吞吐比</span></span>
+      <span leaf="">：</span>
+    </p>
+
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">介质</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">4K 随机读延迟</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">换入 100MB 冷页</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">机械硬盘</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">约 10 ms</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">分钟级，明显卡死</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">SATA SSD</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">约 0.1 ms</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">一两秒，几乎无感</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">NVMe</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">0.05–0.1 ms</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">亚秒级，基本无感</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">同一份物理布局差异，在机械盘上体现为每次缺页多付 10 毫秒（用户能数出来），在 NVMe 上是 0.05 毫秒（没人感知得到）。</span>
+      <strong style="color:#27272A;"><span leaf="">差异本身没变，是介质的绝对延迟把它稀释掉了。</span></strong>
+      <span leaf="">更何况 FTL 本来就把 LBA 随机重映射到 NAND 物理页，「文件逻辑上连不连续」在 SSD 上根本没有物理意义。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.3　大页那条分叉，桌面通常踩不到</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">主流发行版默认 transparent_hugepage 是</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 7px;border-radius:3px;font-weight:700;font-size:14px;"><span leaf="">madvise</span></span>
+      <span leaf="">，只有显式申请的程序才会去拿大页，浏览器、IDE、办公套件默认都不申请；即使设成 always，khugepaged 在桌面那种碎内存上也很难合并成功；mTHP 更是普遍没开。</span>
+    </p>
+
+    <section style="background:#FAFAFA;border-top:2px solid #27272A;padding:18px 22px;margin:0 10px 24px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;">
+        <span leaf="">SELF CHECK</span>
+      </p>
+      <p style="font-size:14px;color:#52525B;margin:0 0 8px;line-height:1.8;">
+        <span leaf="">想确认自己有没有踩到，跑这一条：</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">grep -E 'thp_swpout|thp_swpout_fallback' /proc/vmstat</span>
+      </p>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">thp_swpout_fallback 长期非零增长，就说明大页在换出时被迫拆了——那时候才该认真考虑 swap 分区。同理，如果你在本机跑</span>
+      <strong style="color:#27272A;"><span leaf="">大模型推理、大型 C++ 编译、QEMU 虚机</span></strong>
+      <span leaf="">，这些负载吃 THP，亏你照样会吃。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.4　fallocate 建在空盘上，碎片这条也基本不成立</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">用 fallocate 而不是 dd，并且在系统刚装好、文件系统还很空的时候建，ext4 的多块分配器能一次给出 MB 级连续 extent，8G 文件落在几十条 extent 内很正常，红黑树查找是纳秒级。</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">这也是唯一需要你主动做对的一步</span></span>
+      <span leaf="">：在用了三年的满盘上建 16G 文件，段数可能上百，那才是真会痛。</span>
+    </p>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.5　理论差异趋近于零时，就看操作性</span>
+    </p>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">装机与扩容</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">不用预留分区、不用动分区表；改容量两条命令分钟级搞定。分区方案事后调整要 shrink/move，风险高得多。</span>
+      </p>
+    </section>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">多系统与云镜像</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">多发行版各用各的文件互不干扰，双系统不惊动 Windows；云镜像里塞一个文件即可，不用按盘大小算分区。</span>
+      </p>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.6　桌面 swap 文件的正确姿势</span>
+    </p>
+
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">sudo fallocate -l 8G /swapfile</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">sudo chmod 600 /swapfile &amp;&amp; sudo mkswap /swapfile</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">sudo swapon /swapfile</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">echo '/swapfile none swap defaults 0 0' | sudo tee -a /etc/fstab</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">sudo sysctl -w vm.swappiness=10</span>
+      </p>
+    </section>
+
+    <section style="background:#FAFAFA;border-top:2px solid #27272A;padding:18px 22px;margin:0 10px 24px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 10px;letter-spacing:2px;font-weight:500;">
+        <span leaf="">AVOID</span>
+      </p>
+      <p style="font-size:14px;color:#52525B;margin:0 0 6px;line-height:1.8;">
+        <span leaf="">· btrfs 桌面：文件必须 chattr +C 关掉 CoW、禁压缩、不能放会被快照的子卷，balance 前先 swapoff。</span>
+      </p>
+      <p style="font-size:14px;color:#52525B;margin:0 0 6px;line-height:1.8;">
+        <span leaf="">· 别放在 LVM 快照源、网络文件系统、overlayfs、loop 设备、ZFS 上。</span>
+      </p>
+      <p style="font-size:14px;color:#52525B;margin:0;line-height:1.8;">
+        <span leaf="">· 更好的组合是 zram 打头阵、磁盘 swap 只兜底：压缩比通常 2–3 比 1，完全不碰磁盘，是桌面卡顿性价比最高的解。</span>
+      </p>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">4.7　桌面什么情况下还是该用分区</span>
+    </p>
+
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">情形</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">原因</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">系统盘是机械盘</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">随机惩罚是百倍级，会真的卡</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">内存不超过 4G 且重度依赖 swap</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">swap 变主通道，百分比差异被放大</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">跑大模型 / 大编译 / 虚机</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">吃 THP，2.1 那条分叉真实触发</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">btrfs 且要做 balance / 快照</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">块移动会让内核缓存的映射失效</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">05</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">DECISION</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">到底该怎么选</span>
+        </h3>
+      </section>
+    </section>
+
+    <section style="margin:24px 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">场景</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">建议</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">桌面 / 云主机 / 容器，ext4、xfs、SSD</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">swap 文件</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">需要频繁增减容量</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">swap 文件</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">机械盘承重 swap</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">swap 分区</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">大量使用 THP / mTHP 的负载</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">swap 分区，且放 SSD 上</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">ZFS / btrfs 要做 balance 快照</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">swap 分区</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">早期就可能 OOM</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">swap 分区（initramfs 即可用）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">长期重度 swap 的 SSD 服务器</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">swap 分区 + discard=once</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">小内存机器 / 嵌入式</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">先上 zram / zswap</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">想自己量一量</span>
+    </p>
+
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 10px 28px;">
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">sudo filefrag -e /swapfile</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0 0 8px;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">vmstat 1　　# 看 si / so 两列</span>
+      </p>
+      <p style="font-size:13px;color:#3F3F46;margin:0;line-height:1.8;font-family:'SF Mono',Consolas,Monaco,monospace;">
+        <span leaf="">sar -B 1　　# pswpin/s 与 pswpout/s</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">∞</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">THE END</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">结论</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin-top:24px;margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">swap 文件和 swap 分区在 4K 页的直接 IO 路径上确实几乎等价，但 swap 文件拿不到大页 swap slot、物理布局不保证连续、在 CoW 文件系统上有额外约束、可用时机更晚、TRIM 语义更差。</span>
+    </p>
+
+    <p style="font-size:15px;margin:0 10px 24px;text-align:center;color:#27272A;font-weight:700;letter-spacing:1px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;padding:14px 10px;">
+      <span leaf="">桌面用 swapfile 没毛病，靠的不是两者等价，而是踩不到那些分叉。</span>
+    </p>
+
+    <p style="margin-bottom:0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">那篇 gist 的结论对大多数场景是对的，只是它给出的理由错了，适用范围也写成了 every way。技术判断最怕的不是结论错，而是结论对、理由错——因为一旦场景变了，错误的理由会带你去错的地方。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;letter-spacing:0.3px;">
+        <span leaf="">我是 LeisureLinux，关注 Linux、开源与信创安全，把复杂的技术讲清楚。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;letter-spacing:0.3px;">
+        <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+        <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+        <span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
