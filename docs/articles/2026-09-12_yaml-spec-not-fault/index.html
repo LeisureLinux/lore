@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不是 YAML 规范的错，但是……（PJB 长文译文 + 解读） — FreeLAMP.com</title>
+  <meta name="description" content="译文 + 解读：YAML 规范本身没写错，是 Syck / PyYAML 等库没听规范作者的话，把隐式类型设成默认。Norway Problem 在 YAML 1.2 Core Schema 里早已移除。文末给出配置安全与选型建议。">
+  <meta name="keywords" content="译文, YAML, 配置格式, 安全">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-12">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-12_yaml-spec-not-fault/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="不是 YAML 规范的错，但是……（PJB 长文译文 + 解读）">
+  <meta property="og:description" content="译文 + 解读：YAML 规范本身没写错，是 Syck / PyYAML 等库没听规范作者的话，把隐式类型设成默认。Norway Problem 在 YAML 1.2 Core Schema 里早已移除。文末给出配置安全与选型建议。">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-12_yaml-spec-not-fault/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-12">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="译文">
+  <meta property="article:tag" content="译文">
+  <meta property="article:tag" content="YAML">
+  <meta property="article:tag" content="配置格式">
+  <meta property="article:tag" content="安全">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="不是 YAML 规范的错，但是……（PJB 长文译文 + 解读）">
+  <meta name="twitter:description" content="译文 + 解读：YAML 规范本身没写错，是 Syck / PyYAML 等库没听规范作者的话，把隐式类型设成默认。Norway Problem 在 YAML 1.2 Core Schema 里早已移除。文末给出配置安全与选型建议。">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "不是 YAML 规范的错，但是……（PJB 长文译文 + 解读）",
+  "description": "针对技术圈反复出现的「批判 YAML / Norway Problem」风气，PJB 翻出 YAML 1.0/1.1/1.2 规范与 2002–2007 年 yaml-core 邮件列表，论证规范作者早已明确「默认按字符串解析」，坑在库实现而非规范。附工程实践解读。",
+  "datePublished": "2026-09-12",
+  "dateModified": "2026-09-12",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-12_yaml-spec-not-fault/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "译文, YAML, 配置格式, 安全"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "不是 YAML 规范的错，但是……（PJB 长文译文 + 解读）",
+        "item": "https://freelamp.com/articles/2026-09-12_yaml-spec-not-fault/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-12">2026-09-12</div>
+        <h1 class="post-title" itemprop="headline">不是 YAML 规范的错，但是……（PJB 长文译文 + 解读）</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a><a itemprop="keywords" href="/tags/YAML/">YAML</a><a itemprop="keywords" href="/tags/%E9%85%8D%E7%BD%AE%E6%A0%BC%E5%BC%8F/">配置格式</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%85%A8/">安全</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote><strong>译文来源</strong>：<a href="https://slugcat.systems/post/26-09-10-yaml-spec/"><em>It's not the YAML spec's fault, but...</em></a>，作者 PJB（PJB3005，Space Station 14 主导者），发布于 2026-09-10，站点 PJB blog（slugcat.systems）。以下为译文 + 解读。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+每隔一段时间，技术圈就会掀起一轮"批判 YAML"的运动。最常见的靶子就是所谓的 <strong>Norway Problem</strong>——一段未加引号的 <code>no</code>，被库悄悄解析成布尔值 <code>false</code>，于是挪威（Norway）的国家代码在配置文件里凭空蒸发。最近这股风气又起来了，于是 PJB 写了一篇长文，替规范说句公道话：<strong>规范本身没写错，是库实现没听规范作者的话。</strong>
+<p>这篇文章最有价值的地方，不是结论，而是作者真的去翻了 YAML 1.0/1.1/1.2 三个版本的规范原文，又爬了 2002–2007 年 yaml-core 邮件列表的存档，把"规范作者到底怎么想的"这件事坐实了。下面先给译文，再聊我的看法。</p>
+<h2>一、作者自己的 YAML 经历</h2>
+<p>PJB 不是 YAML 黑。他用过 Python 写 Discord 机器人（只用 <code>yaml.safe_load()</code>），也主导了 <strong>Space Station 14</strong> 这个项目——整个原型定义都是用 YAML 写的。</p>
+<p>他坦白：自己从没踩过那些被骂得最凶的坑，但那纯粹是运气：</p>
+<blockquote>"我没有遇到过任何大家常抱怨的 YAML 问题，但我意识到那只是运气好。我一直只用 <code>yaml.safe_load()</code>，仅此而已。"</blockquote>
+而 Space Station 14 之所以躲开 Norway Problem，是因为他们<strong>从来都是自己写反序列化逻辑</strong>：
+<blockquote>"我们一直都是用自己的代码来做真正的对象反序列化。也就是说，我们从库里拿的是图对象（<code>YamlMappingNode</code>、<code>YamlScalarNode</code> 等等），然后自己解析。我们不会把 <code>no</code> 错反序列化成布尔值，因为我们只在读取一个确实需要布尔值的字段时，才做布尔反序列化。"</blockquote>
+这其实是全文最值得记的一句工程经验：<strong>别让通用解析器替你决定类型，要按字段、按 schema 自己收口。</strong>
+<h2>二、规范到底怎么说的</h2>
+<p>社区对 YAML 的三大抱怨：规范太庞大、库实现良莠不齐、隐式类型（Norway Problem）。PJB 逐一去翻了规范原文。</p>
+<p><strong>YAML 1.0（2004）</strong> 说得很含糊，把球踢给应用：</p>
+<blockquote>"在 YAML 中，无引号的纯量（plain scalar）会根据应用程序被赋予一个隐式类型。"</blockquote>
+而且用的还是 RFC 2119 的 "may" 和 "depending on the application"——<strong>完全由应用决定</strong>。
+<p><strong>YAML 1.1（2005）</strong> 稍微收敛了一点：</p>
+<blockquote>"标签解析是[应用]特有的，因此一个 YAML[处理器]应当提供一种机制，允许[应用]指定标签解析规则。"</blockquote>
+<strong>YAML 1.2（2009）</strong> 引入了"模式（schemas）"概念，并推荐 Core Schema 作为默认：
+<blockquote>"Core schema 是 [JSON schema] 的一个扩展，允许对相同类型做更具可读性的[呈现]。这是 YAML[处理器]<strong>应当使用的推荐默认 schema</strong>，除非另有指示。"</blockquote>
+关键点来了——PJB 一针见血：
+<blockquote>"但是等等！YAML 1.2 的 schema 里<strong>根本没有六十进制（base 60）也没有 yes/no 布尔值</strong>！所以显然，'Norway Problem' 不是 YAML 1.2 这个推荐所带来的东西！"</blockquote>
+也就是说，<strong>1.2 早就把 <code>no</code> 和 base-60 这些坑从默认 schema 里删掉了</strong>，只是库没跟上。
+<h2>三、邮件列表里的铁证</h2>
+<p>光看规范还不够，作者去翻了 SourceForge 上的 yaml-core 邮件列表 mbox 存档，发现早期（2002 年之前）确实有过强隐式类型，但很快因为争议改成了"默认字符串"。几封关键邮件：</p>
+<ul>
+<li><strong>2003-03-14</strong>："一个标准的、不感知 schema 的 Loader，应当总是把这些值当成字符串加载。如果你想要日期对象，就混入一个 date loader 类。"</li>
+<li><strong>2004-08-05</strong>："我的意思是，让你的 YAML 模块<strong>总是默认加载字符串</strong>。完全不要隐式类型。那是推荐的默认行为。"</li>
+<li><strong>2006-06-07</strong>："3. 一个通用 YAML 处理器的默认行为，应当是把所有纯量当作字符串。"</li>
+<li><strong>2007-05-02</strong>："YAML 类型仓库<strong>并非</strong> intended 被解读为'这是一套默认使用的类型'。"</li>
+</ul>
+结论很清楚：<strong>规范作者明确期望库默认按字符串处理，隐式类型只是可选的、需要显式开启的推荐。</strong>
+<h2>四、实现侧是怎么翻车的</h2>
+<p>规范意图这么清楚，为什么今天还有这么多坑？PJB 认为是一场"缓慢的火车失事"。</p>
+<p><strong>Ruby 的 Syck 库</strong>是重灾区。它 2003 年进了 Ruby 标准库，但作者 Why 从来没收到过"隐式类型应默认关闭"的备忘，而规范作者选择了纵容：</p>
+<blockquote>"我觉得 Syck 有些地方做错了，但我们一直不是那种吹毛求疵的人，毕竟谁想扫了 Why 的兴呢。不过新的 Yaml 1.1 实现正在做对，我期待 Syck 跟上来。"（2006 年邮件）</blockquote>
+结果就是成千上万的 Ruby 程序员以为 <code>no</code> 天然就是布尔值。
+<p><strong>PyYAML（Python）</strong> 这边则是默认不安全加载。PJB 毫不客气：</p>
+<blockquote>"既然所有这些库都把不安全加载作为默认选项，说它们当初是被'称职地设计'的显然不成立。"</blockquote>
+更讽刺的是，他在文末 Addendum 里指出 PyYAML 至今<strong>不支持 YAML 1.2</strong>：
+<blockquote>"像 PyYAML 这样的库，尽管名义上由官方组织维护，却仍然<a href="https://github.com/yaml/pyyaml/issues/116">不支持它</a>。这甚至不是'为了向后兼容你得手动打开'！它们是压根不支持！"</blockquote>
+关于不安全反序列化，作者还顺手对比了 Python <code>pickle</code> 的问题——动态语言没法正确做对象序列化：
+<blockquote>"我在用 <code>pickle</code> 持久化数据时有<strong>别的</strong>序列化问题。蠢事比如'defaultdict 实例序列化困难，因为它们实际上存了一个 lambda'。"</blockquote>
+并总结了一句扎心的：
+<blockquote>"在 Python 这样的动态语言里，正确地做'对象 ↔ 对象'序列化是不可能的。"</blockquote>
+<h2>五、旁支：YAML 为什么长这样</h2>
+<p>作者花了一节讲历史：YAML 诞生于 XML 炒作周期，目标是<strong>接管 XML 的所有用途</strong>，所以才塞进了与之相关的一整套工具箱。他用一个 XML 端口映射的例子说明 XML 有多冗余，而"JSON 或 YAML 没有这些问题"。</p>
+<p>他给出现状的定位：</p>
+<blockquote>"如今，人们大多只是在写配置文件时，把 YAML 当作 JSON 的一个 nicer 替代品来用。"</blockquote>
+<h2>六、最终立场</h2>
+<p>PJB 的收尾很有分寸——既点名问题，也不甩锅给规范：</p>
+<blockquote>"YAML 确实是个规范，但一个规范如果没有实现，就毫无意义。而事实是，YAML 在'实现'这一环掉了球。"</blockquote>
+但他也强调，没有单一责任人，只是缺乏领导力与一连串历史偶然。
+<p>---</p>
+<h2>我的解读</h2>
+<p>这篇文章我基本认同，但有几点想补到工程实践层面。</p>
+<p><strong>第一，Norway Problem 的本质是"默认行为"之争，不是"YAML 不行"。</strong> 只要你显式指定 schema、或者像 SS14 那样自己收口字段类型，YAML 完全可控。很多人踩坑，是因为把 <code>yaml.load()</code>（默认不安全 + 隐式类型）当成了默认用法——PyYAML 直到很晚才把默认改成 <code>safe_load</code> 的近似行为，但历史惯性太大。</p>
+<p><strong>第二，版本碎片化是真问题。</strong> 今天你面对的 YAML 可能是 1.1（Ansible、旧 Ruby）、1.2 Core（新 libyaml）、或者某库自己阉割过的子集。CI 里用 A 库能过的文件，到 B 库可能解析出不同的类型。我的建议很朴素：<strong>配置文件一律加 <code>---</code> 文档分隔、标量该加引号就加引号</strong>，把歧义空间压到最小。</p>
+<p><strong>第三，选格式别只盯着"好不好写"。</strong> TOML 在强类型配置上确实更省心（没有隐式类型），但它表达嵌套结构远不如 YAML 顺手；JSON 没注释、写起来啰嗦。YAML 的"可读性溢价"在 Kubernetes、GitHub Actions、Ansible 这种深度嵌套 + 需要人频繁手改的场景里依然成立。<strong>选 YAML 不是错，错的是用默认 <code>load</code> 把它当万能反序列化器。</strong></p>
+<p><strong>第四，给安全同学一句提醒</strong>：<code>yaml.load()</code> 在不安全模式下能执行任意构造函数（PyYAML 的 <code>!!python/object/apply</code> 等），这是实打实的 RCE 面，不是"解析出错"那么温柔。任何解析外部 YAML 的代码路径，必须用 <code>safe_load</code>，这是红线。</p>
+<p>一句话总结 PJB 的立场也适合收尾：<strong>规范无罪，实现有责；而'责'落到我们自己头上，就是永远别把类型推断交给一个你不控制的默认配置。</strong>
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-12_yaml-spec-not-fault/",
+      title: "\u4e0d\u662f YAML \u89c4\u8303\u7684\u9519\uff0c\u4f46\u662f\u2026\u2026\uff08PJB \u957f\u6587\u8bd1\u6587 + \u89e3\u8bfb\uff09"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
