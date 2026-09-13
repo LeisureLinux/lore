@@ -1,0 +1,402 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+      <span leaf="">QUOTE</span>
+    </p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">随手打了句 </span>
+      <span style="border-bottom:2px solid #52525B;"><span leaf="">strace -p 1</span></span>
+      <span leaf="">，竟挖出 Anthropic 藏着没说的 </span>
+      <span style="border-bottom:2px solid #52525B;"><span leaf="">Vercel 竞品</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+      <span leaf="">—— 译自 AprilNEA 逆向分析</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">一位做全栈平台的开发者 AprilNEA，在 Claude Code Web 会话里用标准 Linux 工具做逆向，发现了一个 Anthropic 从未公开披露的应用托管平台——代号 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Antspace</span></span>
+      <span leaf="">。没有漏洞、没有提权、没有攻击，全靠在会话内部跑 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">strace</span></span>
+      <span leaf=""> 和 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">objdump</span></span>
+      <span leaf=""> 完成。更让人皱眉的是：那颗 27MB 的 Go 二进制，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">没剥离调试符号</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+      <span leaf="">本文看点</span>
+    </p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">没剥离的二进制暴露整棵架构树</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">Antspace + Baku 拼出托管闭环</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">Firecracker 沙箱值得抄作业</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">01</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">FIRECRACKER RUNTIME</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">运行环境：Firecracker 微虚拟机</span>
+        </h3>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:22px 0;">
+      <span leaf="">Claude Code Web 跑在一台 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Firecracker 微虚拟机</span></span>
+      <span leaf=""> 里，规格相当实在：4 vCPU、16GB 内存、252GB 磁盘、Linux 内核 6.18.5。进程树极简到近乎苛刻——</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">PID 1 不是 systemd</span></span>
+      <span leaf="">，而是一个自定义 init 二进制 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">/process_api</span></span>
+      <span leaf="">，同时兼任 WebSocket 网关（监听 2024 端口）。没有 sshd、没有 cron、没有 journald，只保留运行所需的最小集。</span>
+    </p>
+    <section style="display:flex;margin:0 0 28px;">
+      <section style="flex:1;border:1px solid #E4E4E7;padding:22px 16px;margin-right:8px;text-align:center;">
+        <p style="font-size:32px;font-weight:900;color:#27272A;margin:0 0 6px;line-height:1;letter-spacing:-1px;"><span leaf="">4 vCPU</span></p>
+        <p style="font-size:11px;color:#A1A1AA;margin:0;letter-spacing:1px;"><span leaf="">16GB 内存</span></p>
+      </section>
+      <section style="flex:1;border:1px solid #E4E4E7;padding:22px 16px;text-align:center;">
+        <p style="font-size:32px;font-weight:900;color:#27272A;margin:0 0 6px;line-height:1;letter-spacing:-1px;"><span leaf="">252GB</span></p>
+        <p style="font-size:11px;color:#A1A1AA;margin:0;letter-spacing:1px;"><span leaf="">磁盘 · 内核 6.18.5</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">核心二进制 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">/process_api</span></span>
+      <span leaf=""> 是一个 3.1MB 的 Rust/tokio 程序，作者用 Ghidra 反编译了它（3599 个函数、44.6 万行 C 伪代码），负责进程生命周期、cgroup 管理、OOM killer、mount/pivot_root 初始化，以及面向会话的 WebSocket 协议。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">02</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">UNSTRIPPED BINARY</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">没剥离的 Go 二进制，露出完整包结构</span>
+        </h3>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:22px 0;">
+      <span leaf="">容器里核心二进制 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">/usr/local/bin/environment-runner</span></span>
+      <span leaf=""> 是 27MB 的 Go 可执行文件，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">未剥离调试符号</span></span>
+      <span leaf="">，完整保留了 Anthropic 私有仓库 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">api-go/environment-manager</span></span>
+      <span leaf=""> 的包结构与函数名。</span>
+    </p>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">一把 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">go version -m</span></span>
+      <span leaf=""> 梭出全部构建元数据：版本串 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">staging-68f0dff496</span></span>
+      <span leaf="">、Go 1.25.7、完整依赖。因为没剥离，</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">objdump -t</span></span>
+      <span leaf=""> 直接给全限定函数名，过滤路径就重建出整棵架构树——从会话管理、MCP 配置、Git 代理，到 WebSocket 隧道与部署动作。</span>
+    </p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;">
+        <span leaf="">KEY DEPENDENCIES</span>
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">依赖</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">用途</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">api-go</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">内部 Anthropic Go SDK</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">mcp-go v0.37.0</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">Model Context Protocol</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">grpc v1.79.0</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">会话路由</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;background:#FAFAFA;"><span leaf="">otel v1.39.0</span></td>
+            <td style="padding:8px 12px;color:#52525B;background:#FAFAFA;"><span leaf="">分布式追踪</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">03</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">THE HIDDEN PaaS</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">最精彩的部分：两套部署客户端</span>
+        </h3>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:22px 0;">
+      <span leaf="">在 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">tunnel/actions/deploy/</span></span>
+      <span leaf=""> 包里，作者发现两套部署客户端：已知的 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">VercelClient</span></span>
+      <span leaf="">，以及此前从未出现过的 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">AntspaceClient</span></span>
+      <span leaf="">。后者实现了一套完整的三阶段部署协议。</span>
+    </p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">创建部署（create deployment）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">上传 tar.gz 构建产物</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">流式 NDJSON 状态推送</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">版本串前缀是 </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;"><span leaf="">staging-</span></span>
+      <span leaf="">，说明还在早期内部阶段，但部署协议已成熟、达到生产级。全网搜「Antspace」——官网、博客、GitHub、招聘页，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">零记录</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">连带挖出的 Baku 与 BYOC</span>
+    </p>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">同一份二进制还泄露了内部代号 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Baku</span></span>
+      <span leaf="">——claude.ai 网页版应用构建器，用 Vite + React + TypeScript 模板，自动提供 6 个 Supabase MCP 工具（按需建库、迁移管理、Edge Function 部署），默认部署目标正是 Antspace 而非 Vercel。代码里还有企业级 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">BYOC</span></span>
+      <span leaf="">（自带云）支持：企业可在自有基础设施跑 environment-runner，由 Anthropic API 做会话编排。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">04</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">SECURITY GUARDRAILS</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">安全护栏：该有的都有</span>
+        </h3>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:22px 0;">
+      <span leaf="">逆向揭示出的运行时安全护栏相当到位，只是二进制本身没藏住——</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">典型的「沙箱设计优秀、产物纪律翻车」</span></span>
+      <span leaf="">。</span>
+    </p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;">
+        <span leaf="">SECURITY MEASURES</span>
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">措施</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">目的</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">init_on_free=1</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">会话间清零释放内存页</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">丢弃 CAP_SYS_RESOURCE</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">限制 PID 1 能力</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">CRNG 重新播种</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">防快照 fork 后随机可预测</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">JWT 鉴权</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">WebSocket 连接校验</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">Token 擦除</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">使用后移除配置中的密钥</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">此外，Firecracker 的 Snapstart 模式也被还原：极简模板 VM 做快照，恢复时热插拔块设备。dmesg 证明模板启动与会话恢复之间存在 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">48.5 小时</span></span>
+      <span leaf=""> 时间差；块设备分配为 vda=ext4 可写 rootfs、vdb/vdc=squashfs 只读层。</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">05</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">METHODOLOGY</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">七步把生产环境逆向了个底朝天</span>
+        </h3>
+      </section>
+    </section>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:22px 0;">
+      <span leaf="">作者把全过程公开成标准 Linux 工具七步法：</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">dmesg 指纹 hypervisor</span></span>
+      <span leaf=""> → </span>
+      <span leaf="">cat /proc/1/cmdline 识 PID 1</span>
+      <span leaf=""> → </span>
+      <span leaf="">go version -m 取元数据</span>
+      <span leaf=""> → </span>
+      <span leaf="">objdump -t 重建包树</span>
+      <span leaf=""> → 定向字符串/结构体 tag 提取 → 符号表驱动功能映射 → </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">strace -p 1 看运行期行为</span></span>
+      <span leaf="">。</span>
+    </p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+        <span leaf="">「把一个带着完整调试符号、没剥离的二进制发到生产环境，是个……选择。」</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">06</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">MY TAKE</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">解读：这事儿意味着什么</span>
+        </h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">1. 「安全优先」实验室的运维反讽</span>
+    </p>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">Anthropic 对外主打安全优先，可整套内部架构以可读明文发到每个用户会话。作者也承认攻击者没拿到任何东西——这些信息本就在用户自己的进程空间可见，不算漏洞。但「把私有仓库路径、内部代号、部署协议完整暴露」是工程纪律上的低级失误。</span>
+    </p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">2. 垂直整合闭环已成雏形</span>
+    </p>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">Antspace + Baku + BYOC 拼起来，是从 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">模型 → 运行时 → 托管</span></span>
+      <span leaf=""> 的完整闭环：Claude 写代码，Baku 用 Supabase MCP 拼全栈应用，Antspace 直接托管上线，BYOC 再补「企业想自己跑」的场景。Vercel / Netlify、Replit、Supabase 各自的饭碗，Anthropic 一家全包了。</span>
+    </p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">3. 给 AI 工程与信创的启示</span>
+    </p>
+    <p style="font-size:15px;line-height:1.8;color:#52525B;text-align:justify;margin:0 0 22px;">
+      <span leaf="">最值得抄作业的是它的 </span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">沙箱设计</span></span>
+      <span leaf="">：Firecracker 微虚拟机 + 极简 PID 1（Rust/tokio，3.1MB）+ 严格能力裁剪 + 内存清零 + CRNG 重播种 + 快照恢复。对在不可信输入（AI 生成代码、Agent 自动执行）下要保证隔离强度的场景——无论是信创桌面里的 AI 助手沙箱，还是云端 Coding Agent 平台——都是一份现成的生产级参考架构。反过来说，它也是个反面教材：面向用户的二进制，产物分级与符号剥离这种基本功不能省。</span>
+    </p>
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+        <span leaf="">一句话收尾：Anthropic 想拥有「应用被说出来的那一刻」起的每一层栈——而一份没剥离的二进制，让他们想藏的那层先被看穿了。</span>
+      </p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 LeisureLinux，关注 Linux、开源与信创安全，把复杂的技术讲清楚。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果你觉得今天这篇有收获，欢迎</span>
+        <strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong>
+        <span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
