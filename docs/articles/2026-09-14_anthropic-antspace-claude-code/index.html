@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>逆向 Claude Code 挖出 Anthropic 藏着的「Vercel 竞品」Antspace — FreeLAMP.com</title>
+  <meta name="description" content="译介 AprilNEA 对 Claude Code 运行环境的逆向分析：未剥离的 Go 二进制暴露 Anthropic 内部 PaaS 平台 Antspace、Baku 应用构建器、BYOC，以及 Firecracker 微虚拟机沙箱。附安全护栏、七步方法论与三点评读。">
+  <meta name="keywords" content="译文, AI, 逆向, Claude Code, PaaS, Firecracker">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-14">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-14_anthropic-antspace-claude-code/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="逆向 Claude Code 挖出 Anthropic 藏着的「Vercel 竞品」Antspace">
+  <meta property="og:description" content="译介 AprilNEA 对 Claude Code 运行环境的逆向分析：未剥离的 Go 二进制暴露 Anthropic 内部 PaaS 平台 Antspace、Baku 应用构建器、BYOC，以及 Firecracker 微虚拟机沙箱。附安全护栏、七步方法论与三点评读。">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-14_anthropic-antspace-claude-code/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-14">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="译文">
+  <meta property="article:tag" content="译文">
+  <meta property="article:tag" content="AI">
+  <meta property="article:tag" content="逆向">
+  <meta property="article:tag" content="Claude Code">
+  <meta property="article:tag" content="PaaS">
+  <meta property="article:tag" content="Firecracker">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="逆向 Claude Code 挖出 Anthropic 藏着的「Vercel 竞品」Antspace">
+  <meta name="twitter:description" content="译介 AprilNEA 对 Claude Code 运行环境的逆向分析：未剥离的 Go 二进制暴露 Anthropic 内部 PaaS 平台 Antspace、Baku 应用构建器、BYOC，以及 Firecracker 微虚拟机沙箱。附安全护栏、七步方法论与三点评读。">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "逆向 Claude Code 挖出 Anthropic 藏着的「Vercel 竞品」Antspace",
+  "description": "AprilNEA 在 Claude Code Web 会话内用标准 Linux 工具逆向，发现 Anthropic 未公开的应用托管平台 Antspace（三阶段部署协议）、网页应用构建器 Baku（Supabase MCP）、BYOC 支持，以及 Firecracker 沙箱架构。本文含技术拆解与三点评读。",
+  "datePublished": "2026-09-14",
+  "dateModified": "2026-09-14",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-14_anthropic-antspace-claude-code/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "译文, AI, 逆向, Claude Code, PaaS, Firecracker"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "逆向 Claude Code 挖出 Anthropic 藏着的「Vercel 竞品」Antspace",
+        "item": "https://freelamp.com/articles/2026-09-14_anthropic-antspace-claude-code/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-14">2026-09-14</div>
+        <h1 class="post-title" itemprop="headline">逆向 Claude Code 挖出 Anthropic 藏着的「Vercel 竞品」Antspace</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a><a itemprop="keywords" href="/tags/AI/">AI</a><a itemprop="keywords" href="/tags/%E9%80%86%E5%90%91/">逆向</a><a itemprop="keywords" href="/tags/Claude%20Code/">Claude Code</a><a itemprop="keywords" href="/tags/PaaS/">PaaS</a><a itemprop="keywords" href="/tags/Firecracker/">Firecracker</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote><strong>译文来源</strong>：《Anthropic's Hidden Vercel Competitor "Antspace"》—— AprilNEA（ArcBox Labs 创始人），aprilnea.me，2026-03-18，许可 CC BY-NC-SA 4.0。<br>
+原文：https://aprilnea.me/en/blog/reverse-engineering-claude-code-antspace<br>
+本文在原文基础上做了技术补全与解读（引用了 WEEX、aiadvances.org 等转述与作者的 GitHub 仓库分析文件），观点以「解读」段落单独标注。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+2026 年 3 月，一位做全栈平台的开发者 AprilNEA 在他的 Claude Code Web 会话里，随手打了句 <code>strace -p 1</code>，本想看看运行环境长啥样，结果一路挖下去，撬开了 Anthropic 一个<strong>从未公开披露</strong>的部署平台——代号 <strong>Antspace</strong>。整篇分析没有用任何漏洞、没有提权、没有网络攻击，全靠在会话内部跑标准 Linux 工具（<code>strace</code> / <code>strings</code> / <code>objdump</code> / <code>go tool objdump</code>）完成。
+<p>更妙的（也更让人皱眉的）是：那颗 27MB 的 Go 二进制，<strong>没剥离调试符号</strong>，完整保留了 Anthropic 私有仓库的包结构和函数名。作者原话：「把一个带着完整调试符号、没剥离的二进制发到生产环境，是个……选择。」</p>
+<p>下面把这场逆向考古的骨架拆给你看。</p>
+<h2>一、起点：一个没剥离的 Go 二进制</h2>
+<p>AprilNEA 团队在做的 ArcBox，定位和 Railway、E2B 类似——本地桌面到云端的全栈平台，核心理念是「本地-云端一致性」。当他们发现几乎所有 Coding Agent 平台都在底层用 Firecracker 时，作为同行，好奇心驱使他们钻进 Claude Code 的运行环境。</p>
+<p>一切从 <code>strace -p 1</code> 开始，最终变成一场完整的逆向，挖出了 Anthropic 尚未公开的部署基础设施，包括一个<strong>完全无文档的应用托管平台</strong>。</p>
+<p>所有发现都来自在 Claude Code 会话内部运行的标准 Linux 工具。没有利用任何漏洞，没有提权，没有网络攻击。那颗二进制就明晃晃地躺在那儿，没剥离，带着完整调试符号。</p>
+<h2>二、运行环境：Firecracker MicroVM</h2>
+<p>Claude Code Web 跑在一台 <strong>Firecracker 微虚拟机</strong>里，规格相当实在：</p>
+<ul>
+<li><strong>4 vCPU</strong>（Intel Xeon Cascade Lake @ 2.8GHz）</li>
+<li><strong>16GB 内存</strong></li>
+<li><strong>252GB 磁盘</strong></li>
+<li><strong>Linux 内核 6.18.5</strong></li>
+</ul>
+进程树极简到近乎苛刻：<strong>PID 1 不是 systemd</strong>，而是一个自定义 init 二进制 <code>/process_api</code>，它同时兼任 WebSocket 网关（监听 2024 端口）。没有 sshd，没有 cron，没有 journald——只保留了运行 Claude 环境所需的「裸金属」。
+<p><code>/process_api</code> 本身是一个 3.1MB 的 Rust/tokio 程序（作者在 GitHub 仓库里用 Ghidra 反编译了它，3599 个函数、44.6 万行 C 伪代码），负责进程产生/生命周期、cgroup 管理、OOM killer、mount/pivot_root 初始化、控制 HTTP 服务，以及面向会话的 WebSocket 协议（JWT 鉴权 → ProcessConnection → CreateProcess / stdin·stdout·stderr 二进制帧 / SendSignal / Resize / Detach / KeepAlive）。</p>
+<h2>三、Layer 2：没剥离的 Go 二进制与完整包结构</h2>
+<p>容器里核心二进制 <code>/usr/local/bin/environment-runner</code> 是一颗 <strong>27MB 的 Go 可执行文件，未剥离调试符号</strong>，完整保留了来自 Anthropic 私有仓库 <code>github.com/anthropics/anthropic/api-go/environment-manager</code> 的包结构与函数名。</p>
+<p><code>go version -m</code> 一把梭出全部构建元数据：模块路径、<code>(devel)</code> 单仓标记、版本串 <code>staging-68f0dff496</code>、Go 1.25.7，以及完整依赖清单。因为没剥离，<code>objdump -t</code> 直接给出全限定函数名——过滤 <code>environment-manager/internal/</code> 就重建出整棵架构树：</p>
+<pre><code class="">internal/
+├── api/                  # API 客户端（会话入口、任务轮询、重试）
+├── auth/                 # GitHub App token 提供方
+├── claude/               # Claude Code 安装、升级、执行
+├── config/               # 会话模式（new/resume/resume-cached/setup-only）
+├── envtype/
+│   ├── anthropic/        # Anthropic 托管环境
+│   └── byoc/             # Bring Your Own Cloud 环境
+├── gitproxy/             # Git 凭据代理服务器
+├── input/                # Stdin 解析 + 密钥处理
+├── manager/              # 会话管理器、MCP 配置、skill 抽取
+├── mcp/
+│   └── servers/
+│       ├── codesign/     # 代码签名 MCP 服务器
+│       └── supabase/     # Supabase 集成 MCP 服务器
+├── orchestrator/         # 轮询循环、hooks、whoami
+├── podmonitor/           # Kubernetes lease 管理器
+├── process/              # 进程执行 + 脚本运行器
+├── sandbox/              # 沙箱运行时配置
+├── session/              # 活动记录器
+├── sources/              # Git 克隆 + 源码分类
+├── tunnel/               # WebSocket 隧道 + 动作处理器
+│   └── actions/
+│       ├── deploy/       # ← 最精彩的地方
+│       ├── snapshot/     # 文件快照
+│       └── status/       # 状态上报
+└── util/                 # Git 辅助、重试、流尾部读取
+</code></pre>
+<p>从二进制里提取的关键依赖：</p>
+<table>
+<tr><th>依赖</th><th>用途</th></tr>
+<tr><td><code>github.com/anthropics/anthropic/api-go</code></td><td>内部 Anthropic Go SDK</td></tr>
+<tr><td><code>github.com/gorilla/websocket</code></td><td>到 API 的 WebSocket 隧道</td></tr>
+<tr><td><code>github.com/mark3labs/mcp-go v0.37.0</code></td><td>Model Context Protocol</td></tr>
+<tr><td><code>github.com/DataDog/datadog-go v5</code></td><td>指标上报</td></tr>
+<tr><td><code>go.opentelemetry.io/otel v1.39.0</code></td><td>分布式追踪</td></tr>
+<tr><td><code>google.golang.org/grpc v1.79.0</code></td><td>gRPC（会话路由）</td></tr>
+<tr><td><code>github.com/spf13/cobra</code></td><td>CLI 框架</td></tr>
+</table>
+<h2>四、最精彩的部分：tunnel/actions/deploy/ 里的两套部署客户端</h2>
+<p>在 <code>tunnel/actions/deploy/</code> 包里，作者发现了<strong>两套部署客户端</strong>：</p>
+<ul>
+<li>已知的 <strong><code>VercelClient</code></strong>（Vercel 部署客户端）</li>
+<li>此前从未出现过的 <strong><code>AntspaceClient</code></strong>（Anthropic 自家部署平台）</li>
+</ul>
+<code>AntspaceClient</code> 实现了一套<strong>完整的三阶段部署协议</strong>：
+<ol>
+<li>1. <strong>创建部署</strong>（create deployment）</li>
+<li>2. <strong>上传 <code>tar.gz</code> 构建产物</strong>（upload tar.gz build artifact）</li>
+<li>3. <strong>流式 NDJSON 状态推送</strong>（stream NDJSON status）</li>
+</ol>
+版本串前缀是 <code>staging-</code>，说明还在早期/内部阶段。但整个部署协议已经成熟、达到生产级。全网搜「Antspace」——Anthropic 官网、博客、GitHub、招聘页，<strong>零记录</strong>。
+<h2>五、连带挖出的：Baku 与 BYOC</h2>
+<p>同一份二进制还泄露了另一个内部代号 <strong>Baku</strong>——claude.ai 网页版的应用构建器，使用 <strong>Vite + React + TypeScript</strong> 模板，自动提供 <strong>6 个 Supabase MCP 工具</strong>（按需建库、迁移管理、Edge Function 部署等），<strong>默认部署目标正是 Antspace 而不是 Vercel</strong>。</p>
+<p>代码里还存在企业级 <strong>BYOC（Bring Your Own Cloud）</strong> 环境支持：允许企业在自己的基础设施里跑 <code>environment-runner</code>，同时由 Anthropic API 做会话编排。</p>
+<h2>六、安全护栏：该有的都有，但二进制没藏住</h2>
+<p>逆向揭示出的运行时安全护栏（部分来自 dmesg、部分来自二进制字符串与运行期取证）：</p>
+<table>
+<tr><th>措施</th><th>目的</th></tr>
+<tr><td><code>init_on_free=1</code></td><td>会话之间清零已释放内存页</td></tr>
+<tr><td>丢弃 <code>CAP_SYS_RESOURCE</code></td><td>初始化后限制 PID 1 的能力</td></tr>
+<tr><td>CRNG 重新播种</td><td>防止快照 fork 后随机数可预测</td></tr>
+<tr><td><code>--block-local-connections</code></td><td>阻断 localhost WebSocket 访问</td></tr>
+<tr><td>JWT 鉴权</td><td>WebSocket 连接校验</td></tr>
+<tr><td>Token 擦除</td><td>使用后从配置里移除密钥</td></tr>
+</table>
+<p>另外，Firecracker 的 <strong>Snapstart 模式</strong>也被还原出来：先用极简模板 VM（只有 proc/sys/dev/net）做快照，恢复时热插拔块设备。dmesg 证明模板启动（2026-03-16）与本次会话恢复（2026-03-18）之间存在 <strong>48.5 小时</strong>时间差；恢复后才 drop caches、重挂 devtmpfs、挂 ext4+squashfs、pivot_root、clock_settime。</p>
+<p>块设备分配：<code>vda</code>=ext4 可写 rootfs，<code>vdb</code>=squashfs（claude-code），<code>vdc</code>=squashfs（env-runner）。</p>
+<h2>七、方法论：七步把「生产环境」逆向了个底朝天</h2>
+<p>作者把全过程公开成了标准 Linux 工具七步法：</p>
+<ol>
+<li>1. <strong>识别 hypervisor</strong>：<code>dmesg | grep FIRECK</code>——ACPI 表带 OEM ID，直接指纹出 Firecracker（OEM ID <code>FIRECK</code>、creator ID <code>FCAT</code>）。</li>
+<li>2. <strong>识别 PID 1</strong>：<code>cat /proc/1/cmdline</code>——露出自定义 init <code>/process_api</code>，<code>--firecracker-init</code> 标志确认。</li>
+<li>3. <strong>提取 Go 构建元数据</strong>：对 environment-runner 跑 <code>go version -m</code>，得到 Go 版本、模块路径、<code>(devel)</code> 单仓标记、完整依赖。</li>
+<li>4. <strong>从符号恢复包结构</strong>：因为没剥离，<code>objdump -t</code> 给全限定函数名；过滤 <code>environment-manager/internal/</code> 提取唯一路径，得到完整架构树。</li>
+<li>5. <strong>定向字符串提取</strong>：Go 二进制里裸 <code>strings | grep</code> 很吵（链接器把所有字符串字面量拼一起）。更优做法——已知模式搜索（扫特定字节序列如 <code>dist.tar.gz</code>、<code>application/x-ndjson</code>）+ 结构体 tag 提取（Go 把 struct 字段 tag 当字符串字面量嵌入，搜 <code>json:"status"</code> 这类能还原出线协议格式）。</li>
+<li>6. <strong>符号表驱动的功能映射</strong>：<code>objdump -t binary | grep 'deploy\.'</code> 给出每个组件的方法清单——Vercel 和 Antspace 两个客户端就是这么带着完整方法签名被发现的。</li>
+<li>7. <strong>运行期观察</strong>：<code>strace -p 1 -e trace=epoll_pwait,read,write -f</code> 确认 epoll 事件循环、子进程监控、WebSocket 通信模式。</li>
+</ol>
+<table>
+<tr><th>技术</th><th>揭示了什么</th></tr>
+<tr><td><code>dmesg</code> ACPI OEM ID</td><td>虚拟机监控器身份</td></tr>
+<tr><td><code>go version -m</code></td><td>工具链、依赖、单仓结构</td></tr>
+<tr><td>符号表（<code>objdump -t</code>）</td><td>包布局、类型名、方法签名</td></tr>
+<tr><td>结构体 tag 字符串</td><td>线协议 / JSON 格式</td></tr>
+<tr><td>定向字节搜索</td><td>错误信息、状态串、流程逻辑</td></tr>
+<tr><td>PID 1 上的 <code>strace</code></td><td>运行期行为、IPC 模式</td></tr>
+</table>
+<p><strong>为什么能成</strong>：① 二进制没剥离（最大单一因素，剥离了就得上 Ghidra）；② Go 的构建元数据嵌入等于免费依赖清单；③ Go 的字符串拼接模型保留了 struct tag 和错误串；④ VM 内的 root 权限允许对 PID 1 跑 <code>strace</code>。</p>
+<h2>八、解读：这事儿到底意味着什么</h2>
+<p><strong>1. 「安全优先」实验室的运维反讽。</strong> Anthropic 对外主打「安全优先」、发布责任扩展政策、天天谈生存性风险；可它把整套内部架构以可读明文发到每个用户会话里。aiadvances.org 的评论很到位：对一个声称最在乎安全的公司，这……认真吗？当然，作者也指出攻击者没拿到任何东西——这些信息本来就在用户自己的会话进程空间里可见，不算泄露漏洞。但「把私有仓库路径、内部代号、部署协议完整暴露」确实是工程纪律上的低级失误，尤其对一个以稳健著称的团队。</p>
+<p><strong>2. 垂直整合闭环已成雏形。</strong> Antspace + Baku + BYOC 拼起来，是从<strong>模型 → 运行时 → 托管</strong>的完整闭环：Claude 写代码（Claude Code），Baku 用 Supabase MCP 把全栈应用拼出来，Antspace 直接托管上线，BYOC 再补上「企业想自己跑」的场景。这正是 Vercel / Netlify、Replit、Supabase 各自的饭碗——Anthropic 一家全包了。作者判断：无论最终是作为公开产品发布，还是只服务于 Claude 的网页体验，Anthropic 的野心早已超出「只做 LLM 和 Agent 公司」。</p>
+<p><strong>3. 给 AI 工程与信创场景的启示。</strong> 这场逆向最值得抄作业的，其实是它的<strong>沙箱设计</strong>：Firecracker MicroVM + 极简 PID 1（Rust/tokio，3.1MB）+ 严格能力裁剪 + 内存清零 + CRNG 重播种 + 快照恢复。对需要在不可信输入（AI 生成代码、Agent 自动执行）下保证隔离强度的场景——无论是国内信创桌面里的「AI 助手沙箱」，还是云端 Coding Agent 平台——这是一份现成的、生产级的可参考架构。反过来说，它也是个反面教材：<strong>产物分级与符号剥离</strong>这种基本功，在面向用户的二进制上不能省。</p>
+<p>一句话收尾：Anthropic 想拥有「应用被说出来的那一刻起」的每一层栈——而一份没剥离的二进制，让他们想藏的那层先被看穿了。
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-14_anthropic-antspace-claude-code/",
+      title: "\u9006\u5411 Claude Code \u6316\u51fa Anthropic \u85cf\u7740\u7684\u300cVercel \u7ade\u54c1\u300dAntspace"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
