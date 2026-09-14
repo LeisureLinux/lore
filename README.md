@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-14 | [GNU coreutils 9.7 全命令手册：105 个命令逐个拆解（附实机示例）](https://freelamp.com/articles/2026-09-14_gnu-coreutils-105-commands/) | GNU coreutils · Linux · Debian · trixie · CLI · man 手册 · shell · 运维 |
 | 2026-09-08 | [dpkg 1.23.8 上手解析——半年一发的累积版本，进入 unstable](https://freelamp.com/articles/2026-09-08_dpkg-1.23.8-accepted-unstable/) | dpkg · Debian · unstable · Sid · 包管理 |
 | 2026-09-08 | [Debian 13 "trixie" 13.7 Point Release 即将发布——9 月 12 日上线，上百项修复 + 90+ CVE 安全补丁](https://freelamp.com/articles/2026-09-08_debian-13-point-release-13.7-sua-286-1/) | Debian · trixie · Point Release · CVE |
 | 2026-09-02 | [LWN 时隔近五年再次涨价：9 月 15 日生效，四档订阅平均上浮约 20%](https://freelamp.com/articles/2026-09-02_lwn-subscription-price-increase/) | LWN · 独立媒体 · 订阅制 · 通胀 · 爬虫对抗 |
