@@ -1,0 +1,21 @@
+---
+title: '把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI'
+date: 2026-09-14
+author: LeisureLinux
+tags:
+  - eBPF
+  - LSM
+  - 性能优化
+  - 记忆化
+  - 内核
+  - 缓存
+  - 硬链接
+  - 译文
+  - 独立科技媒体
+  - 系统运维
+summary: "翻译并解读 nathan naveen 的技术博客：其 eBPF 文件打开安全代理通过按 inode 缓存策略命中结果，把内核 CPU 开销降约 90%（同一文件打开 20 万次，内核 cycle 从 280 亿降到 30.3 亿）。详解缓存 key（mntns_id+mount_id+inode）、LRU_HASH 实现、以及硬链接 i_nlink!=1 时回退慢路径的正确性优先取舍。"
+description: "基于 nathannaveen.dev（2026-09-11）技术博客的翻译+解读。背景：eBPF 挂 LSM hook 在文件打开时触发，重建路径沿父 dentry 向上判断策略；最贵的是「确定该套用哪条策略」而非执行 allow/deny。方案：用 BPF_MAP_TYPE_LRU_HASH（max_entries 10000）按 inode 缓存策略，key 为 mntns_id+mount_id+inode（inode 仅在某 mount 树内唯一，故需 mount_id；mntns_id 防跨命名空间），value 为 access_index（bitmask 位）+state。基准：同文件打开 200,000 次，内核 cycle 280 亿→30.3 亿；无缓存时 tail_call_security_check 占栈 89.2%、is_restricted_filepath 81.9%、path_check_callback 63.7%，加缓存后后两者各约 0.02%（perf cycles:k 测量）。边界：硬链接多路径共享同 inode，i_nlink!=1 即放弃缓存、回退慢路径——准确性优先于命中率。开源仓库 bomfather/agent。解读聚焦 eBPF map 不可存指针、正确性优先的缓存取舍、90% 降幅来自消除重复遍历三点工程经验。"
+published: true
+original_source: "https://nathannaveen.dev/posts/dropping-ebpf-cpu-cost-by-90/"
+original_author: "nathan naveen（nathannaveen.dev）"
+---

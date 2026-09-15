@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI — FreeLAMP.com</title>
+  <meta name="description" content="基于 nathannaveen.dev（2026-09-11）技术博客的翻译+解读。背景：eBPF 挂 LSM hook 在文件打开时触发，重建路径沿父 dentry 向上判断策略；最贵的是「确定该套用哪条策略」而非执行 allow/deny。方案：用 BPF_MAP_TYPE_LRU_HASH（max_entries">
+  <meta name="keywords" content="eBPF, LSM, 性能优化, 记忆化, 内核, 缓存, 硬链接, 译文, 独立科技媒体, 系统运维">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-14">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-14_ebpf-memoization-90-percent/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI">
+  <meta property="og:description" content="基于 nathannaveen.dev（2026-09-11）技术博客的翻译+解读。背景：eBPF 挂 LSM hook 在文件打开时触发，重建路径沿父 dentry 向上判断策略；最贵的是「确定该套用哪条策略」而非执行 allow/deny。方案：用 BPF_MAP_TYPE_LRU_HASH（max_entries">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-14_ebpf-memoization-90-percent/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-14">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="eBPF">
+  <meta property="article:tag" content="eBPF">
+  <meta property="article:tag" content="LSM">
+  <meta property="article:tag" content="性能优化">
+  <meta property="article:tag" content="记忆化">
+  <meta property="article:tag" content="内核">
+  <meta property="article:tag" content="缓存">
+  <meta property="article:tag" content="硬链接">
+  <meta property="article:tag" content="译文">
+  <meta property="article:tag" content="独立科技媒体">
+  <meta property="article:tag" content="系统运维">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI">
+  <meta name="twitter:description" content="基于 nathannaveen.dev（2026-09-11）技术博客的翻译+解读。背景：eBPF 挂 LSM hook 在文件打开时触发，重建路径沿父 dentry 向上判断策略；最贵的是「确定该套用哪条策略」而非执行 allow/deny。方案：用 BPF_MAP_TYPE_LRU_HASH（max_entries">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI",
+  "description": "翻译并解读 nathan naveen 的技术博客：其 eBPF 文件打开安全代理通过按 inode 缓存策略命中结果，把内核 CPU 开销降约 90%（同一文件打开 20 万次，内核 cycle 从 280 亿降到 30.3 亿）。详解缓存 key（mntns_id+mount_id+inode）、LRU_HASH 实现、以及硬链接 i_nlink!=1 时回退慢路径的正确性优先取舍。",
+  "datePublished": "2026-09-14",
+  "dateModified": "2026-09-14",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-14_ebpf-memoization-90-percent/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "eBPF, LSM, 性能优化, 记忆化, 内核, 缓存, 硬链接, 译文, 独立科技媒体, 系统运维"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI",
+        "item": "https://freelamp.com/articles/2026-09-14_ebpf-memoization-90-percent/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-14">2026-09-14</div>
+        <h1 class="post-title" itemprop="headline">把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/eBPF/">eBPF</a><a itemprop="keywords" href="/tags/LSM/">LSM</a><a itemprop="keywords" href="/tags/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">性能优化</a><a itemprop="keywords" href="/tags/%E8%AE%B0%E5%BF%86%E5%8C%96/">记忆化</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8/">内核</a><a itemprop="keywords" href="/tags/%E7%BC%93%E5%AD%98/">缓存</a><a itemprop="keywords" href="/tags/%E7%A1%AC%E9%93%BE%E6%8E%A5/">硬链接</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a><a itemprop="keywords" href="/tags/%E7%8B%AC%E7%AB%8B%E7%A7%91%E6%8A%80%E5%AA%92%E4%BD%93/">独立科技媒体</a><a itemprop="keywords" href="/tags/%E7%B3%BB%E7%BB%9F%E8%BF%90%E7%BB%B4/">系统运维</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>原文：<a href="https://nathannaveen.dev/posts/dropping-ebpf-cpu-cost-by-90/">Dropping eBPF CPU Cost by About 90% With Memoization (Not AI Gen)</a>（nathan naveen，2026-09-11）。本文由 LeisureLinux 翻译整理并加注解读；所有代码、数字与结论均来自原博客，已对照其开源仓库 <a href="https://github.com/bomfather/agent">bomfather/agent</a> 核对。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+作者和他弟弟花了很多精力，从底层把他们的 eBPF 安全代理设计得很快；但最近他们发现，靠<strong>记忆化（memoization，缓存）</strong>还能再快一大截。几周前他 profiling 后发现：最贵的部分根本不是"执行策略（allow/deny）"，而是"搞清楚某个文件打开该套用哪条策略"。
+<p>他们的策略是基于路径的，所以 eBPF 挂了一个<strong>在文件打开时触发的 LSM hook</strong>：重建路径、沿父目录 dentry 向上走，逐层判断文件或任一祖先目录是否命中策略。这能工作，但性能不行——对已经见过的文件，大量工作是重复做的（比如数据库反复访问同一批路径）。于是他们给<strong>每个 inode 缓存"该套用哪条策略"</strong>，内核 CPU 开销直接降了约 90%。顺带，这篇涉及的实现已开源在 <code>bomfather/agent</code>。</p>
+<p>---</p>
+<h2>译文：博客要点</h2>
+<h3>问题：慢路径</h3>
+<p>加缓存之前，每次文件打开都要走完整条路径：</p>
+<ol>
+<li>1. 拿到文件路径</li>
+<li>2. 用 dentry 沿路径向上走</li>
+<li>3. 每一层检查该路径是否有策略</li>
+<li>4. 合并结果得到最终策略，再决定放行/拒绝</li>
+</ol>
+逻辑没问题，但同一个文件被多次打开、或同一子树里多个文件被打开时，每一步都得重做。例如 Postgres 策略只让 <code>postgres</code> 访问 <code>/var/lib/postgres</code>：
+<pre><code class="yaml">policies:
+  - executable: "filepath = /usr/lib/postgresql/16/bin/postgres"
+    can_access_dirs:
+      - "/var/lib/postgres:read"
+</code></pre>
+<p>当 Postgres 去读 <code>var/lib/postgres/data/base/123</code>、<code>.../234</code>、<code>.../345</code> 时，三次访问都要把整条 dentry 路径走一遍——非常低效。下文把这条低效路径遍历称为"慢路径"。</p>
+<h3>缓存里有什么</h3>
+<p>方案是用一个缓存。但要保证它不重、且缓存项可安全复用。他们本来想用 dentry，但 dentry 是指针，而<strong>指针存不进 eBPF map</strong>；若硬要用，得把 dentry 内容塞进一个 struct 当 map key，那样 struct 会很笨重。于是改用<strong>基于 inode 的缓存</strong>，key 由三个字段组成：mount namespace ID、mount ID、inode 号。</p>
+<ul>
+<li>不能只缓存 inode：inode 号只在某个 mount 树内唯一（策略跨多个 mount 树时可能撞号），mount ID 用来标识"我们从哪棵挂载树看到的这个文件"。</li>
+<li>mount namespace ID 则避免把缓存项用错命名空间。</li>
+</ul>
+缓存 value 两部分：<code>access_index</code>（策略的位掩码位置，为省空间策略存成 bitmask）和缓存状态。相关结构与 map 定义大致如下：
+<pre><code class="c">#define INODE_POLICY_CACHE_NO_POLICY 0
+#define INODE_POLICY_CACHE_ACCESS_INDEX 1
+#define INODE_POLICY_CACHE_GLOBAL_READ_ONLY 2
+#define INODE_POLICY_CACHE_ACCESS_INDEX_AND_GLOBAL_RO 3
+<p>struct inode_cache_key {
+    u64 mntns_id;
+    u64 mount_id;
+    u64 inode;
+};</p>
+<p>struct inode_policy_cache_value {
+    u32 access_index;
+    u8 state;
+};</p>
+<p>struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 10000);
+    __type(key, struct inode_cache_key);
+    __type(value, struct inode_policy_cache_value);
+} bomfather_inode_policy_cache SEC(".maps");
+</code></pre></p>
+<p>有了缓存后流程变成：</p>
+<ol>
+<li>1. 构造缓存 key</li>
+<li>2. 在 LRU hash map 里查</li>
+<li>3. 命中 → 直接按缓存结果放行/拒绝</li>
+<li>4. 未命中 → 走慢路径，把结果写回缓存</li>
+</ol>
+命中时，文件打开只要构造 inode 缓存 key 就直达 allow/deny；未命中才走父 dentry、合并策略、存结果。
+<h3>性能变化</h3>
+<p>基准测试里，他们把<strong>同一个文件打开 200,000 次</strong>：缓存把内核 cycle 从 <strong>280 亿降到 30.3 亿</strong>。无缓存时，<code>tail_call_security_check</code> 在栈上占 89.2%、<code>is_restricted_filepath</code> 81.9%、<code>path_check_callback</code> 63.7%；加缓存后，<code>is_restricted_filepath</code> 和 <code>path_check_callback</code> 各自缩到约 <strong>0.02%</strong>，在火焰图里基本消失。他们用 <code>perf</code> 的 <code>cycles:k</code> 事件测量文件打开时的内核侧 CPU 开销。</p>
+<h3>边界情况</h3>
+<p>一个必须处理的点：<strong>多个路径能共享同一个 inode</strong>——硬链接最典型。两个不同的路径指向同一 inode，这是个大问题，因为"结果准确"比"缓存命中率"更重要。他们的解法更像 workaround：inode 有链接计数 <code>i_nlink</code> 表明有多少路径指向它，读到大于 1 就<strong>不缓存这条、回退慢路径</strong>：</p>
+<pre><code class="c">if (BPF_CORE_READ_INTO(&nlink, inode, i_nlink)) {
+    return false;
+}
+<p>if (nlink != 1) {
+    inode_cache_stats_inc(INODE_CACHE_STATS_SKIPS_NLINK);
+    return false;
+}
+</code></pre></p>
+<p>这是个权衡——牺牲了部分缓存覆盖率，但作者认为值得，因为"准确的缓存"最重要。</p>
+<p>---</p>
+<h2>解读：三个能直接抄的工程经验</h2>
+<p><strong>1. eBPF map 里不能存指针，这是所有内核侧缓存的第一道坎。</strong>
+作者踩的坑很典型：dentry 是指针，BPF_MAP 的 key/value 必须是值类型（确定的、可比较的固定大小 struct）。所以正解不是缓存"对象"，而是缓存"对象的稳定身份"——由 mntns_id + mount_id + inode 三者构成的 key。这跟用户态用对象引用当缓存 key 的思路完全不同，是内核侧编程的基本功。</p>
+<p><strong>2. 命中率不是唯一指标，正确性优先。</strong>
+硬链接导致"同 inode 多路径"时，他们选择 <code>i_nlink != 1</code> 就放弃缓存。这等于承认：宁可慢一点，也不能给错误的放行/拒绝决定。对安全代理而言，缓存回退到慢路径只是性能问题，缓存给出错误策略就是安全问题。这个取舍值得所有"给安全机制加缓存"的人记牢。</p>
+<p><strong>3. 90% 的降幅来自"消除重复遍历"，不是来自"算法更聪明"。</strong>
+核心改动只是"为见过的 inode 记住结论"，瓶颈就出在反复走 dentry 树。这也呼应了我们上一篇讲过的 coreutils 话题——很多性能问题不在单条指令，而在"被不必要地重复做的工作"。LRU_HASH（上限 10000 条）保证了内存占用有界，是内核里做这种缓存的标准做法。</p>
+<p>---</p>
+<h2>关键数字速查</h2>
+<table>
+<tr><th>指标</th><th>数值</th></tr>
+<tr><td>内核 CPU 降幅</td><td>约 90%</td></tr>
+<tr><td>基准</td><td>同一文件打开 200,000 次</td></tr>
+<tr><td>内核 cycle</td><td>280 亿 → 30.3 亿</td></tr>
+<tr><td>热点函数（无缓存）</td><td><code>tail_call_security_check</code> 89.2% / <code>is_restricted_filepath</code> 81.9% / <code>path_check_callback</code> 63.7%</td></tr>
+<tr><td>热点函数（有缓存）</td><td>后两者各约 0.02%</td></tr>
+<tr><td>缓存类型</td><td><code>BPF_MAP_TYPE_LRU_HASH</code>，max_entries 10000</td></tr>
+<tr><td>缓存 key</td><td>mntns_id + mount_id + inode</td></tr>
+<tr><td>测量方式</td><td><code>perf</code> 的 <code>cycles:k</code> 事件</td></tr>
+</table>
+<p>---</p>
+<blockquote>给安全代理加缓存时，"准确"永远排在"快"前面。你如果在 eBPF 里做过类似的 inode/路径缓存，是怎么处理硬链接和 mount 命名空间边界的？欢迎留言。</blockquote>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-14_ebpf-memoization-90-percent/",
+      title: "\u628a eBPF \u5b89\u5168\u4ee3\u7406\u7684\u5185\u6838 CPU \u5f00\u9500\u780d\u6389 90%\uff1a\u9760\u7684\u662f\u8bb0\u5fc6\u5316\uff0c\u4e0d\u662f AI"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

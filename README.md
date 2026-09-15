@@ -17,6 +17,11 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-14 | [GNU coreutils 9.12 发布：修了一个折磨人多年的 -R 竞态，uname 多了结构化输出](https://freelamp.com/articles/2026-09-14_gnu-coreutils-9.12/) | GNU · coreutils · 9.12 · uname · TOCTOU · 性能优化 · 系统运维 |
+| 2026-09-14 | [Ubuntu 26.10 完成 coreutils 的 Rust 化：你天天敲的 ls/cp/rm 底层换引擎了](https://freelamp.com/articles/2026-09-14_ubuntu-2610-rust-coreutils/) | Ubuntu · 26.10 · Rust · coreutils · uutils · 内存安全 · TOCTOU · Canonical |
+| 2026-09-14 | [Linux 7.4 内核构建或快 36%，增量构建快 70%：AI 找出瓶颈，人写的补丁](https://freelamp.com/articles/2026-09-14_linux-74-faster-builds/) | Linux · 7.4 · 内核构建 · 性能优化 · AI · kbuild · Rust 前端 |
+| 2026-09-14 | [把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI](https://freelamp.com/articles/2026-09-14_ebpf-memoization-90-percent/) | eBPF · LSM · 性能优化 · 记忆化 · 内核缓存 · 硬链接 · 系统运维 |
+| 2026-09-14 | [Oracle 新一轮裁员：6 点清晨邮件、28 亿美元重组，以及 13% 的年度失血](https://freelamp.com/articles/2026-09-14_oracle-layoffs-2-8b-restructuring/) | Oracle · 裁员 · 重组 · 28亿美元 · 科技行业 · AI投资 |
 | 2026-09-14 | [GNU coreutils 9.7 全命令手册：105 个命令逐个拆解（附实机示例）](https://freelamp.com/articles/2026-09-14_gnu-coreutils-105-commands/) | GNU coreutils · Linux · Debian · trixie · CLI · man 手册 · shell · 运维 |
 | 2026-09-08 | [dpkg 1.23.8 上手解析——半年一发的累积版本，进入 unstable](https://freelamp.com/articles/2026-09-08_dpkg-1.23.8-accepted-unstable/) | dpkg · Debian · unstable · Sid · 包管理 |
 | 2026-09-08 | [Debian 13 "trixie" 13.7 Point Release 即将发布——9 月 12 日上线，上百项修复 + 90+ CVE 安全补丁](https://freelamp.com/articles/2026-09-08_debian-13-point-release-13.7-sua-286-1/) | Debian · trixie · Point Release · CVE |
