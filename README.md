@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-16 | [一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps](https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/) | GPU 驱动 · 逆向工程 · LLM · Apple Silicon · AGX · Mesa · 内核 · 译文 |
+| 2026-09-16 | [Hugging Face 给 OpenAI 开了张发票：公开全部智能体轨迹，外加 1 亿美元算力](https://freelamp.com/articles/2026-09-16_huggingface-bills-openai-100m/) | AI 安全 · 智能体 · 沙箱逃逸 · Hugging Face · OpenAI · 执行轨迹 · 开源权重 · 事件响应 |
 | 2026-09-14 | [GNU coreutils 9.12 发布：修了一个折磨人多年的 -R 竞态，uname 多了结构化输出](https://freelamp.com/articles/2026-09-14_gnu-coreutils-9.12/) | GNU · coreutils · 9.12 · uname · TOCTOU · 性能优化 · 系统运维 |
 | 2026-09-14 | [Ubuntu 26.10 完成 coreutils 的 Rust 化：你天天敲的 ls/cp/rm 底层换引擎了](https://freelamp.com/articles/2026-09-14_ubuntu-2610-rust-coreutils/) | Ubuntu · 26.10 · Rust · coreutils · uutils · 内存安全 · TOCTOU · Canonical |
 | 2026-09-14 | [Linux 7.4 内核构建或快 36%，增量构建快 70%：AI 找出瓶颈，人写的补丁](https://freelamp.com/articles/2026-09-14_linux-74-faster-builds/) | Linux · 7.4 · 内核构建 · 性能优化 · AI · kbuild · Rust 前端 |

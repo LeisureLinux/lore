@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps — FreeLAMP.com</title>
+  <meta name="description" content="译介 Cody Ho 博客（2026-09-15）《I Came, I Prompted, I Left Part 2》：两人 + Codex/Claude 约一个月写出符合 OpenGL ES 3.0 的 M4/A18 Pro GPU 驱动（Minecraft 200fps）。细节包括：Apple 把内核驱动切两半塞">
+  <meta name="keywords" content="译文, GPU 驱动, LLM, 逆向工程, Apple Silicon, AGX, Mesa, OpenGL, 内核驱动">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-16">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps">
+  <meta property="og:description" content="译介 Cody Ho 博客（2026-09-15）《I Came, I Prompted, I Left Part 2》：两人 + Codex/Claude 约一个月写出符合 OpenGL ES 3.0 的 M4/A18 Pro GPU 驱动（Minecraft 200fps）。细节包括：Apple 把内核驱动切两半塞">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-16">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="译文">
+  <meta property="article:tag" content="译文">
+  <meta property="article:tag" content="GPU 驱动">
+  <meta property="article:tag" content="LLM">
+  <meta property="article:tag" content="逆向工程">
+  <meta property="article:tag" content="Apple Silicon">
+  <meta property="article:tag" content="AGX">
+  <meta property="article:tag" content="Mesa">
+  <meta property="article:tag" content="OpenGL">
+  <meta property="article:tag" content="内核驱动">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps">
+  <meta name="twitter:description" content="译介 Cody Ho 博客（2026-09-15）《I Came, I Prompted, I Left Part 2》：两人 + Codex/Claude 约一个月写出符合 OpenGL ES 3.0 的 M4/A18 Pro GPU 驱动（Minecraft 200fps）。细节包括：Apple 把内核驱动切两半塞">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps",
+  "description": "Cody Ho 与 Niklas 用约一个月（常规需数年）为 M4 Mac Mini 和 MacBook Neo 从零写出完整符合 OpenGL ES 3.0 的 GPU 驱动：Chrome/Firefox 跑通 WebGL，Minecraft 跑到 200fps。全流程净室完成——不看任何 Apple 二进制，只用自建 hypervisor 抓的硬件 trace。内核侧从零逆向 AGX 固件 ABI（跑在 RTKit 上，A18 Pro 比 M1 复杂得多：struct 1.5 倍、指针 2 倍）；用户空间自研反汇编/汇编器与 NIR→AGX ISA 编译器。三个卡点全是「拿不到干净捕获」，最大功臣是「重放 → 逐步减少拷贝页数 → 完全从源码构建」这套流程。附作者对 Codex「pedantic」的评价、Claude 在指令级理解上的失败、以及「Mesa first」胜过「硬件优先」的路线对比。",
+  "datePublished": "2026-09-16",
+  "dateModified": "2026-09-16",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "译文, GPU 驱动, LLM, 逆向工程, Apple Silicon, AGX, Mesa, OpenGL, 内核驱动"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps",
+        "item": "https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-16">2026-09-16</div>
+        <h1 class="post-title" itemprop="headline">一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a><a itemprop="keywords" href="/tags/GPU%20%E9%A9%B1%E5%8A%A8/">GPU 驱动</a><a itemprop="keywords" href="/tags/LLM/">LLM</a><a itemprop="keywords" href="/tags/%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B/">逆向工程</a><a itemprop="keywords" href="/tags/Apple%20Silicon/">Apple Silicon</a><a itemprop="keywords" href="/tags/AGX/">AGX</a><a itemprop="keywords" href="/tags/Mesa/">Mesa</a><a itemprop="keywords" href="/tags/OpenGL/">OpenGL</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8%E9%A9%B1%E5%8A%A8/">内核驱动</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>原文：<a href="https://codyho.dev/blog/gpu-driver/">I Came, I Prompted, I Left Part 2: Building a GPU Driver From Scratch in One Month</a>（Cody Ho，2026-09-15）。本文由 LeisureLinux 翻译整理并加注解读；文内所有事实、数字与引语均来自原作者博客，未作改动。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+一个正常需要<strong>几年</strong>的工程量，两个人加上 LLM，用<strong>大约一个月</strong>做完了：为 M4 Mac Mini 和 MacBook Neo 从零写出了一个<strong>完整符合 OpenGL ES 3.0 规范</strong>的 GPU 驱动。Chrome 和 Firefox 能在 M4 Mac Mini 上跑 WebGL 并正常合成；Minecraft 能跑到 <strong>200fps</strong>。
+<p>作者是 Cody Ho（博客标题系列「I Came, I Prompted, I Left」的第二篇）。整件事在一个<strong>可验证的净室（clean room）</strong>流程下完成——没有看过任何 Apple 二进制，只用他们此前自建 hypervisor 抓到的硬件 trace，以及自己写的 shader。</p>
+<p>---</p>
+<h2>译文：他们做了什么</h2>
+<h3>起点：先有 hypervisor，再有驱动</h3>
+<p>作者此前为了逆向 macOS，先写了一个 hypervisor。这一篇的目标是把那套工具拿来做点真正有用的事——写 GPU 驱动。理由很直白：现代系统里 GPU 是硬需求，否则一切都要 CPU 渲染，慢几个数量级、能效也差。</p>
+<p>他们的目标是为 M4 Mac Mini 和 MacBook Neo 实现<strong>合规的 OpenGL（以及后续的 Vulkan）驱动</strong>。原计划是「几天」，现实是「几周」——但相比惯例的「几年」，仍然是数量级的改进。</p>
+<p>这几周里他们做到了：</p>
+<ul>
+<li>仅靠 live probing 逆向 M4、A18 Pro 和（大部分）M5 的用户空间，并发现了<strong>Apple 自家驱动都没发出的</strong>硬件支持特性与指令；</li>
+<li>写出完整可用的用户空间驱动，包含自研的 IR/shader 编译器、命令流构建器等组件；</li>
+<li>用此前 hypervisor 抓的 trace，<strong>从零逆向出完整的 AGX 固件 ABI</strong>；</li>
+<li>为这套固件 ABI 实现了完整的 Linux 内核驱动。</li>
+</ul>
+<h3>内核侧：真正的敌人是固件 ABI</h3>
+<p>在 Apple Silicon 上，内核驱动<strong>不直接和硬件对话</strong>，而是和跑在一个叫 <strong>RTKit</strong> 的自定义 RTOS 上的 GPU 固件对话。所以写内核驱动的第一步不是搞硬件，而是搞清固件 ABI。</p>
+<p>这是整个项目最烦人的部分。Apple 没有设计一套体面的接口，而是<strong>把一个普通内核驱动切成两半</strong>，一半塞进 AGX 叫「固件」，另一半用内存里的共享 struct 通信。这些 struct 里，固件持有的字段（绝不能改、只能逆向学）和主机控制的字段交错在一起。作为复杂度参考，这是 M1/M2 上的共享内存树——而 A18 Pro 的固件 ABI 比「已经非常复杂」的 M1 还要复杂得多：<strong>struct 数量 1.5 倍、指针数量 2 倍、提交工作的流程显著更复杂</strong>。</p>
+<p>作者提到，Asahi Lina 当年是在「12 小时连轴转的苦战」中搞明白 M1/M2 这一整套的。</p>
+<h3>方法：看 macOS 怎么做，重放，然后自己做</h3>
+<p>思路直接：观察 macOS 的行为、<strong>重放</strong>它、再试着自己做——而这一切之所以可能，靠的是那个 hypervisor。</p>
+<p>当作者把这个思路描述给 LLM 时，模型对「重放」的理解极其字面：它先等到第一个固件可见事件（他们称之为 kick），把<strong>整个 GPU 内存状态存一份</strong>；重启后，把保存的内存状态直接拷回主机内存、执行 kick，看到输出页果然变了。然后它再试着用代码重建这些对象，沿着指针走、把内容搞明白。<strong>一轮轮实验下来，Codex 会不断减少它拷贝的页数，直到不再需要任何重放状态、所有东西都从源码构建出来。</strong></p>
+<p>作者还说了一句很关键的观察：Codex 对「什么时候该再戳一下硬件、什么时候该跑 hypervisor 自己抓状态」有不错的品味。</p>
+<h3>三个卡点，全是「拿不到干净的主机工作捕获」</h3>
+<p><strong>第一个：固件启动之后提交的 render 工作。</strong> 固件启动前预置工作没问题；固件一启动，任何提交的工作就只会被 ACK 然后退休，什么都不做。作者介入检查后发现，Codex 在重放一个<strong>位于 AGX 生命周期很晚</strong>的捕获——那里已经积累了大量事件。他让 Codex 改选「固件启动后的第一个捕获」，问题几乎立刻被定位：<strong>少了一个单字节的 descriptor</strong>。这花了几天。</p>
+<p><strong>第二个（唯一真正阻塞的）：compute。</strong> AGX 大致支持两类工作：compute 和 render。在常规 GUI 路径里，compute 只在大量 render 执行之后才会被调度，因此很难拿到干净的 compute 捕获。Codex 最终拿到的捕获是 <strong>336MB 且无法重放</strong>；它试了很久，又花了一周多尝试从捕获里自己构造对象，最终失败——垃圾信息太多。作者也反思了自己的失误：render 跑通后他「失去了谦逊」，以为 compute 几小时就能搞定，没有为 LLM 搭好脚手架。</p>
+<p>解决办法来自另一个 Codex 会话：</p>
+<ol>
+<li>1. 以单用户模式启动，禁用 GUI——这样不会有 render 工作；</li>
+<li>2. 装一个 LaunchDaemon，在 Metal 可用的<strong>最早时刻</strong>运行；</li>
+<li>3. 跑一个他们提供的小小程序；</li>
+<li>4. 捕获并重放这个又小又纯的 compute trace。</li>
+</ol>
+trace 捕获成功，几小时内 Codex 就把它拆解了，几天内 compute 就跑通了。至于原来那份 compute 代码为什么不行——<strong>Codex 自己也不知道</strong>，能跑的和坏掉的看起来几乎一样。
+<p><strong>第三个：partial render。</strong> 当 Tiled Vertex Buffer（TVB）装不下当前几何体时（三角形太多），驱动要么扩大 TVB，要么做一次 partial render：先渲染一部分，再把剩余三角形重新载入 buffer，完成剩下的部分。这非常挑剔，因为<strong>本质上等于给 GPU 驱动加上 save/resume</strong>。这里前面那套工作流派上了用场：Codex 先重放一次 partial render 事务，然后修改 Metal shader 主动触发多次 partial render（用成千上万个三角形猛砸同一个 tile 即可），学会重放之后，剩下的就只是时间问题。</p>
+<h3>从 Python 原型到 Linux 驱动：三天</h3>
+<p>从 Python 原型驱动走到功能完整的 Linux 驱动花了<strong>三天</strong>，其中一天几乎白费——因为 Codex 不知为何<strong>选择先啃 partial render</strong>（最难的任务），而不是先做 compute（最简单的）。作者让它先做 compute 之后，一切顺利。</p>
+<p>整体流程是：</p>
+<ol>
+<li>1. 用 Rust 重写现有 drm-shim，沿用同一套模式 → 得到一个同步的 Rust 驱动；</li>
+<li>2. 把前端改成异步，GPU 提交本身仍保持同步；</li>
+<li>3. 重构 GPU 提交为异步：不再轮询，而是监听固件事件、把工作与 fence 关联；</li>
+<li>4. 做一批低成本优化，比如批量提交工作。</li>
+</ol>
+作者的评价是：这都是相当常规的工程工作，<strong>LLM 完全有能力胜任</strong>。
+<h3>用户空间：两条路线，Mesa 优先赢了</h3>
+<p>A18 Pro 的用户空间和 M1/M2 很不一样：新的 descriptor 格式、新的 ISA。除了同样是面向 Metal 的 tile-based deferred renderer，它基本就是另一块 GPU。</p>
+<p>好消息是用户空间逆向有非常明确的流程：写个小 Metal 程序、编译、运行、看什么变了、拆开、改 bit 直到搞懂每个 bit 干什么。听着就像那种枯燥重复的机械劳动——<strong>正是 LLM 擅长的</strong>。</p>
+<p>逆向分两阶段。第一阶段让 Claude 把它能找到的所有 Metal 程序看一遍，构建反汇编器、汇编器，理解 descriptor / 命令流等格式。这一步成功了——但「能反汇编再汇编」不等于「知道怎么自己造一个」。当试图补齐这个差距（理解每条指令到能编译任意程序的程度）时，<strong>Claude 表现很糟，基本零进展</strong>。</p>
+<p>此时 Niklas 完成了 M4 Mac Mini 的 drm-shim 并加入第二阶段。两人路线不同：</p>
+<ul>
+<li><strong>Cody 的路线</strong>：优先做硬件逆向，先搞清硬件和指令，然后写 spec、让 LLM 实现，目标是完整的 OpenGL 和 Vulkan 合规。代价是 LLM 大量时间花在「为了完整性」的琐碎实验上。</li>
+<li><strong>Niklas 的路线</strong>：所谓「Mesa first」——先把 Mesa 搭起来，只在需要实现某功能时才去逆向。</li>
+</ul>
+结果 <strong>Niklas 明显更快</strong>。原因也很清楚：他的 agent 被「真的要把 Mesa 建起来」这个目标锚定，时间和资源用得高效得多；而 Cody 的 agent 会为了完整性在一些无关紧要的小任务上耗时。Niklas 快到什么程度——Cody 后来干脆转为支援他，去调查他还没搞懂的行为。
+<p>作者点出了 Codex 的一个大局限，用的词是 <strong>「pedantic（迂腐）」</strong>：它极其彻底，这在某些场景是巨大优势，但另一些时候会卡在某个不相干的枝节上，损害整体目标。</p>
+<p>逆向过程中，他们发现了<strong>硬件支持但 Metal 未暴露</strong>的行为（靠直接改指令的 bit 并外推，和当年 Alyssa Rosenzweig 逆向 M1/M2 的做法一样）：</p>
+<ul>
+<li>原生单指令 <strong>64 位加法</strong>；</li>
+<li><strong>各向异性过滤到 128x</strong>（Metal 上限 16x）；</li>
+<li>矩阵单元的<strong>一个新模式</strong>；</li>
+<li><code>uniform_mov</code> 的 <strong>7 位立即数</strong>支持。</li>
+</ul>
+<h3>Mesa 开发：测试已经有人写好了</h3>
+<p>用户空间图形开发有几件大好事。最关键的：<strong>Khronos 的兼容性测试套件（CTS）</strong>本身就是一份详尽的测试语料，是驱动必须通过的。换句话说，「给 LLM 提供好测试来锚定它」——整个 LLM 工作流里最难、最敏感的一环——<strong>已经免费得到</strong>。</p>
+<p>另外 Mesa 的抽象层极大降低了难度：只需在 Gallium（Mesa 内部 API）和 AGX 硬件语义之间做翻译，其中一大块是把 NIR（Mesa 的内部 IR，很像 LLVM IR）翻译成 AGX 的私有 ISA。这个编译器将来做 Vulkan 驱动还能复用。</p>
+<p>Niklas 就这样一边逆向用户空间一边迭代 OpenGL 特性，最终达成<strong>完整 OpenGL ES 3.0 合规</strong>（未通过的都是可选扩展）。</p>
+<p>整个过程还受益于已有的 M1/M2 工作：具体硬件语义不同，但整体形状相似，很多正确的取舍别人已经替他们做过了。作者对 Alyssa Rosenzweig 等人的评价是：<strong>「他们简直是巫师。」</strong></p>
+<h3>交付物与后续</h3>
+<ul>
+<li>Mesa：<a href="https://github.com/niklassheth/mesa">github.com/niklassheth/mesa</a></li>
+<li>Linux 内核驱动：<a href="https://github.com/GravityLinux/linux">github.com/GravityLinux/linux</a>（<code>gravity-m4</code> 分支）</li>
+<li>用户空间逆向文档（作者自嘲是「一坨可怕的 LLM 垃圾，但能用」）</li>
+</ul>
+剩余工作在范围内：<strong>Vulkan 1.4、OpenGL 4.6、OpenGL ES 3.2、OpenCL 3.1、Direct3D 12（走 Proton）、光线追踪</strong>。他们的目标是「做到和世界上最好的图形驱动一样好」。
+<p>上游化则明确写着「主要是人和非技术的问题，LLM 帮不上忙」：Mesa 用的是未修改的 Asahi UAPI，没有策略问题，但需要大量测试、人工 review，并重构成一个可 review 的 PR。他们预计会遭遇严重质疑——毕竟这<strong>很可能是史上第一个完全由 LLM 写成的 GPU 驱动</strong>，而代码会被用比人类手写更高的标准审视。</p>
+<h3>附：一个「够蠢够快」的续跑守护进程</h3>
+<p>作者用的是 Codex + GPT-5.6 Sol（后来是 GPT-6 Astra）做内核逆向。最大的麻烦是<strong>过于激进的安全限制</strong>（他没有 enroll 到 trusted access）。99% 的情况下，一句「/goal resume」或「keep going」就能让它继续——这也说明限制过于激进——但它依然打断了无人值守流程。</p>
+<p>于是他写了一个「最快最蠢」的方案：<strong>一个每分钟截屏一次的守护进程，把截图与上一张做 diff，如果完全相同（说明 Codex 停止了推进），就自动键入 <code>/goal resume</code></strong>。他说自己不小心把这个 daemon 留在了某些群聊里。不过他也强调：GPT-6 Astra 和 GPT-5.6 Sol 在固件 ABI 逆向上「简直疯狂」，是最好的表现者，所以这个 hack 值回票价。</p>
+<p>---</p>
+<h2>解读：这篇博客真正的信息量在哪</h2>
+<p><strong>1. 「一个月写完 GPU 驱动」不是 LLM 单飞的胜利，而是流程设计的胜利。</strong>
+把文章里真正起作用的东西列出来：一个自建 hypervisor（可复现地抓硬件 trace）、净室隔离（不碰 Apple 二进制）、最小可复现捕获（单用户模式 + 最早的 LaunchDaemon + 极小 Metal 程序）、以及现成的 CTS 测试语料。LLM 负责的是在这些约束里做枯燥而庞大的 bit 级推理。少任何一环，一个月都不可能。</p>
+<p><strong>2. 「重放」是逆向 agent 时代的核心工作流。</strong>
+Codex 的第一反应就是「把整块 GPU 内存状态存下来、拷回去、kick、看输出页变没变」，然后<strong>逐步减少拷贝的页数直到完全从源码构建</strong>。这其实是一种自动化的、可度量的收敛过程：每一轮实验都是对理解程度的一次可验证检验。这篇文章最有价值的方法论可能就在这几段。</p>
+<p><strong>3. 卡点几乎总是「拿不到干净捕获」，而不是模型能力不够。</strong>
+第一个问题（少一个单字节 descriptor）的解法是换更早的捕获点；第二个（336MB compute trace 无法重放）的解法是单用户模式 + 极小 trace。两次都不是「模型太笨」，而是<strong>实验设计没收敛</strong>。作者的自我反省也指向同一件事：他以为简单所以没搭脚手架，结果白白烧掉一周多。</p>
+<p><strong>4. 「Mesa first」胜过「硬件优先」——这是给所有 agent 使用者的通用教训。</strong>
+两条路线的差别，本质是<strong>任务有没有可验证的收敛判据</strong>。为完整性做实验，判据是主观的、开放的，agent 会无限膨胀；为「让 Mesa 跑起来」做实验，判据是客观的、可跑的。CTS 的价值同理：它不是测试，它是<strong>把开放性目标变成封闭性目标</strong>的那把钥匙。这也解释了为什么作者说 Codex「pedantic」既是优点又是缺陷。</p>
+<p><strong>5. 上游化会是人类瓶颈，这一条短期内不会变。</strong>
+「我们预期会被用比人类手写更高的标准要求」——这句话点出了 LLM 生成代码进入关键基础设施（内核、Mesa）的真实阻力。技术验证可以自动化，但<strong>信任与责任无法自动化</strong>，只能靠测试、review 和时间累积。作者的结论很务实：等 M1/M2 驱动先上游，再排队。</p>
+<p>---</p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>作者</td><td>Cody Ho + Niklas（前篇：自建 hypervisor 逆向 macOS）</td></tr>
+<tr><td>成果</td><td>完整符合 OpenGL ES 3.0 的 GPU 驱动</td></tr>
+<tr><td>硬件</td><td>M4 Mac Mini、MacBook Neo（另含 A18 Pro / M5 部分逆向）</td></tr>
+<tr><td>周期</td><td>约 1 个月（原计划几天）</td></tr>
+<tr><td>性能</td><td>Minecraft 200fps；Chrome/Firefox WebGL 正常合成</td></tr>
+<tr><td>净室要求</td><td>不看 Apple 二进制，只用自建 hypervisor 的硬件 trace</td></tr>
+<tr><td>内核侧难点</td><td>AGX 固件 ABI（跑在 RTKit 上；A18 Pro 比 M1 复杂：struct 1.5x、指针 2x）</td></tr>
+<tr><td>三大卡点</td><td>固件启动后 render 捕获、336MB compute 捕获、partial render（≈ save/resume）</td></tr>
+<tr><td>关键方法</td><td>重放 → 逐步减少拷贝页数 → 完全从源码构建</td></tr>
+<tr><td>用户空间</td><td>自研反汇编/汇编器 + NIR→AGX ISA 编译器</td></tr>
+<tr><td>测试锚点</td><td>Khronos CTS（现成语料，等价于免费的 grounding）</td></tr>
+<tr><td>胜出路线</td><td>「Mesa first」（Niklas）胜过「硬件优先」（Cody）</td></tr>
+<tr><td>交付物</td><td>niklassheth/mesa、GravityLinux/linux <code>gravity-m4</code> 分支</td></tr>
+<tr><td>后续范围</td><td>Vulkan 1.4、OpenGL 4.6、GLES 3.2、OpenCL 3.1、D3D12（Proton）、光追</td></tr>
+<tr><td>上游障碍</td><td>需测试、人工 review、重构；预计被更高标准审视（恐为首个全 LLM 写的 GPU 驱动）</td></tr>
+</table>
+<p>---</p>
+<blockquote>本文为 Cody Ho 博客的翻译与解读，事实与引语以原文为准。如果你也在用 agent 做逆向或底层工程，欢迎留言聊聊：你更倾向「硬件优先」还是「可运行目标优先」？下一篇我们可以拆一下 Asahi 项目在 LLM 时代的开源协作模式会怎么变。</blockquote>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/",
+      title: "\u4e00\u4e2a\u6708\u4ece\u96f6\u5199\u51fa GPU \u9a71\u52a8\uff1aLLM \u9006\u51fa Apple AGX\uff0cMinecraft \u8dd1 200fps"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
