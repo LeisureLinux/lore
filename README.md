@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-16 | [RVA23 之后，RISC-V 往哪走：CFI、矩阵扩展与 RVA23.1](https://freelamp.com/articles/2026-09-16_riscv-after-rva23/) | RISC-V · 指令集 · CFI · 矩阵扩展 · 工具链 · Canonical |
+| 2026-09-16 | [iocost 的七年之约：把 IO 成本模型交给 BPF](https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/) | Linux 内核 · BPF · struct_ops · iocost · cgroup · IO 调度 · 块层 |
+| 2026-09-16 | [Fedora 45 Beta 发布：默认限制 ptrace、kmscon 换掉 fbcon、Anaconda 原生装 Stratis](https://freelamp.com/articles/2026-09-16_fedora-45-beta/) | Fedora · 发行版 · ptrace · kmscon · Stratis · 供应链安全 |
 | 2026-09-16 | [一个月从零写出 GPU 驱动：LLM 逆出 Apple AGX，Minecraft 跑 200fps](https://freelamp.com/articles/2026-09-16_llm-written-gpu-driver-m4/) | GPU 驱动 · 逆向工程 · LLM · Apple Silicon · AGX · Mesa · 内核 · 译文 |
 | 2026-09-16 | [Hugging Face 给 OpenAI 开了张发票：公开全部智能体轨迹，外加 1 亿美元算力](https://freelamp.com/articles/2026-09-16_huggingface-bills-openai-100m/) | AI 安全 · 智能体 · 沙箱逃逸 · Hugging Face · OpenAI · 执行轨迹 · 开源权重 · 事件响应 |
 | 2026-09-14 | [GNU coreutils 9.12 发布：修了一个折磨人多年的 -R 竞态，uname 多了结构化输出](https://freelamp.com/articles/2026-09-14_gnu-coreutils-9.12/) | GNU · coreutils · 9.12 · uname · TOCTOU · 性能优化 · 系统运维 |

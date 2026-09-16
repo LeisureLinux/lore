@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iocost 的七年之约：把 IO 成本模型交给 BPF — FreeLAMP.com</title>
+  <meta name="description" content="译介并解读 LWN《Adding BPF to blk-iocost》所指向的一手材料：Tao Cui 的 [RFC PATCH v3 0/5] blk-iocost: BPF struct_ops cost model（2026-09-14）。覆盖接口设计（完整 bi_opf 保留 PREFLUSH/FUA、blkc">
+  <meta name="keywords" content="译文, Linux 内核, BPF, struct_ops, iocost, cgroup, IO 调度, 块层, LWN">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-16">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="iocost 的七年之约：把 IO 成本模型交给 BPF">
+  <meta property="og:description" content="译介并解读 LWN《Adding BPF to blk-iocost》所指向的一手材料：Tao Cui 的 [RFC PATCH v3 0/5] blk-iocost: BPF struct_ops cost model（2026-09-14）。覆盖接口设计（完整 bi_opf 保留 PREFLUSH/FUA、blkc">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-16">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="译文">
+  <meta property="article:tag" content="译文">
+  <meta property="article:tag" content="Linux 内核">
+  <meta property="article:tag" content="BPF">
+  <meta property="article:tag" content="struct_ops">
+  <meta property="article:tag" content="iocost">
+  <meta property="article:tag" content="cgroup">
+  <meta property="article:tag" content="IO 调度">
+  <meta property="article:tag" content="块层">
+  <meta property="article:tag" content="LWN">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="iocost 的七年之约：把 IO 成本模型交给 BPF">
+  <meta name="twitter:description" content="译介并解读 LWN《Adding BPF to blk-iocost》所指向的一手材料：Tao Cui 的 [RFC PATCH v3 0/5] blk-iocost: BPF struct_ops cost model（2026-09-14）。覆盖接口设计（完整 bi_opf 保留 PREFLUSH/FUA、blkc">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "iocost 的七年之约：把 IO 成本模型交给 BPF",
+  "description": "iocost 2019 年合入内核时就在 commit message 里承诺「later patch 会让 BPF 写成本模型」，这一格空了七年。Tao Cui 的 RFC PATCH v3 把它补上：iocost_model_ops 单回调 calc_cost(opf, nbytes, sector, blkcg, model_flags) 返回 vtime，绑定的模型完全接管设备定价权。文中给出三类实测错误定价（同一 cgroup 双顺序读者被误判随机导致 89 倍多收、16MB 阈值内随机 IO 107 倍少收、flush/zone append 完全绕过限流），以及收益验证：双顺序读者 1961us→23us/op，完成 IO 数提升两个数量级。附 Tejun Heo 三次关键评审意见与 CFI stub 静默定价为 0 的坑。",
+  "datePublished": "2026-09-16",
+  "dateModified": "2026-09-16",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "译文, Linux 内核, BPF, struct_ops, iocost, cgroup, IO 调度, 块层, LWN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "iocost 的七年之约：把 IO 成本模型交给 BPF",
+        "item": "https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-16">2026-09-16</div>
+        <h1 class="post-title" itemprop="headline">iocost 的七年之约：把 IO 成本模型交给 BPF</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a><a itemprop="keywords" href="/tags/Linux%20%E5%86%85%E6%A0%B8/">Linux 内核</a><a itemprop="keywords" href="/tags/BPF/">BPF</a><a itemprop="keywords" href="/tags/struct_ops/">struct_ops</a><a itemprop="keywords" href="/tags/iocost/">iocost</a><a itemprop="keywords" href="/tags/cgroup/">cgroup</a><a itemprop="keywords" href="/tags/IO%20%E8%B0%83%E5%BA%A6/">IO 调度</a><a itemprop="keywords" href="/tags/%E5%9D%97%E5%B1%82/">块层</a><a itemprop="keywords" href="/tags/LWN/">LWN</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>原文：<a href="https://lwn.net/Articles/1093661/">Adding BPF to blk-iocost</a>（LWN.net，2026-09-16，作者 Jonathan Corbet）。该文为 LWN 订阅内容，本文不复述其正文，而是以它指向的公开一手材料为准：Tao Cui 的内核邮件列表补丁系列 [RFC PATCH v3 0/5] blk-iocost: BPF struct_ops cost model（2026-09-14）及 v1/v2 的评审往来。文内数字与引语均来自这些公开邮件，未作改动。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+iocost 在 2019 年合入内核时，它的 commit message 里就写下了承诺：
+<blockquote>a later patch will also allow using bpf progs for cost models</blockquote>
+七年之后，这个「later patch」终于来了。代码里那个 <code>calc_vtime_cost()</code> 从一开始就是个分发器，然而它唯一的实现始终是 <code>calc_vtime_cost_builtin()</code>——<strong>内置的线性模型是七年来唯一的选择</strong>。2026 年 9 月，Tao Cui 提交了让这一格被填上的补丁系列。
+<p>---</p>
+<h2>先说清楚：这不是"给内核加个 BPF"，而是把定价权整体交出去</h2>
+<p>这是理解整个系列的关键，也是它和多数"BPF 化"提案不同的地方。</p>
+<p>v1 的思路很保守：BPF 模型算出来的成本为 0 时，把这条 IO <strong>交回内置公式</strong>。听起来稳妥，但 Tejun Heo 直接否掉了——</p>
+<blockquote>我认为混合 BPF 与内置定价没有意义，无论是逐 IO 混合，还是在计费与请求定尺之间混合。它看起来既绕又容易出错。用 BPF 实现线性模型是直截了当的。</blockquote>
+v3 的最终形态印证了这句话：一个被绑定到设备的模型<strong>完全拥有该设备的定价权</strong>。生物计费路径走它，每条操作（包括 flush）都由它定价，既不逐 IO 回退，也不在路径之间劈开。用作者自己的话说，内置的 cursor 不再暴露，模型要自己管流状态。
+<p>代价是模型必须把线性模型也实现一遍——但这本来就是可做的，而且系列里正好带了一个：把内置的 HDD 线性公式<strong>按双倍成本</strong>实现，作为树内的参考实现，仿的是 <code>bpf_dctcp</code> 的路子。</p>
+<p>---</p>
+<h2>内置模型到底错在哪：三类可测量的错误定价</h2>
+<p>补丁系列的动机部分写得相当扎实，值得单独拎出来。内置模型给每条 IO 定的是二元价——<strong>顺序还是随机</strong>，由一个 per-cgroup 的 cursor 加一个 16MB 的寻道阈值判断，再叠一个按页成本。</p>
+<p>在 virtio-blk 设备、HDD autop profile 下，一条 4k IO：</p>
+<table>
+<tr><th>判定</th><th>成本</th></tr>
+<tr><td>判为顺序</td><td>~24us</td></tr>
+<tr><td>判为随机</td><td>~2.7ms</td></tr>
+</table>
+<p><strong>112 倍的差距。</strong> 判错一次，价格就错一次。作者列出了三类错误，全部有实测：</p>
+<p><strong>1. 启发式刚性。</strong> 同一个 cgroup 里两个合法的顺序读者（比如有多个表空间的数据库、多线程备份），会让那唯一的 cursor 来回弹跳，结果<strong>全部被判为随机</strong>。v1 测到的是 89 倍多收，实际后果是同等权重下吞吐崩塌；反过来，一个小于 16MB 的热窗口内的随机 IO 会被判为顺序，<strong>测到 107 倍少收</strong>——对热点工作负载来说，这就是一条钻计费空子的通道。作者指出，这没法靠调参解决：<strong>把两股流区分开需要逐 IO 的状态追踪，那是逻辑，不是系数。</strong></p>
+<p><strong>2. 设备非线性。</strong> SLC 缓存的不同阶段、SMR 的 band 摆放、共享控制器（多个 NVMe namespace 复用一块设备），都会让一条完全相同的 IO 的真实成本随时间或命名空间<strong>相差一个数量级</strong>。一个静态的六参数线性模型没法表达这个。</p>
+<p><strong>3. 未定价操作。</strong> flush 和 zone append 直接落到成本为 0，<strong>完全绕过限流</strong>（flush 已在另一个系列里单独修了），但这个模式会延伸到内置模型从未被教过的各种设备怪癖上。</p>
+<p>而错误定价不会停留在账面上——vtime 预算、盈余捐赠、vrate 反馈<strong>全都消费模型的输出</strong>，一个错的模型能把整个控制器带偏。</p>
+<p>---</p>
+<h2>接口长什么样</h2>
+<pre><code class="c">u64 calc_cost(u64 opf, u64 nbytes, sector_t sector,
+              struct blkcg *blkcg, u64 model_flags)
+</code></pre>
+<p>几个设计细节值得注意：</p>
+<ul>
+<li><strong><code>opf</code> 是完整的 <code>bio->bi_opf</code></strong>。这一点是评审换来的：v1 传的是 <code>bio_op(bio)</code>，而 Tejun 指出 <code>bio_op()</code> 会<strong>丢掉 <code>REQ_PREFLUSH</code> 和 <code>REQ_FUA</code></strong>——「请保留操作标志」。v3 因此把完整 opf 连同 PREFLUSH/FUA 一起传下去，操作类型由模型自己用掩码取。</li>
+<li><strong>返回值是 vtime</strong>，单位是 <code>2^37</code>（<code>VTIME_PER_SEC</code>）每秒钟设备时间，每条 IO 被 clamp 到最多 1 秒。</li>
+<li><strong><code>model_flags</code></strong> 装的是不属于 bio 操作标志的 iocost 专属元数据，比如这次计费是否来自 merge 路径。</li>
+<li><strong><code>blkcg</code> 是个 kptr</strong>（v2 起，v1 传的是会被回收的 <code>css.id</code>）。同样是评审意见：Tejun 建议「传 blkcg 作为 kptr 并加 online/offline 回调，让模型自己管理 per-cgroup 状态」。配合 <code>BPF_MAP_TYPE_CGRP_STORAGE</code>，状态的生命周期就跟着 cgroup 走了，不需要模型自己去检测 ID 复用。</li>
+</ul>
+运行环境上有个硬约束：<strong><code>calc_cost()</code> 在 RCU 读锁下调用于 IO 提交路径，不能睡眠</strong>。v1 栽在这上面——通用验证器允许可睡眠的 struct_ops 程序，模型完全可以在 <code>rcu_read_lock()</code> 里调 <code>bpf_copy_from_user()</code>。Tejun 要求补 <code>.check_member</code> 回调拒绝可睡眠程序，v2 起落实。
+<p>---</p>
+<h2>注册与绑定：抄 TCP 拥塞控制的作业</h2>
+<p>这是 v1 → v2 最大的一次返工。</p>
+<p>v1 是<strong>全系统一个模型</strong>（第二个注册返回 <code>EBUSY</code>），用 <code>ctrl=bpf</code> 逐设备选入。Tejun 的判断很直接：</p>
+<blockquote>struct_ops 实例应该是<strong>逐设备</strong>的。给某个设备加载模型就应该把它自动切换到 BPF。切回内置模型就应该解绑 struct_ops。</blockquote>
+v2/v3 因此改成 TCP 拥塞控制那套名称注册模型：
+<table>
+<tr><th>操作</th><th>做法</th></tr>
+<tr><td>注册</td><td>struct_ops 带上 <code>char name[16]</code>，注册后按名字可用</td></tr>
+<tr><td>绑定</td><td><code>io.cost.model</code> 写 <code>model=<name></code></td></tr>
+<tr><td>恢复</td><td><code>model=linear</code>（或 <code>ctrl=auto/user</code>）</td></tr>
+<tr><td>解绑后</td><td>已绑定的设备继续用它，直到切回内置模型才释放引用</td></tr>
+<tr><td>名字冲突</td><td><code>-EEXIST</code>；未知名字 <code>-ENOENT</code>，且整个写被拒绝</td></tr>
+</table>
+<p>v3 在这一层又磨了三处细节，都是评审逼出来的：</p>
+<ul>
+<li><strong>online/offline 通知跟着绑定走，而不是跟着名字注册表走</strong>——一个已注销但仍被绑定的模型，会继续收到通知直到最后一个引用落地。</li>
+<li><strong><code>io.cost.model</code> 的写入先解析名字再动任何东西</strong>，并在 <code>ioc->lock</code> 下换指针，这样坏名字会拒绝整次写入，并发写者也不会交错出半套配置。</li>
+<li><strong>没实现 <code>calc_cost</code> 的模型在加载时就被拒</strong>。这一条尤其值得记：CFI stub 会让成员指针非空，从而<strong>骗过检查</strong>，结果是每条 IO 都被定价为 0。修复方式是拿它跟 stub 比。</li>
+</ul>
+---
+<h2>跑起来是什么样</h2>
+<p>系列里用一个「2 倍成本」的示例模型验证机制。同样的 8 秒顺序读负载、来自一个 1% 权重的 cgroup：</p>
+<table>
+<tr><th>指标</th><th>内置</th><th>BPF（2x 模型）</th></tr>
+<tr><td>每条 IO 计费</td><td>2882us</td><td>5722us（<strong>1.985x</strong>）</td></tr>
+<tr><td>完成的 IO 数</td><td>—</td><td>减半</td></tr>
+<tr><td><code>cost.usage</code> 总量</td><td>7.51s</td><td>7.63s（<strong>守恒</strong>）</td></tr>
+</table>
+<p>恒等式成立说明模型输出<strong>同时驱动计费与预算</strong>，而不只是改了账面数字。</p>
+<p>真正的收益要看那个多流示例模型（4/5），同样 4k IO、权重 1000：</p>
+<table>
+<tr><th>场景</th><th>内置模型</th><th>BPF 模型</th></tr>
+<tr><td>同 cgroup 两个顺序读者</td><td>1961us/op（都被单一 cursor 判为随机）</td><td><strong>23us/op</strong>（各占一个槽位）</td></tr>
+<tr><td>8M 窗口内的随机 IO</td><td>24us/op（少收，计费漏洞）</td><td><strong>2607us/op</strong></td></tr>
+<tr><td>单流顺序 / 全盘随机</td><td>不变</td><td>不变</td></tr>
+</table>
+<p>完成 IO 数提升<strong>两个数量级</strong>，而且两个方向的错误定价都被修正，没有引入新的错误。这个"两头都修、中间不动"的结果，是这套接口可行性最有力的证据。</p>
+<p>v3 还补了三种负载形状的验证：flush 密集负载定价为内置的 1.99x（说明 flush 不再重置 cursor、把后续 IO 误判成随机）、非整页 IO（6KiB）约 2x、以及新 cgroup 首个高 LBA IO 定价 2.01x。</p>
+<p><strong>开销方面</strong>：在 enterprise NVMe 上，模型未绑定时<strong>测不到可测量的开销</strong>——每条 bio 多出来的那一次间接调用在这个速率下不可测。</p>
+<p>---</p>
+<h2>解读：这件事的分量在哪</h2>
+<p><strong>1. 它是"七年前的伏笔"被兑现，而不是新功能。</strong> 代码结构从一开始就为这件事留了位置（<code>calc_vtime_cost()</code> 是个空分发器），缺的一直是接口设计。这类"预留位"能不能活到兑现，本身就是内核工程的一个观察样本——它活了七年，说明当初的分层判断是对的。</p>
+<p><strong>2. 成本模型的可编程化，本质上是把"设备行为的知识"从内核搬到运维侧。</strong> 内置六个参数是静态的，而 SLC 缓存阶段、SMR band、共享控制器这些都是<strong>随设备与时间变化</strong>的特性。让能观测到自己设备特性的人用 BPF 写定价逻辑，这个方向比继续往里塞参数更合理。</p>
+<p><strong>3. 一个值得抄的工程细节：先定义"谁拥有真相"，再谈混合。</strong> v1 的"算不出就回退内置"看起来是最小侵入，实际制造了最难验证的状态——同一设备的两种定价策略并存，且边界随每条 IO 变化。Tejun 一句话砍掉它，换来的是"模型全权负责"这个可推理的契约。<strong>在给系统加可插拔点的时候，"允许部分接管"通常比"要么全接管要么不接管"更难正确。</strong></p>
+<p><strong>4. 失败样本比成功样本更有信息量。</strong> 系列里最有价值的两段，恰恰是两个被评审揪出来的坑：可睡眠程序能在 RCU 读锁里睡眠（通用验证器的默认行为不适用于这个上下文），以及 CFI stub 让缺失的成员指针看起来非空、从而<strong>把每条 IO 静默定价为 0</strong>。后者是那种能安静地毁掉整个控制器、却在编译和加载阶段都看不出问题的错误。</p>
+<p><strong>5. 状态：仍是 RFC。</strong> 截至 v3（2026-09-14），这套接口还没有合入主线，v3 的 changelog 显示它仍在回应评审。想跟进的话，盯 <code>[RFC PATCH vN] blk-iocost: BPF struct_ops cost model</code> 这条线即可。</p>
+<p>---</p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>提案人</td><td>Tao Cui（cui.tao@linux.dev / cuitao@linux-inos.cn）</td></tr>
+<tr><td>最新版本</td><td>[RFC PATCH v3 0/5]（2026-09-14）</td></tr>
+<tr><td>主审</td><td>Tejun Heo、Josef Bacik、Jens Axboe</td></tr>
+<tr><td>起因</td><td>iocost 2019 年 commit message 的「later patch」承诺，七年未兑现</td></tr>
+<tr><td>内置模型</td><td>二元顺序/随机判定 + 16MB 寻道阈值 + 按页成本，六参数静态线性</td></tr>
+<tr><td>判错代价</td><td>4k IO 顺序 ~24us vs 随机 ~2.7ms（112x）</td></tr>
+<tr><td>三类错价</td><td>启发式刚性（89x 多收 / 107x 少收）、设备非线性、未定价操作（flush/zone append）</td></tr>
+<tr><td>接口</td><td><code>iocost_model_ops.calc_cost(opf, nbytes, sector, blkcg, model_flags) → vtime</code></td></tr>
+<tr><td>定价权</td><td>绑定后<strong>完全接管</strong>，无逐 IO / 逐路径回退（v1 的回退被评审否决）</td></tr>
+<tr><td>注册模型</td><td>仿 TCP 拥塞控制：按名字注册，<code>io.cost.model</code> 写 <code>model=<name></code>，<code>model=linear</code> 恢复</td></tr>
+<tr><td>上下文约束</td><td>提交路径 + RCU 读锁，<strong>禁止睡眠</strong>（<code>.check_member</code> 拒绝）</td></tr>
+<tr><td>机制验证</td><td>2x 模型：2882→5722us（1.985x），<code>cost.usage</code> 守恒</td></tr>
+<tr><td>收益验证</td><td>双顺序读者 1961→23us/op；8M 内随机 24→2607us/op；完成 IO 数 +2 个数量级</td></tr>
+<tr><td>未绑定开销</td><td>enterprise NVMe 上不可测</td></tr>
+<tr><td>状态</td><td>RFC，未合入</td></tr>
+</table>
+<p>---</p>
+<blockquote>本文以 LWN 报道为线索，事实与数字全部取自公开的内核邮件列表补丁系列与评审往来。若你在生产里用 iocost 做过 cgroup IO 限速，欢迎留言说说那套六参数模型有没有让你踩过坑——尤其是多流顺序读被误判成随机的场景。</blockquote>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/",
+      title: "iocost \u7684\u4e03\u5e74\u4e4b\u7ea6\uff1a\u628a IO \u6210\u672c\u6a21\u578b\u4ea4\u7ed9 BPF"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
