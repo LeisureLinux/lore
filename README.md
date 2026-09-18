@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-16 | [Nextcloud 推出 Euro-Office 桌面端：补齐对标微软 Office 的最后一环](https://freelamp.com/articles/2026-09-16_nextcloud-euro-office-desktop-app/) | Nextcloud · Euro-Office · 开源办公 · 主权软件 · OnlyOffice · OOXML · ODF · 协同办公 |
 | 2026-09-16 | [RVA23 之后，RISC-V 往哪走：CFI、矩阵扩展与 RVA23.1](https://freelamp.com/articles/2026-09-16_riscv-after-rva23/) | RISC-V · 指令集 · CFI · 矩阵扩展 · 工具链 · Canonical |
 | 2026-09-16 | [iocost 的七年之约：把 IO 成本模型交给 BPF](https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/) | Linux 内核 · BPF · struct_ops · iocost · cgroup · IO 调度 · 块层 |
 | 2026-09-16 | [Fedora 45 Beta 发布：默认限制 ptrace、kmscon 换掉 fbcon、Anaconda 原生装 Stratis](https://freelamp.com/articles/2026-09-16_fedora-45-beta/) | Fedora · 发行版 · ptrace · kmscon · Stratis · 供应链安全 |
