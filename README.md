@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-18 | [长鑫（CXMT）要在北京做 3D NAND：DRAM 一哥，开始踩 YMTC 的 NAND 地盘](https://freelamp.com/articles/2026-09-18_cxmt-3d-nand-rd-beijing/) | CXMT · 长鑫 · 3D NAND · YMTC · 长江存储 · 存储 · SSD · DRAM · 半导体 · 国产存储 |
+| 2026-09-18 | [Wine 11.18 继续补全 NTOSKRNL：Windows 内核驱动在 Linux 上跑得越来越真](https://freelamp.com/articles/2026-09-18_wine-11.18-ntoskrnl/) | Wine · NTOSKRNL · 兼容层 · Windows · Linux · 内核驱动 · PnP · 游戏兼容 |
+| 2026-09-18 | [Ubuntu 26.10 改主意了：内核从 7.2 跳到 7.3，十月前吃上最新主线](https://freelamp.com/articles/2026-09-18_ubuntu-2610-linux-73/) | Ubuntu · 26.10 · Linux 7.3 · 内核 · 发行版 · Canonical · 译文 |
 | 2026-09-16 | [Nextcloud 推出 Euro-Office 桌面端：补齐对标微软 Office 的最后一环](https://freelamp.com/articles/2026-09-16_nextcloud-euro-office-desktop-app/) | Nextcloud · Euro-Office · 开源办公 · 主权软件 · OnlyOffice · OOXML · ODF · 协同办公 |
 | 2026-09-16 | [RVA23 之后，RISC-V 往哪走：CFI、矩阵扩展与 RVA23.1](https://freelamp.com/articles/2026-09-16_riscv-after-rva23/) | RISC-V · 指令集 · CFI · 矩阵扩展 · 工具链 · Canonical |
 | 2026-09-16 | [iocost 的七年之约：把 IO 成本模型交给 BPF](https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/) | Linux 内核 · BPF · struct_ops · iocost · cgroup · IO 调度 · 块层 |
