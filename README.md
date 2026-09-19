@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-18 | [systemd 那个绿色 [ OK ]，是怎么变成 logo 的](https://freelamp.com/articles/2026-09-18_systemd-brand-ok-logo/) | systemd · Linux init · 品牌 · 开源文化 · GNOME · CC BY-SA 4.0 |
 | 2026-09-18 | [长鑫（CXMT）要在北京做 3D NAND：DRAM 一哥，开始踩 YMTC 的 NAND 地盘](https://freelamp.com/articles/2026-09-18_cxmt-3d-nand-rd-beijing/) | CXMT · 长鑫 · 3D NAND · YMTC · 长江存储 · 存储 · SSD · DRAM · 半导体 · 国产存储 |
 | 2026-09-18 | [Wine 11.18 继续补全 NTOSKRNL：Windows 内核驱动在 Linux 上跑得越来越真](https://freelamp.com/articles/2026-09-18_wine-11.18-ntoskrnl/) | Wine · NTOSKRNL · 兼容层 · Windows · Linux · 内核驱动 · PnP · 游戏兼容 |
 | 2026-09-18 | [Ubuntu 26.10 改主意了：内核从 7.2 跳到 7.3，十月前吃上最新主线](https://freelamp.com/articles/2026-09-18_ubuntu-2610-linux-73/) | Ubuntu · 26.10 · Linux 7.3 · 内核 · 发行版 · Canonical · 译文 |
