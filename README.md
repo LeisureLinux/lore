@@ -18,6 +18,8 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-09-19 | [一次打穿 OpenAI：libheif 堆溢出 + SSO 缺陷，72 小时接管员工账号](https://freelamp.com/articles/2026-09-19_hacktron-hacking-openai/) | 安全 · 漏洞 · OpenAI · SSO · libheif · ImageMagick · 堆溢出 · RCE · 供应链安全 · AI安全 |
+| 2026-09-19 | [GNOME OS 默认开启 zswap 治 OOM，邮件客户端 Geary 的 GTK4 复刻 Convey 登陆 Flathub](https://freelamp.com/articles/2026-09-19_gnome-os-zswap-convey/) | GNOME · GNOME OS · zswap · OOM · systemd generator · Rust · Convey · Geary · GTK4 · Flathub · Linux桌面 |
+| 2026-09-19 | [Neovim 有个 ~80 万美元的比特币捐款，从 2023 年躺到现在没动过](https://freelamp.com/articles/2026-09-19_neovim-untouched-bitcoin/) | 开源社区 · Neovim · 比特币 · 加密货币 · 密钥管理 · Shamir · 门限签名 · FROST · 开源治理 |
 | 2026-09-18 | [systemd 那个绿色 [ OK ]，是怎么变成 logo 的](https://freelamp.com/articles/2026-09-18_systemd-brand-ok-logo/) | systemd · Linux init · 品牌 · 开源文化 · GNOME · CC BY-SA 4.0 |
 | 2026-09-18 | [长鑫（CXMT）要在北京做 3D NAND：DRAM 一哥，开始踩 YMTC 的 NAND 地盘](https://freelamp.com/articles/2026-09-18_cxmt-3d-nand-rd-beijing/) | CXMT · 长鑫 · 3D NAND · YMTC · 长江存储 · 存储 · SSD · DRAM · 半导体 · 国产存储 |
 | 2026-09-18 | [Wine 11.18 继续补全 NTOSKRNL：Windows 内核驱动在 Linux 上跑得越来越真](https://freelamp.com/articles/2026-09-18_wine-11.18-ntoskrnl/) | Wine · NTOSKRNL · 兼容层 · Windows · Linux · 内核驱动 · PnP · 游戏兼容 |
