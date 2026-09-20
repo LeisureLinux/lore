@@ -18,6 +18,7 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-09-19 | [一次打穿 OpenAI：libheif 堆溢出 + SSO 缺陷，72 小时接管员工账号](https://freelamp.com/articles/2026-09-19_hacktron-hacking-openai/) | 安全 · 漏洞 · OpenAI · SSO · libheif · ImageMagick · 堆溢出 · RCE · 供应链安全 · AI安全 |
+| 2026-09-19 | [有人把 Firefox 里的 AI 代码整个删了：Base Browser 与「硬分叉」运动](https://freelamp.com/articles/2026-09-19_base-browser-firefox-hardfork/) | 开源社区 · Firefox · Base Browser · 硬分叉 · Mozilla · 浏览器 · AI集成 · 独立web · Codeberg |
 | 2026-09-19 | [DeepSeek V4.1 Flash 成 Enclave 最强「黑客模型」：11/11 拿下只花 4.65 美元](https://freelamp.com/articles/2026-09-19_deepseek-v41-flash-best-hacking-model/) | DeepSeek · AI安全 · 红队 · 自动化红队 · LLM Agent · 基准测试 · Grafana · Jenkins · Nextcloud · 漏洞利用 |
 | 2026-09-19 | [CISA 要停掉每周漏洞通报：一句「BOD 26-04」说得通吗？](https://freelamp.com/articles/2026-09-19_cisa-ends-vuln-bulletin/) | CISA · 漏洞管理 · BOD 26-04 · KEV · 漏洞优先级 · CVSS · 安全运营 · 美国政府 |
 | 2026-09-19 | [守住你的「AI 机群」：16 款治理/护栏/红队平台速览](https://freelamp.com/articles/2026-09-19_ai-fleet-governance-tools/) | AI治理 · AI安全 · 护栏 · 红队 · LLM · Agent · 合规 · 工具盘点 |
