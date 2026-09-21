@@ -18,6 +18,8 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-09-19 | [一次打穿 OpenAI：libheif 堆溢出 + SSO 缺陷，72 小时接管员工账号](https://freelamp.com/articles/2026-09-19_hacktron-hacking-openai/) | 安全 · 漏洞 · OpenAI · SSO · libheif · ImageMagick · 堆溢出 · RCE · 供应链安全 · AI安全 |
+| 2026-09-21 | [Linux perf script 命令大改：甩掉内嵌 Python/Perl，3.7 秒变 0.1 秒](https://freelamp.com/articles/2026-09-21_linux-perf-python-module/) | Linux · perf · 性能分析 · Python · C扩展 · 内核工具 · Ian Rogers · Google |
+| 2026-09-21 | [GNU Wget2 2.3 发布：多了 --progress=dot，修了几个内存泄漏](https://freelamp.com/articles/2026-09-21_gnu-wget2-23/) | GNU · Wget2 · 下载工具 · HTTP/2 · 内存泄漏 · OS/2 |
 | 2026-09-20 | [Gzip 1.15 发布：修了几个「自诞生起就存在」的 bug，其中一个是文件删除竞态](https://freelamp.com/articles/2026-09-20_gzip-115-bugfixes/) | gzip · GNU · 压缩工具 · 内存安全 · 缓冲区溢出 · TOCTOU · 数据损坏 · 安全运维 |
 | 2026-09-19 | [有人把 Firefox 里的 AI 代码整个删了：Base Browser 与「硬分叉」运动](https://freelamp.com/articles/2026-09-19_base-browser-firefox-hardfork/) | 开源社区 · Firefox · Base Browser · 硬分叉 · Mozilla · 浏览器 · AI集成 · 独立web · Codeberg |
 | 2026-09-19 | [DeepSeek V4.1 Flash 成 Enclave 最强「黑客模型」：11/11 拿下只花 4.65 美元](https://freelamp.com/articles/2026-09-19_deepseek-v41-flash-best-hacking-model/) | DeepSeek · AI安全 · 红队 · 自动化红队 · LLM Agent · 基准测试 · Grafana · Jenkins · Nextcloud · 漏洞利用 |
