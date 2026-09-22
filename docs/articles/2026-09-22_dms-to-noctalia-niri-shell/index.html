@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别 — FreeLAMP.com</title>
+  <meta name="description" content="Debian 13 + niri 26.04 桌面壳从 DankMaterialShell(DMS) 迁移到 Noctalia 5.1 的完整实战记录，含两者架构对比与优缺点分析。核心事实（均经本机实测）：DMS 1.6.0db1 由 Go 静态编译的主程序（71 MB，file 显示 go1.26.5 statica">
+  <meta name="keywords" content="niri, Wayland, Noctalia, DankMaterialShell, DMS, Quickshell, Debian, Linux桌面, 桌面壳, 原创">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-22">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别">
+  <meta property="og:description" content="Debian 13 + niri 26.04 桌面壳从 DankMaterialShell(DMS) 迁移到 Noctalia 5.1 的完整实战记录，含两者架构对比与优缺点分析。核心事实（均经本机实测）：DMS 1.6.0db1 由 Go 静态编译的主程序（71 MB，file 显示 go1.26.5 statica">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-22">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="niri">
+  <meta property="article:tag" content="niri">
+  <meta property="article:tag" content="Wayland">
+  <meta property="article:tag" content="Noctalia">
+  <meta property="article:tag" content="DankMaterialShell">
+  <meta property="article:tag" content="DMS">
+  <meta property="article:tag" content="Quickshell">
+  <meta property="article:tag" content="Debian">
+  <meta property="article:tag" content="Linux桌面">
+  <meta property="article:tag" content="桌面壳">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别">
+  <meta name="twitter:description" content="Debian 13 + niri 26.04 桌面壳从 DankMaterialShell(DMS) 迁移到 Noctalia 5.1 的完整实战记录，含两者架构对比与优缺点分析。核心事实（均经本机实测）：DMS 1.6.0db1 由 Go 静态编译的主程序（71 MB，file 显示 go1.26.5 statica">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别",
+  "description": "把 Debian 13 + niri 26.04 的桌面壳从 DankMaterialShell 1.6 迁到 Noctalia 5.1 的完整实录。先讲清两者真实差别：DMS 是 Go 主程序（静态编译 71 MB）+ Quickshell(Qt6/QML) 渲染，Noctalia v5 是纯 C++ 直接跑 Wayland + OpenGL ES、零 Qt 零 GTK 依赖（7.7 MB deb）。v4 时代的 Noctalia 曾基于 Quickshell，已废弃。迁移实测踩到三个反直觉的坑：①mako 由 D-Bus 激活而非 systemd unit，pkill 无效，须用用户级 dbus-1/services 覆盖；②真正持有 org.freedesktop.Notifications 的是 DMS 自身而非 mako；③官方 niri.kdl 模板含 mustache 占位符，直接 include 会让 niri 校验失败。附 niri 源码级结论：config 热重载不重跑 spawn-at-startup。最终验证通知接管 / Intel Iris Xe OpenGL ES / 双屏 bar / 中文 / logind 锁屏全部正常，全程未丢窗口。",
+  "datePublished": "2026-09-22",
+  "dateModified": "2026-09-22",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "niri, Wayland, Noctalia, DankMaterialShell, DMS, Quickshell, Debian, Linux桌面, 桌面壳, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别",
+        "item": "https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-22">2026-09-22</div>
+        <h1 class="post-title" itemprop="headline">DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/niri/">niri</a><a itemprop="keywords" href="/tags/Wayland/">Wayland</a><a itemprop="keywords" href="/tags/Noctalia/">Noctalia</a><a itemprop="keywords" href="/tags/DankMaterialShell/">DankMaterialShell</a><a itemprop="keywords" href="/tags/DMS/">DMS</a><a itemprop="keywords" href="/tags/Quickshell/">Quickshell</a><a itemprop="keywords" href="/tags/Debian/">Debian</a><a itemprop="keywords" href="/tags/Linux%E6%A1%8C%E9%9D%A2/">Linux桌面</a><a itemprop="keywords" href="/tags/%E6%A1%8C%E9%9D%A2%E5%A3%B3/">桌面壳</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>
+之前写过一篇 <a href="https://freelamp.com/articles/2026-09-09_niri-dms-linux-desktop/">Niri + DMS：真正能媲美 macOS 设计美学的新一代 Linux 桌面</a>，讲的是这套组合为什么好用。这篇文章要讲的是一次实际的<strong>替换</strong>：把桌面壳从 DankMaterialShell（下称 DMS）换成 Noctalia。</p>
+<p>换的理由不复杂——Noctalia 的观感和交互更克制，而 DMS 的 Material You 风格对一台天天对着的机器来说有点吵。但真正促使我写这篇的，是迁移过程中撞到的几个<strong>反直觉的坑</strong>，以及一个更根本的认知纠正：<strong>这两个东西根本不是同一代技术</strong>。</p>
+<h2>先说结论</h2>
+<table>
+<tr><th>维度</th><th>DMS 1.6</th><th>Noctalia 5.1</th></tr>
+<tr><td>主程序语言</td><td>Go（静态编译）</td><td>C++</td></tr>
+<tr><td>界面层</td><td>Quickshell（Qt6 / QML）</td><td>无独立框架层，直接 Wayland + OpenGL ES</td></tr>
+<tr><td>二进制体积</td><td>主程序 71 MB + Qt6 运行库</td><td>deb 7.7 MB，解出 26 MB</td></tr>
+<tr><td>Qt / GTK 依赖</td><td>12 个 libQt6 动态库</td><td><strong>零</strong></td></tr>
+<tr><td>配置</td><td><code>~/.config/DankMaterialShell/settings.json</code></td><td><code>~/.config/noctalia/</code>（TOML）</td></tr>
+<tr><td>配置侵入性</td><td>会写 niri 的 <code>dms/*.kdl</code> 并在 config.kdl 加 include</td><td>不接管你的 dotfiles</td></tr>
+<tr><td>发行方式</td><td>官方 Debian 仓库 / GitHub Releases</td><td>官方 Debian APT 仓库</td></tr>
+</table>
+<p>一句话：<strong>DMS 是「Go 后端 + Qt 前端」的两段式结构，Noctalia v5 是把整个壳画进一块 OpenGL ES 画布的单体程序。</strong></p>
+<h2>为什么这个区别重要：Noctalia 不是「另一个 Quickshell 壳」</h2>
+<p>网上（包括一些 AI 生成的对比文章）会把两者并列成「都是 Quickshell 桌面壳」。这个说法在 2026 年已经过时了，而它直接决定了迁移成本的高低。</p>
+<p>事实是：Noctalia <strong>v4</strong> 确实是基于 Quickshell 的 QML 实现，但官方已经明确废弃它——文档原文是 <em>"v4 (Quickshell) is no longer maintained. Please use Noctalia v5"</em>，AUR 上的 <code>noctalia-shell</code> / <code>noctalia-shell-git</code> 包已经下架。你现在能装到的 <strong>v5 是一次彻底重写</strong>，仓库里是 <code>meson.build</code> + <code>.clang-format</code> + <code>src/</code>，配置语言从 QML/JSON 换成了 TOML，README 开头就写着 <em>built directly on Wayland and OpenGL ES with no Qt or GTK dependency</em>。</p>
+<p>我在本机验证了这一点：</p>
+<pre><code class="bash">$ ldd /usr/bin/noctalia | grep -ciE "qt|gtk"
+0
+$ ldd /usr/bin/quickshell | grep -ciE "libQt6"
+12
+$ file /usr/bin/dms
+/usr/bin/dms: ELF 64-bit ... statically linked, Go BuildID=..., for GNU/Linux
+$ strings /usr/bin/dms | grep -cE "go1\.[0-9]+"
+2338
+</code></pre>
+<p>顺带纠正我自己一开始的误判：我原以为「DMS 依赖 Qt 全栈」，于是把 71 MB 的 <code>dms</code> 二进制当成 Qt 程序。实际上 <code>dms</code> 是不链接任何 Qt 库的<strong>静态 Go 二进制</strong>（<code>go1.26.5</code>），Qt6 那 12 个动态库全部挂在 <code>quickshell</code> 这个 6.4 MB 的独立进程上。</p>
+<p><strong>这个区别的实践含义是</strong>：两者不共享运行时、不争抢同一个进程、不依赖同一套库。<code>apt</code> 层面也印证了这一点——我用临时源做了安装模拟：</p>
+<pre><code class="bash">$ apt-get install -s noctalia
+新安装了 3 个软件包，要卸载 0 个软件包
+Inst fonts-noctalia-tabler (5.1.0-2+deb13u1 Noctalia:trixie [all])
+Inst noctalia-data        (5.1.0-2+deb13u1 Noctalia:trixie [all])
+Inst noctalia             (5.1.0-2+deb13u1 Noctalia:trixie [amd64])
+</code></pre>
+<p>而且 <code>noctalia</code> 的控制字段里<strong>没有 <code>Conflicts</code> / <code>Replaces</code> / <code>Breaks</code></strong>。也就是说，装 Noctalia 一个字节都不会动到 DMS。这跟同代 Shell 之间的替换（比如把 waybar 换成 eww）完全不是一个量级。</p>
+<h2>优缺点：各自适合谁</h2>
+<h3>DMS 的优点</h3>
+<p><strong>1. 功能密度极高。</strong> 它是真正的 all-in-one：锁屏、通知中心、壁纸、应用启动器、dock、系统监控、剪贴板一应俱全，装上就能干活。它的锁屏还专门为 niri 内嵌了虚拟键盘——因为 niri 不支持在锁屏之上叠放虚拟键盘（这点在触屏设备上是刚需）。</p>
+<p><strong>2. 生态成熟，周边工具链完整。</strong> <code>danksearch</code>（文件索引搜索）、<code>dgop</code>（CPU/GPU 监控）、<code>matugen</code>（Material You 动态配色）都是配套的独立组件，各司其职。</p>
+<p><strong>3. Material You 美学。</strong> 如果你喜欢那种饱满、圆角、大片色彩的风格，DMS 是 Wayland 世界里做得最完整的一个。</p>
+<h3>DMS 的缺点</h3>
+<p><strong>1. 侵入你的 compositor 配置。</strong> 这是最实质的问题。DMS 会在 <code>~/.config/niri/</code> 下<strong>自动生成一整个 <code>dms/</code> 目录并覆写</strong>：</p>
+<pre><code class="bash">$ ls ~/.config/niri/dms/
+alttab.kdl  binds.kdl  colors.kdl  cursor.kdl  input.kdl
+layout.kdl  outputs.kdl  windowrules.kdl  wpblur.kdl
+</code></pre>
+<p>每个文件开头都写着 <code>// ! DO NOT EDIT ! // ! AUTO-GENERATED BY DMS !</code>。它还会在你的 <code>config.kdl</code> 末尾追加 <code>include "dms/layout.kdl"</code>，并在其中<strong>覆盖你的布局参数</strong>——比如你写在主配置里的 <code>gaps 6</code>，会被 <code>dms/layout.kdl</code> 里的 <code>gaps 4</code> 顶掉。</p>
+<p>顺带说一个我这次发现的现象：DMS 生成了 <code>dms/colors.kdl</code>，但<strong>没有任何地方 include 它</strong>——我 grep 了整个 <code>~/.config/niri/</code> 都没找到引用。也就是说那个主题色文件是个孤儿，一直没生效。这不算 DMS 的 bug（可能是我以前改配置时留下的状态），但它说明这种「程序自动接管你的配置目录」的模式，出问题时不容易察觉。</p>
+<p><strong>2. 重。</strong> 主程序 71 MB + Quickshell 6.4 MB + 一堆 Qt6 动态库，对一个只是画个顶栏的程序来说，这个体量是实打实的。</p>
+<p><strong>3. 要改点东西时，你得先搞清楚哪份配置是「你的」、哪份是「它生成的」。</strong></p>
+<h3>Noctalia 的优点</h3>
+<p><strong>1. 干净、克制、可预测。</strong> 官方 README 里有一句很关键的话：<em>Core Noctalia is non-invasive: it does not manage your compositor settings or take over your dotfiles.</em>（核心 Noctalia 不接管你的 compositor 设置，也不碰你的 dotfiles。）对比 DMS 往你配置目录里写十个文件，这是设计哲学上的根本差别。</p>
+<p><strong>2. 依赖面极小。</strong> 零 Qt、零 GTK，落在一个 ELF 里。这意味着它不会因为 Qt6 小版本升级而抖动，也不需要你为了一个 Shell 装上半个桌面环境。</p>
+<p><strong>3. 技术栈更「现代 Wayland」。</strong> 直接对接 <code>layer-shell</code>、<code>session-lock</code>、<code>ext-workspace</code>、<code>ext-data-control</code> 这些协议，而不是隔着一层 QML 抽象。日志里能看得很清楚：</p>
+<pre><code class="">[render]  OpenGL ES vendor="Intel" renderer="Mesa Intel(R) Iris(R) Xe Graphics"
+[logind]  logind session lock monitor active (/org/freedesktop/login1/session/_35)
+[app]     listening on org.freedesktop.Notifications
+</code></pre>
+<p><strong>4. 原生支持 niri。</strong> 二进制里有专门的 <code>NiriWorkspaceBackend</code> / <code>NiriOutputBackend</code> / <code>NiriKeyboardBackend</code>，不是「其他 compositor 也能跑」那种将就。</p>
+<h3>Noctalia 的缺点</h3>
+<p><strong>1. 年轻。</strong> v5 是一次重写，插件生态（30+ 个）和社区沉淀都比不上 DMS。v4 到 v5 不迁移配置，早期用户要重新配一遍。</p>
+<p><strong>2. 部分能力依赖额外包。</strong> 亮度控制要 <code>brightnessctl</code>、DDC 显示器亮度要 <code>ddcutil</code>、模板处理要 <code>imagemagick</code>，这些是 Recommends 或文档里的前置依赖，默认不一定装上。我这次迁移就补了 <code>brightnessctl</code> 和 <code>imagemagick</code>。</p>
+<p><strong>3. 文档相对薄。</strong> 面板 id、IPC 命令这些，基本只能靠 <code>noctalia msg --help</code> 现场探。</p>
+<h2>迁移实录：三个反直觉的坑</h2>
+<p>环境：Debian 13 (trixie) + niri 26.04 + Intel Iris Xe + DP-4（外接）/ eDP-1（内屏）。</p>
+<p>核心目标：<strong>不登出、不重启 niri、不丢窗口</strong>。</p>
+<h3>坑一：mako 杀不死，因为它是 D-Bus 激活的</h3>
+<p>切换前我的通知守护是 <code>mako</code>。直觉做法是 <code>pkill mako</code> 然后让 Noctalia 接管——但这样会失败。</p>
+<p>原因在 cgroup：</p>
+<pre><code class="bash">$ cat /proc/$(pgrep -x mako)/cgroup
+0::/user.slice/.../app-dbus\x2d:1.1-org.freedesktop.Notifications.slice/dbus-:1.1-org.freedesktop.Notifications@0.service
+</code></pre>
+<p>它不是被 systemd unit 拉起的，而是 <strong>D-Bus 激活</strong>。激活源是：</p>
+<pre><code class="bash">$ cat /usr/share/dbus-1/services/fr.emersion.mako.service
+[D-BUS Service]
+Name=org.freedesktop.Notifications
+Exec=/usr/bin/mako
+</code></pre>
+<p>这意味着：任何应用发一条通知，<code>dbus-daemon</code> 都会按这个文件把 mako 重新拉起来。你 <code>systemctl --user mask mako.service</code> 根本没用——<strong>D-Bus 激活绕过 systemd</strong>。</p>
+<p>正解是用户级覆盖这个 service 文件（<code>~/.local/share</code> 优先级高于 <code>/usr/share</code>）：</p>
+<pre><code class="bash">mkdir -p ~/.local/share/dbus-1/services
+printf '[D-BUS Service]\nName=org.freedesktop.Notifications\nExec=/bin/false\n' \
+  > ~/.local/share/dbus-1/services/fr.emersion.mako.service
+</code></pre>
+<p>改完实测：<code>pkill mako</code> 后再触发通知，mako 不再复活。</p>
+<h3>坑二：通知名真正的持有者不是 mako</h3>
+<p>这个坑是我自己判断错了之后跑出来的。</p>
+<p>杀掉 mako 后，我查通知名的持有者：</p>
+<pre><code class="bash">$ dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+    /org/freedesktop/DBus org.freedesktop.DBus.GetNameOwner \
+    string:org.freedesktop.Notifications
+   string ":1.286"
+</code></pre>
+<p>顺着找进程，发现持有者是 <strong>DMS 自己</strong>（PID 71185）。</p>
+<p>也就是说：DMS 内置了通知中心并接管了 <code>org.freedesktop.Notifications</code>，<code>mako</code> 只是在那台机器上的冗余备份。这改变了我对切换的判断——Noctalia 要接替的目标其实是 DMS，不需要跟两个进程抢。</p>
+<p>教训：<strong>别假设「通知守护 = mako」</strong>。先 <code>GetNameOwner</code> 查清楚谁真的拿着这个名字，再决定要停谁。</p>
+<h3>坑三：官方 niri 模板有毒，直接 include 会让 niri 拒绝加载</h3>
+<p>Noctalia 自带一个 niri 主题模板：<code>/usr/share/noctalia/assets/templates/niri/niri.kdl</code>。看起来直接拷过去 include 就行。但它里面是这样的：</p>
+<pre><code class="">layout {
+    focus-ring {
+        active-color   "{{colors.primary.default.hex}}"
+        inactive-color "{{colors.surface.default.hex}}"
+</code></pre>
+<p>那些 <code>{{colors.*}}</code> 是 mustache 占位符，要在 Noctalia 运行后用 <code>noctalia msg templates-apply</code> 才会渲染成真实颜色。<strong>直接 include 会让 niri 校验失败</strong>——我实测过：</p>
+<pre><code class="bash">$ niri validate -c /tmp/tmpl-test/config.kdl
+Error: error parsing KDL
+Error: invalid unknown format
+ 3 │     focus-ring {
+ 4 │         active-color   "{{colors.primary.default.hex}}"
+   ·                        ────────────────┬───────────────
+   ·                                        ╰── invalid value
+</code></pre>
+<p>niri 的 <code>include</code> 是<strong>硬失败</strong>：只要被 include 的文件不存在或有语法错误，整个配置加载就会被拒绝。所以在切换脚本里，<strong><code>niri validate</code> 必须先过再重载</strong>，否则你要面对一个加载不了配置的会话。</p>
+<p>正确做法是先写一个静态色版本的 <code>noctalia.kdl</code>，运行起来之后再让 Noctalia 渲染真实调色板。</p>
+<h3>附带一个源码级结论：热重载不重跑 spawn-at-startup</h3>
+<p>换壳的核心是改 <code>niri config.kdl</code> 里的这一行：</p>
+<pre><code class="kdl">spawn-at-startup "dms" "run"      // 改成 spawn-at-startup "noctalia" "--daemon"
+</code></pre>
+<p>问题是：改完配置热重载，niri 会不会自动把新壳拉起来？</p>
+<p>答案是<strong>不会</strong>。我查了 niri 源码：</p>
+<ul>
+<li><code>src/main.rs</code> 里 <code>spawn_at_startup</code> 只在<strong>启动时</strong>被 <code>mem::take</code> 出来执行一次；</li>
+<li>配置热重载走 <code>State::reload_config()</code>（<code>src/niri.rs:1546</code>），我在该函数整段里 grep <code>spawn_at_startup</code>，<strong>命中 0 次</strong>。</li>
+</ul>
+所以脚本必须显式处理第 6 步：改完配置、校验通过、热重载之后，<strong>手动把新壳拉起来</strong>。这一点很多教程会漏，结果就是你以为切了，其实什么壳都没在跑。
+<h2>完整的切换流程</h2>
+<pre><code class="bash"># 1. 遮住 mako 的 D-Bus 激活（若你不打算再用 mako）
+mkdir -p ~/.local/share/dbus-1/services
+printf '[D-BUS Service]\nName=org.freedesktop.Notifications\nExec=/bin/false\n' \
+  > ~/.local/share/dbus-1/services/fr.emersion.mako.service
+<h1>2. 停 hypridle，避免它空闲时拉起 hyprlock 与 Noctalia 锁屏打架</h1>
+systemctl --user stop hypridle.service
+<h1>3. 备份 niri 配置</h1>
+cp -a ~/.config/niri/config.kdl ~/.config/niri/config.kdl.bak-$(date +%Y%m%d)
+<h1>4. 停旧壳</h1>
+pkill -x dms
+<h1>5. 改配置（4 处）</h1>
+sed -i \
+  -e 's|spawn-at-startup "dms" "run"|spawn-at-startup "noctalia" "--daemon"|' \
+  -e 's|spawn "dms" "ipc" "call" "[^"]*" "lock"|spawn "noctalia" "msg" "session" "lock"|' \
+  -e 's|spawn "dms" "ipc" "call" "powermenu" "toggle"|spawn "noctalia" "msg" "panel-toggle" "session"|' \
+  -e 's|include "dms/layout.kdl"|include "noctalia.kdl"|' \
+  ~/.config/niri/config.kdl
+<h1>6. 写静态色版本的 noctalia.kdl（不要直接拷官方模板！）</h1>
+<h1>   官方模板含 {{mustache}} 占位符，会让 niri 校验失败</h1>
+<h1>7. 校验——必须先过，否则 niri 会拒绝加载整个配置</h1>
+niri validate -c ~/.config/niri/config.kdl
+<h1>8. 热重载（不丢窗口）</h1>
+niri msg action load-config-file
+<h1>9. 手动拉起新壳（热重载不会自动跑 spawn-at-startup）</h1>
+noctalia --daemon
+</code></pre>
+<p>第 5 步里 <code>Mod+Escape</code> 绑定的面板 id 是<strong>探出来的</strong>，不是猜的：</p>
+<pre><code class="bash">$ noctalia msg panel-open __probe__
+error: unknown panel "__probe__" (available: clipboard, control-center,
+       launcher, polkit, session, setup-wizard, test, tray-drawer, wallpaper)
+</code></pre>
+<p>电源菜单的正确 id 是 <code>session</code>，而不是我最初想当然写的 <code>session logout</code>。</p>
+<h2>验证结果</h2>
+<p>切换完成后逐项确认：</p>
+<table>
+<tr><th>项目</th><th>结果</th></tr>
+<tr><td>通知接管</td><td><code>listening on org.freedesktop.Notifications</code>，<code>notify-send</code> 实测成功</td></tr>
+<tr><td>GPU 加速</td><td><code>OpenGL ES 3.2 Mesa 25.0.7</code>，Intel Iris Xe</td></tr>
+<tr><td>双显示器</td><td>DP-4 (Redmi 27) + eDP-1 各生成一条 bar</td></tr>
+<tr><td>界面语言</td><td><code>i18n language: zh-Hans (from zh-CN)</code></td></tr>
+<tr><td>锁屏</td><td><code>logind session lock monitor active</code></td></tr>
+<tr><td>IPC 通道</td><td><code>/run/user/1000/noctalia-wayland-1.sock</code></td></tr>
+<tr><td>窗口保留</td><td>热重载前后窗口数不变，未登出</td></tr>
+</table>
+<p><strong>回滚成本</strong>：一条命令。</p>
+<pre><code class="bash">cp ~/.config/niri/config.kdl.bak-20260922 ~/.config/niri/config.kdl
+niri msg action load-config-file
+nohup dms run &
+</code></pre>
+<p>顺带一提：如果你的锁屏依赖虚拟键盘（触屏设备），切到 Noctalia 前要先确认——DMS 那个内嵌虚拟键盘是专门做的，Noctalia 走标准 <code>ext_session_lock_v1</code>，没有这层。我这次没遇到问题，因为本机有物理键盘。</p>
+<h2>我的选择</h2>
+<p>我留下了 Noctalia，原因就一条：<strong>它不碰我的 dotfiles</strong>。</p>
+<p>DMS 功能更全、生态更成熟，如果你想要「装完就有一个完整桌面」，它仍然是更好的选择。但它会往你的 <code>~/.config/niri/</code> 里写十个 <code>AUTO-GENERATED</code> 的文件、覆盖你的布局参数、还会在你的主配置里加 include——这种「程序接管配置」的模式，在你想改点东西的时候，调试成本是隐性的。</p>
+<p>Noctalia 反过来：它只管画自己的东西，你的 compositor 配置归你。代价是功能要靠插件攒、部分依赖要自己补、文档要靠 <code>--help</code> 探。</p>
+<p>两者没有绝对优劣，取决于你更愿意付哪种成本。</p>
+<p>---</p>
+<p><em>本文基于 Debian 13 + niri 26.04 实机操作记录整理，所有命令、报错与输出均为实际执行结果。</em>
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/",
+      title: "DMS \u6362 Noctalia\uff1aniri \u684c\u9762\u58f3\u8fc1\u79fb\u5b9e\u5f55\uff0c\u4ee5\u53ca\u4e24\u8005\u7684\u771f\u5b9e\u5dee\u522b"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

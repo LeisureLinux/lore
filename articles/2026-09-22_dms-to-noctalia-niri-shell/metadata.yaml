@@ -1,0 +1,20 @@
+---
+title: 'DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别'
+date: "2026-09-22"
+author: LeisureLinux
+category: "Linux 桌面"
+tags:
+  - niri
+  - Wayland
+  - Noctalia
+  - DankMaterialShell
+  - DMS
+  - Quickshell
+  - Debian
+  - Linux桌面
+  - 桌面壳
+  - 原创
+summary: "把 Debian 13 + niri 26.04 的桌面壳从 DankMaterialShell 1.6 迁到 Noctalia 5.1 的完整实录。先讲清两者真实差别：DMS 是 Go 主程序（静态编译 71 MB）+ Quickshell(Qt6/QML) 渲染，Noctalia v5 是纯 C++ 直接跑 Wayland + OpenGL ES、零 Qt 零 GTK 依赖（7.7 MB deb）。v4 时代的 Noctalia 曾基于 Quickshell，已废弃。迁移实测踩到三个反直觉的坑：①mako 由 D-Bus 激活而非 systemd unit，pkill 无效，须用用户级 dbus-1/services 覆盖；②真正持有 org.freedesktop.Notifications 的是 DMS 自身而非 mako；③官方 niri.kdl 模板含 mustache 占位符，直接 include 会让 niri 校验失败。附 niri 源码级结论：config 热重载不重跑 spawn-at-startup。最终验证通知接管 / Intel Iris Xe OpenGL ES / 双屏 bar / 中文 / logind 锁屏全部正常，全程未丢窗口。"
+description: "Debian 13 + niri 26.04 桌面壳从 DankMaterialShell(DMS) 迁移到 Noctalia 5.1 的完整实战记录，含两者架构对比与优缺点分析。核心事实（均经本机实测）：DMS 1.6.0db1 由 Go 静态编译的主程序（71 MB，file 显示 go1.26.5 statically linked）驱动，界面层是 Quickshell 0.3.0（Qt6/QML，12 个 libQt6 依赖）；Noctalia 5.1.0 是纯 C++ 实现，直接基于 Wayland + OpenGL ES，ldd 显示零 Qt/GTK 依赖，deb 仅 7.7 MB、解出 26 MB。Noctalia v4 曾基于 Quickshell，现已废弃（官方文档：v4 is no longer maintained），v5 是全新重写、配置独立可共存。apt 安装模拟：仅新增 noctalia/noctalia-data/fonts-noctalia-tabler 三个包，0 升级 0 卸载，控制字段无 Conflicts/Replaces/Breaks。三个实测坑：①mako 通知守护的 cgroup 为 dbus-:1.1-org.freedesktop.Notifications@0.service，由 /usr/share/dbus-1/services/fr.emersion.mako.service 激活，绕过 systemd，mask mako.service 无效；解法是用户级 ~/.local/share/dbus-1/services 覆盖为 Exec=/bin/false。②dbus GetNameOwner 查得通知名真实持有者是 DMS 自身（PID 71185），mako 只是冗余。③/usr/share/noctalia/assets/templates/niri/niri.kdl 含 {{colors.*}} 占位符，niri validate 报 invalid unknown format，必须换静态色版本。源码级结论：niri src/main.rs 仅在启动时执行 spawn-at-startup，reload_config() 中 grep spawn_at_startup 命中 0，故热重载换壳须手动拉起。切换后验证：listening on org.freedesktop.Notifications、Intel Iris Xe OpenGL ES 3.2 / Mesa 25.0.7、DP-4 + eDP-1 双屏各生成 bar、i18n zh-Hans、logind session lock monitor active。"
+published: true
+---
