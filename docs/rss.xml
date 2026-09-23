@@ -7,6 +7,27 @@
     <language>zh-CN</language>
     <atom:link href="https://freelamp.com/rss.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查</title>
+      <link>https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/</guid>
+      <pubDate>Wed, 23 Sep 2026 00:00:00 GMT</pubDate>
+      <author>LeisureLinux</author>
+      <description><![CDATA[自建邮件网关误判排查实录（Debian 12 + postfix + dovecot + rspamd 4.2.0）。实测量化：合法邮件误投 Junk 从 294/643（46%）降到 40/643（6%），单封扫描从 4136ms 降到 611-1236ms。先系统讲清 rspamd 五层配置文件体系（rspamd.conf 顶层编排 / local.d 逐键 merge vs override.d 整段覆盖 / scores.d+groups.conf 符号权重 / actions.conf 分数阈值 / modules.d+settings.conf+rspamd.local.lua+maps.d 扩展点）。五个根因：①options.inc 被截断为 25 行（原件 93 行），丢掉 filters 一行导致全部 C 模块（chartable/dkim/regexp/fuzzy_check）未注册——这些是静态编译进 librspamd-server.so 的能力，nm -D 可见 31 个 dkim 符号，磁盘上无对应 .lua 文件故肉眼不可见；连带 R_DKIM_* 符号缺失，六条规则静默失效，configtest 仅报 warning 仍输出 syntax OK。同文件丢失 dns{timeout=1s;sockets=16;retransmits=5} 与 local_addrs，导致每天 1304 次 DNS 超时（集中在 asn6.rspamd.com 与 DNSWL/URIBL），DWL_DNSWL_HI(-3.5) 等白名单负分拿不到。②override.d/policies_group.conf 严格覆盖语义（priority=10）下漏定义 6 个 R_DKIM_* 权重，configtest 报 R_DKIM_ALLOW has no score registered。③FORGED_SENDER 触发条件为 forged_recipients.lua 中 same_mailbox(mime_from, smtp_from) 为假即 +5.0，而 ESP 普遍用独立退信域（bounce@email.mckinsey.com / m-1but2tww...@bounce.linkedin.com / bounces@sgmail.github.com / bounce-debian-list=user=domain@lists.debian.org）；rspamd 内置 ENVFROM_PRVS 仅匹配 prvs=|msprvs1=|btv1== 三种格式，生产日志 0 命中。修复为 RELAY_ENVELOPE 自定义 Lua 符号：信封域与信头域同源 + 信封形如 relay + 至少一种认证通过，score=-5.0 对冲；离线评估合法邮件信封覆盖率 98.5%（2426/2463）。④force_actions 表达式 FORGED_SENDER & !DMARC_POLICY_ALLOW & !R_SPF_ALLOW 名为 BLOCK_SPOOFED_LOCAL_DOMAIN 却无任何本地域判断，生产日志 32 次 forced reject 中 22 次为 lists.debian.org；实测 force_actions.lua 规则加载循环只读 action/expression 两字段，enable=false 无效须整块注释。新规则 SPOOFED_LOCAL_DOMAIN 真正校验 header From 域是否属于本地域，且要求 SPF/DKIM/DMARC 全败、非认证用户、非本机 IP 才计分。⑤Sieve 判据 X-Spam: Yes 由 milter_headers.lua x-spam-status 例程生成，条件为 action ~= 'no action' and action ~= 'greylist'，实际阈值是 add_header=6 分而非 reject=15 分，6~15 分区间被压缩为二元判断；改为 X-Rspamd-Action contains reject/rewrite subject 或 X-Spamd-Bar 八个 +。回归方法学三坑：dovecot-keywords 按文件夹独立映射（同一字母在不同 mailbox 语义不同，跨用会读反标签）、Maildir 为 LF 换行重扫破坏 DKIM body hash（R_DKIM_REJECT 是假象，须看生产日志）、重扫读到自身 X-Spam 头触发 SPAM_FLAG +5.0 须先剥离自制头。结论：configtest 的 syntax OK 不等于功能正常，部署后应 rspamc counters 校验符号存在性。]]></description>
+      <category>rspamd</category>
+      <category>postfix</category>
+      <category>dovecot</category>
+      <category>反垃圾邮件</category>
+      <category>邮件网关</category>
+      <category>DKIM</category>
+      <category>SPF</category>
+      <category>DMARC</category>
+      <category>Sieve</category>
+      <category>Debian</category>
+      <category>运维</category>
+      <category>原创</category>
+    </item>
+
+    <item>
       <title>DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别</title>
       <link>https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/</link>
       <guid isPermaLink="true">https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/</guid>

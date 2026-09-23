@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查 — FreeLAMP.com</title>
+  <meta name="description" content="自建邮件网关误判排查实录（Debian 12 + postfix + dovecot + rspamd 4.2.0）。实测量化：合法邮件误投 Junk 从 294/643（46%）降到 40/643（6%），单封扫描从 4136ms 降到 611-1236ms。先系统讲清 rspamd 五层配置文件体系（rspamd.">
+  <meta name="keywords" content="rspamd, postfix, dovecot, 反垃圾邮件, 邮件网关, DKIM, SPF, DMARC, Sieve, Debian, 运维, 原创">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-23">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查">
+  <meta property="og:description" content="自建邮件网关误判排查实录（Debian 12 + postfix + dovecot + rspamd 4.2.0）。实测量化：合法邮件误投 Junk 从 294/643（46%）降到 40/643（6%），单封扫描从 4136ms 降到 611-1236ms。先系统讲清 rspamd 五层配置文件体系（rspamd.">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-23">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="rspamd">
+  <meta property="article:tag" content="rspamd">
+  <meta property="article:tag" content="postfix">
+  <meta property="article:tag" content="dovecot">
+  <meta property="article:tag" content="反垃圾邮件">
+  <meta property="article:tag" content="邮件网关">
+  <meta property="article:tag" content="DKIM">
+  <meta property="article:tag" content="SPF">
+  <meta property="article:tag" content="DMARC">
+  <meta property="article:tag" content="Sieve">
+  <meta property="article:tag" content="Debian">
+  <meta property="article:tag" content="运维">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查">
+  <meta name="twitter:description" content="自建邮件网关误判排查实录（Debian 12 + postfix + dovecot + rspamd 4.2.0）。实测量化：合法邮件误投 Junk 从 294/643（46%）降到 40/643（6%），单封扫描从 4136ms 降到 611-1236ms。先系统讲清 rspamd 五层配置文件体系（rspamd.">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查",
+  "description": "自建邮件网关（Debian 12 + postfix + dovecot + rspamd 4.2）误判排查实录：归档统计显示合法邮件被误投 Junk 的比例达 46%。根因是五个叠加问题，前三个属于「配置体系被破坏」而非「规则不够多」：①/etc/rspamd/options.inc 被替换成 25 行精简版（原件 93 行），丢掉了 filters = \"chartable,dkim,regexp,fuzzy_check\" 一行；rspamd 官方文档明确 C 模块仅由 filters 属性启用，未定义则全部禁用，于是 DKIM 这个静态编译进 librspamd-server.so 的 C 模块从未注册，R_DKIM_ALLOW/NA/REJECT 不存在，导致 WHITELIST_DKIM、WHITELIST_SPF_DKIM、WHITELIST_DMARC、TRUSTED_NEWSLETTER_PASS、DMARC_CHECK、NO_AUTH_SPOOF 六条规则静默失效（configtest 仍报 syntax OK）。同一文件还丢失 dns{timeout/sockets/retransmits} 与 local_addrs，实测 rspamd 日志每天 1304 次 query timed out，扫描耗时 4136ms。②override.d/policies_group.conf 是 priority=10 严格覆盖语义（整段替换而非逐键合并），28 行版本漏掉全部 6 个 R_DKIM_* 符号权重。③FORGED_SENDER（envelope 与 header From 不同即 +5.0）对 ESP 正常行为开枪：语料中 1785 封「信封域与信头域不同但同源」的邮件全部合法、零垃圾，而 rspamd 内置的 ENVFROM_PRVS 只认 prvs=/btv1==/msprvs1= 三种格式、实测 0 命中。④force_actions 的 BLOCK_SPOOFED_LOCAL_DOMAIN 表达式 FORGED_SENDER & !DMARC_POLICY_ALLOW & !R_SPF_ALLOW 完全不含本地域判断，硬拒 22 封合法 lists.debian.org 邮件（freelamp.com 只是 VERP 标签）；且 force_actions 不认 enable=false，只能整块注释。⑤Dovecot Sieve 用 X-Spam: Yes 判据，而该头由 milter_headers 依据「动作不是 no action/greylist」生成，实际阈值是 actions.conf 的 add_header=6 而非 reject=15，6~15 分区间被压成二元判断。修复后误判 46%→6%，扫描 4136ms→611-1236ms。附回归方法论：dovecot-keywords 每文件夹独立映射（同一字母 INBOX 为 NonJunk、.LinkedIn 为别的含义）、重扫破坏 DKIM 签名（Maildir 是 LF 非 CRLF）、rspamd 重扫会读到自身上次写入的 X-Spam 头触发 SPAM_FLAG 再 +5.0。",
+  "datePublished": "2026-09-23",
+  "dateModified": "2026-09-23",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "rspamd, postfix, dovecot, 反垃圾邮件, 邮件网关, DKIM, SPF, DMARC, Sieve, Debian, 运维, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查",
+        "item": "https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-23">2026-09-23</div>
+        <h1 class="post-title" itemprop="headline">rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/rspamd/">rspamd</a><a itemprop="keywords" href="/tags/postfix/">postfix</a><a itemprop="keywords" href="/tags/dovecot/">dovecot</a><a itemprop="keywords" href="/tags/%E5%8F%8D%E5%9E%83%E5%9C%BE%E9%82%AE%E4%BB%B6/">反垃圾邮件</a><a itemprop="keywords" href="/tags/%E9%82%AE%E4%BB%B6%E7%BD%91%E5%85%B3/">邮件网关</a><a itemprop="keywords" href="/tags/DKIM/">DKIM</a><a itemprop="keywords" href="/tags/SPF/">SPF</a><a itemprop="keywords" href="/tags/DMARC/">DMARC</a><a itemprop="keywords" href="/tags/Sieve/">Sieve</a><a itemprop="keywords" href="/tags/Debian/">Debian</a><a itemprop="keywords" href="/tags/%E8%BF%90%E7%BB%B4/">运维</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>
+自建邮件的同学大概都经历过这个循环：发现某封该收到的信躺在 Junk 里，于是加一条域名白名单；过几天换个发件人，又漏一封，再加一条。白名单越写越长，误判照旧。</p>
+<p>我的一台 Debian 12 邮件网关（postfix + dovecot + rspamd）就跑到了这个状态。真正促使我下决心排查的，是归档邮件的统计结果：<strong>用户手动标过「非垃圾」的邮件里，有一半是服务端先扔进 Junk、用户再从客户端捞回来的</strong>。</p>
+<p>最后的结论有点意外——这不是「规则不够多」的问题，而是 <strong>rspamd 的配置体系被破坏了一处，导致一整套检查形同虚设</strong>；再加上一个<strong>所有自建邮件都会踩的语义陷阱</strong>。</p>
+<p>先说排查结果：</p>
+<table>
+<tr><th>指标</th><th>排查前</th><th>排查后</th></tr>
+<tr><td>合法邮件被误判进 Junk</td><td><strong>294 / 643（46%）</strong></td><td><strong>40 / 643（6%）</strong></td></tr>
+<tr><td>真实垃圾被正确拦截</td><td>19 / 27</td><td>13 / 27</td></tr>
+<tr><td>单封扫描耗时</td><td>~4136 ms</td><td>611–1236 ms</td></tr>
+</table>
+<p>误判率降到七分之一，顺带把扫描耗时砍掉四分之三。下面把这套配置体系的每一层拆开讲清楚，再逐条说问题出在哪。</p>
+<p>---</p>
+<h2>一、先把 rspamd 的配置文件体系理清</h2>
+<p>rspamd 的配置目录初看很乱——<code>/etc/rspamd/</code> 下有近四十个文件，还有 <code>local.d/</code>、<code>override.d/</code>、<code>modules.d/</code>、<code>scores.d/</code> 四套平行目录。但它的设计其实非常规整，核心只有一条规则：<strong>发行版的默认值走 <code><em>.conf</code> / <code></em>.d/</code>，你的修改走 <code>local.d/</code> 或 <code>override.d/</code></strong>。</p>
+<h3>1. 顶层编排：<code>rspamd.conf</code></h3>
+<p>这是唯一的入口，不定义具体参数，只负责把其它文件按顺序拼起来：</p>
+<pre><code class="">/etc/rspamd/rspamd.conf
+ └─ .include "$CONFDIR/common.conf"        # 公共部分
+     ├─ metrics.conf                        # metric 定义（分数聚合方式）
+     ├─ actions.conf                        # 分数阈值 → 动作
+     ├─ groups.conf                         # 符号分组 → 各 group 的分数表
+     ├─ composites.conf                     # 复合规则（多个符号组合出新符号）
+     ├─ statistic.conf                      # 贝叶斯统计后端
+     ├─ modules.conf → modules.d/*.conf     # 各功能模块
+     └─ settings.conf                       # 条件化配置（按用户/网络）
+</code></pre>
+<p>然后依次定义 <code>options</code>、<code>lang_detection</code>、<code>logging</code>、各 <code>worker</code>（normal / controller / rspamd_proxy / fuzzy / hs_helper）。每个段落都是同一个三段式结构：</p>
+<pre><code class="">options {
+    .include "$CONFDIR/options.inc"                                          # 发行版默认
+    .include(try=true; priority=1,duplicate=merge) "$LOCAL_CONFDIR/local.d/options.inc"   # merge 覆盖
+    .include(try=true; priority=10) "$LOCAL_CONFDIR/override.d/options.inc"  # 严格覆盖
+}
+</code></pre>
+<h3>2. <code>local.d/</code> 与 <code>override.d/</code> 的区别（最容易踩的语义）</h3>
+<p>这两者的差异是<strong>合并方式</strong>，不是优先级高低：</p>
+<table>
+<tr><th>目录</th><th>语义</th><th>行为</th></tr>
+<tr><td><code>local.d/</code></td><td>merge（<code>duplicate=merge</code>，priority=1）</td><td><strong>逐键合并</strong>。只写你要改的键，其余保留默认值</td></tr>
+<tr><td><code>override.d/</code></td><td>strict override（priority=10）</td><td><strong>整段替换</strong>。一旦存在，这个段落的默认值全部作废，只有你写的内容生效</td></tr>
+</table>
+<p>这就是第一个大坑。<code>local.d/</code> 是安全的（写多少生效多少），而 <strong><code>override.d/</code> 里的文件必须自身完整</strong>——它会把发行版定义的同名段落整个顶掉。</p>
+<h3>3. <code>scores.d/</code> 与 <code>groups.conf</code>：符号分数定义在哪</h3>
+<p>符号的分数不在 <code>metrics.conf</code> 里，而是按 <strong>group</strong> 组织在 <code>scores.d/</code>：</p>
+<pre><code class="">group "headers" {
+    .include "$CONFDIR/scores.d/headers_group.conf"
+    .include(try=true; priority=1; duplicate=merge) "$LOCAL_CONFDIR/local.d/headers_group.conf"
+    .include(try=true; priority=10) "$LOCAL_CONFDIR/override.d/headers_group.conf"
+}
+</code></pre>
+<p><code>policies_group.conf</code> 就是其中一个 group，管的是 SPF / DKIM / DMARC / ARC 这一族符号：</p>
+<pre><code class="">"R_DKIM_ALLOW" { weight = -0.1; description = "DKIM verification succeed"; one_shot = true; groups = ["dkim"]; }
+"R_DKIM_REJECT" { weight = 1.0; ... }
+"R_SPF_ALLOW" { weight = -0.2; ... }
+"DMARC_POLICY_ALLOW" { weight = -0.5; ... }
+</code></pre>
+<p>注意这同样是三段式 include——<strong>所以它也有 <code>local.d/</code> 和 <code>override.d/</code> 变体</strong>。</p>
+<h3>4. <code>actions.conf</code>：分数如何变成动作</h3>
+<p>这是整个评分体系的出口，也是理解后文的关键：</p>
+<pre><code class="">actions {
+    reject = 15;      # 达到 15 分 → 拒收
+    add_header = 6;   # 达到 6 分 → 加垃圾标记头
+    greylist = 4;     # 达到 4 分 → 灰名单（软拒，要求重投）
+}
+</code></pre>
+<h3>5. <code>modules.d/</code>、<code>settings.conf</code>、<code>rspamd.local.lua</code>、<code>maps.d/</code></h3>
+<ul>
+<li><strong><code>modules.d/*.conf</code></strong>：每个功能模块一段（<code>dkim</code>、<code>dmarc</code>、<code>spf</code>、<code>greylist</code>、<code>multimap</code>…），同样是 <code>local.d/</code> + <code>override.d/</code> 三段式。</li>
+<li><strong><code>settings.conf</code></strong>：按条件切换策略，比如「来自内网的邮件只验 DKIM 不查 RBL」。</li>
+<li><strong><code>rspamd.local.lua</code></strong>：自定义 Lua 规则的挂载点，通过 <code>rspamd_config.<SYMBOL> = { callback = ..., score = ... }</code> 注册符号。</li>
+<li><strong><code>maps.d/</code> + <code>multimap</code> 模块</strong>：外部数据列表（白名单域名、IP 段、SURBL 例外等）。</li>
+</ul>
+理清这五层之后，排查就有了路径：<strong>先确认每个模块是否真的加载了，再确认符号是否真的有权重，最后才轮到调分数</strong>。
+<p>---</p>
+<h2>二、问题一：一份被截断的 <code>options.inc</code>，让整套 DKIM 检查静默失效</h2>
+<h3>症状</h3>
+<p><code>rspamadm configtest</code> 报了一串可疑的警告：</p>
+<pre><code class="">$ rspamadm configtest
+cannot enable arc plugin: dkim is disabled
+cannot register delayed dependency DMARC_CHECK -> R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
+cannot register delayed dependency WHITELIST_DKIM -> R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
+cannot register delayed dependency WHITELIST_SPF_DKIM -> R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
+...
+syntax OK
+</code></pre>
+<p>注意最后一行是 <code>syntax OK</code>——<strong>语法没问题，但依赖全断了</strong>。这种「语法通过、功能静默缺失」的状态最危险。</p>
+<h3>根因</h3>
+<p>对比一下 <code>/etc/rspamd/options.inc</code> 和发行版原件 <code>/etc/rspamd/options.inc.dpkg-dist</code>：</p>
+<pre><code class="bash">$ wc -l /etc/rspamd/options.inc /etc/rspamd/options.inc.dpkg-dist
+  25 /etc/rspamd/options.inc
+  93 /etc/rspamd/options.inc.dpkg-dist
+</code></pre>
+<p>当前的 <code>options.inc</code> 只剩 25 行，有效内容就一句：</p>
+<pre><code class="">local_additions = "enable";
+</code></pre>
+<p>而原件第 16 行是：</p>
+<pre><code class="">filters = "chartable,dkim,regexp,fuzzy_check";
+</code></pre>
+<p><strong>rspamd 官方文档原文</strong>：</p>
+<blockquote>C modules provide the core functionality of Rspamd and are statically linked to the main Rspamd code. C modules are defined in <code>options.inc</code> with the <code>filters</code> attribute. The default configuration enables all C modules explicitly:<br>
+<code>filters = "chartable,dkim,regexp,fuzzy_check";</code><br>
+<strong>If no filters attribute is defined, all C modules are disabled.</strong></blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+这些模块是<strong>静态编译进 <code>librspamd-server.so</code> 的 C 模块</strong>，不是 Lua 插件——所以它们在磁盘上找不到对应的 <code>.lua</code> 文件，肉眼检查完全看不出问题。验证一下二进制里确实有：
+<pre><code class="bash">$ nm -D /usr/lib/rspamd/librspamd-server.so | grep -ci dkim
+31
+$ strings /usr/lib/rspamd/librspamd-server.so | grep "src/plugins/dkim_check.c" | head -2
+./src/plugins/dkim_check.c:179
+./src/plugins/dkim_check.c:596
+</code></pre>
+<p>能力都在，只是 <code>filters</code> 一空，<strong>一个都没注册</strong>。</p>
+<h3>连锁反应</h3>
+<p>DKIM 模块没加载，<code>R_DKIM_ALLOW</code> / <code>R_DKIM_NA</code> / <code>R_DKIM_REJECT</code> 这几个符号就不存在。而 rspamd 的配置是<strong>声明式依赖</strong>——凡是引用了不存在符号的规则，不会报错，只是永远不触发。实测这些规则全部失效：</p>
+<table>
+<tr><th>失效的规则</th><th>本应作用</th></tr>
+<tr><td><code>WHITELIST_DKIM</code></td><td>DKIM 通过的白名单域给负分</td></tr>
+<tr><td><code>WHITELIST_SPF_DKIM</code></td><td>SPF + DKIM 双通过给强负分</td></tr>
+<tr><td><code>WHITELIST_DMARC</code></td><td>DMARC 对齐给负分</td></tr>
+<tr><td><code>TRUSTED_NEWSLETTER_PASS</code></td><td>可信订阅邮件对冲 <code>FORGED_SENDER</code></td></tr>
+<tr><td><code>DMARC_CHECK</code></td><td>DMARC 策略检查</td></tr>
+<tr><td><code>NO_AUTH_SPOOF</code></td><td>无认证伪造检测</td></tr>
+</table>
+<p>顺手翻出同一份文件里丢掉的其它东西：</p>
+<pre><code class="">dns {
+	timeout = 1s;
+	sockets = 16;
+	retransmits = 5;
+}
+local_addrs = [192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, fd00::/8, 169.254.0.0/16, fe80::/10];
+</code></pre>
+<p><code>local_addrs</code> 丢失会让 <code>is_local()</code> 判断失真；<code>dns</code> 段落丢失意味着 RBL 查询用默认超时——实测这台机器 rspamd 日志里每天有 <strong>1304 次 <code>query timed out</code></strong>（集中在 <code>asn6.rspamd.com</code> 和 DNSWL/URIBL 各 zone），既拖慢扫描，又让 <code>DWL_DNSWL_HI</code>（-3.5 分）这类白名单负分拿不到。</p>
+<h3>修复：用 <code>local.d/</code> 补回，不动原文件</h3>
+<p><code>options.inc</code> 顶部自己就写着「请改用 <code>local.d/</code>」，而且 <code>local.d/</code> 是 merge 语义，补键最安全：</p>
+<pre><code class=""># /etc/rspamd/local.d/options.inc
+local_additions = "enable";
+filters = "chartable,dkim,regexp,fuzzy_check";
+<p>local_addrs = [192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, fd00::/8, 169.254.0.0/16, fe80::/10];</p>
+<p>dns {
+	timeout = 1s;
+	sockets = 16;
+	retransmits = 5;
+}
+</code></pre></p>
+<p>重载后：</p>
+<pre><code class="bash">$ rspamadm configtest 2>&1 | grep -c "is missing"
+0
+$ rspamc counters | grep R_DKIM
+<table>
+<tr><td>494</td><td>R_DKIM_ALIGNED</td><td>-0.1</td></tr>
+<tr><td>495</td><td>R_DKIM_ALLOW</td><td>-0.1</td></tr>
+<tr><td>496</td><td>R_DKIM_NA</td><td>0.0</td></tr>
+<tr><td>497</td><td>R_DKIM_PERMFAIL</td><td>0.0</td></tr>
+<tr><td>498</td><td>R_DKIM_REJECT</td><td>1.0</td></tr>
+<tr><td>499</td><td>R_DKIM_TEMPFAIL</td><td>0.0</td></tr>
+</table>
+</code></pre>
+<p>扫描耗时立刻从 ~4136 ms 降到 611–1236 ms——<strong>DNS 配置的收益比什么都直接</strong>。</p>
+<p>---</p>
+<h2>三、问题二：<code>override.d/</code> 的严格覆盖语义，漏掉了六个符号</h2>
+<p>DKIM 模块注册成功后，<code>configtest</code> 又报出新的一层：</p>
+<pre><code class="">symbol R_DKIM_ALLOW has no score registered, skip its check
+symbol R_DKIM_REJECT has no score registered, skip its check
+symbol R_DKIM_NA has no score registered, skip its check
+...
+</code></pre>
+<p>符号存在，但权重是空的。查 <code>override.d/policies_group.conf</code>：</p>
+<pre><code class="">$ wc -l scores.d/policies_group.conf override.d/policies_group.conf
+  158 scores.d/policies_group.conf
+   28 override.d/policies_group.conf
+</code></pre>
+<p><code>override.d</code> 版本只有 28 行，定义了 SPF、DMARC、ARC 三组，<strong>唯独没有 DKIM</strong>。因为它是 <code>priority=10</code> 的严格覆盖，发行版那 158 行里的 DKIM 段落被整个顶掉了。</p>
+<p>这就是 <code>override.d</code> 的正确用法陷阱：<strong>它适合「我完全接管这一组配置」，而不是「我只想改其中几条」</strong>。后者应该用 <code>local.d/</code>。</p>
+<p>补上六个符号（权重照抄 <code>scores.d/</code> 的默认值）即可。修复后 <code>WHITELIST_DMARC</code>（-7.0）和 <code>WHITELIST_SPF_DKIM</code>（-3.0）这两条之前完全没触发过的规则，在语料重扫中命中 858 次和 885 次。</p>
+<p>---</p>
+<h2>四、问题三：<code>FORGED_SENDER</code> 对 ESP 的正常行为开枪</h2>
+<p>前两个问题修完，评分分布已经明显健康了，但还有一类邮件稳定误判：合规的批量邮件。</p>
+<h3>触发条件</h3>
+<p><code>FORGED_SENDER</code> 的定义在 <code>forged_recipients.lua</code>：</p>
+<pre><code class="lua">-- Check sender
+if smtp_from and smtp_from[1] and smtp_from[1]['addr'] ~= '' then
+  local mime_from = task:get_from({ 'mime', 'orig' })
+  if not same_mailbox((mime_from or E)[1], smtp_from[1]) then
+    task:insert_result(symbol_sender, 1, ...)   -- +5.0
+  end
+end
+</code></pre>
+<p>一句话：<strong>envelope sender（SMTP <code>MAIL FROM</code>）与 header <code>From</code> 不是同一个邮箱，就扣 5 分</strong>。</p>
+<p>问题是，<strong>整个 ESP（邮件发送服务商）行业就是靠这个机制工作的</strong>。所有主流 ESP 都用独立域做退信地址：</p>
+<table>
+<tr><th>header From</th><th>envelope sender</th><th>服务商</th></tr>
+<tr><td><code>news@customer.com</code></td><td><code>bounce-hash@bounce.customer.com</code></td><td>通用模式</td></tr>
+<tr><td><code>publishing@email.mckinsey.com</code></td><td><code>bounce@email.mckinsey.com</code></td><td>McKinsey</td></tr>
+<tr><td><code>jobs-noreply@linkedin.com</code></td><td><code>m-1but2tww...@bounce.linkedin.com</code></td><td>LinkedIn</td></tr>
+<tr><td><code>notifications@github.com</code></td><td><code>bounces@sgmail.github.com</code></td><td>GitHub</td></tr>
+<tr><td><code>author@debian.org</code></td><td><code>bounce-debian-list=user=freelamp.com@lists.debian.org</code></td><td>邮件列表 VERP</td></tr>
+</table>
+<p>这是 RFC 合规设计，不是伪造。但 <code>FORGED_SENDER</code> 对此一概 +5.0。</p>
+<p>rspamd 确实内置了一个针对性的规则 <code>ENVFROM_PRVS</code>，注释写得很清楚：</p>
+<pre><code class="lua">--[[
+    Detect PRVS/BATV addresses to avoid FORGED_SENDER
+    prvs=TAG=USER@example.com       BATV 草案
+    btv1==TAG==USER@example.com     Barracuda
+    msprvs1=TAG=USER@example.com    Sparkpost
+]] --
+local re_text = '^(?:(prvs|msprvs1)=([^=]+)=|btv1==[^=]+==)(.+@(.+))$'
+</code></pre>
+<p>它只认这三种格式。实测在生产日志里 <strong>0 次命中</strong>——因为 <code>bounce@</code>、<code>sgmail.</code> 这些主流写法一个都不匹配。</p>
+<h3>量化：这类邮件到底是不是垃圾</h3>
+<p>在 3687 封归档邮件上做统计，把 envelope 域与 header 域的关系分类：</p>
+<table>
+<tr><th>envelope 域 vs header 域</th><th>数量</th><th>标签</th></tr>
+<tr><td>不同但同源（子域关系）</td><td><strong>1785</strong></td><td>全部是合法邮件，<strong>零垃圾</strong></td></tr>
+<tr><td>同域</td><td>1577</td><td>—</td></tr>
+<tr><td>不同且无关</td><td>69</td><td>混杂</td></tr>
+</table>
+<p>1785 封「信封域与信头域不同但属于同一组织」的邮件，<strong>没有一封是垃圾</strong>。这个信号本身是高度可信的。</p>
+<h3>修复：不做域名白名单，做 relay 识别</h3>
+<p>之前的做法是维护 <code>whitelist_domains.inc</code>，每来一个新 ESP 加一行——这是<strong>枚举式</strong>方案，永远漏。</p>
+<p>改成<strong>特征式</strong>：在 <code>rspamd.local.lua</code> 注册一个新符号，条件是「信封域与信头域同源 + 信封看起来是 relay 地址 + 至少通过一种认证」，然后对冲掉 <code>FORGED_SENDER</code> 的 5 分。</p>
+<pre><code class="lua">-- envelope 域与 header 域是否同源（含子域关系）
+local function domains_related(env_dom, from_dom)
+  if not env_dom or not from_dom then return false end
+  env_dom, from_dom = env_dom:lower(), from_dom:lower()
+  if env_dom == from_dom then return true end
+  -- bounce.linkedin.com / linkedin.com
+  if lua_util.str_endswith(env_dom, '.' .. from_dom) then return true end
+  if lua_util.str_endswith(from_dom, '.' .. env_dom) then return true end
+  return false
+end
+<p>-- 信封是否是 relay/bounce 形态
+local RELAY_LOCAL_RE = rspamd_regexp.create_cached(
+  '^(?:bounce|bounces|mailer-daemon|postmaster|msprvs[0-9]<em>|prvs|btv[0-9]</em>|srs[0-9]*|' ..
+  'return|no-?reply|noreply|newsletter|news|marketing|notifications?|updates?|' ..
+  '[a-z0-9]+[=+][a-z0-9=+_.-]<em>=?|.</em>=bounces=)')
+local RELAY_HOST_RE = rspamd_regexp.create_cached(
+  '(?:^|\\.)(?:bounce[0-9]<em>|bounces|mailer|lists|list|mail|email|em[0-9]+|mta[0-9]</em>|' ..
+  'smtp[0-9]<em>|send|sending|news|newsletter|marketing|mkt[0-9]</em>|campaign|sgmail|rsgsv|' ..
+  'cmail|mcsv|createsend|mandrill|sparkpost|mailgun|sendgrid|amazonses|postmark|' ..
+  'exacttarget|hubspot|braze|iterable|klaviyo|sailthru)\\.')</p>
+<p>rspamd_config.RELAY_ENVELOPE = {
+  callback = function(task)
+    if not task:has_symbol('FORGED_SENDER') then return false end
+    if not is_relay_envelope(task) then return false end
+    -- 关键：必须至少通过一种认证，否则可能真是伪造
+    return task:has_symbol('R_SPF_ALLOW')
+        or task:has_symbol('DMARC_POLICY_ALLOW')
+        or task:has_symbol('R_DKIM_ALLOW')
+  end,
+  score = -5.0,
+  group = 'headers',
+  description = 'Envelope is a bounce/relay address related to the From domain and the message authenticated',
+}
+</code></pre></p>
+<p>覆盖率的离线评估结果：</p>
+<pre><code class="">=== offline rule coverage by label ===
+   2426  ham:CAUGHT
+     37  ham:MISS
+    110  inbox:CAUGHT
+</code></pre>
+<p>合法邮件的信封形态覆盖率 <strong>98.5%</strong>（2426 / 2463）。而漏掉的 37 封里，绝大多数是 envelope 域等于 header 域的情况——<strong>那些根本不触发 <code>FORGED_SENDER</code>，不需要这条规则</strong>。</p>
+<p>注意最后那个 <code>authed</code> 条件不是装饰：<strong>没有它，真实伪造（信封域碰巧同源但完全无认证）也会被放过</strong>。这道保险必须留。</p>
+<p>---</p>
+<h2>五、问题四：一条 <code>force_actions</code> 规则，硬拒了合法邮件列表</h2>
+<p>这条是排查中<strong>最值得单独拿出来讲</strong>的，因为它的表达式看起来完全合理。</p>
+<p><code>force_actions</code> 模块允许无视分数直接执行动作。配置里有一条：</p>
+<pre><code class="">BLOCK_SPOOFED_LOCAL_DOMAIN {
+    expression = "FORGED_SENDER & !DMARC_POLICY_ALLOW & !R_SPF_ALLOW";
+    action = "reject";
+    message = "Security breach: Spoofed internal domain identity rejected.";
+}
+</code></pre>
+<p>名字叫「拦截伪造本地域」，<code>message</code> 说要防的是「内部身份伪造」。但看表达式——<strong>它一个字都没提到本地域</strong>。</p>
+<p>它实际的含义是：<em>任何</em> envelope 与 From 不一致、且没有 SPF/DMARC 的邮件，直接拒收。</p>
+<p>而 Debian 邮件列表的信封长这样：</p>
+<pre><code class="">From: Peter Pentchev <roam@ringlet.net>
+Return-Path: <bounce-debian-devel=albertxu=freelamp.com@lists.debian.org>
+</code></pre>
+<p><code>freelamp.com</code> 出现在信封里，但它是 <strong>VERP 编码的投递标签</strong>（<code>list名=收件人=域名</code>），不是身份声明。这条规则把它当成了「伪造本地域」，硬拒。</p>
+<p>一条命令就能看出问题：</p>
+<pre><code class="bash">$ grep -c "forced: reject" /var/log/rspamd/rspamd.log
+32
+$ grep "forced: reject" /var/log/rspamd/rspamd.log | grep -oE "from: <[^>]<em>>" | sed 's/.</em>@//;s/>//' | sort | uniq -c | sort -rn
+     22 lists.debian.org
+      4 scoutcamp.bounces.google.com
+</code></pre>
+<p>32 次强制拒收里，22 次是 Debian 邮件列表。</p>
+<h3>修复：把「本地域」这个判断真的写进去</h3>
+<p>用 Lua 重新实现，这次<strong>真的检查 header From 是否声称本地域</strong>：</p>
+<pre><code class="lua">local LOCAL_DOMAINS = { "freelamp.com" }
+<p>local function spoofed_local_domain_cb(task)
+  local hdr = task:get_from('mime')
+  if not hdr or not hdr[1] or not hdr[1].domain then return false end
+  local hd = hdr[1].domain:lower()</p>
+<p>  local is_local = false
+  for _, d in ipairs(LOCAL_DOMAINS) do
+    if hd == d or lua_util.str_endswith(hd, '.' .. d) then is_local = true; break end
+  end
+  if not is_local then return false end          -- 关键：不是本地域，直接放过</p>
+<p>  -- 声称是本地域，就必须自证
+  if task:has_symbol('DMARC_POLICY_ALLOW') then return false end
+  if task:get_user() then return false end        -- 已认证提交
+  local ip = task:get_from_ip()
+  if ip and ip:is_local() then return false end   -- 本机产生
+  if task:has_symbol('R_SPF_ALLOW') then return false end
+  if task:has_symbol('R_DKIM_ALLOW') then return false end
+  return true
+end</p>
+<p>rspamd_config.SPOOFED_LOCAL_DOMAIN = {
+  callback = spoofed_local_domain_cb,
+  score = 8.0,
+  group = 'headers',
+  description = 'Header From claims a local domain but the message failed SPF, DKIM and DMARC',
+}
+</code></pre></p>
+<p>另一个必须记住的细节：<strong><code>force_actions</code> 不认 <code>enable = false</code></strong>。它的规则加载循环只读 <code>action</code> 和 <code>expression</code> 两个字段：</p>
+<pre><code class="lua">for name, sett in pairs(opts.rules) do
+  local action = sett.action
+  local expr = sett.expression
+  if action and expr then
+    ...
+</code></pre>
+<p>所以想停用一条规则，<strong>只能把整块注释掉</strong>，加 <code>enable = false</code> 是无效的（这一点我实测确认过——配置检查仍然会注册那个 <code>FORCE_ACTION_BLOCK_*</code> 符号）。</p>
+<p>---</p>
+<h2>六、问题五：Sieve 的 <code>X-Spam: Yes</code> 阈值语义</h2>
+<p>最后一个是投递层的。Dovecot 用一个全局 Sieve 脚本把垃圾邮件投进 Junk：</p>
+<pre><code class="sieve">require ["fileinto", "mailbox"];
+<p>if anyof (
+  header :contains "X-Spam" "Yes",
+  header :contains "X-Spam-Flag" "YES",
+  header :contains "X-Spamd-Bar" "+"
+) {
+  fileinto :create "Junk";
+  stop;
+}
+</code></pre></p>
+<p>看起来没问题——「标记为垃圾就进 Junk」。但 <code>X-Spam: Yes</code> 是谁写的、什么条件下写？</p>
+<p>在 <code>milter_headers.lua</code> 里：</p>
+<pre><code class="lua">routines['x-spam-status'] = function()
+  local score = common['metric_score'][1]
+  local action = common['metric_action']
+  local is_spam
+  if action ~= 'no action' and action ~= 'greylist' then
+    is_spam = 'Yes'          -- ← 只要动作不是 no action/greylist
+  else
+    is_spam = 'No'
+  end
+  spamstatus = is_spam .. ', score=' .. string.format('%.2f', score)
+</code></pre>
+<p>而动作是由 <code>actions.conf</code> 决定的：</p>
+<pre><code class="">actions {
+    reject = 15;      # 15 分 → reject
+    add_header = 6;   # 6 分 → add header  ← 这里就已经是 "Yes" 了
+    greylist = 4;
+}
+</code></pre>
+<p>所以 <strong><code>X-Spam: Yes</code> 的真正阈值是 6 分，不是 15 分</strong>。从 6 到 15 之间有整整 9 分的空间被压缩成了一个二元判断——只要达到 <code>add_header</code>，Sieve 立刻投进 Junk，用户永远看不到中间地带。</p>
+<p>这也解释了为什么用户要反复标 <code>NonJunk</code>：<strong>大量 6–8 分的订阅邮件、邮件列表、ESP 批量邮件，就卡在这个区间被一刀切</strong>。</p>
+<h3>修复：用真实阈值</h3>
+<p>Sieve 支持关系比较，直接对着硬动作和分数栏判断：</p>
+<pre><code class="sieve">require ["fileinto", "mailbox"];
+<h1>X-Rspamd-Action: reject 是 rspamd 自己认为「确定是垃圾」的动作（≥15 分），</h1>
+<h1>rewrite subject 次之（≥12 分）。X-Spamd-Bar 每分一个 '+'，八个 '+' 即 ≥8 分。</h1>
+if anyof (
+  header :contains "X-Rspamd-Action" "reject",
+  header :contains "X-Rspamd-Action" "rewrite subject",
+  header :contains "X-Spamd-Bar" "++++++++"
+) {
+  fileinto :create "Junk";
+  stop;
+}
+</code></pre>
+<p><code>X-Spamd-Bar</code> 的生成逻辑正好是「分数取整后重复 <code>+</code>」，可以直接当分数用：</p>
+<pre><code class="lua">local spambar
+if score <= -1 then
+  spambar = string.rep(local_mod.negative, math.floor(score * -1))
+elseif score >= 1 then
+  spambar = string.rep(local_mod.positive, math.floor(score))
+else
+  spambar = local_mod.neutral
+end
+</code></pre>
+<p>---</p>
+<h2>七、怎么验证改对了（而不是拍脑袋）</h2>
+<p>改配置最怕「感觉好点了」。这套排查里最有价值的方法论是：<strong>用归档邮件建带标签的回归集</strong>。</p>
+<p>Dovecot 的 Maildir 本身就是标注数据——用户把邮件放进哪个文件夹、打了什么关键字，就是标签。但这里有个<strong>几乎所有人都会踩的坑</strong>：</p>
+<p><strong><code>dovecot-keywords</code> 是每个文件夹独立的映射表</strong>。同一个字母 <code>c</code>，在 INBOX 里是 <code>NonJunk</code>，在别的文件夹里可能是 <code>Junk</code>：</p>
+<pre><code class="bash">$ cat Maildir/dovecot-keywords
+0 unknown-0
+1 unknown-1
+2 NonJunk      ← index 2
+3 Junk
+$ cat Maildir/.LinkedIn/dovecot-keywords
+0 unknown-0
+1 NonJunk      ← index 1，不同！
+2 Junk
+$ cat Maildir/.McKinsey/dovecot-keywords
+0 NonJunk      ← index 0
+1 Junk
+</code></pre>
+<p><code>INBOX/cur/...:2,Sc</code> 里的 <code>c</code> 是 index 2 → <code>NonJunk</code>。<strong>跨文件夹套用同一张表，会把用户「标记为非垃圾」读成「标记为垃圾」，结论完全反过来。</strong></p>
+<p>第二个坑：<strong>重扫会破坏 DKIM 签名</strong>。Maildir 里存的是 LF 换行，而原始邮件是 CRLF，DKIM 是签在规范化的原始字节上的——重扫一遍，body hash 全部失效，<code>R_DKIM_REJECT</code> 全是假象。判断真实 DKIM 结论只能看生产日志：</p>
+<pre><code class="bash">$ grep -oE "R_DKIM_(ALLOW|REJECT|NA)\([-0-9.]+\)" /var/log/rspamd/rspamd.log | sed 's/(.*//' | sort | uniq -c
+    459 R_DKIM_ALLOW
+     62 R_DKIM_REJECT
+     43 R_DKIM_NA
+</code></pre>
+<p>第三个坑：<strong>重扫时 rspamd 会读到自己上次写进去的 <code>X-Spam: Yes</code></strong>，触发 <code>SPAM_FLAG</code> 规则再 +5.0。必须在扫描前把自己产生的头（<code>X-Spam<em></code>、<code>X-Rspamd</em></code>、<code>Authentication-Results</code>）剥掉，否则每一封都凭空多 5 分，回归数据全废。</p>
+<p>最终对比（670 封可比对样本）：</p>
+<table>
+<tr><th>判据</th><th>合法邮件误入 Junk</th><th>真垃圾正确拦截</th></tr>
+<tr><td>旧：<code>X-Spam: Yes</code>（≥6 分）</td><td>294 / 643（46%）</td><td>19 / 27（70%）</td></tr>
+<tr><td>新：<code>Bar≥8</code> 或 <code>reject</code></td><td>40 / 643（6%）</td><td>13 / 27（48%）</td></tr>
+</table>
+<p>误判降到 6%。漏判看起来从 8 封涨到 14 封，但需要说明的是：那 40 封「误判」里，有相当一部分其实是<strong>真垃圾</strong>（取到 <code>BAYES_SPAM</code>、<code>PHISHING</code>、<code>VIOLATED_DIRECT_SPF</code> 等强特征）——只是用户没清理，留在 INBOX 里被当成了正样本。自动标注天然带噪，这个残差是标签问题，不是规则问题。</p>
+<p>---</p>
+<h2>八、复盘：三条通用经验</h2>
+<p><strong>1. 「语法 OK」不等于「功能 OK」。</strong></p>
+<p>rspamd 的 <code>configtest</code> 会对缺失的符号依赖给出 <code>destination ... is missing</code>，但那只是 warning，最后仍然打印 <code>syntax OK</code>。这类警告必须当成错误看。更隐蔽的是 <code>filters</code> 这种——它连警告都不给，只是整套 C 模块安静地不工作。<strong>部署后第一件事应该是 <code>rspamc counters</code>，确认该出现的符号都出现了。</strong></p>
+<p><strong>2. <code>local.d/</code> 是安全网，<code>override.d/</code> 是刀。</strong></p>
+<p><code>local.d/</code> 是逐键合并，写多少生效多少，鼓励使用。<code>override.d/</code> 是整段替换，<strong>用它的那一刻你就要对整段内容的完整性负责</strong>——包括发行版未来新增的项。凡是「只改其中几条」的场景，一律用 <code>local.d/</code>。</p>
+<p><code>FORGED_SENDER</code> 那条 <code>force_actions</code> 规则则提醒了另一面：<strong>表达式的语义要和规则的意图对齐</strong>。名字叫「拦截伪造本地域」，表达式却没有任何本地域判断——这种错位不会报错，只会在几个月后以「用户抱怨邮件列表收不到」的形式暴露。</p>
+<p><strong>3. 阈值型配置要追到最后一层。</strong></p>
+<p>分数 → 动作 → 邮件头 → Sieve，一条链上任何一层的阈值都和你想的不一样，最终行为就会出乎意料。<code>X-Spam: Yes</code> 这个头名字太有迷惑性，让人以为它代表「确定是垃圾」，实际上它只是「不是 no action」——<strong>阈值是 6 分</strong>。<strong>每一条规则的效果都要追到用户实际看到的那个信箱为止</strong>，中间任何一层用「应该没问题」带过，都会留下这种半年后才发作的坑。</p>
+<p>---</p>
+<h2>附：本次改动清单</h2>
+<table>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>local.d/options.inc</code></td><td>补回 <code>filters</code> / <code>dns{}</code> / <code>local_addrs</code></td></tr>
+<tr><td><code>override.d/policies_group.conf</code></td><td>补回 6 个 <code>R_DKIM_*</code> 符号权重</td></tr>
+<tr><td><code>rspamd.local.lua</code></td><td>新增 <code>RELAY_ENVELOPE</code>、<code>SPOOFED_LOCAL_DOMAIN</code></td></tr>
+<tr><td><code>local.d/force_actions.conf</code></td><td>注释掉 <code>BLOCK_SPOOFED_LOCAL_DOMAIN</code></td></tr>
+<tr><td><code>/var/lib/dovecot/sieve/spam-to-junk.sieve</code></td><td>判据改为 <code>X-Rspamd-Action</code> / <code>Bar≥8</code></td></tr>
+</table>
+<p>全部改动均可回滚，改动前都保留了 <code>.bak.<timestamp></code> 备份。改完建议至少观察一个完整投递周期再清理备份。</p>
+<p>最后重申那个最省事的教训：<strong>排查配置类问题时，先确认「模块加载了吗」和「符号有权重吗」，再考虑「分数要不要调」</strong>。这次五个问题里有三个属于前者——而它们造成的损失，远大于任何调分数的努力。
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/",
+      title: "rspamd \u628a 46% \u7684\u5408\u6cd5\u90ae\u4ef6\u4e22\u8fdb\u4e86\u5783\u573e\u7bb1\uff1a\u4e00\u6b21\u4ece\u914d\u7f6e\u6587\u4ef6\u4f53\u7cfb\u5f00\u59cb\u7684\u6392\u67e5"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-23 | [rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查](https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/) | rspamd · postfix · dovecot · 反垃圾邮件 · 邮件网关 · DKIM · SPF · DMARC · Sieve · Debian · 运维 · 原创 |
 | 2026-09-22 | [DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别](https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/) | niri · Wayland · Noctalia · DankMaterialShell · DMS · Quickshell · Debian · Linux桌面 · 桌面壳 |
 | 2026-09-21 | [CPO 的下一站，可能是一块玻璃：共封装光学走向「玻璃集成平台」](https://freelamp.com/articles/2026-09-21_cpo-glass-integration-platform/) | 半导体 · 先进封装 · CPO · 共封装光学 · 玻璃基板 · TGV · 异质集成 · 3D IC |
 | 2026-09-19 | [一次打穿 OpenAI：libheif 堆溢出 + SSO 缺陷，72 小时接管员工账号](https://freelamp.com/articles/2026-09-19_hacktron-hacking-openai/) | 安全 · 漏洞 · OpenAI · SSO · libheif · ImageMagick · 堆溢出 · RCE · 供应链安全 · AI安全 |
