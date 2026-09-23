@@ -28,6 +28,61 @@
     </item>
 
     <item>
+      <title>声卡整个消失了：一行 rm 删掉 .tplg，SOF 驱动找不到文件的全过程</title>
+      <link>https://freelamp.com/articles/2026-09-23_sof-tplg-missing-no-soundcard/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-09-23_sof-tplg-missing-no-soundcard/</guid>
+      <pubDate>Wed, 23 Sep 2026 00:00:00 GMT</pubDate>
+      <author>LeisureLinux</author>
+      <description><![CDATA[Alder Lake-P 笔记本（Debian 13 + XanMod 7.2.7）开机后声卡整体消失、仅剩蓝牙音频可用的排查实录。根因：一行 sudo rm 删除了 /usr/lib/firmware/intel/sof-tplg/sof-hda-generic-2ch.tplg。症状指纹——/proc/asound/cards 为空、aplay -l 报 no soundcards found、PipeWire 只剩 auto_null 虚拟输出、但 lspci 显示 sof-audio-pci-intel-tgl 已 in use（区分「驱动没加载」与「加载后初始化失败」）；蓝牙经 USB/HCI/A2DP 独立链路，不经过 SOF，故不受影响。内核读取逻辑全解：文件名由基名 sof-hda-generic（snd_soc_acpi_intel_hda_machines[]）+ 运行时后缀 -2ch（hda_machine_select() 中 tplg_quirk_mask 带 SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER，dmic_num 取自 NHLT 表，即 dmesg 里 DMICs detected in NHLT tables: 2 那行）+ 路径前缀 intel/sof-tplg（sof_dev_desc->default_tplg_path）三段拼成；SOF 先用 sof_test_topology_file() 的 firmware_request_nowarn 做存在性探测，失败才调 sof_print_missing_firmware_info() 打印默认 profile 列表，因此那段输出会同时列出 .ri 与 .tplg，并非两者都缺（错误信息里的 and/or 是设计使然）；实际读取走 fw_get_filesystem_firmware()，候选为 fw_path[] 五级目录（fw_path_para 内核参数、/lib/firmware/updates/$(uname -r)、/lib/firmware/updates、/lib/firmware/$(uname -r)、/lib/firmware，注意 /lib 是 /usr/lib 的符号链接）乘以三种后缀（空、.zst、.xz，zst 优先），再加 firmware_fallback_platform() 的 UEFI 内嵌兜底，共 15 条，用 kernel_read_file_from_path_initns() 以内核凭据读取。.tplg 格式实测：36 字节块头（magic/abi/version/type/size/vendor_type/payload_size/index/count）+ 变长 payload，本机文件 44247 字节 27 块全 ABI=5，收尾偏移 43815+396+36=44247 精确闭合；magic 0x41536F43 小端即 ASCII CoSA（ASoC 反写）；解析器 snd_soc_tplg_component_load() 按 MANIFEST→VENDOR→CONTROL→WIDGET→PCM_DAI→GRAPH→BE_DAI→LINK 八个 pass 多轮扫描。ABI 只比 MAJOR：Topology 3:22:1 vs Kernel 3:23:1 兼容。加载时序：snd_sof_probe → sof_machine_check → sof_select_ipc_and_paths（此处预检即失败点）→ 读 sof-adl.ri → snd_sof_run_firmware 起 DSP → 注册 component → snd_sof_machine_register → 才 snd_soc_tplg_component_load，故缺拓扑不影响 DSP 启动，只导致 snd_card 注册不出来，报错落在 sof_probe_work failed err: -2。修复与验证：补回文件后用 /sys/bus/pci/drivers/sof-audio-pci-intel-tgl/{unbind,bind} 热重载即可，无需重启；机制是失败路径把 fw_state 置回 SOF_FW_BOOT_NOT_STARTED，unbind 走轻量分支，不触碰 DSP 电源域与 i915 wakeref；注意 SOF probe 由 sof_probe_work 异步执行（CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE=y），bind 返回不等于完成，须以 aplay -l 出现 card 0 为判据。两个陷阱：.bak 与 -pdm1 变体 md5 相同（91e6e760…）并非原版，须用 dpkg -V firmware-sof-signed（missing 表示被删、5 表示被改）定性并从发行包提取核验（原版 md5 ef04df18…）；hda_dsp_hdmi_build_controls: no PCM in topology for HDMI converter 3 为正常噪音，不要据此改拓扑。]]></description>
+      <category>Linux</category>
+      <category>内核</category>
+      <category>ALSA</category>
+      <category>SOF</category>
+      <category>声卡</category>
+      <category>audio</category>
+      <category>Debian</category>
+      <category>firmware</category>
+      <category>dmesg</category>
+      <category>故障排查</category>
+      <category>运维</category>
+      <category>原创</category>
+    </item>
+
+    <item>
+      <title>中国排查国有数据中心里的博通交换机：部分站点占比高达 90%，「国产芯片自用」软引导登场</title>
+      <link>https://freelamp.com/articles/2026-09-23_china-broadcom-switch-survey/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-09-23_china-broadcom-switch-survey/</guid>
+      <pubDate>Wed, 23 Sep 2026 00:00:00 GMT</pubDate>
+      <author>LeisureLinux</author>
+      <description><![CDATA[编译 Reuters 同题报道(2026-09-23)转引 Financial Times，原文为付费墙。事实：中国有关部门排查国有背景数据中心对博通(Broadcom)硬件使用，属扶持国产供应商、降对外国 AI 基础设施依赖行动；调查由国资委(SASAC)牵头；FT 称部分站点博通交换机占比高达 90%；背景是中美博弈下技术自给与供应链韧性优先级提升并扶持专精特新(little giants)；SASAC 后续或发非正式指导敦促国有设施在「国产芯片自用(domestic chips for domestic use)」下减少博通；Reuters 无法立即核实 FT 报道，博通与 SASAC 非工作时间未即时置评(Finimize/MarketScreener 转引亦载)。解读：①非禁令而是 survey+informal guidance，但国有采购方常把暗示当审批标准，博通 design-in 卡在新项目与续约，数据中心网络设备黏性极强(监控/培训/互操作围绕已认证厂商搭建)；②命门是集中度——单外国供应商占90%暴露网络层对外单点依赖，政策焦点在芯片(华为/昇腾/寒武融)时交换机被忽略，博通在交换芯片(Tomahawk/Jericho)与 VMware 生态统治力使其成为去风险靶子；③AI 基建瓶颈从单卡算力外溢到网络(all-reduce 通信、南北向流量)，排查与国产GPU替代英伟达同打法，AI 自给要整栈(算力+网络+机柜)可控；④受益华为/新华三/锐捷，代价是监控运维互操作重建、高端口密度/超低时延/网管生态验证，影响主要在 refresh 与 expansion 周期；跨国/对华业务数据中心方案商应把供应链国籍纳入架构与选型评估。]]></description>
+      <category>编译</category>
+      <category>博通</category>
+      <category>Broadcom</category>
+      <category>数据中心</category>
+      <category>交换机</category>
+      <category>国资委 SASAC</category>
+      <category>国产替代</category>
+      <category>供应链安全</category>
+    </item>
+
+    <item>
+      <title>systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」</title>
+      <link>https://freelamp.com/articles/2026-09-22_systemd-262-released/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-09-22_systemd-262-released/</guid>
+      <pubDate>Tue, 22 Sep 2026 00:00:00 GMT</pubDate>
+      <author>LeisureLinux</author>
+      <description><![CDATA[译介 Phoronix《systemd 262 Released With AI/LLM Canary For Unreviewed Code, LUO Integration》(Michael Larabel, 2026-09-22) 并加工程解读。事实：systemd 262 正式发布；内嵌基础 unit 文件作内存 fallback(reboot/shutdown target、systemd-poweroff.service、multi-user.target)，磁盘加载不到或容器未装 unit 时使用；可编单文件静态链接 PID1/executor 二进制给极小容器；NUMAPolicy= 增 preferred-map/weighted-interleave；service 新增 LUOSession= 创建 Live Update Orchestrator 会话；systemd-firstboot 支持 systemd.firstboot=headless 抑制交互做无人值守自动配置；systemd-coredump 支持 Linux 6.17 kernel coredump socket 协议；systemd-homed 新 FSCRYPT 家目录默认 FSCRYPT v2 策略；systemd-cryptenroll 加 first-boot 注册向导；systemd-vmspawn --coco= 在 AMD SEV-SNP 外新增 Intel TDX 机密计算；新增 dm-clone boot 集成；AI canary 检测未审查 AI/LLM 代码贡献。解读：①相对 2026-08-26 已发 rc1 深度解读，正式版真正新增是 AI canary 与 LUO 收口(LUOSession= 从集成改进变正式选项，热更新走向可用)；②AI canary 在贡献流程探测标记疑似机器生成未人审代码，让「AI生成+无人审」危险组合在 CI/门禁显形，方向是检测标注而非禁止，类 AI 红队/护栏平台逻辑；③内嵌兜底 unit+静态 PID1 收敛最小容器/微VM/机密计算(vmspawn SEV-SNP/TDX)攻击面、可复现镜像，与 Ubuntu 26.10 Rust coreutils 同属基础系统「小/静态/自包含」重组；④短讯未列 breaking change，升级 PID1 前须逐条核对 rc1→262 Notable breaking changes(TPM 绑定凭据旧版不识别、Type=notify-reload 更严、journalctl -F 拒绝过滤器、-Dbuild-executor-shared=single 重命名等)。]]></description>
+      <category>译文</category>
+      <category>systemd</category>
+      <category>Linux init</category>
+      <category>PID 1</category>
+      <category>LUO</category>
+      <category>AI canary</category>
+      <category>机密计算</category>
+      <category>独立科技媒体</category>
+    </item>
+
+    <item>
       <title>DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别</title>
       <link>https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/</link>
       <guid isPermaLink="true">https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/</guid>
@@ -44,6 +99,40 @@
       <category>Linux桌面</category>
       <category>桌面壳</category>
       <category>原创</category>
+    </item>
+
+    <item>
+      <title>阿里云砸 300 万美元给 Omarchy：把 Arch 系桌面做成「理想 agentic OS」，默认调通 Qwen</title>
+      <link>https://freelamp.com/articles/2026-09-22_omarchy-alibaba-3m/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-09-22_omarchy-alibaba-3m/</guid>
+      <pubDate>Tue, 22 Sep 2026 00:00:00 GMT</pubDate>
+      <author>LeisureLinux</author>
+      <description><![CDATA[译介 Phoronix《Alibaba Contributing $3M USD To Omarchy To Work On Making "Ideal" Agentic OS》(Michael Larabel, 2026-09-22) 并加工程解读。事实：Omarchy 项目宣布阿里云向 Omarchy 基金会合计捐赠 300 万美元推进该 Linux 发行版并打造「理想 agentic OS」；阿里云匹配 DigitalOcean 承诺(未来三年每年 100 万给 Omacom 基金会)，并协助建立 Omarchy China(本地 CDN/托管/线下聚会)；阿里云称协作做成人机协作且所有者掌握控制权的理想 agentic OS，开箱即用地为 Qwen 模型调优并与中文服务完整集成、模型/OS/服务开机即协同。解读：①Omarchy 是基于 Arch 的开发者桌面发行版，靠 dotfiles 脚本把 Hyprland/终端/编辑器/AI 工具链一键复现，与 Debian+niri 桌面壳工程同受众；②阿里云意图把 Qwen+中文服务焊进桌面默认层，与华为灵衢/国产 OS 同属 AI 能力下沉 OS 层；③「owner remains in charge」是 agentic OS 须盯的权限模型/可审计/撤销机制红线，OS 级内置能联网调服务执行动作的 agent 时这些成出厂默认；④DigitalOcean+阿里云多年期企业赞助是独立 Linux 桌面项目少见的生存弹药，对比 Void Linux 因 AI 政策争议 maintainer 批量 orphan 100+ 包，Omarchy 走基金会化+企业赞助稳路。]]></description>
+      <category>译文</category>
+      <category>Omarchy</category>
+      <category>Arch Linux</category>
+      <category>桌面发行版</category>
+      <category>agentic OS</category>
+      <category>阿里云</category>
+      <category>Qwen</category>
+      <category>独立科技媒体</category>
+    </item>
+
+    <item>
+      <title>SPECviewperf 15 终于出 Linux 原生版：x86_64 / AArch64 都有，但只给 OpenGL 4.5</title>
+      <link>https://freelamp.com/articles/2026-09-22_specviewperf-15-0-1-linux/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-09-22_specviewperf-15-0-1-linux/</guid>
+      <pubDate>Tue, 22 Sep 2026 00:00:00 GMT</pubDate>
+      <author>LeisureLinux</author>
+      <description><![CDATA[译介 Phoronix《SPEC Releases SPECviewperf 15.0.1 For Linux》(Michael Larabel, 2026-09-22) 并加工程解读。事实：SPECViewPerf 15 于 2025-05 作为业界标准工作站显卡基准最新大版本推出，首发仅 Windows；SPECViewPerf 15.0.1 Linux 原生构建今日发布，相比上一 Linux 版(2020)为大更新，提供 x86_64 与 AArch64；Windows 版 15 已加 DX12+Vulkan，Linux 版 15.0.1 仅 OpenGL 4.5；Larabel 将跑 15.0.1 做后续工作站 GPU/驱动评测。解读：①Linux 短板补上但仍二等公民——同一卡两 OS 渲染路径不同(OpenGL vs DX12/Vulkan)，跨平台数字不可直接比，须显式标注 API 口径否则误导；②AArch64 官方构建让 Ampere/富士通 MONAKA/Apple Silicon(Aahi/Linux 或虚拟机)有可复现专业图形基准；③滞后根因：视图集回放 ISV 应用(Maya/SolidWorks/CATIA/SNX/Creo/medical/energy)真实渲染流，这些专业应用重心在 Windows，Linux 版需重适配；④对游戏玩家无感(有 3DMark/游戏内 benchmark)，但对 GPU 厂商 Linux 驱动的工作站性能验证与回归测试是必要权威工具。关联：与长鑫3D NAND/华为122TB SSD 同属「中国/专业图形生态重心仍在 Windows 或美国厂商」的结构性现实。]]></description>
+      <category>译文</category>
+      <category>SPECviewperf</category>
+      <category>显卡基准</category>
+      <category>工作站</category>
+      <category>Linux</category>
+      <category>OpenGL 4.5</category>
+      <category>AArch64</category>
+      <category>独立科技媒体</category>
     </item>
 
     <item>

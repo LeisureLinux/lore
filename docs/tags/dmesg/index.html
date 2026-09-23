@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>#dmesg — FreeLAMP.com 像风一样自由</title>
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <meta name="description" content="标签「dmesg」下的全部 FreeLAMP.com 技术文章">
+  <link rel="canonical" href="https://freelamp.com/tags/dmesg/">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #fff; color: #1F2937; line-height: 1.6; }
+    .container { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+    nav { background: #fff; border-bottom: 1px solid #E5E7EB; padding: 12px 0; position: sticky; top: 0; z-index: 10; }
+    nav .container { display: flex; align-items: center; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    .tag-header { padding: 40px 0 24px; border-bottom: 1px solid #E5E7EB; margin-bottom: 24px; }
+    .tag-header h1 { font-size: 26px; font-weight: 900; color: #111827; }
+    .tag-header p { color: #6B7280; font-size: 14px; margin-top: 8px; }
+    .article-list { list-style: none; }
+    .article-item { border-bottom: 1px solid #F3F4F6; padding: 16px 0; }
+    .article-item a { text-decoration: none; color: inherit; display: block; }
+    .article-date { font-size: 12px; color: #9CA3AF; font-weight: 600; margin-bottom: 4px; }
+    .article-title { font-size: 17px; font-weight: 800; color: #111827; }
+    .article-summary { font-size: 14px; color: #6B7280; margin-top: 6px; line-height: 1.7; }
+    footer { text-align: center; padding: 32px 0; color: #9CA3AF; font-size: 13px; border-top: 1px solid #E5E7EB; margin-top: 40px; }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="tag-header">
+      <h1># dmesg</h1>
+      <p>共 1 篇文章</p>
+    </div>
+    <ul class="article-list">
+      <li class="article-item">
+        <a href="/articles/2026-09-23_sof-tplg-missing-no-soundcard/">
+          <div class="article-date">2026-09-23</div>
+          <div class="article-title">声卡整个消失了：一行 rm 删掉 .tplg，SOF 驱动找不到文件的全过程</div>
+          <div class="article-summary">一台 Alder Lake-P 轻薄本开机后扬声器与麦克风全部消失，只剩蓝牙音频可用。根因是一行 sudo rm 删掉了 /usr/lib/firmware/intel/sof-tplg/sof-hda-generic-2ch.tplg，导致 SOF 驱动的拓扑文件存在性预检失败、sof_probe_work 报 -ENOENT(-2)，声卡从未注册到内核（/proc/asound/cards 为空，aplay -l 报 no soundcards found，PipeWire 只能建 auto_null 兜底）。蓝牙走独立 USB/HCI/A2DP 通道不经过 SOF，故毫发无伤。文章系统拆解内核找文件的全部逻辑：①文件名三段拼装——基名 sof-hda-generic 取自 snd_soc_acpi_intel_hda_machines[]，-2ch 后缀由 hda_machine_select() 依据 NHLT 表探测到的数字麦数量补上（tplg_quirk_mask SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER），路径前缀来自 sof_dev_desc->default_tplg_path；②两步走策略——sof_test_topology_file() 先用 firmware_request_nowarn 做纯存在性探测，失败才走 sof_print_missing_firmware_info() 打印那段容易被误读的「firmware and/or topology file not found」（它会把 .ri 和 .tplg 都列出来，不代表两者都缺）；③候选路径是 fw_path[] 五级目录 × {无后缀,.zst,.xz} + UEFI 内嵌共 15 条，读取用 kernel_read_file_from_path_initns 以内核凭据在 init 挂载命名空间完成；④.tplg 是 36 字节块头 + 变长 payload 的块序列，本机文件 27 块/ABI 5，magic 0x41536F43 小端落盘为 ASCII CoSA（ASoC 反写），内核按 8 个 pass 多轮扫描而非顺序单遍；⑤ABI 校验只比 MAJOR（SOF_ABI_VERSION_INCOMPATIBLE），故 Topology ABI 3:22:1 配 Kernel ABI 3:23:1 属正常向后兼容；⑥时序上拓扑在 DSP 启动后才加载，所以缺文件不会让 DSP 起不来，而是让 snd_card 建不出来。修复只需补回文件 + sysfs 热重载（echo BDF > /sys/bus/pci/drivers/sof-audio-pci-intel-tgl/{unbind,bind}），无需重启。文中给出热重载为何生效的机制——设备处于 SOF_FW_BOOT_NOT_STARTED 状态，unbind 走轻量分支，不涉及 DSP 电源域与 i915 wakeref；并指出 SOF probe 经 sof_probe_work 异步执行（CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE=y），bind 命令返回不等于 probe 完成，必须用 aplay -l 的结果判定。另记录两个排查陷阱：①同目录 .bak 文件与 -pdm1 变体同 md5（91e6e760…），并非原版，盲目回滚会把「没有声卡」换成「少一个麦克风」，正确做法是用 dpkg -V firmware-sof-signed 定性（missing vs 5）+ apt-get download fw 包提取原版核验 md5 ef04df18…；②「文件内容不对」与「文件不存在」是两类失败模式，前者有设备只是声音不对，后者一次 probe 都不过。</div>
+        </a>
+      </li>
+    </ul>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

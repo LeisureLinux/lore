@@ -17,8 +17,13 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-23 | [声卡整个消失了：一行 rm 删掉 .tplg，SOF 驱动找不到文件的全过程](https://freelamp.com/articles/2026-09-23_sof-tplg-missing-no-soundcard/) | Linux · 内核 · ALSA · SOF · 声卡 · firmware · dmesg · Debian · 故障排查 · 运维 · 原创 |
 | 2026-09-23 | [rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查](https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/) | rspamd · postfix · dovecot · 反垃圾邮件 · 邮件网关 · DKIM · SPF · DMARC · Sieve · Debian · 运维 · 原创 |
 | 2026-09-22 | [DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别](https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/) | niri · Wayland · Noctalia · DankMaterialShell · DMS · Quickshell · Debian · Linux桌面 · 桌面壳 |
+| 2026-09-23 | [中国排查国有数据中心里的博通交换机：部分站点占比高达 90%，「国产芯片自用」软引导登场](https://freelamp.com/articles/2026-09-23_china-broadcom-switch-survey/) | 博通 · Broadcom · 交换机 · 数据中心 · 国资委SASAC · 国产替代 · 供应链安全 · AI基建 |
+| 2026-09-22 | [阿里云砸 300 万美元给 Omarchy：把 Arch 系桌面做成「理想 agentic OS」，默认调通 Qwen](https://freelamp.com/articles/2026-09-22_omarchy-alibaba-3m/) | Omarchy · Arch · 桌面发行版 · agentic OS · 阿里云 · Qwen · 独立科技媒体 |
+| 2026-09-22 | [systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」](https://freelamp.com/articles/2026-09-22_systemd-262-released/) | systemd · PID 1 · LUO · AI canary · 机密计算 · 静态二进制 · Linux init |
+| 2026-09-22 | [SPECviewperf 15 终于出 Linux 原生版：x86_64 / AArch64 都有，但只给 OpenGL 4.5](https://freelamp.com/articles/2026-09-22_specviewperf-15-0-1-linux/) | SPECviewperf · 显卡基准 · 工作站 · Linux · OpenGL 4.5 · AArch64 · 专业图形 |
 | 2026-09-21 | [CPO 的下一站，可能是一块玻璃：共封装光学走向「玻璃集成平台」](https://freelamp.com/articles/2026-09-21_cpo-glass-integration-platform/) | 半导体 · 先进封装 · CPO · 共封装光学 · 玻璃基板 · TGV · 异质集成 · 3D IC |
 | 2026-09-19 | [一次打穿 OpenAI：libheif 堆溢出 + SSO 缺陷，72 小时接管员工账号](https://freelamp.com/articles/2026-09-19_hacktron-hacking-openai/) | 安全 · 漏洞 · OpenAI · SSO · libheif · ImageMagick · 堆溢出 · RCE · 供应链安全 · AI安全 |
 | 2026-09-21 | [Linux perf script 命令大改：甩掉内嵌 Python/Perl，3.7 秒变 0.1 秒](https://freelamp.com/articles/2026-09-21_linux-perf-python-module/) | Linux · perf · 性能分析 · Python · C扩展 · 内核工具 · Ian Rogers · Google |
