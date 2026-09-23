@@ -19,7 +19,6 @@
 |------|------|------|
 | 2026-09-22 | [DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别](https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/) | niri · Wayland · Noctalia · DankMaterialShell · DMS · Quickshell · Debian · Linux桌面 · 桌面壳 |
 | 2026-09-21 | [CPO 的下一站，可能是一块玻璃：共封装光学走向「玻璃集成平台」](https://freelamp.com/articles/2026-09-21_cpo-glass-integration-platform/) | 半导体 · 先进封装 · CPO · 共封装光学 · 玻璃基板 · TGV · 异质集成 · 3D IC |
-| 2026-09-18 | [Git 2.56 发布，3.0 要把 SHA-256 设为默认：reftable、强制 Rust 与大小写 ID 清除](https://freelamp.com/articles/2026-09-18_git-256-and-30/) | Git · 版本控制 · SHA-256 · reftable · Rust · 兼容性破坏 · LWN |
 | 2026-09-19 | [一次打穿 OpenAI：libheif 堆溢出 + SSO 缺陷，72 小时接管员工账号](https://freelamp.com/articles/2026-09-19_hacktron-hacking-openai/) | 安全 · 漏洞 · OpenAI · SSO · libheif · ImageMagick · 堆溢出 · RCE · 供应链安全 · AI安全 |
 | 2026-09-21 | [Linux perf script 命令大改：甩掉内嵌 Python/Perl，3.7 秒变 0.1 秒](https://freelamp.com/articles/2026-09-21_linux-perf-python-module/) | Linux · perf · 性能分析 · Python · C扩展 · 内核工具 · Ian Rogers · Google |
 | 2026-09-21 | [GNU Wget2 2.3 发布：多了 --progress=dot，修了几个内存泄漏](https://freelamp.com/articles/2026-09-21_gnu-wget2-23/) | GNU · Wget2 · 下载工具 · HTTP/2 · 内存泄漏 · OS/2 |
@@ -34,6 +33,7 @@
 | 2026-09-18 | [长鑫（CXMT）要在北京做 3D NAND：DRAM 一哥，开始踩 YMTC 的 NAND 地盘](https://freelamp.com/articles/2026-09-18_cxmt-3d-nand-rd-beijing/) | CXMT · 长鑫 · 3D NAND · YMTC · 长江存储 · 存储 · SSD · DRAM · 半导体 · 国产存储 |
 | 2026-09-18 | [Wine 11.18 继续补全 NTOSKRNL：Windows 内核驱动在 Linux 上跑得越来越真](https://freelamp.com/articles/2026-09-18_wine-11.18-ntoskrnl/) | Wine · NTOSKRNL · 兼容层 · Windows · Linux · 内核驱动 · PnP · 游戏兼容 |
 | 2026-09-18 | [Ubuntu 26.10 改主意了：内核从 7.2 跳到 7.3，十月前吃上最新主线](https://freelamp.com/articles/2026-09-18_ubuntu-2610-linux-73/) | Ubuntu · 26.10 · Linux 7.3 · 内核 · 发行版 · Canonical · 译文 |
+| 2026-09-18 | [Git 2.56 发布，3.0 要把 SHA-256 设为默认：reftable、强制 Rust 与大小写 ID 清除](https://freelamp.com/articles/2026-09-18_git-256-and-30/) | Git · 版本控制 · SHA-256 · reftable · Rust · 兼容性破坏 · LWN |
 | 2026-09-16 | [Nextcloud 推出 Euro-Office 桌面端：补齐对标微软 Office 的最后一环](https://freelamp.com/articles/2026-09-16_nextcloud-euro-office-desktop-app/) | Nextcloud · Euro-Office · 开源办公 · 主权软件 · OnlyOffice · OOXML · ODF · 协同办公 |
 | 2026-09-16 | [RVA23 之后，RISC-V 往哪走：CFI、矩阵扩展与 RVA23.1](https://freelamp.com/articles/2026-09-16_riscv-after-rva23/) | RISC-V · 指令集 · CFI · 矩阵扩展 · 工具链 · Canonical |
 | 2026-09-16 | [iocost 的七年之约：把 IO 成本模型交给 BPF](https://freelamp.com/articles/2026-09-16_blk-iocost-bpf-cost-model/) | Linux 内核 · BPF · struct_ops · iocost · cgroup · IO 调度 · 块层 |
