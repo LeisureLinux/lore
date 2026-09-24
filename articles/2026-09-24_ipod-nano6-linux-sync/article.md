@@ -1,27 +1,27 @@
-# 在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的
+# 在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么绕过去的
 
-我有一台 iPod Nano 6（8GB 银色，型号 xC526），是十几年前的老设备。最近把它插到 Debian 机器上，想整理一下曲库、顺便试着加几首歌。整理（备份到电脑）很顺利；但**往 iPod 里写**——删一首歌、加一首歌——却让 rhythmbox 直接段错误崩溃。
+笔者手头有台 iPod Nano 6，8GB，银色，型号 xC526，搁了十几年。最近把它插到一台 Debian 机器上，想整理一下曲库，顺手加几首歌。整理（把歌备份到电脑）没什么波折，但往 iPod 里写就不行了——删一首、加一首，rhythmbox 直接段错误退出。
 
-报错只有一行，但极其关键：
+日志只留下一行，但这一行很要命：
 
 ```
 Could not write database to iPod: Unsupported checksum type
 ```
 
-这篇文章记录从"识别"到"误判无解"再到"找到正确工具"的完整过程，也包含一个我自己的判断失误——值得写下来提醒自己：**别凭印象下"无解"的结论**。
+笔者先把这个问题交给 AI 助手分析。它查了一圈，给出的结论是：Linux 写不了 Nano 6，建议放弃。这个结论后来被证明是错的。下文把整件事讲清楚：iPod 为什么会这样，真正的原因是什么，以及最后是怎么解决的。
 
 ---
 
-## 一、先厘清：iPod 在 Linux 上为什么"插上就能用"
+## 一、iPod 在 Linux 上为什么插上就能用
 
-很多人的第一反应是"要装 iPod 驱动吧"。**不需要。** 关键在于 iPod 分两大类：
+不少人的第一反应是要装 iPod 驱动。其实不用。关键在 iPod 分两大类：
 
 | 类型 | 传输方式 | Linux 支持 |
 |---|---|---|
-| 老 iPod（Classic / Nano / Shuffle 等带转盘的） | **USB 大容量存储（UMS）** | 内核自带，零驱动 |
-| 新设备（iPhone / iPod touch） | 苹果私有协议（usbmux） | 需 libimobiledevice + usbmuxd |
+| 老 iPod（Classic / Nano / Shuffle 这类带转盘的） | USB 大容量存储（UMS） | 内核自带，零驱动 |
+| 新设备（iPhone / iPod touch） | 苹果私有协议（usbmux） | 需要 libimobiledevice + usbmuxd |
 
-老 iPod 会把自己**伪装成一个 U 盘**。实测这台 Nano 6 的驱动链是：
+老 iPod 会把自己当成一个 U 盘。这台 Nano 6 的驱动链是这样：
 
 ```
 iPod Nano 6 (USB 05ac:1266)
@@ -31,114 +31,113 @@ iPod Nano 6 (USB 05ac:1266)
               └─ 挂载后就是 iPod_Control/Music/F00–F13 这种结构
 ```
 
-决定性证据是这一行：
+判断它是不是被当成普通磁盘，看这一行就够了：
 
 ```
 $ readlink -f /sys/block/sdc/device/driver
 /sys/bus/scsi/drivers/sd
 ```
 
-它被当成一块**普通 SCSI 磁盘**，和插个 U 盘毫无区别。`usb_storage`、`vfat` 都是内核内置模块，开机即有。
+它挂在 SCSI 磁盘驱动下面，跟插个 U 盘没有区别。`usb_storage` 和 `vfat` 都是内核内置模块，开机就有。
 
-> 顺带澄清一个常见混淆：系统里如果装着 `usbmuxd`/`libimobiledevice`，那是给 iPhone 用的，**和 Nano 6 无关**。
+顺带说一个容易混淆的地方：系统里如果装着 `usbmuxd`、`libimobiledevice`，那是给 iPhone 用的，跟 Nano 6 没有关系。
 
-**所以"识别"从来不是问题。问题在"写"。**
+**识别从来不是问题，问题在写。**
 
 ---
 
-## 二、iPod 的数据库：为什么"拷文件"没用
+## 二、iPod 的数据库：为什么拷文件没用
 
-老 iPod 不是"扫目录播放"的——它只认一个**数据库文件**。你把 mp3 拷进 `Music/F0X/` 目录，iPod 开机**看不到**，除非同时更新数据库。
-
-而且这个数据库分两代：
+老 iPod 不扫目录播放，它只认一个数据库文件。把 mp3 拷进 `Music/F0X/`，iPod 开机看不到，除非同时更新数据库。这个数据库还分两代：
 
 | 代次 | 数据库 | 说明 |
 |---|---|---|
 | 老的（Nano 1–4、Classic 等） | `iTunesDB` | 二进制，`mhbd` 魔数 |
-| 新的（**Nano 5G/6G/7G**） | `iTunesCDB` | **压缩版**（zlib），`mhbd` 魔数；旁边还有 SQLite 库 |
+| 新的（Nano 5G/6G/7G） | `iTunesCDB` | 压缩版（zlib），`mhbd` 魔数，旁边还有 SQLite 库 |
 
-你的 Nano 6 属于后者。`SysInfoExtended` 里明确写着：
+Nano 6 属于后者。设备的 `SysInfoExtended` 里写得很明白：
 
 ```xml
 <key>SQLiteDB</key><true/>
 ```
 
-设备真正读取的是 `iPod_Control/iTunes Library.itlp/` 下那套 **SQLite 数据库**（`Library.itdb`、`Locations.itdb` 等），`iTunesCDB` 是给 iTunes 看的压缩镜像。
+设备真正读的是 `iPod_Control/iTunes Library.itlp/` 下那套 SQLite 数据库（`Library.itdb`、`Locations.itdb` 等）。`iTunesCDB` 是给 iTunes 看的压缩镜像。
 
 ---
 
-## 三、踩坑：libgpod 报「Unsupported checksum type」
+## 三、libgpod 报「Unsupported checksum type」
 
-在 Linux 上管理 iPod 的标准库是 **libgpod**（gtkpod、rhythmbox 这些工具都用它）。装好 libgpod-common 后，rhythmbox 能**读**出 iPod 的 380 首歌，也能播放。但一删歌就崩，日志里反复出现：
+Linux 上管理 iPod 用得最多的库是 libgpod，gtkpod、rhythmbox 都基于它。装好 libgpod-common 之后，rhythmbox 能读出 iPod 里的 380 首歌，也能播放。但只要删歌就崩，日志里反复出现同一句：
 
 ```
 Could not write database to iPod: Unsupported checksum type
 ```
 
-查下去，根因是 **iPod 的数据库需要"签名"（防篡改校验），而不同代次用不同算法**：
+原因在于，iPod 的数据库需要签名（防篡改校验），而不同代次用的算法不一样：
 
 | 设备 | 签名算法 |
 |---|---|
 | iPod Classic 1G–3G | HASH58 |
 | iPod Nano 3G–4G | HASH58 |
 | iPod Nano 5G | HASH72 |
-| **iPod Nano 6G / 7G** | **HASHAB**（白盒 AES） |
+| iPod Nano 6G / 7G | HASHAB（白盒 AES） |
 | 更老的（Nano 1–2、Mini 等） | 无签名 |
 
-你的 Nano 6 需要 **HASHAB**。而 libgpod 0.8.3 虽然源码里有 `itdb_hashAB.c`，但**写入路径没有真正实现对 Nano 6G 的 HASHAB 支持**，于是直接报 "Unsupported checksum type"。
+Nano 6 要的是 HASHAB。libgpod 0.8.3 的源码里明明有 `itdb_hashAB.c`，但写入路径并没有真正实现对 Nano 6G 的 HASHAB 支持，于是直接报 Unsupported checksum type。
 
-我还确认了一个前提：libgpod 甚至没去读 `SysInfoExtended`（strace 显示它只 `access()` 了几个目录），说明它连签名所需的设备信息都没取。
+还有一点，libgpod 甚至没去读 `SysInfoExtended`。用 strace 跟一下就会发现，它只 `access()` 了几个目录，连签名需要的设备信息都没取。
 
-**这里我犯了个错**：看到这个错误，我就下了"Linux 写不了 Nano 6"的结论，还建议用户放弃。这是错的。
+到了这里，AI 助手就下了那个错误结论：既然 libgpod 写不了，那 Linux 就没法给 Nano 6 加歌。**这个判断是错的。一个库做不到，不等于整个平台做不到。**
 
 ---
 
-## 四、正解：`ipodsync` 绕开了 libgpod
+## 四、正解：ipodsync 绕开了 libgpod
 
-被提醒"网上难道没人写这个"之后，我搜了一下——**有，而且不止一个**：
+被提醒「网上难道没人写这个」之后，笔者去搜了一圈。有，而且不止一个：
 
-- **`ipodsync`**（PyPI，纯 Python）：支持 Nano 6G/7G，自己实现 HASHAB
-- **`iOpenPod`**（GitHub）：Nano 6G/7G 用 WebAssembly 版 HASHAB
+- `ipodsync`（PyPI，纯 Python）：支持 Nano 6G/7G，自己实现 HASHAB
+- `iOpenPod`（GitHub）：Nano 6G/7G 用 WebAssembly 版 HASHAB
 
-`ipodsync` 的思路很关键——**它不碰难的 iTunesCDB**：
+ipodsync 的思路是关键——它不碰难搞的 iTunesCDB：
 
-> 数据库用 SQLite `iTunes Library.itlp/*.itdb`（不是 `iTunesCDB`，后者设备会自己重生成）。只有 `Locations.itdb` 是受签名保护的（`.cbk`）。
+> 数据库用 SQLite `iTunes Library.itlp/*.itdb`，不是 `iTunesCDB`（后者设备会自己重新生成）。只有 `Locations.itdb` 受签名保护，对应 `.cbk` 文件。
 
-也就是说：
-1. 直接写设备真正读取的 **SQLite 库**
-2. 只对 `Locations.itdb` 生成 **`.cbk` 签名文件**，用**纯 Python 实现的 hashAB**（白盒 AES，100/100 测试向量）
+具体做法：
+
+1. 直接写设备真正读取的 SQLite 库
+2. 只给 `Locations.itdb` 生成 `.cbk` 签名文件，用的是纯 Python 实现的 hashAB（白盒 AES，官方测试向量 100/100 通过）
 3. 完全不依赖 libgpod
 
-**签名需要的 FireWireGUID 从哪来？** 从设备 **USB 序列号**自动读取——这解决了一个大坑（iPod 的 `SysInfo*` 文件在 HFS+ 上是压缩的，Linux 驱动读不了）。实测这台设备的：
+签名需要设备的 FireWireGUID。这东西本来在设备的 `SysInfo*` 文件里，但那文件在 HFS+ 上是压缩的，Linux 驱动读不出来。ipodsync 换成从 USB 序列号取：
 
 ```
-ID_SERIAL=Apple_iPod_000A270022D57C06-0:0
+ID_SERIAL=Apple_iPod_XXXXXXXXXXXXXXXX-0:0
 ```
 
-正好等于 `SysInfoExtended` 里的 `FireWireGUID`，工具能自动取到。
+这串序列号对应的 GUID，正好等于 `SysInfoExtended` 里的 `FireWireGUID`，工具能自动拿到。
 
 ---
 
-## 五、实操：安装与验证
+## 五、安装与验证
 
-安装（`pipx` 隔离环境，纯 Python 无需编译）：
+pipx 装一个隔离环境就行，纯 Python，不用编译：
 
 ```bash
 pipx install --backend pip ipodsync
 ```
 
-只读验证（不写库）：
+先只读验证，不写库：
 
 ```bash
-export IPODSYNC_MOUNT="/media/axu/ALBERT_S IP"
+export IPODSYNC_MOUNT="/media/$USER/iPod"
 ipodsync status
-# ✅ iPod ready: /media/axu/ALBERT_S IP  (380 tracks)
+# ✅ iPod ready: /media/<用户名>/iPod  (380 tracks)
 
 ipodsync list | head
 # [ 2816281227101471536] Aaron Neville — Yes I Love You  (To Make Me Who I Am, 4:46)  F13/YJVZ.mp3
 ```
 
-写入闭环测试（加一首 → 确认 → 删掉）：
+再做一次写入的闭环测试，加一首、确认、删掉：
 
 ```bash
 ipodsync -b add /tmp/test.mp3
@@ -151,38 +150,40 @@ ipodsync rm 8677968574691807434
 ipodsync status          # 380 tracks（恢复原状）
 ```
 
-**全部成功。** 而且注意到两个贴心设计：
-- 自动**附加封面**（从 mp3 的内嵌 APIC/covr 读取，写入 ArtworkDB + `.ithmb`）
-- 每次写库前**自动备份**到 `~/ipod-backups/`，并打印一条 undo 命令
+都成功了。它有两个设计笔者比较喜欢：一是自动附加封面，从 mp3 内嵌的 APIC/covr 读出来，写进 ArtworkDB 和 `.ithmb`；二是每次写库前自动备份到 `~/ipod-backups/`，还顺手打印一条 undo 命令。
 
 ---
 
-## 六、几种工具的真实对比
+## 六、几种工具对比
 
 | 工具 | Nano 6G 写库 | 问题 |
 |---|---|---|
-| **gtkpod** | ❌ | 太老，`gtkpod_app` 初始化崩溃（与现代 GTK/GLib 不兼容） |
-| **rhythmbox** | ❌ | 用 libgpod 写库，报 Unsupported checksum type 并段错误 |
-| **libgpod**（底层库） | ❌ | 未真正实现 Nano 6G 的 HASHAB 写入 |
-| **ipodsync** | ✅ | 绕开 libgpod，纯 Python 写 SQLite + hashAB |
-| **iOpenPod** | ✅ | PyQt6 GUI，Nano 6G/7G 用 WASM 版 HASHAB |
+| gtkpod | 不行 | 太老，`gtkpod_app` 初始化就崩，跟现代 GTK/GLib 不兼容 |
+| rhythmbox | 不行 | 底层用 libgpod 写库，报 Unsupported checksum type 并段错误 |
+| libgpod（底层库） | 不行 | 未真正实现 Nano 6G 的 HASHAB 写入 |
+| ipodsync | 可以 | 绕开 libgpod，纯 Python 写 SQLite + hashAB |
+| iOpenPod | 可以 | PyQt6 GUI，Nano 6G/7G 用 WASM 版 HASHAB |
 
 ---
 
-## 七、方法论沉淀
+## 七、几条经验
 
-1. **"识别" ≠ "写入"**。UMS 让 iPod 插上就能读，但写库是另一层（数据库格式 + 签名），两者独立。
-2. **报错信息要追到算法层**。"Unsupported checksum type" 背后是"设备要 HASHAB、库不支持 HASHAB"，而不是"设备坏了"或"配置错了"。
-3. **遇到老设备兼容问题，先搜再下结论**。我这次犯的错就是凭"libgpod 报错"推断"Linux 整个不行"，而实际上早有专门工具绕开了它。**一个库的局限 ≠ 一个平台的局限。**
-4. **写设备数据库前先备份**。`ipodsync` 的自动备份 + undo 命令是这类工具的正确姿势。
-5. **别让 Apple 软件自动同步**。手动加的歌会被一次 iTunes 同步覆盖（保持"手动管理音乐"模式）。
+识别和写入是两回事。UMS 让 iPod 插上就能读，但写库是另一层，涉及数据库格式和签名，两者互不相干。
+
+报错要追到算法层。Unsupported checksum type 的背后是「设备要 HASHAB，库不支持」，既不是设备坏了，也不是配置错了。
+
+遇到老设备的兼容问题，先搜再下结论。这次的教训就是：单凭一个库的报错，就推断整个平台不行。一个库的局限，跟一个平台的局限是两码事。
+
+写设备数据库之前先备份。ipodsync 的自动备份加 undo 命令，是这类工具该有的样子。
+
+别让 Apple 的软件自动同步。手动加进去的歌，会被一次 iTunes 同步冲掉，记得把 iPod 保持在「手动管理音乐」模式。
 
 ---
 
 ## 附：常用命令
 
 ```bash
-export IPODSYNC_MOUNT="/media/axu/ALBERT_S IP"
+export IPODSYNC_MOUNT="/media/$USER/iPod"
 
 ipodsync status                    # 状态
 ipodsync list                      # 列出曲目（含 pid）
@@ -193,8 +194,8 @@ ipodsync export ~/Music/ipod       # 导出全部（只读）
 ipodsync cover <pid> --image c.jpg # 单独加封面
 ```
 
-一段小插曲：为了排查，我还顺带装了 `libgpod-common`，它带来一条 **udev 规则**（`90-libgpod.rules`）和 `ipod-read-sysinfo-extended`（读设备生成 `SysInfoExtended`）。这些对 ipodsync 不是必需（它从 USB 序列号取 GUID），但对其它工具可能有用。
+顺便提一句，排查过程中还装过 `libgpod-common`，它带了一条 udev 规则和 `ipod-read-sysinfo-extended`（读设备生成 `SysInfoExtended`）。这些对 ipodsync 不是必需的，它从 USB 序列号取 GUID，但对别的工具可能有帮助。
 
 ---
 
-**结论**：Linux 完全可以给 iPod Nano 6 加歌，用 `ipodsync` 就行。之前我说的"无解"，是没查证就下的错误结论——记住这个教训。
+说回来，Linux 完全能给 iPod Nano 6 加歌，用 ipodsync 就可以。那个「无解」的说法，是 AI 没查证就下的结论，不作数。
