@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障 — FreeLAMP.com</title>
+  <meta name="description" content="Debian 机器本地 mp3 推流到 HomePod 的完整排障与原理复盘。核心故障：mpv + PipeWire raop-sink 播放约 35 秒后音频静默但 sink 仍 RUNNING。原理：AirPlay（RAOP）的 RTSP/TCP 控制通道与 RTP/UDP 音频通道独立，控制通道被断后音频通道假活">
+  <meta name="keywords" content="PipeWire, HomePod, AirPlay, RAOP, mpv, atvremote, pyatv, raop_play, 音频, Debian, 故障排查, 原创">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-24">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障">
+  <meta property="og:description" content="Debian 机器本地 mp3 推流到 HomePod 的完整排障与原理复盘。核心故障：mpv + PipeWire raop-sink 播放约 35 秒后音频静默但 sink 仍 RUNNING。原理：AirPlay（RAOP）的 RTSP/TCP 控制通道与 RTP/UDP 音频通道独立，控制通道被断后音频通道假活">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-24">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="PipeWire">
+  <meta property="article:tag" content="PipeWire">
+  <meta property="article:tag" content="HomePod">
+  <meta property="article:tag" content="AirPlay">
+  <meta property="article:tag" content="RAOP">
+  <meta property="article:tag" content="mpv">
+  <meta property="article:tag" content="atvremote">
+  <meta property="article:tag" content="pyatv">
+  <meta property="article:tag" content="raop_play">
+  <meta property="article:tag" content="音频">
+  <meta property="article:tag" content="Debian">
+  <meta property="article:tag" content="故障排查">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障">
+  <meta name="twitter:description" content="Debian 机器本地 mp3 推流到 HomePod 的完整排障与原理复盘。核心故障：mpv + PipeWire raop-sink 播放约 35 秒后音频静默但 sink 仍 RUNNING。原理：AirPlay（RAOP）的 RTSP/TCP 控制通道与 RTP/UDP 音频通道独立，控制通道被断后音频通道假活">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障",
+  "description": "Debian 机器把本地 mp3 推到 HomePod 的完整排障实录。起点是 atvremote（pyatv）每首歌重建 AirPlay 会话、体验差；换 mpv + PipeWire raop-sink 后撞上「播放 35 秒突然没声但进度还在走」的隐蔽故障。原理剖析：AirPlay（RAOP）分 RTSP/TCP 控制通道与 RTP/UDP 音频通道两条独立通道，控制通道被 HomePod 断掉后音频通道假活，导致 sink 显示 RUNNING 却无声。日志中 error -32（EPIPE）是根因、error -9（EBADF）只是往失效 socket 写数据的后续症状。根因定位为 PipeWire 1.4.2 raop-sink 加密协商不兼容——默认 raop.encryption.type=none，而 HomePod 要求 SAP25（FairPlay）加密；社区抓包确认是 HomePod 主动终止控制通道并发送 mDNS cache-flush。绕行方案 raop_play 稳定 150s 但无图形界面。最终解：走 trixie-backports 把 PipeWire 从 1.4.2 升级到 1.4.9（backports 依赖干净不拉高 glibc、可回滚），1.4.9 的 raop-sink 自动选择 fp_sap25 加密，断流彻底消失。附彩蛋：mpv --force-window 显示内嵌封面 + --sub-auto=fuzzy 加载同名 .lrc 歌词。",
+  "datePublished": "2026-09-24",
+  "dateModified": "2026-09-24",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "PipeWire, HomePod, AirPlay, RAOP, mpv, atvremote, pyatv, raop_play, 音频, Debian, 故障排查, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障",
+        "item": "https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-24">2026-09-24</div>
+        <h1 class="post-title" itemprop="headline">Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/PipeWire/">PipeWire</a><a itemprop="keywords" href="/tags/HomePod/">HomePod</a><a itemprop="keywords" href="/tags/AirPlay/">AirPlay</a><a itemprop="keywords" href="/tags/RAOP/">RAOP</a><a itemprop="keywords" href="/tags/mpv/">mpv</a><a itemprop="keywords" href="/tags/atvremote/">atvremote</a><a itemprop="keywords" href="/tags/pyatv/">pyatv</a><a itemprop="keywords" href="/tags/raop_play/">raop_play</a><a itemprop="keywords" href="/tags/%E9%9F%B3%E9%A2%91/">音频</a><a itemprop="keywords" href="/tags/Debian/">Debian</a><a itemprop="keywords" href="/tags/%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5/">故障排查</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>
+需求很简单：一台 Debian 机器上存了几十 GB 的 mp3，想把它推到房间里的 HomePod 音箱播放。原以为是个「点一下就行」的小事，结果一路从 <code>atvremote</code> 试到 <code>mpv</code>、再到升级 PipeWire，中间撞上一个极其隐蔽的「播到 35 秒突然没声」的坑。这篇文章把整个过程和背后的原理完整记录下来。</p>
+<p>先说结论：<strong>最终解法是把 PipeWire 从 1.4.2 升到 1.4.9（走 trixie-backports），断流问题彻底消失</strong>。下面按时间线复盘，每一步都讲清楚「为什么这么走、原理是什么、踩了什么坑」。</p>
+<p>---</p>
+<h2>一、起点：atvremote（pyatv）方案</h2>
+<p>最早用的是 <code>atvremote</code>，它是 <code>pyatv</code> 库附带的命令行工具，通过 Apple 的私有协议（AirPlay / MediaRemote）控制 Apple TV 和 HomePod。当时的 <code>play.sh</code> 长这样：</p>
+<pre><code class="bash">#!/bin/bash
+MDIR="$HOME/Music"
+if [ -r "$1" ]; then
+	atvremote -n StudyRoom stream_file="$1" 2>/dev/null
+	exit
+fi
+! find ${MDIR} -name "*.mp3" | shuf | xargs -I {} atvremote -n StudyRoom stream_file={} 2>/dev/null && echo "exit with error"
+</code></pre>
+<p>这个方案<strong>能出声</strong>，但有几个问题：</p>
+<ol>
+<li>1. <strong>每首歌重建一次 AirPlay 会话</strong>。<code>find | shuf | xargs -I {}</code> 会对每一首 mp3 单独起一个 <code>atvremote stream_file</code> 进程，意味着每首歌之间都要重新握手、重新建流，曲目切换有停顿，还容易丢歌首。</li>
+<li>2. <strong>错误被 <code>2>/dev/null</code> 吞掉</strong>。失败静默，出问题看不到原因。</li>
+<li>3. <strong><code>! ... && echo</code> 的逻辑反直觉</strong>，实际是失败才提示，但读起来像"成功才提示"。</li>
+</ol>
+更重要的是，<code>atvremote stream_file</code> 走的是 pyatv 的 AirPlay 推流路径，它<strong>自己管理 RTSP 会话</strong>，虽然能播，但它是「每首一个进程」的黑盒，无法做播放列表、无法暂停切歌，也无法显示封面歌词。
+<p>所以下一步自然是想换成 mpv——Linux 上最顺手的播放器，有键盘控制、有图形界面、能播列表。</p>
+<p>---</p>
+<h2>二、换 mpv：撞上「35 秒断流」</h2>
+<p>mpv 本身不直接支持 AirPlay 输出，但它能通过 PipeWire 输出音频。PipeWire 有一个 <code>raop-sink</code> 模块（RAOP = Remote Audio Output Protocol，即 AirPlay 的底层协议），能把 HomePod 变成系统里一个普通的音频 sink。于是脚本改成：</p>
+<pre><code class="bash">SINK=$(pactl list short sinks | awk '/raop_sink/{print $2; exit}')
+mpv --audio-device="pipewire/$SINK" --no-video --shuffle "${files[@]}"
+</code></pre>
+<p>这一换，问题来了：<strong>播放约 35 秒后，音乐还在走（进度条在动、sink 显示 RUNNING），但 HomePod 没声音了</strong>。</p>
+<p>这个现象非常反直觉——「看起来一切正常，但就是没声」。要定位它，得先理解 AirPlay 的协议结构。</p>
+<p>---</p>
+<h2>三、原理：为什么「还在播」但「没声」</h2>
+<p>AirPlay（RAOP）推流分<strong>两条独立通道</strong>：</p>
+<table>
+<tr><th>通道</th><th>协议</th><th>作用</th><th>断了会怎样</th></tr>
+<tr><td><strong>控制通道</strong></td><td>RTSP over TCP（端口 7000）</td><td>握手、协商编码、音量同步、时间戳对齐</td><td>音频流变成「无头」数据，HomePod 不再出声</td></tr>
+<tr><td><strong>音频通道</strong></td><td>RTP over UDP</td><td>承载 PCM/ALAC 音频数据</td><td>直接没声，但 sink 会报错</td></tr>
+</table>
+<p>关键在这里：<strong>两条通道是独立的</strong>。当 HomePod 把控制通道（TCP 7000）断掉后，音频通道（UDP）可能还在发——于是本机的 mpv 看到 sink 还在 RUNNING、进度还在走，就以为一切正常；但 HomePod 那边已经因为失去控制通道而停止出声了。</p>
+<p>这正是「还在播但没声」的根因。日志证实了这一点：</p>
+<pre><code class="">mod.raop-sink: sess.latency.msec 250.000000 should be an integer multiple of rtp.ptime 7.755102
+mod.raop-sink: error -32 (断开的管道)
+mod.raop-sink: error sending control packet: -9
+</code></pre>
+<ul>
+<li><code>error -32</code> = EPIPE，控制通道（RTSP/TCP）被对端断开；</li>
+<li><code>error -9</code> = EBADF，之后模块还在往一个已失效的 socket 写数据，每秒刷一次。</li>
+</ul>
+而 <code>-9</code> 那条日志最迷惑人：它刷得很凶，让人以为是网络抖动，其实它只是「控制通道已死」的<strong>后续症状</strong>，不是根因。
+<p>---</p>
+<h2>四、深挖根因：HomePod 主动断连接</h2>
+<p>为了确认不是网络问题，我做了一个关键观察——盯着 TCP 7000 连接的状态：</p>
+<pre><code class="">[11:37:16] sink=RUNNING tcp7000=1
+[11:37:18] sink=RUNNING tcp7000=0   # 控制通道断了
+[11:37:20] sink=RUNNING tcp7000=0
+</code></pre>
+<p>约 35 秒后，<code>tcp7000</code> 从 1 变 0——控制通道被断开，但 sink 依然是 RUNNING、mpv 依然在播。这坐实了「控制通道静默断开、音频通道假活」的判断。</p>
+<p>社区里有人进一步抓包确认：<strong>是 HomePod 主动终止控制通道</strong>（TCP 7000），断连后 HomePod 还会发 mDNS cache-flush 包——这是「协议层拒绝连接」的明确信号。也就是说，<strong>不是网络抖动，是 PipeWire 的 raop-sink 实现与 HomePod 的 AirPlay 协议不兼容</strong>，HomePod 在约 30 秒后撤掉了会话。</p>
+<p>其中一个关键线索是日志里的加密类型：</p>
+<ul>
+<li>PipeWire 1.4.2 的 raop-sink 默认 <code>raop.encryption.type = none</code>；</li>
+<li>而 HomePod 要求 <strong>SAP25（FairPlay）加密</strong>的 AirPlay 会话。</li>
+</ul>
+加密协商对不上，HomePod 就在 keep-alive 超时后断掉了连接。这解释了为什么调 <code>raop.latency.ms</code> 参数「只能多撑几秒」——治标不治本，真正的病根在加密协商。
+<p>---</p>
+<h2>五、绕行：raop_play 稳定，但没有图形界面</h2>
+<p>在确认 PipeWire 的 raop-sink 是病根后，我先找了一个绕行方案：<code>raop_play</code>（Rust 写的独立 AirPlay 推流工具）。用 <code>ffmpeg</code> 把 mp3 解码成 PCM 喂给它：</p>
+<pre><code class="bash">ffmpeg -re -f concat -safe 0 -i playlist.txt -f s16le -acodec pcm_s16le -ar 44100 -ac 2 - \
+  | raop_play -v 50 -p 7000 192.168.68.158 -
+</code></pre>
+<p>实测这个方案<strong>稳定播了 150 秒零断流</strong>——因为 <code>raop_play</code> 自己正确实现了 HomePod 需要的加密握手和 keep-alive。</p>
+<p>但它有两个致命缺点：</p>
+<ol>
+<li>1. <strong>没有图形界面</strong>，看不到封面、歌词、进度；</li>
+<li>2. <strong>音量/暂停/切歌都要自己写</strong>（后来补了个 <code>hpctl</code> 控制音量，但暂停切歌做不了）。</li>
+</ol>
+所以问题又绕回来了：<strong>想要 mpv 的体验，就必须让 PipeWire 的 raop-sink 修好</strong>。
+<p>---</p>
+<h2>六、最终解：升级 PipeWire 1.4.2 → 1.4.9</h2>
+<p>这时候做了个决定性的验证：编译最新的 PipeWire master（当时是 1.7.0），发现它的 raop-sink <strong>自动选择了 <code>fp_sap25</code> 加密</strong>：</p>
+<pre><code class="">mod.raop-discover: loading module args:'{... "raop.encryption.type":"fp_sap25" ...}'
+</code></pre>
+<p>这证明上游<strong>已经修了 HomePod 的加密协商问题</strong>——只是 Debian trixie 的 1.4.2 太旧，没吃到这个修复。</p>
+<p>于是走 <strong>trixie-backports</strong> 源，把 PipeWire 全家桶从 1.4.2 升到 <strong>1.4.9</strong>（backports 官方打包，依赖 <code>libc6 >= 2.38</code> 与旧版一致，不拉高基础库，风险低、可回滚）。</p>
+<p>升级后，<code>mpv → PipeWire raop-sink → HomePod</code> 的断流问题<strong>彻底消失</strong>。</p>
+<p><strong>升级脚本</strong>（回滚脚本同理，显式降回 1.4.2 即可）：</p>
+<pre><code class="bash">sudo apt-get update
+sudo apt-get install -y -t trixie-backports \
+    pipewire pipewire-bin pipewire-pulse pipewire-alsa pipewire-audio \
+    libpipewire-0.3-0t64 libpipewire-0.3-modules libpipewire-0.3-common \
+    libspa-0.2-modules libspa-0.2-bluetooth gstreamer1.0-pipewire \
+    wireplumber libwireplumber-0.5-0
+<p>systemctl --user restart pipewire.service pipewire-pulse.service wireplumber.service
+</code></pre></p>
+<p>这里有个关键决策点：<strong>为什么用 backports 而不是 sid？</strong> 因为 sid 的 1.6.9 可能连带拉高 glibc 等基础库，风险大；而 backports 的 1.4.9 是官方为 trixie 专门打包的，依赖干净，<code>apt-get -s</code> 模拟安装显示「升级 15 个、新增 0、卸载 0」。</p>
+<p>---</p>
+<h2>七、彩蛋：图形窗口 + 封面 + 歌词</h2>
+<p>升级完成后，顺手把播放体验也补全了。mpv 原生就支持显示内嵌封面（attached_pic 会被识别为 <code>Image</code> 视频轨）和加载同名 <code>.lrc</code> 歌词（<code>sub-auto=fuzzy</code>）：</p>
+<pre><code class="bash">mpv --no-config --audio-device="pipewire/$SINK" \
+    --force-window=yes --sub-auto=fuzzy --shuffle "${files[@]}"
+</code></pre>
+<ul>
+<li><code>--force-window=yes</code>：弹出图形窗口；</li>
+<li>去掉 <code>--no-video</code>：让内嵌封面显示出来；</li>
+<li><code>--sub-auto=fuzzy</code>：自动加载与 mp3 同名的 <code>.lrc</code> 歌词，按时间高亮滚动。</li>
+</ul>
+实测验证：<code>Image --vid=1 "Album cover" (png 1280x720)</code> + <code>Subs --sid=1 'lrc' (text)</code> + <code>sink RUNNING</code>，封面、歌词、声音三者齐活。
+<blockquote>一个小坑：<code>--audio-display</code> 在 mpv 0.40 里是三态选项，<code>--audio-display=yes</code> 会报错、裸写 <code>--audio-display</code> 又要求参数。实际上它默认就开启，<strong>根本不用显式指定</strong>——只要别加 <code>--no-video</code> 就行。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+---
+<h2>八、总结</h2>
+<h3>各方案对比</h3>
+<table>
+<tr><th>方案</th><th>断流</th><th>图形界面</th><th>封面/歌词</th><th>暂停切歌</th><th>结论</th></tr>
+<tr><td>atvremote（pyatv）</td><td>无（但每首歌重连）</td><td>无</td><td>无</td><td>无</td><td>起步方案，体验差</td></tr>
+<tr><td>mpv + PipeWire 1.4.2</td><td><strong>35s 必断</strong></td><td>有</td><td>有</td><td>有</td><td>病根在 raop-sink 加密协商</td></tr>
+<tr><td>raop_play（独立推流）</td><td>无</td><td>无</td><td>无</td><td>无</td><td>稳定但体验残缺</td></tr>
+<tr><td><strong>mpv + PipeWire 1.4.9</strong></td><td><strong>无</strong></td><td><strong>有</strong></td><td><strong>有</strong></td><td><strong>有</strong></td><td><strong>最终解</strong></td></tr>
+</table>
+<h3>方法论沉淀</h3>
+<ol>
+<li>1. <strong>「还在播但没声」要想到双通道协议</strong>。AirPlay 的控制通道（RTSP/TCP）和音频通道（RTP/UDP）独立，控制通道断了音频通道可能假活，这是这类「假正常」的经典来源。</li>
+</ol>
+<ol>
+<li>2. <strong>日志里的 <code>-9</code>（EBADF）是症状不是根因</strong>。它表示「往失效的 socket 写数据」，真正要追的是它之前的 <code>-32</code>（EPIPE）——那是连接被对端断开的时刻。</li>
+</ol>
+<ol>
+<li>3. <strong>加密协商是 HomePod 断连的根因</strong>。PipeWire 1.4.2 用 <code>none</code>，HomePod 要 SAP25；1.4.9 修复了自动选择。升级比调 latency 参数有效得多。</li>
+</ol>
+<ol>
+<li>4. <strong>Debian 升级优先 backports 而非 sid</strong>。backports 是官方为当前发行版打包的、依赖干净可回滚；sid 可能拉高基础库，风险不可控。</li>
+</ol>
+<ol>
+<li>5. <strong>先看代码再动手、改动可回滚</strong>。这次升级全程保留了回滚脚本和版本清单，出问题随时能退回 1.4.2。</li>
+</ol>
+<h3>最终可用的脚本</h3>
+<ul>
+<li><code>newplay.sh</code>：mpv 弹窗播放 + 封面 + 歌词，声音走 HomePod；</li>
+<li><code>hpctl</code>：独立的音量控制命令（<code>hpctl up/down/vol N/mute</code>），与播放并行。</li>
+</ul>
+至此，从「点一下」到「点一下真的能用」，中间隔着一个协议加密协商的坑。希望这篇复盘能帮到下一个想在 Linux 上推流到 HomePod 的人。
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/",
+      title: "Linux \u628a\u672c\u5730 mp3 \u63a8\u5230 HomePod\uff1a\u4ece atvremote \u5230 mpv \u5230 PipeWire \u5347\u7ea7\u7684\u5b8c\u6574\u6392\u969c"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

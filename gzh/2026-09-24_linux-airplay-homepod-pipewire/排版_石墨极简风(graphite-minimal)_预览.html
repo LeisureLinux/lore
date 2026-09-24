@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>排版_石墨极简风(graphite-minimal) · 公众号排版预览</title>
+<style>
+  body{margin:0;background:#eef0f2;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-text-size-adjust:100%;}
+  .gzh-toolbar{position:fixed;top:0;left:0;right:0;height:54px;background:#ffffff;box-shadow:0 1px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:99;}
+  .gzh-hint{font-size:13px;color:#6b7280;line-height:1.4;}
+  .gzh-hint b{color:#111827;}
+  .gzh-copy{background:#059669;color:#fff;border:0;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(5,150,105,.28);white-space:nowrap;transition:transform .08s,background .15s;}
+  .gzh-copy:hover{background:#047857;}
+  .gzh-copy:active{transform:translateY(1px);}
+  .gzh-toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:88vw;text-align:center;}
+  .gzh-toast.show{opacity:1;}
+  .gzh-stage{max-width:700px;margin:78px auto 64px;padding:0 8px;}
+  @media(max-width:520px){.gzh-hint{max-width:150px;}}
+</style>
+</head>
+<body>
+<div class="gzh-toolbar">
+  <span class="gzh-hint">👇 下方是排版效果 · 点右侧 <b>复制</b> 直接粘到公众号</span>
+  <button class="gzh-copy" id="gzhCopyBtn" onclick="gzhCopy()">📋 复制到公众号</button>
+</div>
+<div class="gzh-toast" id="gzhToast"></div>
+<div class="gzh-stage">
+  <div id="gzh-content">
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <!-- 开头引言卡片（组件 2） -->
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;">
+      <span leaf="">QUOTE</span>
+    </p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;">
+      <span leaf="">看起来一切正常，但就是没声——</span>
+      <span style="border-bottom:2px solid #52525B;"><span leaf="">「还在播」和「有声音」是两回事</span></span>
+      <span leaf="">。</span>
+    </p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;">
+      <span leaf="">—— FreeLAMP.com</span>
+    </p>
+  </section>
+
+  <!-- 前言正文 -->
+  <section style="padding:0 10px 40px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">需求很简单：一台 Debian 机器上存了几十 GB 的 mp3，想把它推到房间里的 HomePod 音箱播放。原以为是个「点一下就行」的小事，结果一路从</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">atvremote</span></span>
+      <span leaf="">试到</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">mpv</span></span>
+      <span leaf="">、再到升级 PipeWire，中间撞上一个极其隐蔽的「播到 35 秒突然没声」的坑。这篇文章把整个过程和背后的原理完整记录下来。</span>
+    </p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">先说结论：</span>
+      <span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">最终解法是把 PipeWire 从 1.4.2 升到 1.4.9</span></span>
+      <span leaf="">（走 trixie-backports），断流问题彻底消失。下面按时间线复盘，每一步都讲清楚「为什么这么走、原理是什么、踩了什么坑」。</span>
+    </p>
+  </section>
+
+  <!-- 前言导读（组件 3） -->
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;">
+      <span leaf="">本文看点</span>
+    </p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">AirPlay 双通道协议</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">「还在播却没声」根因</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">PipeWire 升级解法</span></p>
+      </section>
+    </section>
+  </section>
+
+  <!-- 第一章 -->
+  <section style="margin-top:16px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">01</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">START</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">起点：atvremote（pyatv）方案</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">最早用的是</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">atvremote</span></span>
+      <span leaf="">，它是</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">pyatv</span></span>
+      <span leaf="">库附带的命令行工具，通过 Apple 的私有协议（AirPlay / MediaRemote）控制 Apple TV 和 HomePod。当时的 play.sh 长这样：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">bash</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">#!/bin/bash</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">MDIR="$HOME/Music"</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if [ -r "$1" ]; then</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　atvremote -n StudyRoom stream_file="$1" 2&gt;/dev/null</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　exit</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">fi</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">! find ${MDIR} -name "*.mp3" | shuf | xargs -I {} atvremote -n StudyRoom stream_file={} 2&gt;/dev/null &amp;&amp; echo "exit with error"</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这个方案</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">能出声</span></span>
+      <span leaf="">，但有几个问题：</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">每首歌重建一次 AirPlay 会话</strong>。find | shuf | xargs 会对每一首 mp3 单独起一个 atvremote 进程，每首歌之间都要重新握手、重新建流，曲目切换有停顿，还容易丢歌首。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">错误被 2&gt;/dev/null 吞掉</strong>。失败静默，出问题看不到原因。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">! ... &amp;&amp; echo 的逻辑反直觉</strong>，实际是失败才提示，但读起来像「成功才提示」。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">更重要的是，atvremote stream_file 走的是 pyatv 的 AirPlay 推流路径，它</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">自己管理 RTSP 会话</span></span>
+      <span leaf="">，虽然能播，但它是「每首一个进程」的黑盒，无法做播放列表、无法暂停切歌，也无法显示封面歌词。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">所以下一步自然是想换成</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">mpv</span></span>
+      <span leaf="">——Linux 上最顺手的播放器，有键盘控制、有图形界面、能播列表。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第二章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">02</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">MPV</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">换 mpv：撞上「35 秒断流」</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">mpv 本身不直接支持 AirPlay 输出，但它能通过</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">PipeWire</span></span>
+      <span leaf="">输出音频。PipeWire 有一个 raop-sink 模块（RAOP = Remote Audio Output Protocol，即 AirPlay 的底层协议），能把 HomePod 变成系统里一个普通的音频 sink。于是脚本改成：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">bash</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">SINK=$(pactl list short sinks | awk '/raop_sink/{print $2; exit}')</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">mpv --audio-device="pipewire/$SINK" --no-video --shuffle "${files[@]}"</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这一换，问题来了：</span>
+      <span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">播放约 35 秒后，音乐还在走，但 HomePod 没声音了</span></span>
+      <span leaf="">。</span>
+    </p>
+
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 10px 28px;">
+      <p style="font-size:16px;font-weight:700;color:#27272A;margin:0;line-height:1.7;letter-spacing:0.5px;">
+        <span leaf="">「看起来一切正常，但就是没声」</span>
+      </p>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这个现象非常反直觉。要定位它，得先理解</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">AirPlay 的协议结构</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第三章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">03</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">PRINCIPLE</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">原理：为什么「还在播」但「没声」</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">AirPlay（RAOP）推流分</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">两条独立通道</span></span>
+      <span leaf="">：</span>
+    </p>
+
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">通道</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">协议</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">作用</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">断了会怎样</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf=""><strong style="color:#27272A;">控制通道</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">RTSP over TCP（端口 7000）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">握手、协商编码、音量同步、时间戳对齐</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">音频流变成「无头」数据，HomePod 不再出声</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">音频通道</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">RTP over UDP</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">承载 PCM/ALAC 音频数据</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">直接没声，但 sink 会报错</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">关键在这里：</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">两条通道是独立的</span></span>
+      <span leaf="">。当 HomePod 把控制通道（TCP 7000）断掉后，音频通道（UDP）可能还在发——于是本机的 mpv 看到 sink 还在 RUNNING、进度还在走，就以为一切正常；但 HomePod 那边已经因为失去控制通道而停止出声了。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这正是「还在播但没声」的根因。日志证实了这一点：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">log</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">mod.raop-sink: sess.latency.msec 250.000000 should be an integer multiple of rtp.ptime 7.755102</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">mod.raop-sink: error -32 (断开的管道)</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">mod.raop-sink: error sending control packet: -9</span></p>
+      </section>
+    </section>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">error -32 = EPIPE，<strong style="color:#27272A;">控制通道（RTSP/TCP）被对端断开</strong>；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">error -9 = EBADF，之后模块还在往一个<strong style="color:#27272A;">已失效的 socket</strong> 写数据，每秒刷一次。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">而 -9 那条日志最迷惑人：它刷得很凶，让人以为是网络抖动，其实它只是「控制通道已死」的</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">后续症状</span></span>
+      <span leaf="">，不是根因。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第四章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">04</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">ROOT CAUSE</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">深挖根因：HomePod 主动断连接</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">为了确认不是网络问题，我做了一个关键观察——盯着 TCP 7000 连接的状态：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">log</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">[11:37:16] sink=RUNNING tcp7000=1</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">[11:37:18] sink=RUNNING tcp7000=0   # 控制通道断了</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">[11:37:20] sink=RUNNING tcp7000=0</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">约 35 秒后，tcp7000 从 1 变 0——控制通道被断开，但 sink 依然是 RUNNING、mpv 依然在播。这坐实了</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">「控制通道静默断开、音频通道假活」</span></span>
+      <span leaf="">的判断。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">社区里有人进一步抓包确认：</span>
+      <span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">是 HomePod 主动终止控制通道</span></span>
+      <span leaf="">（TCP 7000），断连后 HomePod 还会发 mDNS cache-flush 包——这是「协议层拒绝连接」的明确信号。也就是说，不是网络抖动，是 PipeWire 的 raop-sink 实现与 HomePod 的 AirPlay 协议不兼容，HomePod 在约 30 秒后撤掉了会话。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">其中一个关键线索是日志里的加密类型：</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">PipeWire 1.4.2 的 raop-sink 默认 raop.encryption.type = <strong style="color:#27272A;">none</strong>；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">而 HomePod 要求 <strong style="color:#27272A;">SAP25（FairPlay）加密</strong> 的 AirPlay 会话。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">加密协商对不上，HomePod 就在 keep-alive 超时后断掉了连接。这解释了为什么调 raop.latency.ms 参数「只能多撑几秒」——</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">治标不治本</span></span>
+      <span leaf="">，真正的病根在加密协商。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第五章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">05</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">WORKAROUND</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">绕行：raop_play 稳定，但没有图形界面</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">在确认 PipeWire 的 raop-sink 是病根后，我先找了一个绕行方案：</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">raop_play</span></span>
+      <span leaf="">（Rust 写的独立 AirPlay 推流工具）。用 ffmpeg 把 mp3 解码成 PCM 喂给它：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">bash</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">ffmpeg -re -f concat -safe 0 -i playlist.txt -f s16le -acodec pcm_s16le -ar 44100 -ac 2 - \</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　| raop_play -v 50 -p 7000 192.168.68.158 -</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">实测这个方案</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">稳定播了 150 秒零断流</span></span>
+      <span leaf="">——因为 raop_play 自己正确实现了 HomePod 需要的加密握手和 keep-alive。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">但它有两个致命缺点：</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">没有图形界面</strong>，看不到封面、歌词、进度；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">音量/暂停/切歌都要自己写</strong>（后来补了个 hpctl 控制音量，但暂停切歌做不了）。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">所以问题又绕回来了：</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">想要 mpv 的体验，就必须让 PipeWire 的 raop-sink 修好</span></span>
+      <span leaf="">。</span>
+    </p>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第六章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">06</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">SOLUTION</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">最终解：升级 PipeWire 1.4.2 → 1.4.9</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这时候做了个决定性的验证：编译最新的 PipeWire master（当时是 1.7.0），发现它的 raop-sink</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">自动选择了 fp_sap25 加密</span></span>
+      <span leaf="">：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">log</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">mod.raop-discover: loading module args:'{... "raop.encryption.type":"fp_sap25" ...}'</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">这证明上游</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">已经修了 HomePod 的加密协商问题</span></span>
+      <span leaf="">——只是 Debian trixie 的 1.4.2 太旧，没吃到这个修复。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">于是走</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">trixie-backports</span></span>
+      <span leaf="">源，把 PipeWire 全家桶从 1.4.2 升到 1.4.9（backports 官方打包，依赖 libc6 &gt;= 2.38 与旧版一致，不拉高基础库，风险低、可回滚）。</span>
+    </p>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">升级后，mpv → PipeWire raop-sink → HomePod 的断流问题</span>
+      <span style="border-bottom:2px solid #F97316;font-weight:700;color:#27272A;"><span leaf="">彻底消失</span></span>
+      <span leaf="">。</span>
+    </p>
+
+    <p style="margin-bottom:16px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf=""><strong style="color:#27272A;">升级脚本</strong>（回滚脚本同理，显式降回 1.4.2 即可）：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">bash</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">sudo apt-get update</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">sudo apt-get install -y -t trixie-backports \</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　pipewire pipewire-bin pipewire-pulse pipewire-alsa pipewire-audio \</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　libpipewire-0.3-0t64 libpipewire-0.3-modules libpipewire-0.3-common \</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　libspa-0.2-modules libspa-0.2-bluetooth gstreamer1.0-pipewire \</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　wireplumber libwireplumber-0.5-0</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">systemctl --user restart pipewire.service pipewire-pulse.service wireplumber.service</span></p>
+      </section>
+    </section>
+
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 10px 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;">
+        <span leaf="">关键决策点：为什么用 backports 而不是 sid？因为 sid 的 1.6.9 可能连带拉高 glibc 等基础库，风险大；而 backports 的 1.4.9 是官方为 trixie 专门打包的，依赖干净，apt-get -s 模拟安装显示「升级 15 个、新增 0、卸载 0」。</span>
+      </p>
+    </section>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第七章 -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">07</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">BONUS</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">彩蛋：图形窗口 + 封面 + 歌词</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="margin:22px 0;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">升级完成后，顺手把播放体验也补全了。mpv 原生就支持显示内嵌封面（attached_pic 会被识别为 Image 视频轨）和加载同名 .lrc 歌词（sub-auto=fuzzy）：</span>
+    </p>
+
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;font-size:0;line-height:0;overflow:hidden;">.</span>
+        <span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,Monaco,monospace;letter-spacing:1px;"><span leaf="">bash</span></span>
+      </section>
+      <section style="padding:11px 14px;">
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">mpv --no-config --audio-device="pipewire/$SINK" \</span></p>
+        <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　--force-window=yes --sub-auto=fuzzy --shuffle "${files[@]}"</span></p>
+      </section>
+    </section>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">--force-window=yes：<strong style="color:#27272A;">弹出图形窗口</strong>；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">去掉 --no-video：<strong style="color:#27272A;">让内嵌封面显示出来</strong>；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">--sub-auto=fuzzy：<strong style="color:#27272A;">自动加载与 mp3 同名的 .lrc 歌词</strong>，按时间高亮滚动。</span></p>
+      </section>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">实测验证：</span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Image --vid=1 "Album cover" (png 1280x720)</span></span>
+      <span leaf=""> + </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">Subs --sid=1 'lrc' (text)</span></span>
+      <span leaf=""> + </span>
+      <span style="background:#F4F4F5;color:#27272A;padding:2px 6px;border-radius:4px;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:14px;"><span leaf="">sink RUNNING</span></span>
+      <span leaf="">，</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">封面、歌词、声音三者齐活</span></span>
+      <span leaf="">。</span>
+    </p>
+
+    <section style="border-left:2px solid #E4E4E7;padding:12px 0 12px 20px;margin:0 10px 24px;">
+      <p style="font-size:13px;color:#A1A1AA;margin:0;line-height:1.8;text-align:justify;">
+        <span leaf="">一个小坑：--audio-display 在 mpv 0.40 里是三态选项，--audio-display=yes 会报错、裸写 --audio-display 又要求参数。实际上它默认就开启，根本不用显式指定——只要别加 --no-video 就行。</span>
+      </p>
+    </section>
+  </section>
+
+  <!-- 章节分割线 -->
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <!-- 第八章（结语） -->
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;">
+        <span leaf="">∞</span>
+      </p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;">
+          <span leaf="">SUMMARY</span>
+        </p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;">
+          <span leaf="">总结</span>
+        </h3>
+      </section>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">各方案对比</span>
+    </p>
+
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">方案</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">断流</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">图形界面</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">封面/歌词</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">暂停切歌</span></th>
+            <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">结论</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">atvremote（pyatv）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无（但每首歌重连）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">起步方案，体验差</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">mpv + PipeWire 1.4.2</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">35s 必断</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">有</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">有</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">有</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf="">病根在 raop-sink 加密协商</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">raop_play（独立推流）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">无</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">稳定但体验残缺</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">mpv + PipeWire 1.4.9</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">无</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">有</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">有</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">有</strong></span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;"><span leaf=""><strong style="color:#27272A;">最终解</strong></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">方法论沉淀</span>
+    </p>
+
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">「还在播但没声」要想到双通道协议</strong>。AirPlay 的控制通道（RTSP/TCP）和音频通道（RTP/UDP）独立，控制通道断了音频通道可能假活，这是这类「假正常」的经典来源。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">日志里的 -9（EBADF）是症状不是根因</strong>。它表示「往失效的 socket 写数据」，真正要追的是它之前的 -32（EPIPE）——那是连接被对端断开的时刻。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">加密协商是 HomePod 断连的根因</strong>。PipeWire 1.4.2 用 none，HomePod 要 SAP25；1.4.9 修复了自动选择。升级比调 latency 参数有效得多。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">4</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">Debian 升级优先 backports 而非 sid</strong>。backports 是官方为当前发行版打包的、依赖干净可回滚；sid 可能拉高基础库，风险不可控。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">5</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf=""><strong style="color:#27272A;">先看代码再动手、改动可回滚</strong>。这次升级全程保留了回滚脚本和版本清单，出问题随时能退回 1.4.2。</span></p>
+      </section>
+    </section>
+
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;">
+      <span leaf="">最终可用的脚本</span>
+    </p>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">newplay.sh</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">mpv 弹窗播放 + 封面 + 歌词，声音走 HomePod；</span>
+      </p>
+    </section>
+
+    <section style="margin-bottom:14px;">
+      <p style="margin:0 0 6px;">
+        <span style="display:inline-block;font-size:14px;font-weight:700;color:#27272A;background:#F4F4F5;padding:3px 10px;border-radius:999px;"><span style="display:inline-block;width:6px;height:6px;background:#52525B;border-radius:50%;margin-right:5px;vertical-align:middle;"><span leaf=""><br></span></span><span leaf="">hpctl</span></span>
+      </p>
+      <p style="font-size:14px;color:#71717A;margin:0;line-height:1.7;text-align:justify;">
+        <span leaf="">独立的音量控制命令（hpctl up/down/vol N/mute），与播放并行。</span>
+      </p>
+    </section>
+
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;">
+      <span leaf="">至此，从「点一下」到「点一下真的能用」，中间隔着一个</span>
+      <span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">协议加密协商的坑</span></span>
+      <span leaf="">。希望这篇复盘能帮到下一个想在 Linux 上推流到 HomePod 的人。</span>
+    </p>
+  </section>
+
+  <!-- END 分割线 -->
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <!-- 尾部作者签名区（组件 16） -->
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.72;color:#52525B;text-align:justify;letter-spacing:0.3px;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.72;color:#52525B;text-align:justify;letter-spacing:0.3px;">
+        <span leaf="">如果你觉得今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
+  </div>
+</div>
+<script>
+  function gzhShowToast(msg){
+    var t=document.getElementById('gzhToast');
+    t.textContent=msg;t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function gzhCopy(){
+    var el=document.getElementById('gzh-content');
+    // 选中渲染后的富文本节点并复制（等价于手动 Ctrl+A / Ctrl+C，保留全部样式）
+    var range=document.createRange();
+    range.selectNodeContents(el);
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok=false;
+    try{ok=document.execCommand('copy');}catch(e){ok=false;}
+    sel.removeAllRanges();
+    var btn=document.getElementById('gzhCopyBtn');
+    if(ok){
+      gzhShowToast('✅ 已复制！去公众号编辑器按 Ctrl/⌘+V 粘贴即可');
+      var old=btn.textContent;btn.textContent='✅ 已复制';
+      setTimeout(function(){btn.textContent=old;},2200);
+    }else{
+      gzhShowToast('⚠ 自动复制失败，请手动全选(Ctrl/⌘+A)再复制(Ctrl/⌘+C)');
+    }
+  }
+</script>
+</body>
+</html>
