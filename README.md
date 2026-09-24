@@ -18,6 +18,7 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-09-24 | [在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的](https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/) | iPod · iPod Nano · libgpod · hashAB · SQLite · iTunesDB · iTunesCDB · gtkpod · rhythmbox · ipodsync · Linux · 故障排查 · 原创 |
+| 2026-09-24 | [Adobe 全家桶的免费替代：Photoshop→GIMP、Lightroom→darktable、Illustrator→Inkscape、Premiere→Kdenlive](https://freelamp.com/articles/2026-09-24_adobe-free-alternatives-switch/) | 开源替代 · Adobe · GIMP · Krita · darktable · Inkscape · Kdenlive · 创意软件 · 订阅制 · 本地优先 · 译文 |
 | 2026-09-24 | [Mir 2.30 发布：Rust 从可选变硬性依赖，Canonical 首次公开 Mir 路线图](https://freelamp.com/articles/2026-09-24_mir-2-30-released/) | Mir · Canonical · Wayland · 合成器 · Rust · Ubuntu 26.04 · wl_fixes · 路线图 · 译文 |
 | 2026-09-24 | [国产打印机厂商全景：谁在造整机、谁在做主控，A3 与彩色花落谁家](https://freelamp.com/articles/2026-09-24_domestic-printer-vendors-map/) | 国产打印机 · 信创 · 主控芯片 · 龙芯 · 极海微 · 众诺北辰 · 奔图 · 汉光 · 立思辰 · 得力 · A3 · 彩色打印 · 产业梳理 · 原创 |
 | 2026-09-24 | [Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障](https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/) | PipeWire · HomePod · AirPlay · RAOP · mpv · atvremote · pyatv · raop_play · 音频 · Debian · 故障排查 · 原创 |
