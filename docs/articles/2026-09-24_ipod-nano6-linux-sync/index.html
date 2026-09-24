@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的 — FreeLAMP.com</title>
+  <meta name="description" content="Linux 给 iPod Nano 6 加歌的完整实录与原理剖析。iPod Nano 6 是 USB 大容量存储设备，内核 usb_storage/vfat 原生识别，无需专用驱动。写库失败根因：iPod 三代用三种签名（Nano 3G/4G=HASH58、Nano 5G=HASH72、Nano 6G/7G=HASHA">
+  <meta name="keywords" content="iPod, iPod Nano, libgpod, hashAB, SQLite, iTunesDB, iTunesCDB, gtkpod, rhythmbox, ipodsync, Linux, 故障排查, 原创">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-24">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的">
+  <meta property="og:description" content="Linux 给 iPod Nano 6 加歌的完整实录与原理剖析。iPod Nano 6 是 USB 大容量存储设备，内核 usb_storage/vfat 原生识别，无需专用驱动。写库失败根因：iPod 三代用三种签名（Nano 3G/4G=HASH58、Nano 5G=HASH72、Nano 6G/7G=HASHA">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-24">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="iPod">
+  <meta property="article:tag" content="iPod">
+  <meta property="article:tag" content="iPod Nano">
+  <meta property="article:tag" content="libgpod">
+  <meta property="article:tag" content="hashAB">
+  <meta property="article:tag" content="SQLite">
+  <meta property="article:tag" content="iTunesDB">
+  <meta property="article:tag" content="iTunesCDB">
+  <meta property="article:tag" content="gtkpod">
+  <meta property="article:tag" content="rhythmbox">
+  <meta property="article:tag" content="ipodsync">
+  <meta property="article:tag" content="Linux">
+  <meta property="article:tag" content="故障排查">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的">
+  <meta name="twitter:description" content="Linux 给 iPod Nano 6 加歌的完整实录与原理剖析。iPod Nano 6 是 USB 大容量存储设备，内核 usb_storage/vfat 原生识别，无需专用驱动。写库失败根因：iPod 三代用三种签名（Nano 3G/4G=HASH58、Nano 5G=HASH72、Nano 6G/7G=HASHA">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的",
+  "description": "在 Linux 上给 iPod Nano 6（8GB，USB Mass Storage）加歌的完整实录。iPod Nano 6 走标准 USB 大容量存储协议，内核自带 usb_storage/vfat 即可识别，无需任何专用驱动。但「识别」不等于「能写」：用 rhythmbox/libgpod 删歌/加歌时报 Could not write database to iPod: Unsupported checksum type 并段错误崩溃。根因是三代 iPod 需要三种不同签名——Nano 3G/4G 用 HASH58、Nano 5G 用 HASH72、Nano 6G/7G 用 HASHAB（白盒 AES）；libgpod 0.8.3 虽源码含 itdb_hashAB.c，写入路径未真正支持 HASHAB，因此对 Nano 6G 报 Unsupported checksum type。且 Nano 5G+ 用压缩的 iTunesCDB（mhbd 魔数、zlib）驱动，libgpod 处理路径也不完整。正解是 ipodsync：不碰 iTunesCDB，改写真机读取的 SQLite 库 iPod_Control/iTunes Library.itlp/*.itdb，并用纯 Python 实现 hashAB 给 Locations.itdb 做 .cbk 签名，绕开 libgpod 的局限。实测 add/rm 闭环成功（自动附加封面、自动备份库）。FireWireGUID 从 USB 序列号自动取得。",
+  "datePublished": "2026-09-24",
+  "dateModified": "2026-09-24",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "iPod, iPod Nano, libgpod, hashAB, SQLite, iTunesDB, iTunesCDB, gtkpod, rhythmbox, ipodsync, Linux, 故障排查, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的",
+        "item": "https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-24">2026-09-24</div>
+        <h1 class="post-title" itemprop="headline">在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/iPod/">iPod</a><a itemprop="keywords" href="/tags/iPod%20Nano/">iPod Nano</a><a itemprop="keywords" href="/tags/libgpod/">libgpod</a><a itemprop="keywords" href="/tags/hashAB/">hashAB</a><a itemprop="keywords" href="/tags/SQLite/">SQLite</a><a itemprop="keywords" href="/tags/iTunesDB/">iTunesDB</a><a itemprop="keywords" href="/tags/iTunesCDB/">iTunesCDB</a><a itemprop="keywords" href="/tags/gtkpod/">gtkpod</a><a itemprop="keywords" href="/tags/rhythmbox/">rhythmbox</a><a itemprop="keywords" href="/tags/ipodsync/">ipodsync</a><a itemprop="keywords" href="/tags/Linux/">Linux</a><a itemprop="keywords" href="/tags/%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5/">故障排查</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>
+我有一台 iPod Nano 6（8GB 银色，型号 xC526），是十几年前的老设备。最近把它插到 Debian 机器上，想整理一下曲库、顺便试着加几首歌。整理（备份到电脑）很顺利；但<strong>往 iPod 里写</strong>——删一首歌、加一首歌——却让 rhythmbox 直接段错误崩溃。</p>
+<p>报错只有一行，但极其关键：</p>
+<pre><code class="">Could not write database to iPod: Unsupported checksum type
+</code></pre>
+<p>这篇文章记录从"识别"到"误判无解"再到"找到正确工具"的完整过程，也包含一个我自己的判断失误——值得写下来提醒自己：<strong>别凭印象下"无解"的结论</strong>。</p>
+<p>---</p>
+<h2>一、先厘清：iPod 在 Linux 上为什么"插上就能用"</h2>
+<p>很多人的第一反应是"要装 iPod 驱动吧"。<strong>不需要。</strong> 关键在于 iPod 分两大类：</p>
+<table>
+<tr><th>类型</th><th>传输方式</th><th>Linux 支持</th></tr>
+<tr><td>老 iPod（Classic / Nano / Shuffle 等带转盘的）</td><td><strong>USB 大容量存储（UMS）</strong></td><td>内核自带，零驱动</td></tr>
+<tr><td>新设备（iPhone / iPod touch）</td><td>苹果私有协议（usbmux）</td><td>需 libimobiledevice + usbmuxd</td></tr>
+</table>
+<p>老 iPod 会把自己<strong>伪装成一个 U 盘</strong>。实测这台 Nano 6 的驱动链是：</p>
+<pre><code class="">iPod Nano 6 (USB 05ac:1266)
+  └─ usb_storage   内核模块（"USB Mass Storage driver for Linux"）
+      └─ sd        内核 SCSI 磁盘驱动
+          └─ /dev/sdc1（vfat/FAT32）
+              └─ 挂载后就是 iPod_Control/Music/F00–F13 这种结构
+</code></pre>
+<p>决定性证据是这一行：</p>
+<pre><code class="">$ readlink -f /sys/block/sdc/device/driver
+/sys/bus/scsi/drivers/sd
+</code></pre>
+<p>它被当成一块<strong>普通 SCSI 磁盘</strong>，和插个 U 盘毫无区别。<code>usb_storage</code>、<code>vfat</code> 都是内核内置模块，开机即有。</p>
+<blockquote>顺带澄清一个常见混淆：系统里如果装着 <code>usbmuxd</code>/<code>libimobiledevice</code>，那是给 iPhone 用的，<strong>和 Nano 6 无关</strong>。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<strong>所以"识别"从来不是问题。问题在"写"。</strong>
+<p>---</p>
+<h2>二、iPod 的数据库：为什么"拷文件"没用</h2>
+<p>老 iPod 不是"扫目录播放"的——它只认一个<strong>数据库文件</strong>。你把 mp3 拷进 <code>Music/F0X/</code> 目录，iPod 开机<strong>看不到</strong>，除非同时更新数据库。</p>
+<p>而且这个数据库分两代：</p>
+<table>
+<tr><th>代次</th><th>数据库</th><th>说明</th></tr>
+<tr><td>老的（Nano 1–4、Classic 等）</td><td><code>iTunesDB</code></td><td>二进制，<code>mhbd</code> 魔数</td></tr>
+<tr><td>新的（<strong>Nano 5G/6G/7G</strong>）</td><td><code>iTunesCDB</code></td><td><strong>压缩版</strong>（zlib），<code>mhbd</code> 魔数；旁边还有 SQLite 库</td></tr>
+</table>
+<p>你的 Nano 6 属于后者。<code>SysInfoExtended</code> 里明确写着：</p>
+<pre><code class="xml"><key>SQLiteDB</key><true/>
+</code></pre>
+<p>设备真正读取的是 <code>iPod_Control/iTunes Library.itlp/</code> 下那套 <strong>SQLite 数据库</strong>（<code>Library.itdb</code>、<code>Locations.itdb</code> 等），<code>iTunesCDB</code> 是给 iTunes 看的压缩镜像。</p>
+<p>---</p>
+<h2>三、踩坑：libgpod 报「Unsupported checksum type」</h2>
+<p>在 Linux 上管理 iPod 的标准库是 <strong>libgpod</strong>（gtkpod、rhythmbox 这些工具都用它）。装好 libgpod-common 后，rhythmbox 能<strong>读</strong>出 iPod 的 380 首歌，也能播放。但一删歌就崩，日志里反复出现：</p>
+<pre><code class="">Could not write database to iPod: Unsupported checksum type
+</code></pre>
+<p>查下去，根因是 <strong>iPod 的数据库需要"签名"（防篡改校验），而不同代次用不同算法</strong>：</p>
+<table>
+<tr><th>设备</th><th>签名算法</th></tr>
+<tr><td>iPod Classic 1G–3G</td><td>HASH58</td></tr>
+<tr><td>iPod Nano 3G–4G</td><td>HASH58</td></tr>
+<tr><td>iPod Nano 5G</td><td>HASH72</td></tr>
+<tr><td><strong>iPod Nano 6G / 7G</strong></td><td><strong>HASHAB</strong>（白盒 AES）</td></tr>
+<tr><td>更老的（Nano 1–2、Mini 等）</td><td>无签名</td></tr>
+</table>
+<p>你的 Nano 6 需要 <strong>HASHAB</strong>。而 libgpod 0.8.3 虽然源码里有 <code>itdb_hashAB.c</code>，但<strong>写入路径没有真正实现对 Nano 6G 的 HASHAB 支持</strong>，于是直接报 "Unsupported checksum type"。</p>
+<p>我还确认了一个前提：libgpod 甚至没去读 <code>SysInfoExtended</code>（strace 显示它只 <code>access()</code> 了几个目录），说明它连签名所需的设备信息都没取。</p>
+<p><strong>这里我犯了个错</strong>：看到这个错误，我就下了"Linux 写不了 Nano 6"的结论，还建议用户放弃。这是错的。</p>
+<p>---</p>
+<h2>四、正解：<code>ipodsync</code> 绕开了 libgpod</h2>
+<p>被提醒"网上难道没人写这个"之后，我搜了一下——<strong>有，而且不止一个</strong>：</p>
+<ul>
+<li><strong><code>ipodsync</code></strong>（PyPI，纯 Python）：支持 Nano 6G/7G，自己实现 HASHAB</li>
+<li><strong><code>iOpenPod</code></strong>（GitHub）：Nano 6G/7G 用 WebAssembly 版 HASHAB</li>
+</ul>
+<code>ipodsync</code> 的思路很关键——<strong>它不碰难的 iTunesCDB</strong>：
+<blockquote>数据库用 SQLite <code>iTunes Library.itlp/*.itdb</code>（不是 <code>iTunesCDB</code>，后者设备会自己重生成）。只有 <code>Locations.itdb</code> 是受签名保护的（<code>.cbk</code>）。</blockquote>
+也就是说：
+<ol>
+<li>1. 直接写设备真正读取的 <strong>SQLite 库</strong></li>
+<li>2. 只对 <code>Locations.itdb</code> 生成 <strong><code>.cbk</code> 签名文件</strong>，用<strong>纯 Python 实现的 hashAB</strong>（白盒 AES，100/100 测试向量）</li>
+<li>3. 完全不依赖 libgpod</li>
+</ol>
+<strong>签名需要的 FireWireGUID 从哪来？</strong> 从设备 <strong>USB 序列号</strong>自动读取——这解决了一个大坑（iPod 的 <code>SysInfo*</code> 文件在 HFS+ 上是压缩的，Linux 驱动读不了）。实测这台设备的：
+<pre><code class="">ID_SERIAL=Apple_iPod_000A270022D57C06-0:0
+</code></pre>
+<p>正好等于 <code>SysInfoExtended</code> 里的 <code>FireWireGUID</code>，工具能自动取到。</p>
+<p>---</p>
+<h2>五、实操：安装与验证</h2>
+<p>安装（<code>pipx</code> 隔离环境，纯 Python 无需编译）：</p>
+<pre><code class="bash">pipx install --backend pip ipodsync
+</code></pre>
+<p>只读验证（不写库）：</p>
+<pre><code class="bash">export IPODSYNC_MOUNT="/media/axu/ALBERT_S IP"
+ipodsync status
+<h1>✅ iPod ready: /media/axu/ALBERT_S IP  (380 tracks)</h1>
+<p>ipodsync list | head
+<h1>[ 2816281227101471536] Aaron Neville — Yes I Love You  (To Make Me Who I Am, 4:46)  F13/YJVZ.mp3</h1>
+</code></pre></p>
+<p>写入闭环测试（加一首 → 确认 → 删掉）：</p>
+<pre><code class="bash">ipodsync -b add /tmp/test.mp3
+<h1>→ backed up the library (itlp-20260924-214529)</h1>
+<h1>  ✓ added "test.mp3" (+ cover art)  ·  pid 8677968574691807434</h1>
+<h1>✓ Added 1 track.</h1>
+<p>ipodsync status          # 381 tracks
+ipodsync rm 8677968574691807434
+ipodsync status          # 380 tracks（恢复原状）
+</code></pre></p>
+<p><strong>全部成功。</strong> 而且注意到两个贴心设计：
+<ul>
+<li>自动<strong>附加封面</strong>（从 mp3 的内嵌 APIC/covr 读取，写入 ArtworkDB + <code>.ithmb</code>）</li>
+<li>每次写库前<strong>自动备份</strong>到 <code>~/ipod-backups/</code>，并打印一条 undo 命令</li>
+</ul>
+---</p>
+<h2>六、几种工具的真实对比</h2>
+<table>
+<tr><th>工具</th><th>Nano 6G 写库</th><th>问题</th></tr>
+<tr><td><strong>gtkpod</strong></td><td>❌</td><td>太老，<code>gtkpod_app</code> 初始化崩溃（与现代 GTK/GLib 不兼容）</td></tr>
+<tr><td><strong>rhythmbox</strong></td><td>❌</td><td>用 libgpod 写库，报 Unsupported checksum type 并段错误</td></tr>
+<tr><td><strong>libgpod</strong>（底层库）</td><td>❌</td><td>未真正实现 Nano 6G 的 HASHAB 写入</td></tr>
+<tr><td><strong>ipodsync</strong></td><td>✅</td><td>绕开 libgpod，纯 Python 写 SQLite + hashAB</td></tr>
+<tr><td><strong>iOpenPod</strong></td><td>✅</td><td>PyQt6 GUI，Nano 6G/7G 用 WASM 版 HASHAB</td></tr>
+</table>
+<p>---</p>
+<h2>七、方法论沉淀</h2>
+<ol>
+<li>1. <strong>"识别" ≠ "写入"</strong>。UMS 让 iPod 插上就能读，但写库是另一层（数据库格式 + 签名），两者独立。</li>
+<li>2. <strong>报错信息要追到算法层</strong>。"Unsupported checksum type" 背后是"设备要 HASHAB、库不支持 HASHAB"，而不是"设备坏了"或"配置错了"。</li>
+<li>3. <strong>遇到老设备兼容问题，先搜再下结论</strong>。我这次犯的错就是凭"libgpod 报错"推断"Linux 整个不行"，而实际上早有专门工具绕开了它。<strong>一个库的局限 ≠ 一个平台的局限。</strong></li>
+<li>4. <strong>写设备数据库前先备份</strong>。<code>ipodsync</code> 的自动备份 + undo 命令是这类工具的正确姿势。</li>
+<li>5. <strong>别让 Apple 软件自动同步</strong>。手动加的歌会被一次 iTunes 同步覆盖（保持"手动管理音乐"模式）。</li>
+</ol>
+---
+<h2>附：常用命令</h2>
+<pre><code class="bash">export IPODSYNC_MOUNT="/media/axu/ALBERT_S IP"
+<p>ipodsync status                    # 状态
+ipodsync list                      # 列出曲目（含 pid）
+ipodsync add "song.mp3"            # 加歌（自动附带封面）
+ipodsync add -f ~/Music/某专辑      # 加整个目录
+ipodsync rm <pid>                  # 删歌（连文件一起删）
+ipodsync export ~/Music/ipod       # 导出全部（只读）
+ipodsync cover <pid> --image c.jpg # 单独加封面
+</code></pre></p>
+<p>一段小插曲：为了排查，我还顺带装了 <code>libgpod-common</code>，它带来一条 <strong>udev 规则</strong>（<code>90-libgpod.rules</code>）和 <code>ipod-read-sysinfo-extended</code>（读设备生成 <code>SysInfoExtended</code>）。这些对 ipodsync 不是必需（它从 USB 序列号取 GUID），但对其它工具可能有用。</p>
+<p>---</p>
+<p><strong>结论</strong>：Linux 完全可以给 iPod Nano 6 加歌，用 <code>ipodsync</code> 就行。之前我说的"无解"，是没查证就下的错误结论——记住这个教训。
+</p>
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/",
+      title: "\u5728 Linux \u4e0a\u7ed9 iPod Nano 6 \u52a0\u6b4c\uff1alibgpod \u7684\u300cUnsupported checksum type\u300d\u662f\u600e\u4e48\u88ab\u7ed5\u8fc7\u53bb\u7684"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-24 | [在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的](https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/) | iPod · iPod Nano · libgpod · hashAB · SQLite · iTunesDB · iTunesCDB · gtkpod · rhythmbox · ipodsync · Linux · 故障排查 · 原创 |
 | 2026-09-24 | [国产打印机厂商全景：谁在造整机、谁在做主控，A3 与彩色花落谁家](https://freelamp.com/articles/2026-09-24_domestic-printer-vendors-map/) | 国产打印机 · 信创 · 主控芯片 · 龙芯 · 极海微 · 众诺北辰 · 奔图 · 汉光 · 立思辰 · 得力 · A3 · 彩色打印 · 产业梳理 · 原创 |
 | 2026-09-24 | [Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障](https://freelamp.com/articles/2026-09-24_linux-airplay-homepod-pipewire/) | PipeWire · HomePod · AirPlay · RAOP · mpv · atvremote · pyatv · raop_play · 音频 · Debian · 故障排查 · 原创 |
 | 2026-09-23 | [声卡整个消失了：一行 rm 删掉 .tplg，SOF 驱动找不到文件的全过程](https://freelamp.com/articles/2026-09-23_sof-tplg-missing-no-soundcard/) | Linux · 内核 · ALSA · SOF · 声卡 · firmware · dmesg · Debian · 故障排查 · 运维 · 原创 |
