@@ -1,0 +1,332 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">「没有声卡」和「声卡不对」是两类故障，而我把它们混着查了几轮。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— 一次 SOF topology 文件缺失的排查实录（Debian 13 + XanMod 7.2.7）</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">开机之后，扬声器和麦克风一起消失了。声音设置里只剩一个「虚拟输出」，而蓝牙耳机一切正常。根因是一行 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sudo rm</span><span leaf="">。但真正值得写的是后半程——内核怎么找这个文件、怎么读它、以及</span><strong style="color:#27272A;"><span leaf="">为什么这次连重启都不是必需的</span></strong><span leaf="">。</span></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">症状与误诊</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">内核怎么找</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">为什么热重载</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SYMPTOM</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">症状指纹，与两个误诊陷阱</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">先看三层证据，它们指向同一个结论。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">1. ALSA 层完全没有声卡</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$　aplay　-l<br>aplay:　device_list:279:　no　soundcards　found...<br>$　cat　/proc/asound/cards<br>（空）</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">注意这不是「设备被静音」或「路由选错了」——</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/proc/asound</span><span leaf=""> 下连 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">card0</span><span leaf=""> 都不存在。上层任何 mixer 操作都是无意义的。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2. PipeWire 只剩一个兜底设备</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">wpctl status</span><span leaf=""> 的 Audio 段里，Sinks 只有一个「虚拟输出」。那是 PipeWire 的 </span><strong style="color:#27272A;"><span leaf="">auto_null</span></strong><span leaf=""> sink——它发现系统里一张声卡都没有，为了不让没有输出设备的应用崩溃，临时造了一个黑洞设备。</span><strong style="color:#27272A;"><span leaf="">它的出现本身就是一条信息。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3. 但驱动其实绑定成功了</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$　lspci　-nnk　-s　00:1f.3<br>00:1f.3　Multimedia　audio　controller　[0401]:<br>　　Intel　Corporation　Alder　Lake　PCH-P　High　Definition　Audio　Controller<br>	Kernel　driver　in　use:　sof-audio-pci-intel-tgl</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Kernel driver in use</span><span leaf=""> 说明 PCI 匹配和探测都发生了，</span><strong style="color:#27272A;"><span leaf="">只是 probe 的最后阶段失败了</span></strong><span leaf="">。这把「驱动没加载」和「驱动加载了但初始化失败」区分开了——这是往下排查的分水岭。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">那为什么蓝牙还能用？因为</span><strong style="color:#27272A;"><span leaf="">蓝牙音频走完全独立的链路</span></strong><span leaf="">：控制器挂在 USB 上，音频经 HCI/A2DP 由 BlueZ 处理，全程不经过 Intel HDA、不经过 SOF、不经过 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.tplg</span><span leaf="">。「只有蓝牙能用」不是巧合，而是</span><strong style="color:#27272A;"><span leaf="">故障域恰好没有覆盖到它</span></strong><span leaf="">。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4. 关键日志：err: -2 就是 ENOENT</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">dmesg</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">sof-audio-pci-intel-tgl:　SOF　firmware　and/or　topology　file　not　found.<br>sof-audio-pci-intel-tgl:　　Firmware　file:　intel/sof/sof-adl.ri<br>sof-audio-pci-intel-tgl:　　Topology　file:　intel/sof-tplg/sof-hda-generic-2ch.tplg<br>sof-audio-pci-intel-tgl:　error:　sof_probe_work　failed　err:　-2</span></p></section></section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">5. 误诊陷阱一：.bak 不是原版</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">看到故障，第一反应是「换个 topology 试试」，而目录里正好有个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.bak</span><span leaf="">，看起来就是为回滚准备的。</span><strong style="color:#27272A;"><span leaf="">但它不是原版。</span></strong><span leaf=""> 校验一下就露馅：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$　md5sum　sof-hda-generic-2ch.tplg.bak　sof-hda-generic-2ch-pdm1.tplg<br>91e6e760a72927deafe158efe29c9572　　sof-hda-generic-2ch.tplg.bak<br>91e6e760a72927deafe158efe29c9572　　sof-hda-generic-2ch-pdm1.tplg</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">两者</span><strong style="color:#27272A;"><span leaf="">完全同哈希</span></strong><span leaf="">。它是在一次「先备份再覆盖」中，对</span><strong style="color:#27272A;"><span leaf="">已经被替换过的文件</span></strong><span leaf="">做的快照，本质是个只有一个麦克风通道的 pdm1 拓扑。用它“回滚”，等于把故障从「没有声卡」换成「少一个麦克风」。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">`.bak` 只证明「某次操作备份过」，不证明「备份的是原始文件」。</span></strong><span leaf=""> 校验哈希、或直接从发行包里重新提取，是唯一可靠的做法。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">6. 误诊陷阱二：让包管理器来定性</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$　dpkg　-V　firmware-sof-signed<br>missing　　　　　/usr/lib/firmware/intel/sof-tplg/sof-hda-generic-2ch.tplg</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">missing</span><span leaf=""> 而不是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">5</span><span leaf="">（校验和不符），说明文件是被</span><strong style="color:#27272A;"><span leaf="">整体删除</span></strong><span leaf="">的，不是被改坏的。这条信息直接排除了「拓扑内容不对」这个方向。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">从包里提取原版并核验（不需要 root）：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$　apt-get　download　firmware-sof-signed<br>$　dpkg-deb　-x　firmware-sof-signed_2025.01-1_all.deb　/tmp/extract<br>$　md5sum　/tmp/extract/usr/lib/firmware/intel/sof-tplg/sof-hda-generic-2ch.tplg<br>ef04df1833429c628a71a852bc83e4a4　　　←　与　dpkg　md5sums　一致　✅</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">顺带一提，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/lib</span><span leaf=""> 在这台机器上是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/usr/lib</span><span leaf=""> 的符号链接，所以 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/lib/firmware/...</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/usr/lib/firmware/...</span><span leaf=""> 是同一个文件——别被两个路径绕晕。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">HOW</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">内核怎么找到并读取这个文件</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">1. 文件名是三段拼出来的，-2ch 是内核自己算的</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">机器描述表里给的拓扑名只是一个</span><strong style="color:#27272A;"><span leaf="">基名</span></strong><span leaf="">，没有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-2ch</span><span leaf="">：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">/*　sound/soc/intel/common/soc-acpi-intel-hda-match.c　*/<br>struct　snd_soc_acpi_mach　snd_soc_acpi_intel_hda_machines[]　=　{<br>　　　　{<br>　　　　　　　　.drv_name　=　"skl_hda_dsp_generic",<br>　　　　　　　　.sof_tplg_filename　=　"sof-hda-generic",　　　/*　只有基名　*/<br>　　　　　　　　.tplg_quirk_mask　=　SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER,<br>　　　　},<br>};</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">后缀由 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">hda_machine_select()</span><span leaf=""> 在运行时补齐，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ch</span><span leaf=""> 之间那个数字取自 NHLT 表：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if　(tplg_fixup　&amp;&amp;<br>　　　　mach-&gt;tplg_quirk_mask　&amp;　SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER　&amp;&amp;<br>　　　　mach-&gt;mach_params.dmic_num)　{<br>　　　　tplg_filename　=　devm_kasprintf(sdev-&gt;dev,　GFP_KERNEL,<br>　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　"%s%s%d%s",<br>　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　sof_pdata-&gt;tplg_filename,<br>　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　"-",　mach-&gt;mach_params.dmic_num,　"ch");<br>}</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">dmic_num</span><span leaf=""> 来自 BIOS 提供的 NHLT 表，这就解释了两行日志的因果关系：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">dmesg</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">DMICs　detected　in　NHLT　tables:　2　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　←　NHLT　说有两个数字麦<br>Topology　file:　intel/sof-tplg/sof-hda-generic-2ch.tplg　　　　　　　　　　　←　于是要　-2ch</span></p></section></section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">`-2ch` 不是你选的，是 BIOS 的 NHLT 表决定的。</span></strong><span leaf=""> 若固件升级把 DMIC 数改成 4，内核就会去要 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-4ch.tplg</span><span leaf="">，你对 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-2ch.tplg</span><span leaf=""> 做的任何改动都会被绕过。反过来也可以用模块参数强压：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">snd_sof_intel_hda_common dmic_num=N</span><span leaf="">。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2. 先「试开一次」再真正加载</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.tplg</span><span leaf=""> 不是固件的一部分，而是用户态安装的</span><strong style="color:#27272A;"><span leaf="">描述文件</span></strong><span leaf="">。SOF 在真正加载它之前，会先做一次纯存在性探测：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">/*　sound/soc/sof/fw-file-profile.c　*/<br>ret　=　firmware_request_nowarn(&amp;fw,　tplg_filename,　dev);　　/*　只问「在不在」　*/<br>if　(!ret)<br>　　　　release_firmware(fw);　　　　　/*　在就立刻释放，不占内存　*/<br>else<br>　　　　dev_dbg(dev,　"Failed　to　open　topology　file:　%s\n",　tplg_filename);</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">探测失败后，代码去调一个专门用来「解释失败」的函数，</span><strong style="color:#27272A;"><span leaf="">这就是 dmesg 里那一整段的出处</span></strong><span leaf="">。而看清楚它的实现，能避开一个常见误读：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">dev_err(dev,　"SOF　firmware　and/or　topology　file　not　found.\n");<br>dev_info(dev,　"Supported　default　profiles\n");<br>for　(i　=　0;　i　&lt;=　ipc_type_count;　i++)　{<br>　　　　dev_info(dev,　"　Firmware　file:　%s/%s\n",　desc-&gt;default_fw_path[i],　...);<br>　　　　dev_info(dev,　"　Topology　file:　%s/%s\n",　desc-&gt;default_tplg_path[i],　...);<br>}</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">它把</span><strong style="color:#27272A;"><span leaf="">固件文件和拓扑文件都列了出来，但不代表两个都缺</span></strong><span leaf="">——它只是把该 IPC 类型下应有的文件全部打印一遍。真正判定缺失的是两个探测函数的返回值。这也是为什么错误信息里写的是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">firmware **and/or** topology</span><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">含糊是设计使然</span></strong><span leaf="">。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3. 一个文件名的 15 条候选路径</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">固件加载器的候选目录是一个定长数组：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">static　char　fw_path_para[256];<br>static　const　char　*　const　fw_path[]　=　{<br>　　　　fw_path_para,　　　　　　　　　　　　　　　　　　　　　　　　　　/*　内核参数，最高优先级　*/<br>　　　　"/lib/firmware/updates/"　UTS_RELEASE,<br>　　　　"/lib/firmware/updates",<br>　　　　"/lib/firmware/"　UTS_RELEASE,<br>　　　　"/lib/firmware",　　　　　　　　　　　　　　　　　　　　　　　/*　本次实际命中的一级　*/<br>};</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">同一个文件名在这 5 个目录里逐个试，每次失败后再试两种压缩变体：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">ret　=　fw_get_filesystem_firmware(device,　fw-&gt;priv,　"",　NULL);<br>if　(ret　==　-ENOENT　&amp;&amp;　nondirect)<br>　　　　ret　=　fw_get_filesystem_firmware(device,　fw-&gt;priv,　".zst",　fw_decompress_zstd);<br>if　(ret　==　-ENOENT　&amp;&amp;　nondirect)<br>　　　　ret　=　fw_get_filesystem_firmware(device,　fw-&gt;priv,　".xz",　fw_decompress_xz);<br>if　(ret　==　-ENOENT　&amp;&amp;　nondirect)<br>　　　　ret　=　firmware_fallback_platform(fw-&gt;priv);　　　/*　最后去　UEFI　固件里找　*/</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">完整候选序列是 </span><strong style="color:#27272A;"><span leaf="">5 个目录 × 三种后缀（空、.zst、.xz）+ UEFI 内嵌 = 15 条</span></strong><span leaf="">，顺序严格，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.zst</span><span leaf=""> 优先于 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.xz</span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">读取本身用的函数名里带 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">initns</span><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">以内核凭据、在内核的挂载命名空间里读</span></strong><span leaf="">。这解释了两件事：普通用户加读权限没用；以及为什么改完文件不需要重启用户态。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">做个排除性验证：这台机器上 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/lib/firmware/updates/</span><span leaf=""> 根本不存在，也没有带内核版本号的那一级目录（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/lib/firmware/$(uname -r)</span><span leaf="">），所以「有影子副本覆盖了正常文件」这条可能性不成立。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4. 那 44247 字节里到底是什么</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.tplg</span><span leaf=""> 是 ASoC topology 二进制容器，由 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.conf</span><span leaf=""> 经 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">alsatplg</span><span leaf=""> 编译而来。格式很朴素——</span><strong style="color:#27272A;"><span leaf="">一串块，每块 = 36 字节块头 + 变长负载</span></strong><span leaf="">：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">struct　snd_soc_tplg_hdr　{<br>　　　　__le32　magic;　　　　　　　　　/*　0x41536F43　*/<br>　　　　__le32　abi;　　　　　　　　　　　/*　ABI　版本　*/<br>　　　　__le32　version;<br>　　　　__le32　type;<br>　　　　__le32　size;　　　　　　　　　　/*　块头自身大小，=　36　*/<br>　　　　__le32　vendor_type;<br>　　　　__le32　payload_size;<br>　　　　__le32　index;<br>　　　　__le32　count;<br>}　__attribute__((packed));</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">照这个结构解析本机的官方文件，结果精确闭合：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">文件大小 </span><strong style="color:#27272A;"><span leaf="">44247</span></strong><span leaf=""> 字节，共 </span><strong style="color:#27272A;"><span leaf="">27</span></strong><span leaf=""> 块，块头恒为 36 字节</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">ABI 取值</span><strong style="color:#27272A;"><span leaf="">全部 = 5</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">收尾校验：43815（末块偏移）+ 396（负载）+ 36（块头）= </span><strong style="color:#27272A;"><span leaf="">44247</span></strong><span leaf=""> ✅ 无残余</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">magic 有个阅读陷阱</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0x41536F43</span><span leaf=""> 按小端落在字节流里是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">43 6f 53 41</span><span leaf="">，即 ASCII 字符串 </span><strong style="color:#27272A;"><span leaf="">`CoSA`</span></strong><span leaf="">——是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ASoC</span><span leaf=""> 的</span><strong style="color:#27272A;"><span leaf="">反写</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">我第一版解析脚本就栽在这里：把块头里的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">size</span><span leaf=""> 字段（恒为 36）当成了负载长度，偏移算成 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">off += 36 + 36</span><span leaf="">，撞进一段全零数据，误报「第二块 magic = 0x00000000」。正确公式是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">off += size + payload_size</span><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">很多工具因为 size 恒等于块头长度，会把这两者混为一谈</span></strong><span leaf="">。</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">内核侧的解析器</span><strong style="color:#27272A;"><span leaf="">不是顺序单遍</span></strong><span leaf="">，而是按 8 个 pass 反复扫描整个文件：MANIFEST → VENDOR → CONTROL → WIDGET → PCM_DAI → GRAPH → BE_DAI → LINK。源码注释解释了原因：</span><strong style="color:#27272A;"><span leaf="">块在文件里不保证有序</span></strong><span leaf="">，分轮处理才能确保组件驱动在建立 widget 和 DAPM 图之前，已经拿到 vendor 数据。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">5. ABI 校验：只看 MAJOR</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">日志里这一行容易让人紧张：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Topology: ABI 3:22:1 Kernel ABI 3:23:1</span><span leaf="">——拓扑的 minor 是 22，内核是 23，落后一版，会不会不兼容？不会：</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">#define　SOF_ABI_VERSION_INCOMPATIBLE(sof_ver,　client_ver)　　\<br>　　　　(SOF_ABI_VERSION_MAJOR((sof_ver))　!=　　　　　　　　　　　　　　　　　　　　　\<br>　　　　　　　　SOF_ABI_VERSION_MAJOR((client_ver))　　　　　　　　　　　　　　　　　　\<br>　　　　)</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">只比较 MAJOR。</span></strong><span leaf=""> 两者都是 3 → 兼容，minor 差异是正常的向后兼容。真正会失败的只有 MAJOR 不等，那时唯一的解法是换固件包版本。顺带说明：</span><strong style="color:#27272A;"><span leaf="">固件包只决定文件的内容版本，不决定文件名</span></strong><span leaf="">——文件名是内核算的。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">6. 时序：拓扑为什么加载得那么晚</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">把上述环节串起来，探测顺序是：先做 DSP 硬件探测 → ACPI/DMI 机器匹配 → 路径与 IPC 选择（</span><strong style="color:#27272A;"><span leaf="">存在性预检就在这里，失败即返回</span></strong><span leaf="">）→ 读 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.ri</span><span leaf=""> 固件 → 启动 DSP、等 FW_READY → 注册组件 → 注册机器驱动，</span><strong style="color:#27272A;"><span leaf="">这时才真正加载 `.tplg`</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">关键认识：拓扑不是固件的一部分。</span></strong><span leaf=""> DSP 固件先启动成功，拓扑随后才被解析。所以缺 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.tplg</span><span leaf=""> 不会让 DSP 起不来，而是让 machine driver 建不出 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">snd_card</span><span leaf="">。于是就有了那个看起来完全不像「文件缺失」的错误：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sof_probe_work failed err: -2</span><span leaf="">。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">RELOAD</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">为什么这次连重启都不需要</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">1. sysfs 早就给了入口</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$　ls　/sys/bus/pci/drivers/sof-audio-pci-intel-tgl/<br>0000:00:1f.3　　bind　　module　　new_id　　remove_id　　uevent　　unbind</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">bind</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">unbind</span><span leaf=""> 由 driver core 实现，语义就是「把这个设备从驱动上摘掉 / 重新绑上」，等价于一次完整的 remove + probe，但</span><strong style="color:#27272A;"><span leaf="">不需要卸载内核模块</span></strong><span leaf="">（模块还被别的设备引用着时也卸不掉）。</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">bash</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">sudo　sh　-c　'echo　0000:00:1f.3　&gt;　/sys/bus/pci/drivers/sof-audio-pci-intel-tgl/unbind'<br>sleep　2<br>sudo　sh　-c　'echo　0000:00:1f.3　&gt;　/sys/bus/pci/drivers/sof-audio-pci-intel-tgl/bind'</span></p></section></section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2. 坑：probe 是异步的</span></p>
+        <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;"><section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="margin-left:12px;font-size:12px;color:#64748B;font-family:Consolas,monospace;"><span leaf="">c</span></span></section><section style="padding:11px 14px;"><p style="margin:0;font-family:Consolas,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">if　(IS_ENABLED(CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE))　{<br>　　　　INIT_WORK(&amp;sdev-&gt;probe_work,　sof_probe_work);<br>　　　　schedule_work(&amp;sdev-&gt;probe_work);　　　/*　丢进工作队列，立刻　return　0　*/<br>　　　　return　0;<br>}<br>return　sof_probe_continue(sdev);</span></p></section></section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这台机器上该配置为 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">y</span><span leaf="">。所以 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">bind</span><span leaf=""> 的写入</span><strong style="color:#27272A;"><span leaf="">瞬间返回</span></strong><span leaf="">，真正的初始化交给工作队列。三条实践含义：</span></p>
+        <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">1</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">写完 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">bind</span><span leaf=""> 不要立刻用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">dmesg | tail</span><span leaf=""> 判断成败，</span><strong style="color:#27272A;"><span leaf="">等 1–3 秒</span></strong><span leaf="">；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">2</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">bind</span><span leaf=""> 命令不报错</span><strong style="color:#27272A;"><span leaf="">不代表成功</span></strong><span leaf="">，唯一判据是之后 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">aplay -l</span><span leaf=""> 里有没有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">card 0</span><span leaf="">；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">3</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">因为 probe 是异步的，</span><strong style="color:#27272A;"><span leaf="">连续快速 unbind/bind 有撞上正在运行的 work 的风险</span></strong><span leaf="">，中间加 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sleep</span><span leaf="">。</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3. 为什么这次的重载是「干净」的</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">驱动移除函数里有个分支：如果设备固件状态</span><strong style="color:#27272A;"><span leaf="">高于</span></strong><span leaf="">「尚未启动」，就要走完整清理（DSP 掉电、显卡音频组件解绑、IPC 释放…）；否则走轻量分支。而本次 probe 失败的错误出口，恰好把状态</span><strong style="color:#27272A;"><span leaf="">置回了「尚未启动」</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">换个说法：</span><strong style="color:#27272A;"><span leaf="">「从来没能成功过」的设备，热重载反而最安全。</span></strong><span leaf=""> 相反，如果 DSP 已经完成启动，移除会走完整清理路径，涉及显卡音频的电源域——内核在这一带历史上出过资源未释放的 bug。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4. 热重载的能力边界</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">顺手把「哪些改动能靠热重载生效」一次说清：</span></p>
+        <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">HOT RELOAD</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">场景</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">热重载能否生效</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">恢复被删的 .tplg</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">✅ 能（本文实测生效）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">换用另一个 tplg（拷成同名文件）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">✅ 能，绑定时会重新读取</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">模块参数（如 sof_debug）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">❌ 权限 0444，只读，必须重启</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">dmic_num= / hda_model=</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">⚠️ 需重插模块，通常仍要重启</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">内核命令行参数</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">❌ 只读于 boot</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">5. 一个别误当成故障的日志</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">修好之后，这条依然会出现：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">hda_dsp_hdmi_build_controls: no PCM in topology for HDMI converter 3</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">它不是故障。</span></strong><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-2ch</span><span leaf=""> 拓扑本身不含 HDMI converter 3 的 PCM 节点，而声卡编解码器报告了 3 个 HDMI 转换器，两边数量对不上，内核礼貌地提示一句。</span><strong style="color:#27272A;"><span leaf="">它是噪音，别为它去改拓扑。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">直接根因</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">一行 sudo rm 删掉了 sof-hda-generic-2ch.tplg</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">失败位置</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">SOF 路径预检 → sof_probe_work 报 -ENOENT(-2)</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">症状指纹</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">/proc/asound/cards 为空 + PipeWire auto_null</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">为何蓝牙正常</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">USB/HCI/A2DP 独立链路，不经过 SOF</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">文件名来源</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">基名 + NHLT 数字麦数量后缀 + 平台路径前缀</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">候选路径数</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">5 个目录 × 3 种后缀 + UEFI 内嵌 = 15 条</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">读取方式</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">内核凭据 + init 挂载命名空间</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">tplg 结构</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">36 字节块头 + 变长负载，本机 27 块</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">ABI 规则</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">只比 MAJOR，3:22 配 3:23 属正常</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">修复成本</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">补回文件 + sysfs 热重载，无需重启</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">陷阱一</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">.bak 与 -pdm1 同哈希，并非原版</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">陷阱二</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">「没有声卡」≠「声卡不对」，别混着查</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这次真正的成本不在修复——修复是三行命令。成本在于前面在「换哪个通道数的拓扑」上绕的那几圈：因为症状（设备消失）和误判方向（拓扑内容不对）确实有表面上的相似性。而区分它们，只需要一条 dpkg -V。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别</span><br>
+        <span leaf="">· rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查</span><br>
+        <span leaf="">· 把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
