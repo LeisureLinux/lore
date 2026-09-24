@@ -1,0 +1,22 @@
+---
+title: '声卡整个消失了：一行 rm 删掉 .tplg，SOF 驱动找不到文件的全过程'
+date: "2026-09-23"
+author: LeisureLinux
+category: "运维"
+tags:
+  - Linux
+  - 内核
+  - ALSA
+  - SOF
+  - 声卡
+  - audio
+  - Debian
+  - firmware
+  - dmesg
+  - 故障排查
+  - 运维
+  - 原创
+summary: "一台 Alder Lake-P 轻薄本开机后扬声器与麦克风全部消失，只剩蓝牙音频可用。根因是一行 sudo rm 删掉了 /usr/lib/firmware/intel/sof-tplg/sof-hda-generic-2ch.tplg，导致 SOF 驱动的拓扑文件存在性预检失败、sof_probe_work 报 -ENOENT(-2)，声卡从未注册到内核（/proc/asound/cards 为空，aplay -l 报 no soundcards found，PipeWire 只能建 auto_null 兜底）。蓝牙走独立 USB/HCI/A2DP 通道不经过 SOF，故毫发无伤。文章系统拆解内核找文件的全部逻辑：①文件名三段拼装——基名 sof-hda-generic 取自 snd_soc_acpi_intel_hda_machines[]，-2ch 后缀由 hda_machine_select() 依据 NHLT 表探测到的数字麦数量补上（tplg_quirk_mask SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER），路径前缀来自 sof_dev_desc->default_tplg_path；②两步走策略——sof_test_topology_file() 先用 firmware_request_nowarn 做纯存在性探测，失败才走 sof_print_missing_firmware_info() 打印那段容易被误读的「firmware and/or topology file not found」（它会把 .ri 和 .tplg 都列出来，不代表两者都缺）；③候选路径是 fw_path[] 五级目录 × {无后缀,.zst,.xz} + UEFI 内嵌共 15 条，读取用 kernel_read_file_from_path_initns 以内核凭据在 init 挂载命名空间完成；④.tplg 是 36 字节块头 + 变长 payload 的块序列，本机文件 27 块/ABI 5，magic 0x41536F43 小端落盘为 ASCII CoSA（ASoC 反写），内核按 8 个 pass 多轮扫描而非顺序单遍；⑤ABI 校验只比 MAJOR（SOF_ABI_VERSION_INCOMPATIBLE），故 Topology ABI 3:22:1 配 Kernel ABI 3:23:1 属正常向后兼容；⑥时序上拓扑在 DSP 启动后才加载，所以缺文件不会让 DSP 起不来，而是让 snd_card 建不出来。修复只需补回文件 + sysfs 热重载（echo BDF > /sys/bus/pci/drivers/sof-audio-pci-intel-tgl/{unbind,bind}），无需重启。文中给出热重载为何生效的机制——设备处于 SOF_FW_BOOT_NOT_STARTED 状态，unbind 走轻量分支，不涉及 DSP 电源域与 i915 wakeref；并指出 SOF probe 经 sof_probe_work 异步执行（CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE=y），bind 命令返回不等于 probe 完成，必须用 aplay -l 的结果判定。另记录两个排查陷阱：①同目录 .bak 文件与 -pdm1 变体同 md5（91e6e760…），并非原版，盲目回滚会把「没有声卡」换成「少一个麦克风」，正确做法是用 dpkg -V firmware-sof-signed 定性（missing vs 5）+ apt-get download fw 包提取原版核验 md5 ef04df18…；②「文件内容不对」与「文件不存在」是两类失败模式，前者有设备只是声音不对，后者一次 probe 都不过。"
+description: "Alder Lake-P 笔记本（Debian 13 + XanMod 7.2.7）开机后声卡整体消失、仅剩蓝牙音频可用的排查实录。根因：一行 sudo rm 删除了 /usr/lib/firmware/intel/sof-tplg/sof-hda-generic-2ch.tplg。症状指纹——/proc/asound/cards 为空、aplay -l 报 no soundcards found、PipeWire 只剩 auto_null 虚拟输出、但 lspci 显示 sof-audio-pci-intel-tgl 已 in use（区分「驱动没加载」与「加载后初始化失败」）；蓝牙经 USB/HCI/A2DP 独立链路，不经过 SOF，故不受影响。内核读取逻辑全解：文件名由基名 sof-hda-generic（snd_soc_acpi_intel_hda_machines[]）+ 运行时后缀 -2ch（hda_machine_select() 中 tplg_quirk_mask 带 SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER，dmic_num 取自 NHLT 表，即 dmesg 里 DMICs detected in NHLT tables: 2 那行）+ 路径前缀 intel/sof-tplg（sof_dev_desc->default_tplg_path）三段拼成；SOF 先用 sof_test_topology_file() 的 firmware_request_nowarn 做存在性探测，失败才调 sof_print_missing_firmware_info() 打印默认 profile 列表，因此那段输出会同时列出 .ri 与 .tplg，并非两者都缺（错误信息里的 and/or 是设计使然）；实际读取走 fw_get_filesystem_firmware()，候选为 fw_path[] 五级目录（fw_path_para 内核参数、/lib/firmware/updates/$(uname -r)、/lib/firmware/updates、/lib/firmware/$(uname -r)、/lib/firmware，注意 /lib 是 /usr/lib 的符号链接）乘以三种后缀（空、.zst、.xz，zst 优先），再加 firmware_fallback_platform() 的 UEFI 内嵌兜底，共 15 条，用 kernel_read_file_from_path_initns() 以内核凭据读取。.tplg 格式实测：36 字节块头（magic/abi/version/type/size/vendor_type/payload_size/index/count）+ 变长 payload，本机文件 44247 字节 27 块全 ABI=5，收尾偏移 43815+396+36=44247 精确闭合；magic 0x41536F43 小端即 ASCII CoSA（ASoC 反写）；解析器 snd_soc_tplg_component_load() 按 MANIFEST→VENDOR→CONTROL→WIDGET→PCM_DAI→GRAPH→BE_DAI→LINK 八个 pass 多轮扫描。ABI 只比 MAJOR：Topology 3:22:1 vs Kernel 3:23:1 兼容。加载时序：snd_sof_probe → sof_machine_check → sof_select_ipc_and_paths（此处预检即失败点）→ 读 sof-adl.ri → snd_sof_run_firmware 起 DSP → 注册 component → snd_sof_machine_register → 才 snd_soc_tplg_component_load，故缺拓扑不影响 DSP 启动，只导致 snd_card 注册不出来，报错落在 sof_probe_work failed err: -2。修复与验证：补回文件后用 /sys/bus/pci/drivers/sof-audio-pci-intel-tgl/{unbind,bind} 热重载即可，无需重启；机制是失败路径把 fw_state 置回 SOF_FW_BOOT_NOT_STARTED，unbind 走轻量分支，不触碰 DSP 电源域与 i915 wakeref；注意 SOF probe 由 sof_probe_work 异步执行（CONFIG_SND_SOC_SOF_PROBE_WORK_QUEUE=y），bind 返回不等于完成，须以 aplay -l 出现 card 0 为判据。两个陷阱：.bak 与 -pdm1 变体 md5 相同（91e6e760…）并非原版，须用 dpkg -V firmware-sof-signed（missing 表示被删、5 表示被改）定性并从发行包提取核验（原版 md5 ef04df18…）；hda_dsp_hdmi_build_controls: no PCM in topology for HDMI converter 3 为正常噪音，不要据此改拓扑。"
+published: true
+---
