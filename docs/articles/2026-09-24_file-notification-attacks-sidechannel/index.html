@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作 — FreeLAMP.com</title>
+  <meta name="description" content="编译 Graz 理工大学论文《File Notification Attacks: Templating and Exploiting Side-Channel Leakage from the File-Notification Systems on Linux, Windows, and macOS》（Sudhee">
+  <meta name="keywords" content="侧信道, 文件通知, inotify, FSEvents, ReadDirectoryChangesW, 操作系统安全, 击键时序, 网站指纹, 隐私, 供应链安全, 论文解读">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-09-24">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作">
+  <meta property="og:description" content="编译 Graz 理工大学论文《File Notification Attacks: Templating and Exploiting Side-Channel Leakage from the File-Notification Systems on Linux, Windows, and macOS》（Sudhee">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-09-24">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="侧信道">
+  <meta property="article:tag" content="侧信道">
+  <meta property="article:tag" content="文件通知">
+  <meta property="article:tag" content="inotify">
+  <meta property="article:tag" content="FSEvents">
+  <meta property="article:tag" content="ReadDirectoryChangesW">
+  <meta property="article:tag" content="操作系统安全">
+  <meta property="article:tag" content="击键时序">
+  <meta property="article:tag" content="网站指纹">
+  <meta property="article:tag" content="隐私">
+  <meta property="article:tag" content="供应链安全">
+  <meta property="article:tag" content="论文解读">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作">
+  <meta name="twitter:description" content="编译 Graz 理工大学论文《File Notification Attacks: Templating and Exploiting Side-Channel Leakage from the File-Notification Systems on Linux, Windows, and macOS》（Sudhee">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作",
+  "description": "编译 Graz 理工大学论文（Sudheendra Raghav Neela 等，CCS '26，2026-09-18 预印本，主页 inoti.fyi）：首个针对 Linux/Windows/macOS 的通用文件通知模板攻击。OS 内置文件监控子系统（Linux inotify、Windows ReadDirectoryChangesW、macOS FSEvents）允许任意有读权限的进程订阅文件操作事件，此前只知能在 Android 泄漏应用启动。论文用两阶段（离线 templating + 在线 attacking）系统化发现「用户活动↔文件事件」因果泄漏：运行终端命令、键盘鼠标输入、浏览网页、Web 服务器活动、打印、跑 VM/容器、改蓝牙/网络/VPN 设置、USB 交互。关键：单次活动即监控全系统所有文件事件，耗时由活动而非搜索空间决定（以 OS 为 oracle）；CPU 开销 ≤0.21%，时间分辨率 0.2–11.5ms。结果：Linux 本地/远程 SSH 击键时序 F1 93.1%–100%（7 用户，66% 按键 1ms 内）、KDE Plasma 6 Wayland 认证 UI 覆写、前 100 网站开放世界指纹 F1 87.9%；Android 发现新非特权原语可揭示受权限保护文件是否存在（如 WhatsApp）；Windows 最严重——任意非特权用户即使对目录无读权限也能泄漏所有文件完整路径（如用户主目录），直接泄漏用户/应用文件使用，仅一次扫描对前 1000 网站指纹 F1 97.8%；macOS 泄漏最少但仍可监控特定应用启动与交互。核心成因：非特权用户即可用文件通知子系统，且 Windows 与 Linux（独立实现）都存在「无需读权限即可获取文件事件」的方法；文件存在与否、文件名本身就泄漏大量信息。关键工程细节——Linux 不可读文件绕过（Unreadable File Bypass）：父目录公开可读即可监控目录内所有文件（如 /var/log 里的 syslog），/dev 有 278 个不可读文件却都能触发通知；/dev/input 键盘鼠标→击键时序（每按键两个通知 key down/up，可区分触摸板密集突发 vs 键盘零星访问）、/dev/snd /dev/bus/usb /dev/tun 分别泄漏音频设置/USB 插拔/VPN、/usr/share 泄漏最多（KDE 搜索每次按键触发 searchproviders 事件、Firefox 访问不同网站触发不同 /usr/share/fonts 字体文件→网站指纹）。披露：2025-10 负责任披露给 Linux/Windows/macOS/KDE，均承认，Linux 已部署部分补丁；微软称该「损害隐私的未文档化行为」是 by-design，辩解只暴露 profile 目录内文件名与路径、不暴露内容。缓解：改进细粒度用户权限模型 + 增强文件通知 API。",
+  "datePublished": "2026-09-24",
+  "dateModified": "2026-09-24",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "侧信道, 文件通知, inotify, FSEvents, ReadDirectoryChangesW, 操作系统安全, 击键时序, 网站指纹, 隐私, 供应链安全, 论文解读"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作",
+        "item": "https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-09-24">2026-09-24</div>
+        <h1 class="post-title" itemprop="headline">文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E4%BE%A7%E4%BF%A1%E9%81%93/">侧信道</a><a itemprop="keywords" href="/tags/%E6%96%87%E4%BB%B6%E9%80%9A%E7%9F%A5/">文件通知</a><a itemprop="keywords" href="/tags/inotify/">inotify</a><a itemprop="keywords" href="/tags/FSEvents/">FSEvents</a><a itemprop="keywords" href="/tags/ReadDirectoryChangesW/">ReadDirectoryChangesW</a><a itemprop="keywords" href="/tags/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E5%AE%89%E5%85%A8/">操作系统安全</a><a itemprop="keywords" href="/tags/%E5%87%BB%E9%94%AE%E6%97%B6%E5%BA%8F/">击键时序</a><a itemprop="keywords" href="/tags/%E7%BD%91%E7%AB%99%E6%8C%87%E7%BA%B9/">网站指纹</a><a itemprop="keywords" href="/tags/%E9%9A%90%E7%A7%81/">隐私</a><a itemprop="keywords" href="/tags/%E4%BE%9B%E5%BA%94%E9%93%BE%E5%AE%89%E5%85%A8/">供应链安全</a><a itemprop="keywords" href="/tags/%E8%AE%BA%E6%96%87%E8%A7%A3%E8%AF%BB/">论文解读</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>原文：File Notification Attacks: Templating and Exploiting Side-Channel Leakage from the File-Notification Systems on Linux, Windows, and macOS（Graz University of Technology，Sudheendra Raghav Neela 等，CCS 2026，2026-09-18 预印本）。论文主页：<a href="https://inoti.fyi/">inoti.fyi</a>。本文由 LeisureLinux 编译整理并加注解读。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+现代操作系统（Linux、Windows、macOS）都内置了监控文件系统事件的子系统：<strong>inotify、ReadDirectoryChangesW、FSEvents</strong>。用户进程可以订阅这些通知——当被监控的文件或目录上发生访问、写入、打开、关闭等操作时，就会收到事件。但<strong>这些通知系统打开的攻击面一直没有被充分理解</strong>：此前的工作只表明「文件打开事件能在 Android 上泄漏应用启动」。
+<p>这篇论文提出了<strong>首个针对 Linux、Windows、macOS 的通用「文件通知模板攻击（file-notification template attack）」</strong>，可以窥探各类系统与用户活动。</p>
+<h2>译文：攻击怎么做的</h2>
+<p>攻击分两阶段：<strong>模板化（templating）</strong>与<strong>攻击（attack）</strong>。</p>
+<p><strong>模板化阶段（攻击者控制的离线阶段）</strong>：系统性地、半自动地扫描，通过「用户活动 ↔ 文件操作事件」之间的<strong>因果分析</strong>，发现可被利用的文件通知信息泄漏。论文模板化了一大类用户活动：运行终端命令、物理键盘与鼠标输入、浏览网页、Web 服务器活动、打印、运行虚拟机与容器、更改连通性设置（蓝牙、网络、VPN）、与 USB 设备交互。</p>
+<p>关键点是效率：在<strong>单次</strong>用户活动过程中，监控整个系统文件系统上发生的<strong>所有</strong>文件操作事件。因此与前人模板攻击不同，模板化阶段的耗时<strong>由用户活动本身决定，而不是由搜索空间决定</strong>——因为攻击者不是「发起侧信道攻击」，而是<strong>直接以操作系统为预言机（oracle）</strong>获取信息。</p>
+<ul>
+<li>在 <strong>Linux</strong> 上，<code>/dev</code> 和 <code>/usr</code> 尤其暴露大量侧信道泄漏——<strong>仅用 <code>/dev</code> 中 2 个文件</strong>就能做本地/远程击键时序，<strong>用 <code>/usr</code> 中 1448 个文件</strong>就能做网站指纹。</li>
+<li>模板把系统、用户、应用活动映射到特定文件上的事件。</li>
+</ul>
+<strong>攻击阶段</strong>：用这些模板 + 文件通知子系统来窥探用户活动。子系统的开销<strong>最高仅 0.21% CPU</strong>，可实现 <strong>0.2 ms 到 11.5 ms</strong> 的时间分辨率。
+<h2>译文：各平台上的攻击结果</h2>
+<p><strong>Linux</strong>（本地与远程 SSH 击键时序攻击，F1 分数 <strong>93.1%–100%</strong>，7 名用户，66% 的按键在 1 ms 内；对 <strong>KDE Plasma 6（Wayland）</strong> 的实际认证 UI 覆写攻击；对<strong>前 100 网站</strong>的网站指纹，开放世界设定下 F1 <strong>87.9%</strong>）。</p>
+<p><strong>Android</strong>（基于 Linux）：用模板方法论超越前人工作，发现一个<strong>新的非特权原语</strong>，能揭示<strong>应用无法访问的、受权限保护的文件是否存在</strong>，从而推断用户活动（例如 WhatsApp 的使用）。</p>
+<p><strong>Windows</strong>（最严重）：任何<strong>非特权用户都能泄漏所有文件的完整路径</strong>，<strong>即使对该目录没有读权限</strong>（例如用户主目录）——直接泄漏用户与应用的<strong>文件使用情况</strong>，可被利用来可靠监控网站访问：<strong>仅一次扫描</strong>，对<strong>前 1000 网站</strong>的 F1 达 <strong>97.8%</strong>。</p>
+<p><strong>macOS</strong>：观测到<strong>最少</strong>的泄漏量，但仍足以监控特定应用启动与交互。</p>
+<h2>译文：核心成因——连「没有读权限」都能监控</h2>
+<p>论文的根基事实是：<strong>非特权用户可以动用文件通知子系统</strong>。更糟的是：</p>
+<blockquote>虽然 Windows 与 Linux 有完全独立实现，我们<strong>在两者上都发现了「无需读权限即可获取文件事件」的方法</strong>。也就是说，一个非特权攻击者可以监控<strong>它自己根本读不了的文件的</strong>事件**——例如 Windows 上其他用户的个人目录。</blockquote>
+关键洞察是：<strong>文件的存在与否、文件名本身，就已经能泄漏大量信息</strong>。而这也是 Windows/Linux 上最强攻击（实时网站访问的直接泄漏、击键时序攻击）的基础。
+<p><strong>披露与厂商回应</strong>：论文于 <strong>2025 年 10 月</strong>负责任披露给 Linux、Windows、macOS、KDE 的安全团队。所有厂商都承认了发现，<strong>Linux 已部署部分补丁</strong>。但——</p>
+<blockquote>我们向微软披露后，他们在回应中称，这种「损害隐私的、未文档化的行为」是 <strong>by-design（设计如此）</strong> 的。</blockquote>
+微软的具体说法是：该行为「只揭示另一个用户 profile 目录内的<strong>文件名与路径</strong>，不暴露文件内容或敏感数据」。
+<h2>解读：为什么这篇论文重要</h2>
+<p><strong>1. 「文件名 + 时序」被当成侧信道，是这次攻击最反直觉、也最致命的地方。</strong></p>
+<p>传统侧信道攻击（缓存、功耗、时序）大多需要特殊硬件或精细的微架构知识。这篇论文的攻击<strong>完全不需要特殊硬件</strong>（hardware-agnostic），只用<strong>操作系统公开提供的文件监控 API</strong>——任何普通进程都有权调用。它利用的信息源是两类「看似无害」的元数据：<strong>哪些文件被访问了、什么时候被访问</strong>。而正是这两样，让攻击者能重建<strong>你按了键、你在打字、你打开了哪个网站、你在跑什么容器</strong>。</p>
+<p><strong>2. Linux 上的具体泄漏点，暴露了「公开可读目录」这个被忽视的设计面。</strong></p>
+<p>论文最有工程含义的细节之一是 <strong><code>/dev</code></strong>：一台测试机上 <code>/dev</code> 有 <strong>278 个不可读文件</strong>，却都能触发通知。因为<strong>父目录 <code>/var/log</code>、<code>/dev</code> 等是公开可读的</strong>，非特权用户即使读不了 <code>syslog</code> 本身，也能监控 <code>/var/log</code> 目录、收到<strong>目录内所有文件</strong>（包括 <code>syslog</code>）的通知——这就是「<strong>不可读文件绕过（Unreadable File Bypass）</strong>」。</p>
+<ul>
+<li><code>/dev/input</code>：键盘/鼠标输入会触发对应 event 文件通知 → <strong>击键时序攻击</strong>（每次按键产生两个通知：key down、key up）；攻击者甚至能靠访问模式区分触摸板（密集突发）与键盘（零星访问）。</li>
+<li><code>/dev/snd</code>、<code>/dev/bus/usb</code>、<code>/dev/tun</code>：分别泄漏音频设置交互、USB 插拔、VPN 是否激活。</li>
+<li><code>/usr/share</code>：KDE 搜索菜单每次按键都在 <code>.../searchproviders/</code> 触发事件；Firefox 浏览不同网站会访问 <code>/usr/share/fonts/</code> 下<strong>不同的字体文件</strong> → <strong>网站指纹</strong>。</li>
+</ul>
+这提醒系统/发行版设计者：<strong>「目录可读」不等于「目录内容安全」</strong>，尤其当目录里混有敏感文件时。
+<p><strong>3. Windows 的 by-design 回应，是一个「结构性风险」而非「补丁遗漏」的典型样本。</strong></p>
+<p>Windows 上「非特权用户可泄漏所有文件完整路径、即使无读权限」，微软回应是 <strong>by-design</strong>、且辩解「只暴露文件名路径、不暴露内容」。论文作者的隐含反驳是：<strong>文件名与路径本身就是敏感信息</strong>——它足以让攻击者对前 1000 名网站做 97.8% F1 的指纹识别。<strong>当厂商把「元数据泄漏」定性为「设计如此」，就意味着这类漏洞不会有 CVE、不会有补丁、不会有升级提醒</strong>——它从「可修复的 bug」变成「必须靠架构缓解的既成事实」。这正是安全工程里最棘手的一类问题：<strong>它不是错误，而是特性。</strong></p>
+<p><strong>4. 缓解方向：细粒度权限模型 + 更强的文件通知 API。</strong></p>
+<p>论文结论明确：因为文件通知攻击是<strong>横跨所有现代操作系统</strong>（尽管它们各自独立开发）的通用安全问题，缓解措施——包括<strong>改进细粒度用户权限模型</strong>和<strong>增强文件通知 API</strong>——对保护用户隐私与系统安全至关重要。落实到实践：对高敏感环境，需要考虑「谁有权监控哪些目录的事件」这个此前几乎无人审视的权限面。</p>
+<p><strong>5. 对普通用户的现实意义。</strong></p>
+<ul>
+<li>在<strong>多用户 Linux/Windows 主机</strong>上（共享服务器、多用户工作站），一个低权限账户可能正在 passively 窥探你的键盘时序、网站访问、容器/VM 活动。</li>
+<li>单用户桌面受影响较小（攻击需要「第二个本地用户代码执行」的威胁模型），但<strong>一旦有低权限服务被攻陷</strong>（论文提到 systemd 下服务常以非特权用户运行，可被攻陷，如 XZ Utils 事件），这条通道就成了后门式的情报来源。</li>
+<li><strong>Linux 已有部分补丁</strong>，Windows 的 by-design 行为短期内不会变——对安全敏感的场景，值得把「文件通知监控」纳入威胁建模。</li>
+</ul>
+一句话收尾：这篇论文的价值，不是发现了一个「可被修掉的 bug」，而是揭示了一类<strong>结构性侧信道</strong>——操作系统把「文件事件」开放给任意非特权进程，而<strong>文件名、路径与时序本身就构成足够强的信号</strong>，足以从键盘一路还原到你访问的网站。当厂商把这类元数据泄漏称为「设计如此」时，能缓解它的就不是补丁，而是<strong>权限模型和 API 设计</strong>——也就是说，问题被从「运维层」提升到了「操作系统架构层」。
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-wugu-zhongqiu.jpg" alt="五谷磨房中秋礼遇季" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">五谷磨房中秋礼遇季</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/xOZRcdz" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/",
+      title: "\u6587\u4ef6\u901a\u77e5\u653b\u51fb\uff1aLinux / Windows / macOS \u7684\u6587\u4ef6\u76d1\u63a7\u5b50\u7cfb\u7edf\u6b63\u5728\u6cc4\u6f0f\u4f60\u7684\u64cd\u4f5c"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

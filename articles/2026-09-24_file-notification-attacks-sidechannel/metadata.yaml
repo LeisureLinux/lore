@@ -1,0 +1,24 @@
+---
+title: '文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作'
+date: "2026-09-24"
+author: LeisureLinux
+tags:
+  - 侧信道
+  - 文件通知
+  - inotify
+  - FSEvents
+  - ReadDirectoryChangesW
+  - 操作系统安全
+  - 击键时序
+  - 网站指纹
+  - 隐私
+  - 供应链安全
+  - 论文解读
+summary: "编译 Graz 理工大学论文（Sudheendra Raghav Neela 等，CCS '26，2026-09-18 预印本，主页 inoti.fyi）：首个针对 Linux/Windows/macOS 的通用文件通知模板攻击。OS 内置文件监控子系统（Linux inotify、Windows ReadDirectoryChangesW、macOS FSEvents）允许任意有读权限的进程订阅文件操作事件，此前只知能在 Android 泄漏应用启动。论文用两阶段（离线 templating + 在线 attacking）系统化发现「用户活动↔文件事件」因果泄漏：运行终端命令、键盘鼠标输入、浏览网页、Web 服务器活动、打印、跑 VM/容器、改蓝牙/网络/VPN 设置、USB 交互。关键：单次活动即监控全系统所有文件事件，耗时由活动而非搜索空间决定（以 OS 为 oracle）；CPU 开销 ≤0.21%，时间分辨率 0.2–11.5ms。结果：Linux 本地/远程 SSH 击键时序 F1 93.1%–100%（7 用户，66% 按键 1ms 内）、KDE Plasma 6 Wayland 认证 UI 覆写、前 100 网站开放世界指纹 F1 87.9%；Android 发现新非特权原语可揭示受权限保护文件是否存在（如 WhatsApp）；Windows 最严重——任意非特权用户即使对目录无读权限也能泄漏所有文件完整路径（如用户主目录），直接泄漏用户/应用文件使用，仅一次扫描对前 1000 网站指纹 F1 97.8%；macOS 泄漏最少但仍可监控特定应用启动与交互。核心成因：非特权用户即可用文件通知子系统，且 Windows 与 Linux（独立实现）都存在「无需读权限即可获取文件事件」的方法；文件存在与否、文件名本身就泄漏大量信息。关键工程细节——Linux 不可读文件绕过（Unreadable File Bypass）：父目录公开可读即可监控目录内所有文件（如 /var/log 里的 syslog），/dev 有 278 个不可读文件却都能触发通知；/dev/input 键盘鼠标→击键时序（每按键两个通知 key down/up，可区分触摸板密集突发 vs 键盘零星访问）、/dev/snd /dev/bus/usb /dev/tun 分别泄漏音频设置/USB 插拔/VPN、/usr/share 泄漏最多（KDE 搜索每次按键触发 searchproviders 事件、Firefox 访问不同网站触发不同 /usr/share/fonts 字体文件→网站指纹）。披露：2025-10 负责任披露给 Linux/Windows/macOS/KDE，均承认，Linux 已部署部分补丁；微软称该「损害隐私的未文档化行为」是 by-design，辩解只暴露 profile 目录内文件名与路径、不暴露内容。缓解：改进细粒度用户权限模型 + 增强文件通知 API。"
+description: "编译 Graz 理工大学论文《File Notification Attacks: Templating and Exploiting Side-Channel Leakage from the File-Notification Systems on Linux, Windows, and macOS》（Sudheendra Raghav Neela、Xufan Zhao、Jeanette Angelika Wultsch、Hannes Weissteiner、Florian Draschbacher、Stefan Gast、Daniel Gruss，CCS '26，2026-11-15–19 海牙，2026-09-18 预印本，主页 inoti.fyi）。现代操作系统内置文件系统事件监控子系统：Linux inotify、Windows ReadDirectoryChangesW、macOS FSEvents；用户进程可订阅访问/写入/打开/关闭等事件，此前只知文件打开事件能在 Android 泄漏应用启动，攻击面未被充分理解。本文提出首个针对 Linux/Windows/macOS 的通用文件通知模板攻击。两阶段：①templating（攻击者控制的离线、半自动扫描，用「用户活动↔文件操作事件」因果分析发现可泄漏点），模板化活动覆盖终端命令、物理键盘鼠标输入、安装/启动/卸载应用（Steam/Zoom/Discord）、应用交互、浏览网页、Web 服务器活动、打印、运行 VM、运行 docker 容器、改蓝牙/网络/VPN 设置、USB 设备交互；一次活动即监控全系统所有文件事件，耗时由活动而非搜索空间决定（以 OS 为 oracle，非发起侧信道）；Linux /dev 与 /usr 暴露最多——仅 2 个 /dev 文件做本地/远程击键时序、1448 个 /usr 文件做网站指纹。②attacking：用模板 + 通知子系统窥探，CPU 开销最高 0.21%，时间分辨率 0.2–11.5ms。结果：Linux 本地与远程 SSH 击键时序 F1 93.1%–100%（7 用户，66% 按键在 1ms 内）、KDE Plasma 6 Wayland 实际认证 UI 覆写攻击、前 100 网站开放世界指纹 F1 87.9%；Android（基于 Linux）发现新非特权原语揭示应用无法访问的受权限保护文件是否存在（如 WhatsApp）从而推断用户活动；Windows 最严重，任意非特权用户即使对目录无读权限也能泄漏所有文件完整路径（如用户主目录），直接泄漏用户/应用文件使用，仅一次扫描对前 1000 网站指纹 F1 97.8%；macOS 泄漏最少但仍足以监控特定应用启动与交互。核心成因：非特权用户可动用文件通知子系统；Windows 与 Linux 虽独立实现却都存在「无需读权限即可获取文件事件」的方法，非特权攻击者可监控自己读不了的文件事件（如 Windows 其他用户个人目录）；文件存在与否、文件名本身即泄漏大量信息——这是最强攻击（实时网站访问直接泄漏、击键时序）的基础。关键工程细节：Linux 不可读文件绕过——父目录公开可读即可监控目录内所有文件（如 /var/log 公开可读，从而监控不可读的 syslog），/dev 一台测试机有 278 个不可读文件却都能触发通知；/dev/input 键盘鼠标输入→每按键两个通知（key down/up）→击键时序，访问模式可区分触摸板（密集突发）与键盘（零星访问）；/dev/snd /dev/bus/usb /dev/tun 分别泄漏音频设置交互/USB 插拔/VPN 激活；/usr/share 泄漏最多，KDE Plasma 5 搜索菜单每次按键触发 /usr/share/kservices5/searchproviders/ 事件、Firefox 浏览不同网站访问 /usr/share/fonts/ 下不同字体文件→网站指纹。时间分辨率：inotify 在测试机上低于 10µs（M1 均值 10µs、M2 5.9µs、M3 6.4µs），CPU 压力下跌化到 14.7µs。吞吐：多文件 open-close 用 64000 文件达 250 kbit/s 平均（外推 524288 watch 理论上限 297.56 kbit/s）。披露：2025-10 负责任披露给 Linux/Windows/macOS/KDE 安全团队，所有厂商承认，Linux 已部署部分补丁；微软回应称该「损害隐私的、未文档化的行为」是 by-design，称只揭示另一用户 profile 目录内的文件名与路径、不暴露文件内容或敏感数据。结论：文件通知攻击是横跨所有现代操作系统（尽管独立开发）的通用安全问题，缓解需改进细粒度用户权限模型 + 增强文件通知 API。解读：①『文件名+时序』作为侧信道最反直觉致命，完全不需要特殊硬件（hardware-agnostic），只用 OS 公开 API；②Linux 泄漏点暴露『公开可读目录』被忽视的设计面——目录可读≠内容安全；③Windows 的 by-design 回应是结构性风险而非补丁遗漏的样本——元数据泄漏被定性为设计如此就不会有 CVE/补丁，从可修复 bug 变必须靠架构缓解的既成事实；④缓解方向是细粒度权限模型 + 更强通知 API，问题从运维层提升到 OS 架构层；⑤对普通用户：多用户 Linux/Windows 主机上低权限账户可能正窥探键盘时序/网站访问/容器活动，单用户桌面受影响较小但低权限服务被攻陷（如 systemd 非特权服务、XZ Utils）即成情报来源。"
+published: true
+original_source: "https://inoti.fyi/pubs/file-notification-attacks.pdf"
+original_author: "Sudheendra Raghav Neela, Xufan Zhao, Jeanette Angelika Wultsch, Hannes Weissteiner, Florian Draschbacher, Stefan Gast, Daniel Gruss (Graz University of Technology)"
+original_date: "2026-09-18"
+---
+
