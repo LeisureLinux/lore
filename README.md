@@ -18,6 +18,7 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-09-24 | [在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的](https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/) | iPod · iPod Nano · libgpod · hashAB · SQLite · iTunesDB · iTunesCDB · gtkpod · rhythmbox · ipodsync · Linux · 故障排查 · 原创 |
+| 2026-09-24 | [Kernel Report 回归：Jonathan Corbet 在 Kernel Recipes 2026 谈内核社区的「加速变化」](https://freelamp.com/articles/2026-09-24_kernel-report-2026-returns/) | Linux 内核 · Kernel Report · Jonathan Corbet · Kernel Recipes · Maintainers Summit · AI 补丁 · Sashiko · 内核治理 · 编译 |
 | 2026-09-24 | [文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作](https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/) | 侧信道 · 文件通知 · inotify · FSEvents · 操作系统安全 · 击键时序 · 网站指纹 · 隐私 · 论文解读 |
 | 2026-09-24 | [F-Droid 2.0 发布：十年最大改版，重写为 Kotlin Compose，安装体验终于追上系统商店](https://freelamp.com/articles/2026-09-24_fdroid-2-0-release/) | F-Droid · Android · 开源应用商店 · Kotlin · Jetpack Compose · DMA · 侧载 · 隐私 · Nearby · 译文 |
 | 2026-09-24 | [当软件订阅变成公共政策：一座城市的 70 万美元软件账单](https://freelamp.com/articles/2026-09-24_software-subscriptions-public-policy/) | 软件订阅 · SaaS · 公共政策 · 供应商锁定 · 数据可移植性 · 退出计划 · 自主可控 · 开源 · 政府采购 · 译文 |
