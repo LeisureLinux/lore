@@ -17,6 +17,11 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-26 | [逼近 10 秒的 Linux 内核构建：双路 EPYC 9575F + Kbuild 并行化补丁，defconfig 22→15 秒](https://freelamp.com/articles/2026-09-26_near-10-sec-kernel-build/) | Linux 内核 · 内核构建 · Kbuild · Lorenzo Stoakes · AMD EPYC 9575F · 并行构建 · 编译性能 · 译文 |
+| 2026-09-26 | [Samba 4.25 发布：实验性 SMB3 持久句柄，朝透明故障转移迈出一步](https://freelamp.com/articles/2026-09-26_samba-4-25-released/) | Samba · SMB3 · 持久句柄 · 文件服务 · Ceph RGW · 域加密 · 译文 |
+| 2026-09-26 | [Linux 考虑引入 AGENTS.md：给 AI/LLM 代理一份内核贡献指南](https://freelamp.com/articles/2026-09-26_linux-considers-agents-md/) | Linux 内核 · AGENTS.md · AI 代理 · AI 补丁 · 内核治理 · Sasha Levin · 译文 |
+| 2026-09-26 | [ReactOS 把 Wine 10.0 的 DirectX 栈整体搬进来了：解锁上百款游戏](https://freelamp.com/articles/2026-09-26_reactos-wine-directx-10/) | ReactOS · Wine 10.0 · DirectX · Vulkan · OpenGL · 兼容层 · 游戏兼容 · 译文 |
+| 2026-09-26 | [GDB 18.1 发布：Windows 原生目标大改、新增 MicroBlaze/AArch64 MinGW 目标、Python API 扩充](https://freelamp.com/articles/2026-09-26_gdb-18-1-released/) | GDB · 调试器 · Windows 原生目标 · AArch64 MinGW · Python API · CTF 移除 · 译文 |
 | 2026-09-24 | [在 Linux 上给 iPod Nano 6 加歌：libgpod 的「Unsupported checksum type」是怎么被绕过去的](https://freelamp.com/articles/2026-09-24_ipod-nano6-linux-sync/) | iPod · iPod Nano · libgpod · hashAB · SQLite · iTunesDB · iTunesCDB · gtkpod · rhythmbox · ipodsync · Linux · 故障排查 · 原创 |
 | 2026-09-24 | [Kernel Report 回归：Jonathan Corbet 在 Kernel Recipes 2026 谈内核社区的「加速变化」](https://freelamp.com/articles/2026-09-24_kernel-report-2026-returns/) | Linux 内核 · Kernel Report · Jonathan Corbet · Kernel Recipes · Maintainers Summit · AI 补丁 · Sashiko · 内核治理 · 编译 |
 | 2026-09-24 | [文件通知攻击：Linux / Windows / macOS 的文件监控子系统正在泄漏你的操作](https://freelamp.com/articles/2026-09-24_file-notification-attacks-sidechannel/) | 侧信道 · 文件通知 · inotify · FSEvents · 操作系统安全 · 击键时序 · 网站指纹 · 隐私 · 论文解读 |
