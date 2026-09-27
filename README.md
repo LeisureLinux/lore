@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-26 | [为 DRBD 9 进主线铺路：LINBIT 发出重构内核 DRBD 8.4 代码的准备补丁](https://freelamp.com/articles/2026-09-26_linux-patches-toward-drbd-9/) | DRBD · LINBIT · 分布式复制块设备 · 内核主线 · 高可用 · 存储 · 译文 |
 | 2026-09-26 | [逼近 10 秒的 Linux 内核构建：双路 EPYC 9575F + Kbuild 并行化补丁，defconfig 22→15 秒](https://freelamp.com/articles/2026-09-26_near-10-sec-kernel-build/) | Linux 内核 · 内核构建 · Kbuild · Lorenzo Stoakes · AMD EPYC 9575F · 并行构建 · 编译性能 · 译文 |
 | 2026-09-26 | [Samba 4.25 发布：实验性 SMB3 持久句柄，朝透明故障转移迈出一步](https://freelamp.com/articles/2026-09-26_samba-4-25-released/) | Samba · SMB3 · 持久句柄 · 文件服务 · Ceph RGW · 域加密 · 译文 |
 | 2026-09-26 | [Linux 考虑引入 AGENTS.md：给 AI/LLM 代理一份内核贡献指南](https://freelamp.com/articles/2026-09-26_linux-considers-agents-md/) | Linux 内核 · AGENTS.md · AI 代理 · AI 补丁 · 内核治理 · Sasha Levin · 译文 |
