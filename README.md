@@ -17,10 +17,10 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-29 | [Ubuntu 内核改成每周更新：废掉 4/2 模型、启用重叠双周流水线，CVE 暴涨逼出来的](https://freelamp.com/articles/2026-09-29_ubuntu-weekly-kernel-updates/) | Ubuntu · Linux内核 · SRU · CVE · Canonical · 内核更新 · 发行版 · 译文 |
 | 2026-09-28 | [NetScaler ADC/Gateway 两个 9.5 分在野 0day：Citrix 催补，CISA 当日拉入 KEV](https://freelamp.com/articles/2026-09-28_netscaler-adc-gateway-zero-day-cve-2026-88771/) | NetScaler · Citrix · ADC · Gateway · CVE-2026-88771 · CVE-2026-88772 · 0day · RCE · KEV · CISA · 安全运维 · 应急 · 译文 |
-| 2026-09-28 | [Noctalia 5.2.0 发布：窗口切换器重做、面板启动器、日历事件提醒与锁屏过渡](https://freelamp.com/articles/2026-09-28_noctalia-5-2-0-released/) | Noctalia · Wayland · 桌面壳 · Linux 桌面 · Umbriel · 窗口切换器 · CalDAV · 插件 · 译文 |
 | 2026-09-28 | [16 岁少年用 AI 助手攻破微软内部分析库：170 亿行数据、JWT 不验签，赏金 5000 美元](https://freelamp.com/articles/2026-09-28_microsoft-titan-analytics-jwt-flaw/) | Microsoft · Titan Analytics · JWT · alg-none · 认证绕过 · ClickHouse · 漏洞赏金 · AI 助手 · Antares · 安全 · 译文 |
-| 2026-09-28 | [NetScaler ADC/Gateway 两个 9.5 分在野 0day：Citrix 催补，CISA 当日拉入 KEV](https://freelamp.com/articles/2026-09-28_netscaler-adc-gateway-zero-day-cve-2026-88771/) | NetScaler · Citrix · ADC · Gateway · CVE-2026-88771 · CVE-2026-88772 · 0day · RCE · KEV · CISA · 安全运维 · 应急 · 译文 |
+| 2026-09-28 | [Noctalia 5.2.0 发布：窗口切换器重做、面板启动器、日历事件提醒与锁屏过渡](https://freelamp.com/articles/2026-09-28_noctalia-5-2-0-released/) | Noctalia · Wayland · 桌面壳 · Linux 桌面 · Umbriel · 窗口切换器 · CalDAV · 插件 · 译文 |
 | 2026-09-28 | [在 Linux 上原生跑安卓应用：Waydroid 实操与边界（不是模拟器，是容器化 LineageOS）](https://freelamp.com/articles/2026-09-28_android-native-on-linux-waydroid/) | Waydroid · Android · Linux 桌面 · Wayland · LineageOS · binder · Zen 内核 · 容器化安卓 · 原创 |
 | 2026-09-27 | [Budgie 10.10.3 发布：Budgie Menu 终于支持收藏夹，Labwc 桥接与 oo7 密钥服务跟进](https://freelamp.com/articles/2026-09-27_budgie-10-10-3-released/) | Budgie · 桌面环境 · Linux 桌面 · Wayland · Labwc · oo7 · Secret Service · 译文 |
 | 2026-09-26 | [为 DRBD 9 进主线铺路：LINBIT 发出重构内核 DRBD 8.4 代码的准备补丁](https://freelamp.com/articles/2026-09-26_linux-patches-toward-drbd-9/) | DRBD · LINBIT · 分布式复制块设备 · 内核主线 · 高可用 · 存储 · 译文 |
