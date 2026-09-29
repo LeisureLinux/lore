@@ -160,6 +160,33 @@ def inject_tc_ad(content_html: str) -> str:
     return content_html[:end] + ad + content_html[end:]
 
 
+# ============ 三方交叉引用（网站 → 公众号 + B站）============
+# 方案①（2026-09-29 用户确立）：只写渠道名，纯文本，不放可点击外链。
+# 原因：微信公众号正文不能放可点击外链；B站简介外链权重极低且会拦截/降权。
+# 网站是自己的站，可放真实链接。
+WX_NAME = "LeisureLinux"                       # 公众号名
+BILI_NAME = "LeisureLinux"                     # B站频道名
+BILI_URL = "https://space.bilibili.com/517298151"
+
+CROSS_REF_HTML = (
+    '    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;'
+    'border:1px solid var(--border,#e5e7eb);border-radius:10px;'
+    'background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">\n'
+    '      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>\n'
+    f'      <p style="margin:0;">微信公众号 <strong>{WX_NAME}</strong> ｜ '
+    f'B站视频频道 <a href="{BILI_URL}" target="_blank" rel="noopener">{BILI_NAME}</a> '
+    '（图文深度版与视频版同步更新）</p>\n'
+    '    </aside>\n'
+)
+
+
+def inject_cross_ref(content_html: str) -> str:
+    """在文章正文末尾插入「本文同步发布于」交叉引用块（幂等）。"""
+    if 'class="cross-ref"' in content_html:
+        return content_html
+    return content_html + "\n" + CROSS_REF_HTML
+
+
 # ================= 百度统计 (Baidu Tongji) 配置 =================
 # 1) 打开 https://tongji.baidu.com/ 用百度账号登录，新增一个站点，
 #    站点信息填：网站名称 + URL（https://freelamp.com 或 https://read.freelamp.com）。
@@ -1099,6 +1126,7 @@ def build_article_page(article):
     # 去掉正文开头的重复标题（页面顶部 post-title 已展示标题）
     article_content = re.sub(r'^\s*#\s+[^\n]*\n?', '', article['content'], count=1, flags=re.MULTILINE)
     content_html = inject_tc_ad(markdown_to_html(article_content))
+    content_html = inject_cross_ref(content_html)
     
     # 生成 JSON-LD
     json_ld = build_json_ld(meta, canonical_url, article['content'])
@@ -1502,9 +1530,10 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
       <p>时代变了，工具变了，但「把自己会的、懂的、踩过的坑，认真地讲给别人听」这件事，从来没有变过。</p>
 
       <hr>
-      <h2>五、联系方式</h2>
+      <h2>五、关注与联系方式</h2>
       <ul>
-        <li>同名公众号和B站频道<a href="#">Leisure Linux</a></li>
+        <li>微信公众号：<strong>LeisureLinux</strong>（搜索关注，深度技术图文）</li>
+        <li>B站视频频道：<a href="https://space.bilibili.com/517298151">LeisureLinux</a>（同名视频版）</li>
         <li>GitHub：<a href="https://github.com/LeisureLinux">LeisureLinux</a></li>
         <li>博客：<a href="{site_url}/">https://freelamp.com/</a></li>
         <li>RSS 订阅：<a href="{site_url}/rss.xml">rss.xml</a></li>
