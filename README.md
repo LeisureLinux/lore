@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-09-29 | [Google 确认 ChromeOS 2034 年退场：10 年支持承诺照旧，但较新 Chromebook 可迁移到 Googlebook OS](https://freelamp.com/articles/2026-09-29_chromeos-phase-out-2034-googlebook/) | ChromeOS · Googlebook · Google · Chromebook · Android · Aluminum OS · 操作系统 · 译文 |
 | 2026-09-29 | [Chrome 都两周一个大版本了，信创浏览器还停在 120：内核版本碎片化才是信创的真难题](https://freelamp.com/articles/2026-09-29_xinchuang-browser-kernel-lag/) | 信创 · 国产操作系统 · UOS · 统信 · 浏览器 · Chromium · Ungoogled-Chromium · glibc · 国产替代 · 原创 |
 | 2026-09-29 | [Ubuntu 内核改成每周更新：废掉 4/2 模型、启用重叠双周流水线，CVE 暴涨逼出来的](https://freelamp.com/articles/2026-09-29_ubuntu-weekly-kernel-updates/) | Ubuntu · Linux内核 · SRU · CVE · Canonical · 内核更新 · 发行版 · 译文 |
 | 2026-09-28 | [NetScaler ADC/Gateway 两个 9.5 分在野 0day：Citrix 催补，CISA 当日拉入 KEV](https://freelamp.com/articles/2026-09-28_netscaler-adc-gateway-zero-day-cve-2026-88771/) | NetScaler · Citrix · ADC · Gateway · CVE-2026-88771 · CVE-2026-88772 · 0day · RCE · KEV · CISA · 安全运维 · 应急 · 译文 |
