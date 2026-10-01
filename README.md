@@ -17,6 +17,13 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-01 | [TP-Link 首款 Wi-Fi 8 路由开启全球预售，美国被排除在名单外](https://freelamp.com/articles/2026-10-01_tplink-wifi-8-router-us-ban/) | TP-Link · Wi-Fi 8 · 802.11bn · 路由器 · FCC · 出口管制 · 供应链 · Broadcom · 译文 |
+| 2026-10-01 | [Qt 6.12 LTS 发布：QML 热重载进内核，StyleKit 试点，HarmonyOS 支持](https://freelamp.com/articles/2026-10-01_qt-6-12-lts-released/) | Qt · Qt6 · LTS · QML · 热重载 · StyleKit · HarmonyOS · Canvas Painter · QRhi · 译文 |
+| 2026-10-01 | [Gitea 28.0.0 发布：版本号去掉 1. 前缀，出网访问默认收紧](https://freelamp.com/articles/2026-10-01_gitea-28-0-0-released/) | Gitea · 自托管 · Git · DevOps · 版本发布 · 出网控制 · Actions · 审计日志 · 译文 |
+| 2026-10-01 | [ESP32 的五种 Wi-Fi 配网方式，以及怎么把它们全部自动化测试](https://freelamp.com/articles/2026-10-01_esp32-wifi-commissioning-testing/) | ESP32 · ESP-IDF · Wi-Fi 配网 · 嵌入式 · 自动化测试 · CI · SmartConfig · WPS · BLE · 硬件在环 · 译文 |
+| 2026-10-01 | [它曾是金融权力的象征：彭博终端简史](https://freelamp.com/articles/2026-10-01_bloomberg-terminal-history/) | 彭博终端 · 金融科技 · 科技史 · 人机交互 · 键盘 · 史密森尼 · 市场数据 · 译文 |
+| 2026-10-01 | [Google 一个畸形配置包，让成千上万 iOS 应用集体闪退：Firebase 事故复盘](https://freelamp.com/articles/2026-10-01_firebase-ios-crash-incident/) | Firebase · Google · iOS · SDK · 事故复盘 · 第三方 SDK 依赖 · 移动开发 · 译文 |
+| 2026-10-01 | [Plex 关掉了最后一个免费漏洞：远程串流自己的电影，现在必须付费](https://freelamp.com/articles/2026-10-01_plex-remote-streaming-paywall/) | Plex · 媒体服务器 · 自托管 · Tailscale · Infuse · Jellyfin · 订阅制 · 远程访问 · 译文 |
 | 2026-09-29 | [Google 确认 ChromeOS 2034 年退场：10 年支持承诺照旧，但较新 Chromebook 可迁移到 Googlebook OS](https://freelamp.com/articles/2026-09-29_chromeos-phase-out-2034-googlebook/) | ChromeOS · Googlebook · Google · Chromebook · Android · Aluminum OS · 操作系统 · 译文 |
 | 2026-09-29 | [Chrome 都两周一个大版本了，信创浏览器还停在 120：内核版本碎片化才是信创的真难题](https://freelamp.com/articles/2026-09-29_xinchuang-browser-kernel-lag/) | 信创 · 国产操作系统 · UOS · 统信 · 浏览器 · Chromium · Ungoogled-Chromium · glibc · 国产替代 · 原创 |
 | 2026-09-29 | [Ubuntu 内核改成每周更新：废掉 4/2 模型、启用重叠双周流水线，CVE 暴涨逼出来的](https://freelamp.com/articles/2026-09-29_ubuntu-weekly-kernel-updates/) | Ubuntu · Linux内核 · SRU · CVE · Canonical · 内核更新 · 发行版 · 译文 |
