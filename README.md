@@ -44,7 +44,6 @@
 | 2026-09-23 | [声卡整个消失了：一行 rm 删掉 .tplg，SOF 驱动找不到文件的全过程](https://freelamp.com/articles/2026-09-23_sof-tplg-missing-no-soundcard/) | Linux · 内核 · ALSA · SOF · 声卡 · firmware · dmesg · Debian · 故障排查 · 运维 · 原创 |
 | 2026-09-23 | [rspamd 把 46% 的合法邮件丢进了垃圾箱：一次从配置文件体系开始的排查](https://freelamp.com/articles/2026-09-23_rspamd-false-positive-tuning/) | rspamd · postfix · dovecot · 反垃圾邮件 · 邮件网关 · DKIM · SPF · DMARC · Sieve · Debian · 运维 · 原创 |
 | 2026-09-22 | [DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别](https://freelamp.com/articles/2026-09-22_dms-to-noctalia-niri-shell/) | niri · Wayland · Noctalia · DankMaterialShell · DMS · Quickshell · Debian · Linux桌面 · 桌面壳 |
-| 2026-09-23 | [中国排查国有数据中心里的博通交换机：部分站点占比高达 90%，「国产芯片自用」软引导登场](https://freelamp.com/articles/2026-09-23_china-broadcom-switch-survey/) | 博通 · Broadcom · 交换机 · 数据中心 · 国资委SASAC · 国产替代 · 供应链安全 · AI基建 |
 | 2026-09-23 | [Debian 上线「推理门户」：Scaleway 出资，给 Debian 开发者免费跑 DeepSeek V4 Flash / GLM-5.2](https://freelamp.com/articles/2026-09-23_debian-inference-portal/) | Debian · Inference Portal · Scaleway · DeepSeek V4 Flash · GLM-5.2 · Salsa · 开放权重 · AI 公用事业 · 译文 |
 | 2026-09-23 | [高通在夏威夷谈 Snapdragon X2 的 Linux：早期开发者预览，Debian 13 用户态，HP/华硕承诺 2027 H1 官方支持](https://freelamp.com/articles/2026-09-23_qualcomm-snapdragon-x2-linux/) | 高通 · Qualcomm · Snapdragon X2 · Arm 笔记本 · Linux · Debian 13 · Freedreno · Turnip · s2idle · 译文 |
 | 2026-09-22 | [阿里云砸 300 万美元给 Omarchy：把 Arch 系桌面做成「理想 agentic OS」，默认调通 Qwen](https://freelamp.com/articles/2026-09-22_omarchy-alibaba-3m/) | Omarchy · Arch · 桌面发行版 · agentic OS · 阿里云 · Qwen · 独立科技媒体 |
