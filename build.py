@@ -29,7 +29,7 @@ SITE_AUTHOR = "LeisureLinux"
 # 1) 在 https://union.jd.com/ 登录联盟后台，选商品「获取推广链接」得到 jdc 长链。
 # 2) 每篇文章 front-matter 可用 jd_url: 指定该文的京东推广链接（覆盖全局默认）。
 # 3) 未指定时回退到全局 JD_BUY_URL；两者都留空则该文不显示「京东购买」卡片。
-JD_BUY_URL = "https://u.jd.com/xOZRcdz"
+JD_BUY_URL = "https://u.jd.com/4DxNxMi"
 JD_BUY_TITLE = "五谷磨房中秋礼遇季"
 # 商品图：从京东活动页 banner 裁出的方图，经 static_files 复制到 docs/，
 # 线上地址 https://freelamp.com/jd-wugu-zhongqiu.jpg（92x92 object-fit:cover 展示）
