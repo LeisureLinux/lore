@@ -1,0 +1,314 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">配网是唯一一个「失败一次就可能流失用户」的功能。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— 为什么它必须每次都能成功</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">用户拿到一个联网设备，做的第一件事就是完成 Wi-Fi 配网</span></strong><span leaf="">——所以这件事必须</span><strong style="color:#27272A;"><span leaf="">可靠、每次都能成功，而且不能因为产品其他部分的改动而失效</span></strong><span leaf="">。ESP32 系列支持</span><strong style="color:#27272A;"><span leaf="">五种</span></strong><span leaf="">不同的配网机制：</span><strong style="color:#27272A;"><span leaf="">BLE、Soft AP、Captive Portal、SmartConfig、WPS</span></strong><span leaf="">。这篇梳理每种方式</span><strong style="color:#27272A;"><span leaf="">怎么工作、代价是什么</span></strong><span leaf="">，以及怎么把它们</span><strong style="color:#27272A;"><span leaf="">全部纳入每次提交都跑的 CI 回归测试</span></strong><span leaf="">。</span></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">五种方式与取舍</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">放进硬件在环循环</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">配网测试为什么值得自动化</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">FIVE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">五种配网方式：机制与取舍</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">「配网（commissioning）」的本质问题是：</span><strong style="color:#27272A;"><span leaf="">设备还不知道你家的 Wi-Fi 密码，而你要把密码安全地交给它。</span></strong><span leaf=""> 五种方式是这个问题的五种不同解法。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">1. Bluetooth（BLE）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">手机通过低功耗蓝牙与设备配对，直接把网络名和密码发过去。</span></strong></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">优点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">最可靠、最通用</span></strong><span leaf="">。不需要设备先建热点，不依赖路由器特性；Android/iOS 都支持；配对过程可以加密</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">代价</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">需要 App</span></strong><span leaf="">（用户得先装你的应用）；</span><strong style="color:#27272A;"><span leaf="">需要蓝牙权限</span></strong><span leaf="">（都要用户授权，多一道心理门槛）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">适用</span></strong><span leaf="">：有配套 App 的消费级产品——这是目前</span><strong style="color:#27272A;"><span leaf="">最主流的方案</span></strong></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2. Soft AP（软热点）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">设备自己开一个临时 Wi-Fi 网络，手机连上去，再把真实凭据发给它</span></strong><span leaf="">，之后设备切换到真正的网络。</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">优点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">不需要蓝牙</span></strong><span leaf="">，也不需要 App 必须先连上云端；浏览器即可完成</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">代价</span></strong><span leaf="">：用户需要</span><strong style="color:#27272A;"><span leaf="">手动切换手机的 Wi-Fi</span></strong><span leaf="">（从家用网络切到设备热点，再切回来），</span><strong style="color:#27272A;"><span leaf="">体验上有多步操作</span></strong><span leaf="">；且设备热点通常</span><strong style="color:#27272A;"><span leaf="">无密码或弱密码</span></strong><span leaf="">，配网窗口期内</span><strong style="color:#27272A;"><span leaf="">存在被围观的风险</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">适用</span></strong><span leaf="">：没有 App、只有网页的产品</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3. Wi-Fi Captive Portal（强制门户）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">同样是 Soft AP，但手机会被直接重定向到一个网页</span></strong><span leaf="">，在那里输入凭据——</span><strong style="color:#27272A;"><span leaf="">和酒店、机场的 Wi-Fi 登录页一个机制</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">不需要 App。</span></strong></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">优点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">零安装</span></strong><span leaf="">，用户体验接近「连上 Wi-Fi 就看到表单」；跨平台都自动弹出</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">代价</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">依赖各系统的 Captive Portal 探测行为</span></strong><span leaf="">，不同手机厂商的实现细节有差异；表单页需要设备侧嵌入一个小型 HTTP 服务</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">适用</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">成本敏感或不想维护 App 的产品</span></strong><span leaf="">，也是最常见的「无 App」方案</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4. SmartConfig（乐鑫自有方案）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这是乐鑫（Espressif）自己的技术</span></strong><span leaf="">，在 ESP32 上以 </span><strong style="color:#27272A;"><span leaf="">ESPTouch v2</span></strong><span leaf=""> 形式实现，</span><strong style="color:#27272A;"><span leaf="">内置于 ESP-IDF SDK</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">工作原理很有意思</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">手机保持连接在家庭网络上，把凭据编码成一串数据包广播出去</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">尚未接入任何网络的设备，通过监听模式（promiscuous mode）抓包并还原凭据。</span></strong></p>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">优点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">手机不需要切网络，也不需要蓝牙</span></strong><span leaf="">，用户操作最少（输密码 → 发送）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">代价</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">依赖广播，可靠性受环境影响</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">2.4GHz 拥挤时表现不稳</span></strong><span leaf="">；凭据以广播形式传播，</span><strong style="color:#27272A;"><span leaf="">安全性依赖加密方案</span></strong><span leaf="">；对 iPhone 的支持历史上限制较多</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">适用</span></strong><span leaf="">：对</span><strong style="color:#27272A;"><span leaf="">操作步骤极简</span></strong><span leaf="">有强需求、且能接受成功率波动的场景</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">5. WPS（Wi-Fi Protected Setup）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Wi-Fi 联盟的行业标准。按路由器上的 WPS 按钮，设备就能自己去和路由器协商凭据。</span></strong></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">优点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">用户不需要输入密码</span></strong><span leaf="">，也不需要在手机上操作</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">代价</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">需要路由器支持且用户能物理够到按钮</span></strong><span leaf="">；WPS 的 PIN 模式</span><strong style="color:#27272A;"><span leaf="">历史上有严重安全争议</span></strong><span leaf="">；很多现代路由器</span><strong style="color:#27272A;"><span leaf="">默认关闭或被厂商移除</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">适用</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">作为补充路径</span></strong><span leaf="">，很少作为唯一方案</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">为什么产品要支持不止一种？</span></strong><span leaf=""> 因为</span><strong style="color:#27272A;"><span leaf="">用户环境和偏好差异巨大</span></strong><span leaf="">：有人有 App，有人只有浏览器；路由器有的支持 WPS 有的不支持。</span><strong style="color:#27272A;"><span leaf="">多一种方式就多一批能顺利完成配网的用户</span></strong><span leaf="">——但每多一种，</span><strong style="color:#27272A;"><span leaf="">测试矩阵就多一维</span></strong><span leaf="">。这就是为什么「配网测试自动化」值得投入。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">HIL</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">把它们放进硬件在环（HIL）循环</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">原文的做法是用测试系统把硬件接入循环，思路值得了解。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">接线极简</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">把 </span><strong style="color:#27272A;"><span leaf="">ESP32-C6 开发板</span></strong><span leaf="">通过 USB 连到测试机架</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">把一部 </span><strong style="color:#27272A;"><span leaf="">Android 手机</span></strong><span leaf="">通过 USB 连到</span><strong style="color:#27272A;"><span leaf="">同一台机架</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">就这两步</span></strong><span leaf="">——之后手机与开发板就都在测试系统掌控之下了。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">固件与 App 都由 AI 生成</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">原文说明他们</span><strong style="color:#27272A;"><span leaf="">请 Claude 写了一个演示 App</span></strong><span leaf="">（每个机制一个按钮，能「在正确的时刻发送正确的字节」），也请 Claude 写了实现五种机制的固件。</span><strong style="color:#27272A;"><span leaf="">关键在流程而不在工具</span></strong><span leaf="">：他们认为</span><strong style="color:#27272A;"><span leaf="">因为模型能访问机架及其硬件，这步工作是独立完成的</span></strong><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">给出计划、目标和停止条件</span></strong><span leaf="">，让 AI 知道要达成什么、什么时候停。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">用户流程在 flow builder 里逐步写出来</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">「用户流程本身很简单：**打开 App，输入 Wi-Fi 密码，ESP32 接入网络。** 具体细节因方式而异，所以**五种方式各自有一条路径**，在 flow builder 里**逐步**写清楚。」</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这些流程</span><strong style="color:#27272A;"><span leaf="">既能在协调器里交互式运行，也能作为 CI 回归测试运行</span></strong><span leaf="">：</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">「我们**每次变更都跑回归测试**：无论系统里改了什么，**这一部分都必须保持稳固**。」</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">固件侧一个值得学的细节</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">原文给出的 WPS 固件片段里，</span><strong style="color:#27272A;"><span leaf="">启动时先检查 NVS 里是否已有凭据</span></strong><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">刚被全片擦除的板子没有，但已经完成过一次 WPS 并重启过的板子有</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">读取发生在 </span><strong style="color:#27272A;"><span leaf="">`esp_wifi_start()` 之前</span></strong><span leaf="">（顺序写错就读不到）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">有凭据</span></strong><span leaf=""> → 直接 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">esp_wifi_connect()</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">没凭据</span></strong><span leaf=""> → 才进入 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">start_wps()</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">这是嵌入式配网里一个</span><strong style="color:#27272A;"><span leaf="">必须处理的现实问题</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">设备重启后不应该要求用户重新配网</span></strong><span leaf="">。判断依据就是</span><strong style="color:#27272A;"><span leaf="">存储里的凭据是否存在</span></strong><span leaf="">。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">WHY</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">配网测试为什么值得自动化</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">1. 配网是「首次体验」，失败成本极高</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">一个用户</span><strong style="color:#27272A;"><span leaf="">开箱后连不上 Wi-Fi</span></strong><span leaf="">，大概率会认为是</span><strong style="color:#27272A;"><span leaf="">产品坏了</span></strong><span leaf="">，而不是「我操作错了」——很多会直接退货。</span><strong style="color:#27272A;"><span leaf="">这就是原文开头那句话的分量：它必须可靠，而且不能因为产品其他部分改动而失效。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2. 测试矩阵是「乘法」而不是「加法」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">五种机制 × 多个手机平台 × 多种路由器/WPS 支持情况 × 各种网络环境——</span><strong style="color:#27272A;"><span leaf="">组合起来是个不小的矩阵</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">手工测全几乎不可能，这正是硬件在环 + CI 的价值</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">每次提交都跑一遍</span></strong><span leaf="">，让回归立刻暴露。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3. AI 帮嵌入式开发的前提是「硬件可访问」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">原文特别提到，</span><strong style="color:#27272A;"><span leaf="">Claude Code 能独立完成这部分工作，是因为它能访问机架和硬件</span></strong><span leaf="">。可迁移的经验是：</span><strong style="color:#27272A;"><span leaf="">让 AI 有效地帮助嵌入式开发，前提是把硬件放进它的可及范围</span></strong><span leaf="">——能烧录、能读串口、能观察设备状态。</span><strong style="color:#27272A;"><span leaf="">没有硬件回路的 AI 助手，在嵌入式场景里只能写「看起来对」的代码。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4. 配网不是「连上就完了」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">真实产品必须处理：</span><strong style="color:#27272A;"><span leaf="">凭据持久化</span></strong><span leaf="">（重启后自动重连）、</span><strong style="color:#27272A;"><span leaf="">凭据失效</span></strong><span leaf="">（用户改密码了怎么办）、</span><strong style="color:#27272A;"><span leaf="">配网入口</span></strong><span leaf="">（怎么「重新配网」——通常需要长按按键触发）、</span><strong style="color:#27272A;"><span leaf="">失败重试的退避</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">这些才是把配网从 demo 做成产品之间的差距。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">五种方式</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">BLE / Soft AP / Captive Portal / SmartConfig / WPS</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">最主流</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">BLE（有 App 的产品）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">无 App 首选</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Captive Portal（酒店机场同款机制）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">乐鑫自有</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">SmartConfig（ESPTouch v2，监听模式抓包）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">Wi-Fi 联盟</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">WPS（按路由器按钮，PIN 模式有安全争议）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">测试硬件</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">ESP32-C6 开发板 + Android 手机（均接 USB）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">关键设计</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">启动时先读 NVS 凭据，有则不重新配网</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">测试策略</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">五种机制各自一条 flow，每次提交跑 CI 回归</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">配网是产品的门面，也是唯一一个「失败一次就可能流失用户」的功能。支持多种配网方式能覆盖更多用户环境，但代价是测试矩阵成倍膨胀——这正是硬件在环 + CI 回归的意义：让配网和 OTA 一样，成为每次改动都自动验证的基本盘。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Linux 把本地 mp3 推到 HomePod：从 atvremote 到 mpv 到 PipeWire 升级的完整排障</span><br>
+        <span leaf="">· Cross-Compiling toybox: x86_64 static musl → ARM64 toolchain 完整实战</span><br>
+        <span leaf="">· systemd 262 发布：AI/LLM 未审代码金丝雀，LUO 集成</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
