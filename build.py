@@ -1027,14 +1027,14 @@ def render_article_items(articles):
         article_url = f"{SITE_URL}/articles/{slug}/"
         tags_html = ''.join([f'<a href="/tags/{quote(str(tag))}/">{tag}</a>' for tag in tags])
         article_html = f"""      <li class="article-item">
-        <a href="articles/{slug}/">
+        <a href="/articles/{slug}/">
           <div class="article-date">{date}</div>
           <div class="article-title">{title}</div>
           <div class="article-summary">{summary}</div>
         </a>
         <div class="article-tags">{tags_html}</div>
         <div class="article-meta">
-          <a class="comment-link" href="articles/{slug}/#comments" data-path="articles/{slug}/">💬 参与讨论</a>
+          <a class="comment-link" href="/articles/{slug}/#comments" data-path="articles/{slug}/">💬 参与讨论</a>
         </div>
       </li>"""
         articles_html.append(article_html)
