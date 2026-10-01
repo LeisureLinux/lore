@@ -934,6 +934,21 @@ def load_article(article_dir):
         return None
     
     content = article_md.read_text(encoding='utf-8')
+
+    # 剥离正文顶部的 YAML front matter。
+    # 权威元数据一律以 metadata.yaml 为准；部分历史文章在 article.md 顶部
+    # 冗余重复了一份 front matter，若不剥离会被当成正文渲染到页面上
+    # （形如 <p>--- title: ... published: true ---</p>）。
+    # 仅在开头确实是「--- 包裹、且内容能解析为 YAML 映射」时才剥离，
+    # 避免误伤以水平线开头的正文。
+    _fm = re.match(r'^\s*---[ \t]*\n(.*?)\n---[ \t]*$', content, re.S | re.MULTILINE)
+    if _fm:
+        try:
+            _fm_data = yaml.safe_load(_fm.group(1))
+        except Exception:
+            _fm_data = None
+        if isinstance(_fm_data, dict):
+            content = content[_fm.end():].lstrip('\n')
     
     metadata = {}
     if metadata_yaml.exists():

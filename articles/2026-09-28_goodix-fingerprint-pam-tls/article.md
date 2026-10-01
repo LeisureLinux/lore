@@ -9,6 +9,8 @@ description: "从一次失败的 Goodix 27c6:501d 指纹适配出发，系统拆
 published: true
 ---
 
+> **本文结论已被推翻（2026-10-01 更新）。** 文中「501d 的 PSK 是 OEM 黑盒、Linux 侧读不到、无解」的判断是**错的**。正确结论：501d 属 **GM168SEC** 家族，其 PSK 是 per-device 的 DPAPI sealed blob，可以借一台全新 Win11 虚机重新 provision 并解出明文；本机最终**协议层全部打通、录入成功**，卡点在更靠后的**匹配算法**（13 mm² 面积下开源匹配器分不开真假手指）。完整复盘见：[从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘](https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/)。下文仍有价值的部分是对 Linux 指纹栈（PAM / fprintd / libfprint / TLS-PSK）的分层拆解，请只把它当作**当时的排查过程记录**来读，PSK 与结论章节以新文为准。
+
 > 主题：系统安全 · 信任链 · 设备驱动。本文为**原创复盘**，素材来自一次真实的 Debian 13 / niri / SDDM 环境下的指纹适配尝试。我们最终没能点亮这块传感器，但过程中把 Linux 指纹栈的每一层都拆开看了一遍——这比「成功了」更有教学价值。
 
 ## 一句话结论

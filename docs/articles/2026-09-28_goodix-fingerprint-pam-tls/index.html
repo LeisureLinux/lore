@@ -47,7 +47,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "指纹登录背后的信任链：PAM、fprintd 与 Goodix TLS-PSK 加解密，以及一次失败的 27c6:501d 适配复盘",
-  "description": "--- title: \"指纹登录背后的信任链：PAM、fprintd 与 Goodix TLS-PSK 加解密，以及一次失败的 27c6:501d 适配复盘\" date: 2026-09-28 slug: fingerprint-pam-tls-goodix-501d-postmortem tags: 指纹登录, PAM, fprintd, libfprint, Goodix, TLS-PSK, ",
+  "description": "本文结论已被推翻（2026-10-01 更新）。 文中「501d 的 PSK 是 OEM 黑盒、Linux 侧读不到、无解」的判断是错的。正确结论：501d 属 GM168SEC 家族，其 PSK 是 per-device 的 DPAPI sealed blob，可以借一台全新 Win11 虚机重新 provision 并解出明文；本机最终协议层全部打通、录入成功，卡点在更靠后的匹配算法（13 m",
   "datePublished": "2026-09-28",
   "dateModified": "2026-09-28",
   "author": {
@@ -284,17 +284,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<p>---
-title: "指纹登录背后的信任链：PAM、fprintd 与 Goodix TLS-PSK 加解密，以及一次失败的 27c6:501d 适配复盘"
-date: 2026-09-28
-slug: fingerprint-pam-tls-goodix-501d-postmortem
-tags: [指纹登录, PAM, fprintd, libfprint, Goodix, TLS-PSK, 27c6:501d, Debian, 信任链, 复盘, 原创]
-category: 安全
-author: FreeLAMP.com
-description: "从一次失败的 Goodix 27c6:501d 指纹适配出发，系统拆解 Linux 指纹登录的完整信任链：PAM 如何挂接、fprintd 如何解耦、libfprint 如何认设备，以及最关键的——Goodix 这类「TLS 指纹传感器」如何用预共享密钥（PSK）在主机与 MCU 之间建立加密通道。复盘为何设备能被识别、PSK 哈希能比对通过，却最终卡在 OEM 烧录的真实 PSK 明文上。"
-published: true
----</p>
-<blockquote>主题：系统安全 · 信任链 · 设备驱动。本文为<strong>原创复盘</strong>，素材来自一次真实的 Debian 13 / niri / SDDM 环境下的指纹适配尝试。我们最终没能点亮这块传感器，但过程中把 Linux 指纹栈的每一层都拆开看了一遍——这比「成功了」更有教学价值。</blockquote>
+<blockquote><strong>本文结论已被推翻（2026-10-01 更新）。</strong> 文中「501d 的 PSK 是 OEM 黑盒、Linux 侧读不到、无解」的判断是<strong>错的</strong>。正确结论：501d 属 <strong>GM168SEC</strong> 家族，其 PSK 是 per-device 的 DPAPI sealed blob，可以借一台全新 Win11 虚机重新 provision 并解出明文；本机最终<strong>协议层全部打通、录入成功</strong>，卡点在更靠后的<strong>匹配算法</strong>（13 mm² 面积下开源匹配器分不开真假手指）。完整复盘见：<a href="https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/">从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘</a>。下文仍有价值的部分是对 Linux 指纹栈（PAM / fprintd / libfprint / TLS-PSK）的分层拆解，请只把它当作<strong>当时的排查过程记录</strong>来读，PSK 与结论章节以新文为准。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
       <span class="tc-ad-label">推广</span>
@@ -303,6 +293,7 @@ published: true
       </a>
     </div>
 
+<blockquote>主题：系统安全 · 信任链 · 设备驱动。本文为<strong>原创复盘</strong>，素材来自一次真实的 Debian 13 / niri / SDDM 环境下的指纹适配尝试。我们最终没能点亮这块传感器，但过程中把 Linux 指纹栈的每一层都拆开看了一遍——这比「成功了」更有教学价值。</blockquote>
 <h2>一句话结论</h2>
 <p>在 Linux 上点亮一个指纹传感器，<strong>远不止「装好驱动」</strong>。它是一条跨用户态、守护进程、驱动库与硬件安全核的信任链：<strong>PAM 决定「谁可以免密」、fprintd 管「怎么和传感器说话」、libfprint 管「驱动与协议」</strong>，而像 Goodix 这种现代传感器，主机和指纹 MCU 之间还跑着一条 <strong>TLS-PSK 加密通道</strong>——密钥是 OEM 在出厂时烧进设备里的，<strong>Linux 侧既读不到、也改不了</strong>。我们这次卡死的地方，恰恰就是这条链最底层的硬件黑盒。</p>
 <h2>指纹登录到底是什么：四层信任链</h2>
