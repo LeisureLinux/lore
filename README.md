@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-01 | [Vite+ 1.0 发布：一个 vp 命令接管运行时、包管理器和前端工具链](https://freelamp.com/articles/2026-10-01_vite-plus-1-0-released/) | Vite · Vite+ · VoidZero · Rolldown · Oxc · Vitest · 前端工具链 · Rust · 译文 |
 | 2026-10-01 | [TP-Link 首款 Wi-Fi 8 路由开启全球预售，美国被排除在名单外](https://freelamp.com/articles/2026-10-01_tplink-wifi-8-router-us-ban/) | TP-Link · Wi-Fi 8 · 802.11bn · 路由器 · FCC · 出口管制 · 供应链 · Broadcom · 译文 |
 | 2026-10-01 | [Qt 6.12 LTS 发布：QML 热重载进内核，StyleKit 试点，HarmonyOS 支持](https://freelamp.com/articles/2026-10-01_qt-6-12-lts-released/) | Qt · Qt6 · LTS · QML · 热重载 · StyleKit · HarmonyOS · Canvas Painter · QRhi · 译文 |
 | 2026-10-01 | [Gitea 28.0.0 发布：版本号去掉 1. 前缀，出网访问默认收紧](https://freelamp.com/articles/2026-10-01_gitea-28-0-0-released/) | Gitea · 自托管 · Git · DevOps · 版本发布 · 出网控制 · Actions · 审计日志 · 译文 |
