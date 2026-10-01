@@ -1,0 +1,405 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">协议层全部打通，最后卡在匹配算法——绕过它的三条路分别在「分数重叠」「缺 WBDI 宿主」「安全策略拒绝」上撞墙。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— 原创复盘：一台 H3C 笔记本上三天的 Goodix 指纹适配</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">一颗 80×64（约 </span><strong style="color:#27272A;"><span leaf="">13 mm²</span></strong><span leaf="">）的 Goodix GM168SEC 指纹传感器，能在 Linux 上完成协议层的一切——TLS-PSK 建立、手指检测、图像采集、模板录入全通。</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">唯一不通的是最后一步：匹配算法。</span></span><span leaf="">而这一步没法自己补。Windows 能用，是因为 Goodix 有一个闭源的私有匹配引擎，</span><strong style="color:#27272A;"><span leaf="">架构上不能脱离 Windows 的 WBDI 框架独立运行</span></strong><span leaf="">。所以这不是「参数没调对」，是一个明确的、有原因的放弃。</span></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">用错驱动家族</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">PSK 藏在哪里</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">FDT 阈值</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">为什么分不开</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">FAMILY</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第一步就走错了：驱动家族误判</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">Goodix 的 VID 是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">27c6</span><span leaf="">，但同一个 VID 下有</span><strong style="color:#27272A;"><span leaf="">多个完全不同</span></strong><span leaf="">的 PSK 家族——这是后面所有踩坑的根源。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">一开始，我们用社区 fork </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">djnz00/libfprint</span><span leaf=""> 里的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">goodixtls52xd</span><span leaf=""> 驱动，把 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0x501d</span><span leaf=""> 加进 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">id_table</span><span leaf="">，设备立刻被认出来。看起来一切正常，直到 PSK 比对失败：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Unsupported device PSK hash</span><span leaf="">，紧接着 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">TLS server rejected device handshake</span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">我们做了一件当时觉得很聪明、其实是死路的事：</span><strong style="color:#27272A;"><span leaf="">从 libfprint 调试日志里抠出设备真实的 PSK 哈希，替换掉驱动里硬编码的那个</span></strong><span leaf="">，让 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">memcmp</span><span leaf=""> 通过。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">哈希能比对通过，不等于能握手。52xd 家族的 PSK 是硬编码的白盒常量（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">goodix_52xd_psk_10034</span><span leaf="">），全家族共用；而 501d 硬件里烧的是每台设备独有的密钥。哈希填对了，TLS 服务端回调拿出的密钥和硬件里的不相等，握手必然失败。</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">判据其实很简单：</span><strong style="color:#27272A;"><span leaf="">看设备上报的固件串</span></strong><span leaf="">。</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">GFUSB_GM168SEC_APP_10034</span><span leaf=""> 属于 GM168SEC 家族，不是 52xd，也不是 G4。教训是——Goodix 支持高度碎片化，</span><strong style="color:#27272A;"><span leaf="">别按 PID 相邻猜家族</span></strong><span leaf="">。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">PSK</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">PSK 到底藏在哪里：虚机重新 provision</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">改用正确家族（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mrcook1e-ai/goodix-gm168</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ejsergeev/libfprint-goodix-gm168sec</span><span leaf="">）之后，我们才看清这个家族的设计：GM168SEC 的 PSK 不是固件里的常量，而是 </span><strong style="color:#27272A;"><span leaf="">Windows 驱动第一次联机时随机生成、用该 Windows 的 DPAPI 密封、写进 MCU NVRAM</span></strong><span leaf=""> 的。</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cmd 0xE4 / tag 0xbb010002</span><span leaf=""> 读回 </span><strong style="color:#27272A;"><span leaf="">324 字节 sealed blob</span></strong><span leaf="">，前 20 字节是标准 DPAPI 魔数 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">01000000 d08c9ddf 0115d111 8c7a00c0 4fc297eb</span><span leaf="">；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tag 0xbb020001</span><span leaf=""> 读回 </span><strong style="color:#27272A;"><span leaf="">SHA-256(psk) 完整性哈希</span></strong><span leaf="">——它只是校验值，不是密钥本体。之前费劲抠出来的那个哈希，就是这个东西。</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">解封这份 blob 需要</span><strong style="color:#27272A;"><span leaf="">当初 provision 它的那台 Windows 的 DPAPI 主密钥</span></strong><span leaf="">。而这台机器出厂是 Win11，已经被我们重装成 Debian——原 C 盘格式化，主密钥</span><strong style="color:#27272A;"><span leaf="">永久丢失</span></strong><span leaf="">。顺手核实恢复分区：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Winre.wim</span><span leaf=""> 里</span><strong style="color:#27272A;"><span leaf="">没有 `Microsoft/Protect` 目录</span></strong><span leaf="">，此路不通。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">解法：让新虚机重新生成一份</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">直通</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">win11-ltsc</span><span leaf=""> 虚机用 SPICE usbredir 把 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">27c6:501d</span><span leaf=""> 挂进客机，设备管理器出现「生物识别设备」；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">装官方驱动</span></strong><span leaf="">：H3C </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Goodix_FP_A00_v3.11710.0.110.zip</span><span leaf="">（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WbdiUsb.inf</span><span leaf=""> 精确含 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">USB\Vid_27C6&amp;Pid_501D</span><span leaf="">）。</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">PSK 在驱动联机那一刻就 provision 了，不需要真的去录指纹</span></span><span leaf="">；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">取回设备</span></strong><span leaf="">：virt-viewer 里取消 USB 重定向，设备回到宿主；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">读 blob</span></strong><span leaf="">：宿主 root 跑 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">img-capture</span><span leaf="">，读出 324 字节新 sealed blob，新旧 sha256 不同（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1984c735…</span><span leaf=""> vs </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">162e7612…</span><span leaf="">），覆盖成功；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">解封</span></strong><span leaf="">：blob 传回虚机，用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">gm168_unseal.ps1</span><span leaf="">（SYSTEM 账户调 DPAPI）解出 </span><strong style="color:#27272A;"><span leaf="">32 字节明文 PSK</span></strong><span leaf="">。</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">再跑 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">img-capture</span><span leaf="">，日志给出四条铁证：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pre-shared key loaded</span><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">TLS handshake complete, cipher PSK-AES128-CBC-SHA256</span><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">INIT_NUM_STATES completed successfully</span><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">AWAIT_FINGER_ON</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">协议层全线打通。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">FDT</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">卡了三周的常量：FDT 阈值</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">设备就位、TLS 通了之后，一个更折磨人的问题出现：</span><strong style="color:#27272A;"><span leaf="">怎么按手指都没反应</span></strong><span leaf="">。</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">fprintd-enroll</span><span leaf=""> 卡在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">PRESS_NUM_STATES</span><span leaf="">，零触摸事件，每 5 秒刷一次 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">no touch event for a while, re-arming</span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">根因藏在没人会想到的地方：驱动里的 </span><strong style="color:#27272A;"><span leaf="">FDT 阈值常量是从 589a 型号（固件 10008）逆向来的，和 501d（固件 10034）对不上</span></strong><span leaf="">。</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">589a：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1c 01 a4 00 a6 00 a4 00 a5 00</span><span leaf="">（35B）→ 阈值 164/166/164/165</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">501d：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">9c 01 25 01 1f 01 27 01 21 01</span><span leaf="">（40B）→ 阈值 293/287/295/289</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">Windows 的检测帧是 </span><strong style="color:#27272A;"><span leaf="">40 字节</span></strong><span leaf="">，Linux 驱动发的是 </span><strong style="color:#27272A;"><span leaf="">35 字节</span></strong><span leaf="">；Windows 还会多发两条 Linux 完全不会发的命令（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0x36</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0x80</span><span leaf="">）。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">抓真值的办法：在宿主上用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">usbmon</span><span leaf=""> 抓 Windows 虚机经 SPICE usbredir 的</span><strong style="color:#27272A;"><span leaf="">真实流量</span></strong><span leaf="">（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tcpdump -i usbmon3 -w pcap</span><span leaf="">，链路类型 220）。走的是虚拟 USB，明文帧全能抓到。把 501d 的真实 FDT 帧替换进驱动重新编译——</span><strong style="color:#27272A;"><span leaf="">触摸立刻被检测到</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">顺带踩的坑：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0x32/0x34</span><span leaf=""> 帧里只有前 10 字节是固定阈值，后面 8 组 u16 是自适应增益（每次触摸都不同）；而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">set_param(0x90)</span><span leaf=""> 反而应该用原来的 589a 值，照搬 Windows 抓到的 5 套官方参数会让校准帧几何变错。</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">同一个抓包结果，有的能照搬，有的不能。</span></span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MATCH</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">录入成功，但匹配器分不开手指</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">FDT 修好之后，路突然就顺了。集成树走完全部流程：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">enrollment validated: 14 presses, cluster 13, LOO pass 11</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">录入成功了。</span></strong><span leaf=""> 离可用只差验证。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">然后问题出现了。部署到工作点 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">TVERIFY=1000</span><span leaf="">，实测结果：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">右食指 #1：SIGFM 分数 </span><strong style="color:#27272A;"><span leaf="">554</span></strong><span leaf=""> → 拒（真手指被拒）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">右食指 #2：1845 → 通过</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">左手中指 #1：</span><strong style="color:#27272A;"><span leaf="">1091</span></strong><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">通过（陌生手指！）</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">左手中指 #2：</span><strong style="color:#27272A;"><span leaf="">1067</span></strong><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">通过（陌生手指！）</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">真手指的分数范围 [554, 1845] 和陌生手指的 [1067, 1091] </span><strong style="color:#27272A;"><span leaf="">重叠</span></strong><span leaf="">。这不是阈值调不对——</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">是分数本身分不开</span></span><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">换用 libfprint 默认的 NBIS/Bozorth3：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mindtct</span><span leaf=""> 实测 </span><strong style="color:#27272A;"><span leaf="">0.38 个细节点/帧</span></strong><span leaf="">。Bozorth3 至少需要 2 个匹配的细节点才产生分数。</span><strong style="color:#27272A;"><span leaf="">结构性不可用。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">根本原因是面积。13 mm² 太小了，指纹细节点的物理密度就在 0.2–0.5 个/mm² 这个量级，一帧理论上只有几个点，还经常采不到。空白传感器因为噪声反而「检」出更多假细节点——这本身就说明问题。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">WINE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Wine 方案：逆向私有引擎，撞在 WBDI 上</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">既然开源匹配器不行，那就只能用 Windows 那个。我们从 H3C 驱动包里挖出 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">GoodixEngineAdapter.dll</span><span leaf="">（1,176,792 字节，PE32+ x86-64，</span><strong style="color:#27272A;"><span leaf="">29 个未混淆的 C 导出函数</span></strong><span leaf="">）。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">它的 vtable 是标准 WBDI </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WINBIO_ENGINE_INTERFACE</span><span leaf="">，23 个函数指针。好消息：这个 DLL </span><strong style="color:#27272A;"><span leaf="">不导入任何 SGX 运行时</span></strong><span leaf="">，依赖只有 KERNEL32/ADVAPI32/OLE32/OLEAUT32/WINMM/WS2_32/dbghelp/UCRT，对 Wine 友好。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">用 mingw 编测试程序，Wine 10.0 下实测：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LoadLibraryA</span><span leaf=""> 成功、29 个导出全部解析、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WbioQueryEngineInterface(&amp;iface)</span><span leaf=""> 返回 S_OK；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">EngineAdapterAttach</span><span leaf=""> 入口也能过——但有个诡异前提：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">EngineParam + 0x08</span><span leaf=""> 必须是 </span><strong style="color:#27272A;"><span leaf="">64 位</span></strong><span leaf=""> 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-1</span><span leaf="">，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">+0x38</span><span leaf=""> 为 NULL。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">然后，撞墙。</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CreateContext</span><span leaf=""> 里 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">_LogicAlgCreateContext(p, 1)</span><span leaf=""> 的 </span><strong style="color:#27272A;"><span leaf="">memcpy size 硬编码成 1 字节</span></strong><span leaf="">，只拷一个字节。更根本的是：</span><strong style="color:#27272A;"><span leaf="">引擎初始化需要 7 个设备接口虚函数的回调</span></strong><span leaf="">。</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">idx 11 唤醒/初始化设备　idx 12 发命令　idx 15 读数据</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">idx 16 写设备　</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">idx 17 读传感器属性（`_GetSensorAttribute` 发 `cmd 0x442004`）</span></span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">idx 19 状态查询　idx 20 控制单元</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">在 Windows 上，这层接口由 </span><strong style="color:#27272A;"><span leaf="">WBDI 框架 + `Wbdi.dll` 驱动</span></strong><span leaf="">注入，而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Wbdi.dll</span><span leaf=""> 本身是 UMDF 驱动，靠 IOCTL 工作，Wine 里根本没有 WDF 宿主。引擎自己会写日志，实测初始化失败时写的是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[engineadapter.cpp][EngineAdapterAttach :0552] invalid device state</span><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">量化代价：mingw 编一个 x64 PE 只要 0.7 秒，但 </span><strong style="color:#27272A;"><span leaf="">Wine 每次启动约 7.4 秒</span></strong><span leaf="">（prefix 773MB）。这意味着即使跑通，也只能是「Wine + 常驻 helper 进程」的部署形态。这还没算要逆向出 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0x442004</span><span leaf=""> 对应我们 Linux 协议里的哪条命令——那是一条从零开始的映射工程。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">WINBIO</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">虚机方案：Windows Hello 完美，WinBio 被拒</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">既然 Wine 缺宿主，那就在</span><strong style="color:#27272A;"><span leaf="">真 Windows 里面调</span></strong><span leaf="">。虚机里实测 Windows Hello：录入正常、识别正常、陌生手指被正确拒绝。</span><strong style="color:#27272A;"><span leaf="">功能层面完全可用。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">于是转向微软官方 API。</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WbioSrvc</span><span leaf=""> 启动成 Running 之后：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WinBioEnumBiometricUnits</span><span leaf=""> 用 </span><strong style="color:#27272A;"><span leaf="">Factor=8</span></strong><span leaf="">（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WINBIO_TYPE_FINGERPRINT</span><span leaf="">）返回 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">hr=0, count=1</span><span leaf="">（注意只有 8 是对的，1/2/4 都返回 0）；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WinBioOpenSession</span><span leaf=""> 返回 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">handle=1</span><span leaf="">，会话能开。引擎位于 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">C:\Windows\System32\WinBioPlugIns\GoodixEngineAdapter.dll</span><span leaf="">，被 WBF 框架主动加载，</span><strong style="color:#27272A;"><span leaf="">它拿得到完整的 WBDI 环境</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">架构看起来很清晰：Linux PAM/niri 端 → IPC → 虚机内 WinBio 程序 → WBF 栈 → Goodix 引擎 → 设备。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">但真正调用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WinBioIdentify</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">WinBioCaptureSample</span><span leaf=""> 时，返回 </span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">`ACCESS_DENIED`</span></span><span leaf="">。Win11 的生物识别安全策略</span><strong style="color:#27272A;"><span leaf="">只允许锁屏/登录流程触发采集</span></strong><span leaf="">，第三方进程即使拿到会话句柄也没资格。这是设计上的隔离，不是配置问题。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">从宿主导控虚机也不轻松：没装 qemu-guest-agent 时 ping 不通、445/5985/5986/22 全关，只有 RDP 3389 开放。后来在 libvirt XML 里补了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">org.qemu.guest_agent.0</span><span leaf=""> channel，才能用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">virsh qemu-agent-command</span><span leaf=""> 跑 PowerShell。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">BOUNDARY</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">边界在哪：为什么绕不过去</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">把三天的工作按层拆开，能成的都成了：协议层、PSK 提取、传感器校准、手指检测、图像采集、模板录入、Windows Hello、引擎逆向——</span><strong style="color:#27272A;"><span leaf="">全通</span></strong><span leaf="">。SIGFM 匹配、NBIS 匹配、Wine 调引擎、虚机调 WinBio——</span><strong style="color:#27272A;"><span leaf="">全断</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">回头看，两条「绕过匹配算法」的路，失败的原因是同一个：</span><span style="border-bottom:2px solid #52525B;font-weight:600;color:#27272A;"><span leaf="">Goodix 的匹配引擎不是一个能独立跑的库，它是一个必须活在 Windows 生物识别框架里的组件</span></span><span leaf="">。</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Wine 能装载它的代码，但给不了它赖以工作的 WBDI 宿主；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Windows 虚机能给它完整宿主，但 Win11 不允许框架外的程序触发采集。</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">而自己写匹配器这条路，被 </span><strong style="color:#27272A;"><span leaf="">13 mm² 的物理面积</span></strong><span leaf="">封死了。开源算法在这个分辨率下没有可用的信噪比，这不是调参能救的。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">几个可以复用的坑</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">先认家族再动手</span></strong><span leaf="">：判据是设备上报的固件串，不是 PID 邻近。用错家族的驱动会「认得设备但握手被拒」——症状很迷惑；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">哈希可比对 ≠ 能握手</span></strong><span leaf="">：完整性哈希和密钥本体是两回事，别被 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">memcmp</span><span leaf=""> 通过骗了；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">`fprintd.service` 有 `ProtectHome=true`</span></strong><span leaf="">：库必须是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/usr/lib</span><span leaf=""> 下的实体文件，不能 symlink 到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/home</span><span leaf="">；PSK bootstrap 要走独立 root 程序，别走 fprintd 服务；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">Debian trixie 的 udev 改名</span></strong><span leaf="">：pkg-config 模块名 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">udev</span><span leaf="">→</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">libudev</span><span leaf="">，且没有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">udevdir</span><span leaf=""> 变量，构建时要显式传 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">-Dudev_rules_dir=… -Dudev_hwdb_dir=…</span><span leaf="">；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">抓虚拟 USB 的明文帧最省事</span></strong><span leaf="">：SPICE usbredir 走 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">usbmon</span><span leaf="">，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tcpdump</span><span leaf=""> 就能拿到 Windows 驱动的真实协议，比静态逆向快得多；</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">下「无解」结论前先全网搜</span></strong><span leaf="">：这次差点就认定没救了，实际上有好几个现成项目。要区分「上游没做」和「我没找到」。</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">08</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">设备</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Goodix `27c6:501d` = GM168SEC，固件 `GFUSB_GM168SEC_APP_10034`</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">面积</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">80×64 px @ 500 dpi ≈ 13 mm²（这是最终卡点的物理根因）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">协议层</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">TLS-PSK 会话 / 校准 / 手指检测 / 图像采集 —— 全部打通</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">PSK</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">per-device，Windows 驱动 DPAPI 密封写 MCU（324B sealed blob）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">PSK 解法</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Win11 虚机 SPICE 直通重新 provision + `gm168_unseal.ps1` 解出 32B</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">录入</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">成功：14 次按压、cluster 13、LOO pass 11</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">匹配</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">SIGFM 真假分数重叠；NBIS 仅 0.38 细节点/帧</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">Wine</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">引擎 29 导出全解，但缺 WBDI 宿主（7 个设备虚函数）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">虚机</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Windows Hello 可用，WinBio 采集被 `ACCESS_DENIED` 拒绝</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">结论</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">协议全通、算法不可用；已停用 fprintd，Linux 用密码</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">一块 Goodix 传感器要在 Linux 上可用，需要三件事同时成立：libfprint 有认得它的驱动、PSK 能拿到、匹配算法能在 Linux 侧跑出可分的分数。第三条是真正的门槛，而且它跟努力无关——取决于传感器面积、Goodix 是否开源引擎、Windows 是否允许框架外调用。这三样都不是在 Linux 上能改的。所以最终我们停了：不是因为「再调调也许就行」，而是因为每一层都试到了边界，边界之外是厂商的闭源资产和操作系统的安全策略。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· 指纹登录背后的信任链：PAM、fprintd 与 Goodix TLS-PSK 加解密</span><br>
+        <span leaf="">· 在 Linux 上原生跑安卓应用：Waydroid 实操与边界</span><br>
+        <span leaf="">· DMS 换 Noctalia：niri 桌面壳迁移实录，以及两者的真实差别</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘 — FreeLAMP.com</title>
+  <meta name="description" content="Goodix 27c6:501d 指纹在 Debian 13 / niri 下的完整适配复盘。技术路线全记录：①驱动家族误判——52xd 是硬编码白盒 PSK，501d 属 GM168SEC 家族（per-device sealed PSK），哈希可比对但 TLS 握手必失败；②PSK 提取——MCU cmd 0xE4">
+  <meta name="keywords" content="指纹, Goodix, libfprint, 逆向工程, Wine, 虚拟化, Windows, DPAPI, TLS-PSK, WBDI, 原创">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-01">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘">
+  <meta property="og:description" content="Goodix 27c6:501d 指纹在 Debian 13 / niri 下的完整适配复盘。技术路线全记录：①驱动家族误判——52xd 是硬编码白盒 PSK，501d 属 GM168SEC 家族（per-device sealed PSK），哈希可比对但 TLS 握手必失败；②PSK 提取——MCU cmd 0xE4">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-01">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="指纹">
+  <meta property="article:tag" content="指纹">
+  <meta property="article:tag" content="Goodix">
+  <meta property="article:tag" content="libfprint">
+  <meta property="article:tag" content="逆向工程">
+  <meta property="article:tag" content="Wine">
+  <meta property="article:tag" content="虚拟化">
+  <meta property="article:tag" content="Windows">
+  <meta property="article:tag" content="DPAPI">
+  <meta property="article:tag" content="TLS-PSK">
+  <meta property="article:tag" content="WBDI">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘">
+  <meta name="twitter:description" content="Goodix 27c6:501d 指纹在 Debian 13 / niri 下的完整适配复盘。技术路线全记录：①驱动家族误判——52xd 是硬编码白盒 PSK，501d 属 GM168SEC 家族（per-device sealed PSK），哈希可比对但 TLS 握手必失败；②PSK 提取——MCU cmd 0xE4">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘",
+  "description": "一台 H3C 笔记本上的 Goodix 27c6:501d 指纹传感器，三天里我们把协议层完全打通：从驱动家族误判、PSK 哈希与密钥本体的区分，到用 Win11 虚机 SPICE 直通重新 provision、DPAPI 解封拿到 32 字节明文 PSK；从 usbmon 抓 Windows 真实流量修好 FDT 阈值常量，到录入成功。最后卡在匹配算法——SIGFM 分数无法区分真假手指（真 554~1845 / 陌生 1067~1091 重叠），NBIS 只有 0.38 细节点/帧。绕过它的两条路：Wine 里逆向 GoodixEngineAdapter.dll（29 导出 + 23 vtable 全解，但缺 WBDI 宿主，7 个设备接口虚函数无处实现），虚机里调 WinBio API（Windows Hello 完美工作，但 WinBioCaptureSample 被 Win11 安全策略 ACCESS_DENIED）。80×64 @ 500dpi 只有 13mm²，任何 host 侧匹配器都不可靠。这是一个有原因的、明确的放弃。",
+  "datePublished": "2026-10-01",
+  "dateModified": "2026-10-01",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "指纹, Goodix, libfprint, 逆向工程, Wine, 虚拟化, Windows, DPAPI, TLS-PSK, WBDI, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘",
+        "item": "https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-01">2026-10-01</div>
+        <h1 class="post-title" itemprop="headline">从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E6%8C%87%E7%BA%B9/">指纹</a><a itemprop="keywords" href="/tags/Goodix/">Goodix</a><a itemprop="keywords" href="/tags/libfprint/">libfprint</a><a itemprop="keywords" href="/tags/%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B/">逆向工程</a><a itemprop="keywords" href="/tags/Wine/">Wine</a><a itemprop="keywords" href="/tags/%E8%99%9A%E6%8B%9F%E5%8C%96/">虚拟化</a><a itemprop="keywords" href="/tags/Windows/">Windows</a><a itemprop="keywords" href="/tags/DPAPI/">DPAPI</a><a itemprop="keywords" href="/tags/TLS-PSK/">TLS-PSK</a><a itemprop="keywords" href="/tags/WBDI/">WBDI</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>主题：设备驱动逆向 · 虚拟化 · 系统安全。本文是<strong>原创复盘</strong>，素材来自一台 H3C H3CBook Ultra 14T（i002）在 Debian 13 / niri / Wayland 下为期三天的 Goodix 指纹适配。最终结论是放弃，但过程中我们把 PSK 提取、Windows 协议抓包、私有引擎逆向、Wine 兼容层、Win11 虚机直通这些路都走了一遍。写下来，给将来拿到同款传感器的人省几天时间。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>一颗 80×64（约 13 mm²）的 Goodix GM168SEC 指纹传感器，能在 Linux 上把协议层的每个环节都走通，从 TLS-PSK 建立到图像采集和模板录入。<strong>唯一不通的是最后一步：匹配算法。</strong></p>
+<p>而这一步没法自己补。Windows 能用，是因为 Goodix 有一个闭源的私有匹配引擎，专门针对小面积传感器调过；这个引擎<strong>架构上不能脱离 Windows 的 WBDI（Windows Biometric Driver Interface）框架独立运行</strong>。两条绕开它的路，Wine 里跑引擎和虚机里调 WinBio API，分别在「缺宿主」和「安全策略拒绝」两处撞墙。</p>
+<p>这是一个<strong>明确的、有原因的放弃</strong>，原因不在参数。</p>
+<h2>先从硬件说起</h2>
+<p>拿到这块传感器，第一件事是搞清它到底是谁。Goodix 的 VID 是 <code>27c6</code>，但同一个 VID 下有多个<strong>完全不同</strong>的 PSK 家族，这是后面所有踩坑的根源。</p>
+<table>
+<tr><th>项</th><th>值</th></tr>
+<tr><td>USB ID</td><td><code>27c6:501d</code></td></tr>
+<tr><td>型号</td><td>Goodix GM168SEC，固件 <code>GFUSB_GM168SEC_APP_10034</code></td></tr>
+<tr><td>成像面积</td><td>80×64 px @ 500 dpi ≈ 4.06 × 3.25 mm ≈ <strong>13 mm²</strong></td></tr>
+<tr><td>原始帧</td><td>10564 B（TLS 载荷）→ 80×64 12-bit packed</td></tr>
+<tr><td>预处理后</td><td>64×80 8-bit 灰度</td></tr>
+</table>
+<p>传感器集成在<strong>电源键</strong>上（系统里已设 <code>HandlePowerKey=ignore</code>，短按不关机；轻触传感面即可，不需要机械按压）。</p>
+<h2>第一步：用错了驱动家族</h2>
+<p>一开始，我们用社区 fork <code>djnz00/libfprint</code> 里的 <code>goodixtls52xd</code> 驱动。它的 <code>id_table</code> 只列了 <code>0x521d</code>，我们把自己的 <code>0x501d</code> 加进去，设备立刻被认出来了，打印 <code>Goodix TLS Fingerprint Sensor 52XD</code>。</p>
+<p>看起来一切正常，直到 PSK 比对失败：<code>Unsupported device PSK hash</code>，紧接着 TLS 握手被拒：<code>TLS server rejected device handshake</code>。</p>
+<p>在这里我们做了一件当时觉得很聪明、其实是死路的事：<strong>从 libfprint 的调试日志里把本机真实的 PSK 哈希抠出来，替换掉驱动里硬编码的那个</strong>，让 <code>memcmp</code> 通过。</p>
+<p><strong>哈希能比对通过，不等于能握手。</strong> 52xd 家族的 PSK 是一个<strong>硬编码的白盒常量</strong>（<code>goodix_52xd_psk_10034</code>），全家族共用；而 501d 硬件里烧的是一份<strong>每台设备独有的密钥</strong>。我们把哈希填对了，但 TLS 服务端回调拿出的密钥和硬件里的不相等，握手必然失败。</p>
+<p>判据其实很简单：<strong>看设备上报的固件串</strong>。<code>GFUSB_GM168SEC_APP_10034</code> 属于 GM168SEC 家族，不是 52xd，也不是 G4。教训是，Goodix 支持高度碎片化，<strong>别按 PID 相邻猜家族</strong>。</p>
+<h2>第二步：PSK 到底藏在哪里</h2>
+<p>改用正确家族（<code>mrcook1e-ai/goodix-gm168</code> / <code>ejsergeev/libfprint-goodix-gm168sec</code>）之后，我们终于看清了这个家族的设计。</p>
+<p>GM168SEC 的 PSK 由 <strong>Windows 驱动第一次联机时随机生成、用该 Windows 的 DPAPI 密封、写进 MCU NVRAM</strong>，固件里没有这个常量：</p>
+<ul>
+<li><code>cmd 0xE4 / tag 0xbb010002</code> 读回的是一份 <strong>324 字节 sealed blob</strong>，前 20 字节是标准 DPAPI 魔数 <code>01000000 d08c9ddf 0115d111 8c7a00c0 4fc297eb</code>；</li>
+<li><code>tag 0xbb020001</code> 读回的是 <strong>SHA-256(psk) 完整性哈希</strong>，它只是校验值，不是密钥本体。之前我们费劲抠出来的那个哈希，就是这个东西。</li>
+</ul>
+问题来了：解封这份 blob 需要<strong>当初 provision 它的那台 Windows 的 DPAPI 主密钥</strong>。而这台机器出厂是 Win11，已经被我们重装成 Debian，原 C 盘（现在的 <code>nvme0n1p3</code>，挂成 <code>/nfsroot</code>）也格式化了，主密钥<strong>永久丢失</strong>。
+<p>顺手核实了一下恢复分区：<code>nvme0n1p4</code>（WINRE_DRV）里的 <code>Winre.wim</code> 是通用 Windows RE 镜像，把 7z 拆开看，<strong>没有 <code>Microsoft/Protect</code> 目录</strong>，也没有 Goodix 驱动或用户数据。此路不通。</p>
+<h2>第三步：虚机直通，重新 provision</h2>
+<p>既然原始 DPAPI 密钥没了，那就<strong>重新 provision 一份新的</strong>。</p>
+<p>思路是：把指纹 USB 设备直通进一台全新的 Windows 虚机，装 H3C 官方驱动，让<strong>虚机自己的 DPAPI</strong> 去生成并密封一份新 PSK 盖掉 MCU 里的旧值。</p>
+<p>具体步骤（<code>RUNBOOK-planC.md</code> 里记了全过程）：</p>
+<ol>
+<li>1. <code>win11-ltsc</code> 虚机（UEFI q35 + TPM + qemu-xhci）用 <strong>SPICE usbredir</strong> 把 <code>27c6:501d</code> 挂进客机（virt-viewer 菜单 File → USB device selection）。设备管理器出现"生物识别设备"。</li>
+<li>2. 装 H3C 官方驱动 <code>Goodix_FP_A00_v3.11710.0.110.zip</code>（<code>WbdiUsb.inf</code> 里精确含 <code>USB\Vid_27C6&Pid_501D</code>）。<strong>PSK 在驱动联机那一刻就 provision 了，不需要真的去录指纹</strong>，录指纹只是采集模板。到这一步直接取消即可。</li>
+<li>3. 在 virt-viewer 里取消 USB 重定向，设备回到宿主（<code>/sys</code> 里接口 driver 从 <code>usbfs</code> 变回 <code>usb</code>）。</li>
+<li>4. 宿主上 root 跑构建树的 <code>img-capture</code>，读出 324 字节新 sealed blob。新旧 sha256 不同（<code>1984c735...</code> vs <code>162e7612...</code>），说明<strong>覆盖成功</strong>。</li>
+<li>5. blob 传回虚机，用 <code>gm168_unseal.ps1</code>（mrcook1e 提供，以 SYSTEM 账户调 DPAPI 解封），得到 <strong>32 字节明文 PSK</strong>。</li>
+</ol>
+拿到 PSK 那一刻的心情，大概等于三天里唯一一次"成了"。落盘到 <code>/etc/goodix-gm168/psk.bin</code>（root 0600），三处备份。再跑 <code>img-capture</code>，日志给出四条铁证：
+<pre><code class="">pre-shared key loaded from /var/lib/fprint/gm168/psk.bin
+TLS handshake complete, cipher PSK-AES128-CBC-SHA256
+INIT_NUM_STATES completed successfully
+AWAIT_FINGER_ON
+</code></pre>
+<p>到这一步，<strong>协议层全线打通</strong>。</p>
+<h2>第四步：FDT 阈值，卡了三周的常量</h2>
+<p>但设备就位、TLS 通了之后，一个更折磨人的问题出现了：<strong>怎么按手指都没反应</strong>。</p>
+<p><code>fprintd-enroll</code> 卡在 <code>PRESS_NUM_STATES</code>，零触摸事件。INIT 全过，校准帧也正常（<code>stats16 calibration-background nonzero 3274/5120</code>），但就是检测不到手指，每 5 秒刷一次 <code>no touch event for a while, re-arming</code>。</p>
+<p>根因藏在一个没人会想到的地方：驱动里的 <strong>FDT（Finger Detection Threshold）常量是从 589a 型号（固件 10008）逆向来的，和 501d（固件 10034）对不上</strong>。</p>
+<pre><code class="">589a:  1c 01  a4 00  a6 00  a4 00  a5 00   (35B) → 阈值 164/166/164/165
+501d:  9c 01  25 01  1f 01  27 01  21 01   (40B) → 阈值 293/287/295/289
+</code></pre>
+<p>Windows 的检测帧是 <strong>40 字节</strong>，Linux 驱动发的是 <strong>35 字节</strong>；Windows 还会多发两条 Linux 完全不会发的命令（<code>0x36</code>、<code>0x80</code>）。</p>
+<p>抓真值的办法：在宿主上用 <code>usbmon</code> 抓 Windows 虚机经 SPICE usbredir 的<strong>真实流量</strong>（<code>tcpdump -i usbmon3 -w pcap</code>，链路类型 220）。因为走的是虚拟 USB，明文帧全能抓到。把 501d 的真实 FDT 帧和采图触发参数替换进驱动，重新编译，<strong>触摸立刻被检测到</strong>：<code>finger_detected=1</code>。</p>
+<p>顺带踩的坑：<code>0x32/0x34</code> 帧里只有前 10 字节是固定阈值，后面 8 组 u16 是自适应增益（每次触摸都不同）；而 <code>set_param(0x90)</code> 反而应该用原来的 589a 值，照搬 Windows 抓到的 5 套官方参数，会让校准帧几何变错。<strong>同一个抓包结果，有的能照搬，有的不能</strong>，得逐个验证。</p>
+<h2>第五步：录入成功，但匹配器分不开手指</h2>
+<p>FDT 修好之后，路突然就顺了。<code>ejsergeev/libfprint-goodix-gm168sec</code> 集成树（patch 0001 capture + 0002 sigfm + 0003~0008 修复）走完全部流程：</p>
+<pre><code class="">enrollment validated: 14 presses, cluster 13, LOO pass 11
+  (min 99, median 15842, max 25425) at T=1000
+</code></pre>
+<p><strong>录入成功了。</strong> 14 次按压、聚类 13、留一法（LOO）验证 11 次通过。离可用只差验证。</p>
+<p>然后，问题出现了。部署到工作点 <code>TVERIFY=1000</code>（来自 <code>extras/fprintd-tuning.conf</code>），实测结果：</p>
+<table>
+<tr><th>按压</th><th>SIGFM 分数</th><th>结果</th></tr>
+<tr><td>右食指 #1</td><td><strong>554</strong></td><td>拒（真手指被拒）</td></tr>
+<tr><td>右食指 #2</td><td>1845</td><td>通过</td></tr>
+<tr><td>左手中指 #1</td><td><strong>1091</strong></td><td><strong>通过（陌生手指！）</strong></td></tr>
+<tr><td>左手中指 #2</td><td><strong>1067</strong></td><td><strong>通过（陌生手指！）</strong></td></tr>
+</table>
+<p>真手指的分数范围 [554, 1845] 和陌生手指的 [1067, 1091] <strong>重叠</strong>。阈值怎么调都没用，分数本身就分不开。</p>
+<p>换用 libfprint 默认的 NBIS/Bozorth3 算法：<code>mindtct</code> 实测 <strong>0.38 个细节点/帧</strong>。Bozorth3 至少需要 2 个匹配的细节点才产生分数。<strong>结构性不可用。</strong></p>
+<p>根本原因是面积。13 mm² 太小了，指纹细节点的物理密度就在 0.2–0.5 个/mm² 这个量级，一帧理论上只有几个点，还经常采不到。空白传感器因为噪声反而"检"出更多假细节点，这本身就说明问题。</p>
+<h2>第六步：Wine 方案，逆向私有引擎</h2>
+<p>既然开源匹配器不行，那就只能用 Windows 那个。</p>
+<p>我们从 H3C 驱动包里挖出 <code>GoodixEngineAdapter.dll</code>（1,176,792 字节，PE32+ x86-64，29 个未混淆的 C 导出函数）。这是一台完整的 Windows 生物识别引擎：</p>
+<pre><code class="">enrolStartEx / enrolAddImage / enrolFinish / enrolGetTemplate
+identifyImage / identifytemplate / identifyUpdate
+preprocessor / preprocessor_init / preprocess_load_calidata / preprocess_save_calidata
+getQuality / getAlgorithmVersion / gx_sensorCheck
+LivenssDetection / GetLivenssVersion
+WbioQueryEngineInterface / ppp_param_init / templatePack / templateUnPack
+</code></pre>
+<p>它的 vtable 是标准的 WBDI <code>WINBIO_ENGINE_INTERFACE</code>，23 个函数指针，从 <code>WbioQueryEngineInterface</code> 返回的结构体 +0x20 处开始。好消息是：这个 DLL <strong>不导入任何 SGX 运行时</strong>，依赖只有 KERNEL32/ADVAPI32/OLE32/OLEAUT32/WINMM/WS2_32/dbghelp/UCRT，对 Wine 友好。</p>
+<p>用 <code>x86_64-w64-mingw32-gcc</code> 编测试程序，在 Wine 10.0 下实测：</p>
+<ul>
+<li><code>LoadLibraryA</code> 成功，29 个导出全部解析；</li>
+<li><code>WbioQueryEngineInterface(&iface)</code> 返回 S_OK；</li>
+<li><code>EngineAdapterAttach</code> 入口能过，但有个诡异前提：<code>EngineParam + 0x08</code> 必须是 <strong>64 位</strong> 的 <code>-1</code>（写成 32 位 <code>-1</code> 会失败），且 <code>+0x38</code> 为 NULL。满足则返回 S_OK 并回写 context。</li>
+</ul>
+然后，撞墙。
+<p><code>Attach</code> 之后是 <code>CreateContext</code>（<code>gxlogicalgorithm.c</code>），它 malloc 一个 0x4d70 的全局单例，从 <code>EngineParam</code> 拷贝传感器信息，然后调 <code>_LogicAlgCreateContext(p, 1)</code>。<strong>注意那个 <code>1</code>：memcpy 的 size 硬编码成 1 字节</strong>，只拷一个字节。后面 <code>ppp_param_init(<em>(uint8</em>)(dst+4))</code> 读到的是 malloc 垃圾。</p>
+<p>就算解决了这个，更根本的问题也躲不掉：<strong>引擎初始化需要 7 个设备接口虚函数的回调</strong>。</p>
+<pre><code class="">vtable idx 11 (+0x58)  唤醒/初始化设备
+vtable idx 12 (+0x60)  发命令
+vtable idx 15 (+0x78)  读数据
+vtable idx 16 (+0x80)  写设备
+vtable idx 17 (+0x88)  读传感器属性 (_GetSensorAttribute 发 0x442004)
+vtable idx 19 (+0x98)  状态查询
+vtable idx 20 (+0xa0)  控制单元
+</code></pre>
+<p>在 Windows 上，这层接口由 <strong>WBDI 框架 + <code>Wbdi.dll</code> 驱动</strong>注入，而 <code>Wbdi.dll</code> 本身是 UMDF 驱动，靠 IOCTL 工作，Wine 里根本没有 WDF 宿主。引擎自己会写日志到 <code>C:\ProgramData\Goodix\engineadapter-new.log</code>，实测初始化失败时写的是：</p>
+<pre><code class="">[error][engineadapter.cpp][EngineAdapterAttach :0552] >> invalid device state
+[error][additional.c][_GetSensorAttribute :0219] >> -->failed
+[fatal] unhandled exception
+</code></pre>
+<p><code>_GetSensorAttribute</code> 会向设备 MCU 发命令 <code>0x442004</code> 读传感器属性。没有宿主转发，就报 <code>invalid device state</code>。</p>
+<p>量化一下代价：<code>x86_64-w64-mingw32-gcc</code> 编一个 x64 PE 只要 0.7 秒，但 <strong>Wine 每次启动约 7.4 秒</strong>（prefix 773MB）。这意味着即使跑通，也只能是"Wine + 常驻 helper 进程，驱动经 Unix socket 调用"的部署形态，绝不能每次扫描起一个新 Wine。这还没算要逆向出 <code>0x442004</code> 对应我们 Linux 协议里的哪条命令（<code>0xd6 READ_REG</code>？<code>0xe4 SPEC_DATA</code>？），那是一条从零开始的映射工程。</p>
+<p><strong>Wine 方案到此为止：能装载，不能初始化。</strong></p>
+<h2>第七步：虚机方案，Windows Hello 完美而 WinBio 被拒</h2>
+<p>既然 Wine 缺宿主，那就在<strong>真 Windows 里面调</strong>。</p>
+<p>在虚机里实测 Windows Hello：录入正常、识别正常、陌生手指被正确拒绝。<strong>功能层面完全可用。</strong></p>
+<p>于是转向微软官方 API。<code>WbioSrvc</code> 服务默认是 Stopped，启动成 Running 之后：</p>
+<ul>
+<li><code>WinBioEnumBiometricUnits</code> 用 <strong>Factor=8</strong>（<code>WINBIO_TYPE_FINGERPRINT</code>）返回 <code>hr=0, count=1</code>，注意只有 8 是对的，1/2/4 都返回 0；</li>
+<li><code>WinBioOpenSession</code> 返回 <code>hr=0x00000000, handle=1</code>，会话能开；</li>
+<li>引擎位于 <code>C:\Windows\System32\WinBioPlugIns\GoodixEngineAdapter.dll</code>，被 WBF 框架主动加载，<strong>它拿得到完整的 WBDI 环境</strong>；</li>
+<li>数据库 <code>C:\Windows\System32\WinBioDatabase\*.DAT</code> 里已经有模板。</li>
+</ul>
+到这里架构看起来很清晰：<code>Linux (PAM/niri) → IPC → 虚机内 WinBio 程序 → WBF 栈(含 WBDI) → Goodix 引擎 → 设备</code>。
+<p>但真正调用 <code>WinBioIdentify</code> / <code>WinBioCaptureSample</code> 时，返回 <strong><code>ACCESS_DENIED</code></strong>。</p>
+<p>Win11 的生物识别安全策略<strong>只允许锁屏/登录流程触发采集</strong>，第三方进程即使拿到会话句柄也没资格。这是设计上的隔离，不是配置问题，它恰恰是为了防止"一个后台程序偷偷拿你的指纹做别的事"。</p>
+<p>从宿主导控虚机也不轻松：<code>win11-ltsc</code> 没装 qemu-guest-agent，ping 不通（Windows 防火墙拦 ICMP），445/5985/5986/22 全关，只有 RDP 3389 开放。后来在 libvirt XML 里补了 <code>org.qemu.guest_agent.0</code> channel，才能用 <code>virsh qemu-agent-command</code> 跑 PowerShell（还得绕过执行策略，用 <code>-ExecutionPolicy Bypass</code> 或 <code>-EncodedCommand</code>）。</p>
+<p><strong>虚机方案到此为止：功能完备，但 API 层被安全策略封死。</strong></p>
+<h2>那我们到底做成了什么</h2>
+<p>把三天的工作按层拆开，能成的都成了：</p>
+<table>
+<tr><th>层</th><th>目标</th><th>结果</th></tr>
+<tr><td>USB 协议</td><td>读 sealed blob / TLS-PSK 会话</td><td>通</td></tr>
+<tr><td>PSK 提取</td><td>虚机重新 provision + DPAPI 解封</td><td>通</td></tr>
+<tr><td>传感器校准</td><td>5 帧暗帧 → 暗参考</td><td>通</td></tr>
+<tr><td>手指检测</td><td>FDT 0x32/0x34 + IRQ_ARM</td><td>通（修完阈值）</td></tr>
+<tr><td>图像采集</td><td>0x20 TRIG → 80×64 12-bit</td><td>通</td></tr>
+<tr><td>模板录入</td><td>14 次按压、LOO pass 11</td><td>通</td></tr>
+<tr><td>Windows Hello（虚机内）</td><td>录入/识别/拒绝</td><td>通</td></tr>
+<tr><td>引擎逆向</td><td>29 导出 + 23 vtable + 结构体</td><td>通</td></tr>
+<tr><td><strong>SIGFM 匹配</strong></td><td>分数可分</td><td>分不开</td></tr>
+<tr><td><strong>NBIS 匹配</strong></td><td>细节点够用</td><td>0.38/帧</td></tr>
+<tr><td><strong>Wine 调引擎</strong></td><td>引擎初始化</td><td>缺 WBDI 宿主</td></tr>
+<tr><td><strong>虚机调 WinBio</strong></td><td>第三方触发采集</td><td>ACCESS_DENIED</td></tr>
+</table>
+<p><strong>协议全通，算法不通。</strong> 这就是最终的边界。</p>
+<h2>为什么这个边界绕不过去</h2>
+<p>回头看，两条"绕过匹配算法"的路，失败的原因是同一个：<strong>Goodix 的匹配引擎不是一个能独立跑的库，它是一个必须活在 Windows 生物识别框架里的组件。</strong></p>
+<ul>
+<li>Wine 能装载它的代码，但给不了它赖以工作的 WBDI 宿主；</li>
+<li>Windows 虚机能给它完整宿主，但 Win11 不允许框架外的程序触发采集。</li>
+</ul>
+这个引擎和 Windows 是<strong>耦合</strong>的，架构上就搬不走。这是架构问题，努力程度解决不了。
+<p>而自己写匹配器这条路，被 <strong>13 mm² 的物理面积</strong>封死了。开源算法在这个分辨率下没有可用的信噪比，这不是调参能救的。</p>
+<h2>如果我们非要"用上"这块传感器</h2>
+<p>只有一个办法，而且它不叫"Linux 支持指纹":<strong>把设备直通给常开的 Win11 虚机，用 Windows Hello 解锁那个虚机。</strong></p>
+<p>实用性很低：为了指纹要一直开着一台虚机，而且它只能解锁虚机自己，不是你的 Linux 会话。我们最终停在这里。</p>
+<p>当前状态：</p>
+<ul>
+<li>Linux 指纹登录：停用（<code>systemctl mask fprintd</code>）；</li>
+<li>Linux 解锁：纯密码，完全可用；</li>
+<li>设备：重定向给 <code>win11-ltsc</code> 虚机（virt-viewer SPICE usbredir）；</li>
+<li>保留：虚机磁盘<strong>不能删</strong>，它承载着解封当前 PSK 的 DPAPI 环境。</li>
+</ul>
+<h2>留下来的东西</h2>
+<p>虽然结果是放弃，但资产是实的。将来有人拿到同款传感器，这些东西能省他几天：</p>
+<table>
+<tr><th>产物</th><th>说明</th></tr>
+<tr><td><code>~/fp-goodix/gm168/src/</code></td><td>libfprint 集成树，0001~0008 完整 patch 链</td></tr>
+<tr><td><code>win-protocol/{GOLD.md, REFERENCE.md}</code></td><td>501d 真实协议金标准（从 Windows usbmon 抓包）</td></tr>
+<tr><td><code>RUNBOOK-planC.md</code></td><td>Win11 虚机 PSK 提取流程</td></tr>
+<tr><td><code>FINAL-TECHNICAL-REVIEW.md</code></td><td>309 行完整技术复盘</td></tr>
+<tr><td><code>win-vm-share/</code></td><td>H3C 驱动包 + PSK + sealed blob + 解封脚本</td></tr>
+<tr><td><code>/etc/goodix-gm168/psk.bin</code></td><td>32 字节 PSK（三处备份）</td></tr>
+</table>
+<h2>几个可以复用的坑</h2>
+<p>写下来是因为它们跟指纹无关，下次做别的驱动适配一样会撞：</p>
+<ul>
+<li><strong>先认家族再动手。</strong> 同一个 VID 下可能有完全不同的协议家族。判据是设备上报的固件串，不是 PID 邻近。用错家族的驱动会"认得设备但握手被拒"，症状很迷惑。</li>
+<li><strong>哈希可比对 ≠ 能握手。</strong> 完整性哈希和密钥本体是两回事，别被 <code>memcmp</code> 通过骗了。</li>
+<li><strong><code>fprintd.service</code> 有 <code>ProtectSystem=strict</code> + <code>ProtectHome=true</code>。</strong> 库必须是 <code>/usr/lib</code> 下的真实文件，不能 symlink 到 <code>/home</code>（<code>ProtectHome</code> 会让 fprintd 读不到，直接 <code>cannot open shared object file</code>）。驱动要写 sealed blob 到 StateDirectory 时也会因为 <code>/etc</code> 只读而失败，PSK bootstrap 要用独立的 root 程序做，别走 fprintd 服务。</li>
+<li><strong>Debian trixie 的 udev 改名。</strong> pkg-config 模块名从 <code>udev</code> 变成 <code>libudev</code>，且 <code>libudev.pc</code> 没有 <code>udevdir</code> 变量。构建时要显式传 <code>-Dudev_rules_dir=/usr/lib/udev/rules.d -Dudev_hwdb_dir=/usr/lib/udev/hwdb.d</code>。</li>
+<li><strong><code>apt-mark hold</code> 会锁死替换。</strong> <code>libfprint-2-2</code> 被 hold 时装自编译 .deb 会报 Conflicts，先 unhold 装完再 hold 回去。</li>
+<li><strong>抓虚拟 USB 的明文帧是最省事的逆向手段。</strong> SPICE usbredir 走 <code>usbmon</code>，<code>tcpdump -i usbmon3</code> 就能拿到 Windows 驱动的真实协议，比静态逆向快得多。</li>
+<li><strong><code>sudo bash</code> 下 <code>~</code> 会展开成 <code>/root</code>。</strong> 脚本里的路径要写死绝对路径。</li>
+<li><strong>下"无解"结论前先全网搜。</strong> 这次一开始差点就认定没救了，实际上有 <code>mrcook1e-ai/goodix-gm168</code>、<code>ejsergeev/libfprint-goodix-gm168sec</code>、<code>jaydee101/goodix-5117-linux</code> 好几个项目。要区分"上游没做"和"我没找到"。</li>
+</ul>
+<h2>最后</h2>
+<p>这次"失败"其实给了一个挺清楚的判断框架。一块 Goodix 传感器要在 Linux 上可用，需要三件事同时成立：</p>
+<ol>
+<li>1. libfprint 有认得它的驱动（加 PID 通常能解决）；</li>
+<li>2. 它的 PSK 方案能拿到（虚机重新 provision 是可行的）；</li>
+<li>3. <strong>它的匹配算法能在 Linux 侧跑出可分的分数。</strong></li>
+</ol>
+第 3 条是真正的门槛，而且它跟你的努力无关，取决于传感器面积、Goodix 是否开源引擎，以及 Windows 是否允许框架外调用。这三样都不是在 Linux 上能改的。
+<p>所以最终我们停了。停下来的理由很明确：<strong>每一层都试到了边界，边界之外是厂商的闭源资产和操作系统的安全策略</strong>。</p>
+<p>好的一面是，现在任何人问起这台机器的指纹，你能给出一个完整的、有证据的答案，而不是"Linux 就是不支持指纹"。这两者差别很大。</p>
+<p>设备还在，PSK 还在，虚机还在。哪天 Goodix 开源了引擎，或者有人逆出了 <code>0x442004</code> 的映射，这些记录就直接能用。</p>
+<p>---</p>
+<p><em>基于 2026-09-28 至 09-30 三天调试的完整日志、抓包与数据整理。</em>
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/",
+      title: "\u4ece PSK \u63d0\u53d6\u5230\u79c1\u6709\u5f15\u64ce\u9006\u5411\uff1a\u4e00\u6b21 Goodix 27c6:501d \u6307\u7eb9 Linux \u9002\u914d\u7684\u5b8c\u6574\u5931\u8d25\u590d\u76d8"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

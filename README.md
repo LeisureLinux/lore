@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-01 | [从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘](https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/) | Goodix · 指纹 · libfprint · 逆向工程 · Wine · 虚拟化 · TLS-PSK · DPAPI · WBDI · 驱动适配 · 原创 |
 | 2026-10-01 | [Vite+ 1.0 发布：一个 vp 命令接管运行时、包管理器和前端工具链](https://freelamp.com/articles/2026-10-01_vite-plus-1-0-released/) | Vite · Vite+ · VoidZero · Rolldown · Oxc · Vitest · 前端工具链 · Rust · 译文 |
 | 2026-10-01 | [TP-Link 首款 Wi-Fi 8 路由开启全球预售，美国被排除在名单外](https://freelamp.com/articles/2026-10-01_tplink-wifi-8-router-us-ban/) | TP-Link · Wi-Fi 8 · 802.11bn · 路由器 · FCC · 出口管制 · 供应链 · Broadcom · 译文 |
 | 2026-10-01 | [Qt 6.12 LTS 发布：QML 热重载进内核，StyleKit 试点，HarmonyOS 支持](https://freelamp.com/articles/2026-10-01_qt-6-12-lts-released/) | Qt · Qt6 · LTS · QML · 热重载 · StyleKit · HarmonyOS · Canvas Painter · QRhi · 译文 |
