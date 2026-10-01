@@ -30,10 +30,10 @@ SITE_AUTHOR = "LeisureLinux"
 # 2) 每篇文章 front-matter 可用 jd_url: 指定该文的京东推广链接（覆盖全局默认）。
 # 3) 未指定时回退到全局 JD_BUY_URL；两者都留空则该文不显示「京东购买」卡片。
 JD_BUY_URL = "https://u.jd.com/4DxNxMi"
-JD_BUY_TITLE = "五谷磨房中秋礼遇季"
-# 商品图：从京东活动页 banner 裁出的方图，经 static_files 复制到 docs/，
-# 线上地址 https://freelamp.com/jd-wugu-zhongqiu.jpg（92x92 object-fit:cover 展示）
-JD_BUY_IMG = "https://freelamp.com/jd-wugu-zhongqiu.jpg"
+JD_BUY_TITLE = "农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤"
+# 商品图：京东商品主图缩方，经 static_files 复制到 docs/，
+# 线上地址 https://freelamp.com/jd-aohan-xiaomi.jpg（92x92 object-fit:cover 展示）
+JD_BUY_IMG = "https://freelamp.com/jd-aohan-xiaomi.jpg"
 
 # ================= 腾讯云 CPS 广告位（可选） =================
 # 在每篇文章正文第一个 </blockquote> 后插入推广横幅；TC_AD_URL 留空则全文不插入。
@@ -1652,7 +1652,7 @@ def main():
         "favicon.ico",  # 站点图标
         "leisurelinux-qrcode.jpeg",  # LeisureLinux 公众号关注二维码
         "jd_root.txt",  # 京东联盟域名验证
-        "jd-wugu-zhongqiu.jpg",  # 京东购买卡片商品图（五谷磨房中秋礼遇季）
+        "jd-aohan-xiaomi.jpg",  # 京东购买卡片商品图（农合天下敖汉黄小米）
         "tc-crossborder-1200x90.png",  # 腾讯云 CPS 推广横幅（跨境电商专属特惠）
         "workbuddy-logo.jpg",  # 腾讯云 WorkBuddy CPS footer 推广条 logo
         # 可在此添加其他验证文件，如：
