@@ -98,7 +98,7 @@ if code in ("200", "206") and size > 0:
 
 ```
 #EXTM3U x-tvg-url="<epg-url>"
-#EXTINF:-1 tvg-id="CCTV1.cn@SD" tvg-logo="<logo>" group-title="General · iptv-org",CCTV-1 (720p)
+#EXTINF:-1 tvg-id="CCTV1@SD" tvg-logo="<logo>" group-title="General · iptv-org",CCTV-1 (720p)
 <stream-url>
 ```
 
