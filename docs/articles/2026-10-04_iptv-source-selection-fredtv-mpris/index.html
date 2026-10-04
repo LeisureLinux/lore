@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>国庆宅家看 IPTV：从选源、换播放器到把频道名送进顶栏的完整排障 — FreeLAMP.com</title>
+  <meta name="description" content="国庆假期想安稳看个电视直播，结果走完了一条完整的排障链路：Qt 播放器在平铺合成器上卡到没法用、免费 M3U 源七成是死链、全套自动验证流水线跑完只剩 15% 可用、防火墙悄悄拦掉播放器的 DNS、换台后顶栏又永远慢一台。本文记录这条链路上每一步的判据、命令与最终方案，包括为什么要用 mpv 的 --title 而不是">
+  <meta name="keywords" content="IPTV, M3U, Wayland, niri, MPRIS, D-Bus, Flatpak, mpv, 桌面环境, 故障排查, 原创">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-04">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-04_iptv-source-selection-fredtv-mpris/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="国庆宅家看 IPTV：从选源、换播放器到把频道名送进顶栏的完整排障">
+  <meta property="og:description" content="国庆假期想安稳看个电视直播，结果走完了一条完整的排障链路：Qt 播放器在平铺合成器上卡到没法用、免费 M3U 源七成是死链、全套自动验证流水线跑完只剩 15% 可用、防火墙悄悄拦掉播放器的 DNS、换台后顶栏又永远慢一台。本文记录这条链路上每一步的判据、命令与最终方案，包括为什么要用 mpv 的 --title 而不是">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-04_iptv-source-selection-fredtv-mpris/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-04">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="IPTV">
+  <meta property="article:tag" content="IPTV">
+  <meta property="article:tag" content="M3U">
+  <meta property="article:tag" content="Wayland">
+  <meta property="article:tag" content="niri">
+  <meta property="article:tag" content="MPRIS">
+  <meta property="article:tag" content="D-Bus">
+  <meta property="article:tag" content="Flatpak">
+  <meta property="article:tag" content="mpv">
+  <meta property="article:tag" content="桌面环境">
+  <meta property="article:tag" content="故障排查">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="国庆宅家看 IPTV：从选源、换播放器到把频道名送进顶栏的完整排障">
+  <meta name="twitter:description" content="国庆假期想安稳看个电视直播，结果走完了一条完整的排障链路：Qt 播放器在平铺合成器上卡到没法用、免费 M3U 源七成是死链、全套自动验证流水线跑完只剩 15% 可用、防火墙悄悄拦掉播放器的 DNS、换台后顶栏又永远慢一台。本文记录这条链路上每一步的判据、命令与最终方案，包括为什么要用 mpv 的 --title 而不是">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "国庆宅家看 IPTV：从选源、换播放器到把频道名送进顶栏的完整排障",
+  "description": "国庆假期想安稳看个电视直播，结果走完了一条完整的排障链路：Qt 播放器在平铺合成器上卡到没法用、免费 M3U 源七成是死链、全套自动验证流水线跑完只剩 15% 可用、防火墙悄悄拦掉播放器的 DNS、换台后顶栏又永远慢一台。本文记录这条链路上每一步的判据、命令与最终方案，包括为什么要用 mpv 的 --title 而不是数据库字段来取当前频道。",
+  "datePublished": "2026-10-04",
+  "dateModified": "2026-10-04",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-04_iptv-source-selection-fredtv-mpris/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "IPTV, M3U, Wayland, niri, MPRIS, D-Bus, Flatpak, mpv, 桌面环境, 故障排查, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "国庆宅家看 IPTV：从选源、换播放器到把频道名送进顶栏的完整排障",
+        "item": "https://freelamp.com/articles/2026-10-04_iptv-source-selection-fredtv-mpris/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-04">2026-10-04</div>
+        <h1 class="post-title" itemprop="headline">国庆宅家看 IPTV：从选源、换播放器到把频道名送进顶栏的完整排障</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/IPTV/">IPTV</a><a itemprop="keywords" href="/tags/M3U/">M3U</a><a itemprop="keywords" href="/tags/Wayland/">Wayland</a><a itemprop="keywords" href="/tags/niri/">niri</a><a itemprop="keywords" href="/tags/MPRIS/">MPRIS</a><a itemprop="keywords" href="/tags/D-Bus/">D-Bus</a><a itemprop="keywords" href="/tags/Flatpak/">Flatpak</a><a itemprop="keywords" href="/tags/mpv/">mpv</a><a itemprop="keywords" href="/tags/%E6%A1%8C%E9%9D%A2%E7%8E%AF%E5%A2%83/">桌面环境</a><a itemprop="keywords" href="/tags/%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5/">故障排查</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>主题：桌面环境 · 故障排查 · 多媒体。本文是<strong>原创复盘</strong>，素材来自国庆假期一台 Debian 13 / niri（Wayland）笔记本上的真实使用：从"装个 IPTV 播放器"开始，一路排到"把正在播放的频道名送进顶栏"。过程中踩的每个坑都有明确判据，写下来给同样在平铺式 Wayland 桌面上折腾媒体的人省时间。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>想在 Wayland 桌面上安稳看 IPTV，<strong>播放器的技术栈比功能列表重要得多</strong>：Qt Quick 的 IPTV 应用在平铺合成器上会卡到没法用，Rust + mpv 内核的播放器一装就顺。而免费 M3U 源里<strong>七成以上是死链</strong>，靠手点根本分不清是"源的问题"还是"播放器的问题"——必须上自动验证。最后，"顶栏显示频道名"这件事，<strong>没有任何现成播放器能满足</strong>，只能自己读进程参数 + 发一条 MPRIS 出去。</p>
+<h2>起点：IPTV 应用选型的三种技术栈</h2>
+<p>需求很朴素：导入 M3U 播放列表，看直播。开源方案按技术栈分三档，体验差异也基本由技术栈决定。</p>
+<table>
+<tr><th>方案</th><th>技术栈</th><th>播放内核</th><th>Wayland 表现</th></tr>
+<tr><td>某 Qt Quick 应用</td><td>Python + PySide6</td><td>Qt Multimedia</td><td>窗口响应迟钝、拖拽导入失效</td></tr>
+<tr><td>某 Electron 应用</td><td>Electron</td><td>内嵌 HTML5 / 外挂 mpv</td><td>必须强制 <code>--ozone-platform=x11</code> 走 XWayland；沙箱内拿不到宿主 mpv</td></tr>
+<tr><td><strong>Rust + mpv 应用</strong></td><td>Rust / Tauri</td><td><strong>mpv</strong></td><td>原生渲染、秒开、内存占用极低</td></tr>
+</table>
+<p>判据很清楚：<strong>平铺式合成器（niri/i3/sway 类）对 Qt Quick 的持续重绘很不友好</strong>，而 Electron 方案在 Wayland 下要退回 XWayland。第三种（Rust/Tauri + mpv）之所以顺，是因为它把画面交给 mpv 的 GPU 直渲管线，UI 只是一个轻量壳。</p>
+<p>选型结论：<strong>以 mpv 为播放内核的应用</strong>。这类方案在 Flathub 上有现成包，安装即用：</p>
+<pre><code class="bash">flatpak install --user -y flathub <app-id>
+</code></pre>
+<blockquote>一个实务细节：<code>flatpak install</code> 在慢镜像上可能超过十分钟，不要让它挂在前台等。用 <code>nohup ... &</code> 丢后台 + 轮询日志，否则一次超时就会打断整个安装。</blockquote>
+<h2>选源：免费 M3U 的真实存活率</h2>
+<p>播放器定了，第二件事是"从哪来列表"。IPTV 应用本身<strong>不提供任何频道</strong>，它只负责解析你给的 M3U。公开社区源大致两类：</p>
+<ol>
+<li>1. <strong>聚合型社区源</strong>：量大（上千条），但维护靠众包，死链率高；</li>
+<li>2. <strong>官方索引型源</strong>：如 iptv-org 按国家/语言切分的列表，条目经过一定的存活校验，且带 <code>tvg-id</code> 等元数据，能被播放器自动补上台标和分类。</li>
+</ol>
+先看连通性（<strong>直连优先，不通再走代理</strong>，这是本机网络的既定原则）：
+<pre><code class="bash">curl -s -o /tmp/t.m3u -w "%{http_code}" --max-time 12 "<playlist-url>"
+</code></pre>
+<p>结果很典型：官方索引源<strong>直连就通</strong>，聚合源经过一个国内加速镜像才拿到。但"列表能下载"和"频道能播放"完全是两件事。</p>
+<h3>关键判据：列表可达 ≠ 流可用</h3>
+<p>第一次抽样测试就暴露了真相——随手抽 12 条流地址做 HTTP Range 探测：</p>
+<table>
+<tr><th>源</th><th>抽样 12 条可达</th><th>备注</th></tr>
+<tr><td>官方索引源（中国区）</td><td>7 条</td><td>央视、部分省台可用</td></tr>
+<tr><td>聚合源</td><td>2~3 条</td><td>大量 404 / 连接超时</td></tr>
+</table>
+<p><strong>约四成可达</strong>，这还只是 HTTP 层，真正解码能不能出画面是另一回事。结论：<strong>必须有自动化验证</strong>，手点是不可能分辨的。</p>
+<h2>验证流水线：1391 条进，213 条出</h2>
+<p>写了个脚本做"深度验证"——不是只看 HTTP 200，而是<strong>真正拉取 HLS 分片确认真有媒体数据</strong>：</p>
+<ol>
+<li>1. 解析 M3U，抽出每条频道的名称、分组、台标、URL、自定义 UA；</li>
+<li>2. 并发（6~10 路）请求每条流，HTTP 状态必须 200/206；</li>
+<li>3. 若是 <code>#EXTM3U</code> 清单，<strong>继续解析出第一个分片 URL 并实际拉取</strong>，确认有真实的媒体字节；</li>
+<li>4. 非 HLS 的裸 TS/fMP4 流则做内容嗅探，排除返回 200 的 HTML 错误页；</li>
+<li>5. 通过的才写入"验证版"列表。</li>
+</ol>
+脱敏后的流水线骨架：
+<pre><code class="python"># 关键判据: 清单可达 + 首分片有真实数据
+code, ctype, size, eff = curl(entry)          # 跟随重定向
+if code in ("200", "206") and size > 0:
+    head = open(seg_tmp, "rb").read(4096)
+    if head.lstrip().startswith(b"#EXTM3U"):
+        seg = first_non_comment_line(head)     # 清单里的第一个分片
+        c2, _, s2, _ = curl({"url": urljoin(eff, seg), "ua": entry["ua"]})
+        return c2 in ("200", "206") and s2 > 1024
+    return not head[:200].lower().lstrip().startswith((b"<html", b"<!doctype"))
+</code></pre>
+<p>跑完两份列表（去重后 1391 条）的结果：</p>
+<table>
+<tr><th>阶段</th><th>条数</th><th>说明</th></tr>
+<tr><td>去重后候选</td><td>1391</td><td>官方索引 145 + 聚合源 1246</td></tr>
+<tr><td>HTTP 可达</td><td>~430</td><td>约 31%</td></tr>
+<tr><td><strong>首分片实测通过</strong></td><td><strong>213</strong></td><td><strong>约 15%</strong></td></tr>
+</table>
+<p>也就是说，<strong>免费源里真正能看的只有六分之一强</strong>。把 213 条写成一个干净的播放列表：</p>
+<pre><code class="">#EXTM3U x-tvg-url="<epg-url>"
+#EXTINF:-1 tvg-id="CCTV1.cn@SD" tvg-logo="<logo>" group-title="General · iptv-org",CCTV-1 (720p)
+<stream-url>
+</code></pre>
+<h3>踩坑：EXTINF 属性必须用空格分隔</h3>
+<p>生成列表时我犯过一个很隐蔽的错——把 EXTINF 的各个属性用<strong>逗号</strong>拼接：</p>
+<pre><code class="text">#EXTINF:-1,group-title="国际频道",Wild Earth     ← 错：逗号提前终止了属性段
+</code></pre>
+<p>结果播放器把频道名解析成了 <code>group-title="国际频道",Wild Earth</code>，<strong>整个媒体库有一多半的频道名是脏的</strong>。正确写法属性之间用<strong>空格</strong>，最后一个逗号之后才是频道名：</p>
+<pre><code class="text">#EXTINF:-1 group-title="国际频道",Wild Earth      ← 对
+</code></pre>
+<p>这个 bug 的教训：<strong>M3U 的 EXTINF 只认"最后一个逗号"为名称分隔符</strong>，属性区里出现逗号会直接把后面全吞进去。</p>
+<h2>换台之后：顶栏为什么永远慢一台</h2>
+<p>前三个坑解决后已能安稳看直播，最后一个需求是"顶栏显示正在看的频道"。本机桌面壳（noctalia 一类）的媒体组件读的是 <strong>MPRIS</strong>（D-Bus 的 <code>org.mpris.MediaPlayer2</code> 接口）——而这类 IPTV 应用<strong>根本没有实现 MPRIS</strong>，所以顶栏永远是空的，媒体快捷键也识别不到它。</p>
+<h3>第一版方案（错的）：读数据库</h3>
+<p>应用把所有频道存在本地 SQLite 里，<code>channels</code> 表有个 <code>last_watched</code> 字段。当时想：读这个字段的最新一条不就是当前频道吗？于是写了个桥接脚本，把这个字段的值伪装成 MPRIS 元数据发出去。</p>
+<p><strong>用起来发现顶栏永远慢一个频道。</strong> 查下去才明白原因：</p>
+<blockquote><code>last_watched</code> 是<strong>离开某个频道时</strong>才写回的时间戳，不是开始播放时写的。所以库里最新的那条，永远是你<strong>上一个</strong>看的台。</blockquote>
+把字段语义搞错的代价，就是"看起来能用但永远慢一拍"。
+<h3>第二版方案（对的）：读 mpv 进程参数</h3>
+<p>在进程表里找到了真正的实时值：</p>
+<pre><code class="text">mpv-bin <stream-url> --hwdec=auto --title=CNA --prefetch-playlist=yes --loop-playlist=inf ...
+</code></pre>
+<p><strong>播放器启动的 mpv 进程，命令行里就带着 <code>--title=<当前频道名></code></strong>——这是实时、准确、不用猜的数字来源。桥接改成从 <code>/proc/<pid>/cmdline</code> 里提取 <code>--title=</code>：</p>
+<pre><code class="python">def current_title():
+    pids = pgrep("mpv-bin")
+    cands = []
+    for pid in pids:
+        args = open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0")
+        start = open(f"/proc/{pid}/stat", "rb").read().split(b" ")[21]  # 进程启动时刻
+        for a in args:
+            if a.startswith(b"--title="):
+                cands.append((int(start), a[8:].decode()))
+    # 换台瞬间新旧 mpv 会短暂共存, 取启动最晚的 = 当前在播
+    return max(cands)[1] if cands else None
+</code></pre>
+<p>几个让体验稳定的细节：</p>
+<ul>
+<li><strong>1 秒轮询</strong>，换台后 1~2 秒顶栏跟上；</li>
+<li><strong>多进程取启动最晚的</strong>：换台瞬间新旧 mpv 会共存一两秒，必须挑最新的，否则会短暂闪回旧台；</li>
+<li><strong>6 秒宽限防抖</strong>：进程切换的空档不立刻报告"已停止"，避免顶栏闪烁；</li>
+<li>台标、分组用<strong>频道名回查数据库</strong>补全，不依赖那个会滞后的字段。</li>
+</ul>
+<h3>MPRIS 实现的四个坑</h3>
+<p>用 Python + Gio 手写这个 MPRIS 服务，踩了四个必须记住的坑：</p>
+<table>
+<tr><th>#</th><th>坑</th><th>症状</th><th>正解</th></tr>
+<tr><td>1</td><td><code>register_object</code> 的 get_property 闭包签名</td><td>报 <code>takes 2 positional arguments but 5 were given</code></td><td>签名必须是 <code>(conn, sender, path, iface, name)</code> 五个参数</td></tr>
+<tr><td>2</td><td><code>Get</code> 分支参数漏传</td><td>客户端<strong>无限挂起</strong>（方法被调用后无回复）</td><td><code>Get</code> 也要把五个参数全传下去</td></tr>
+<tr><td>3</td><td>PropertiesChanged 里 Metadata 类型</td><td>崩溃 <code>Expected GLib.Variant, but got dict</code></td><td>必须包成 <code>GLib.Variant("a{sv}", md)</code></td></tr>
+<tr><td>4</td><td><code>CanPlay=false</code> 的后果</td><td><code>playerctl</code> 报 <code>No player could handle this command</code></td><td>即使只读展示，也要把 <code>CanPlay/CanPause/CanControl</code> 设为 true</td></tr>
+</table>
+<p>第 2 条是最阴的——<strong>方法回调里抛异常不会返回错误，而是直接没有回复，调用方就永远等下去</strong>。用 <code>dbus-monitor</code> 抓包时才定位到。</p>
+<p>还有一个调试技巧：<code>gdbus monitor --session --dest <well-known-name></code> 能正确解析信号来源，而自己写 <code>signal_subscribe</code> 用<strong>知名名</strong>做 sender 过滤是匹配不上的——因为信号实际携带的是<strong>唯一名</strong>（<code>:1.x</code>）。</p>
+<h3>持久化</h3>
+<p>桥接做成 systemd user 服务，绑定 <code>graphical-session.target</code>，开机自启、崩溃自恢复：</p>
+<pre><code class="ini">[Unit]
+After=graphical-session.target
+PartOf=graphical-session.target
+<p>[Service]
+Type=simple
+ExecStart=%h/.local/bin/<bridge>.py
+Restart=always
+RestartSec=3</p>
+<p>[Install]
+WantedBy=graphical-session.target
+</code></pre></p>
+<pre><code class="bash">systemctl --user enable --now <bridge>.service
+</code></pre>
+<h2>插曲：防火墙悄悄拦掉了播放器的 DNS</h2>
+<p>中途出现过一个诡异现象：<strong>所有频道突然都报播放器错误</strong>。</p>
+<p>排查过程抽丝剥茧：</p>
+<ol>
+<li>1. <code>curl</code> 请求同一个流地址 → <strong>200 正常</strong>；</li>
+<li>2. <code>getent hosts</code>、Python <code>getaddrinfo</code> → <strong>全部正常</strong>；</li>
+<li>3. 但播放器（mpv）报 <code>Failed to resolve hostname ... Name or service not known</code>；</li>
+<li>4. <code>strace</code> 看 mpv 的 DNS 路径：<strong>查询包发出去了，但一个响应都没收到</strong>；</li>
+<li>5. 用裸 IP 直接播 → <strong>成功</strong>。</li>
+</ol>
+结论：<strong>DNS 查询被按进程拦截了</strong>。真凶是本机运行的应用级防火墙（opensnitch 一类），它按可执行文件路径放行/拦截——<code>curl</code> 早就有放行规则所以一直正常，而 mpv（以及沙箱内播放内核）的 DNS 响应被吞了。停掉防火墙守护进程，问题立刻消失。
+<p>这件事的价值在于<strong>排查顺序</strong>：当"某个应用网络不通但 curl 通"时，先怀疑<strong>按进程拦截的防火墙</strong>，而不是解析器或 IPv6。</p>
+<blockquote>附带一个观察：这台机器有 IPv6 地址但没有 IPv6 出口，<code>AI_ADDRCONFIG</code> + AAAA 查询会让 DNS 排查更绕。验证流可达性时用 <code>curl</code>（深度验证）比用 <code>mpv --vo=null</code> 更稳。</blockquote>
+<h2>最终方案与效果</h2>
+<table>
+<tr><th>环节</th><th>方案</th><th>结果</th></tr>
+<tr><td>选源</td><td>官方索引 + 聚合源，共 1391 条</td><td>深度验证后 <strong>213 条可用</strong></td></tr>
+<tr><td>播放器</td><td>Rust/Tauri + mpv 内核（Flatpak）</td><td>原生 Wayland，秒开，低内存</td></tr>
+<tr><td>频道名上顶栏</td><td>读 mpv <code>--title</code> + 自建 MPRIS 桥接</td><td>换台 1~2 秒同步</td></tr>
+<tr><td>持久化</td><td>systemd user 服务绑定 graphical-session</td><td>自启 + 自恢复</td></tr>
+</table>
+<p>国庆几天的实际体验：打开播放器、按分组挑台、顶栏同步显示台名，媒体快捷键能识别。真正"能看"的频道其实不多（213 条里以央视全套、部分省台、若干国际频道为主），但<strong>每一条都是验证过能出画面的</strong>——这比一份上千条、点十个开不出一个的列表有用得多。</p>
+<h2>可复用的几条结论</h2>
+<ol>
+<li>1. <strong>播放器选内核不选功能</strong>：Wayland 平铺桌面上，mpv 内核的播放器体验碾压 Qt Quick / Electron 方案。</li>
+<li>2. <strong>列表可达 ≠ 流可用</strong>：免费源存活率约 15%，必须自动化验证到"首分片有数据"这一层。</li>
+<li>3. <strong>EXTINF 属性用空格分隔</strong>，最后一个逗号之后才是频道名——这个格式错了会污染整个媒体库。</li>
+<li>4. <strong>取"当前播放"要读进程参数，不要读数据库</strong>：<code>last_watched</code> 是离开时才写的，必然慢一拍。</li>
+<li>5. <strong>手写 MPRIS 时，方法回调抛异常 = 调用方无限挂起</strong>，<code>Get</code> 分支的参数别漏。</li>
+<li>6. <strong>"某应用网络不通但 curl 通"→ 先查按进程拦截的防火墙</strong>。</li>
+<li>7. 长任务（flatpak 安装、批量验证）丢后台 + 轮询日志，别卡在前台等超时。</li>
+</ol>
+假期看个电视，顺手把 Wayland 桌面、D-Bus、进程取证、格式解析都过了一遍。谨以此文，纪念这个在排障中度过的国庆。
+
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-04_iptv-source-selection-fredtv-mpris/",
+      title: "\u56fd\u5e86\u5b85\u5bb6\u770b IPTV\uff1a\u4ece\u9009\u6e90\u3001\u6362\u64ad\u653e\u5668\u5230\u628a\u9891\u9053\u540d\u9001\u8fdb\u9876\u680f\u7684\u5b8c\u6574\u6392\u969c"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
