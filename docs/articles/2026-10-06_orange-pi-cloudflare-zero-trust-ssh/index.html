@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书 — FreeLAMP.com</title>
+  <meta name="description" content="《万物皆隧道》续集，一次真实的三重 NAT + 零信任改造复盘。背景：光猫 WAN = 100.69.89.58（100.64.0.0/10，CGNAT），出口 117.185.174.4 ≠ 光猫 WAN，证明上游还有运营商 NAT —— IPv4 端口映射物理不可能，DDNS 无意义。方案对比：mTLS 三处不可行">
+  <meta name="keywords" content="零信任, Cloudflare Tunnel, Cloudflare Access, SSH, 短时证书, CGNAT, 内网穿透, 隧道, 身份认证, 安全加固, 原创">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-06">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-06_orange-pi-cloudflare-zero-trust-ssh/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书">
+  <meta property="og:description" content="《万物皆隧道》续集，一次真实的三重 NAT + 零信任改造复盘。背景：光猫 WAN = 100.69.89.58（100.64.0.0/10，CGNAT），出口 117.185.174.4 ≠ 光猫 WAN，证明上游还有运营商 NAT —— IPv4 端口映射物理不可能，DDNS 无意义。方案对比：mTLS 三处不可行">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-06_orange-pi-cloudflare-zero-trust-ssh/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-06">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="零信任">
+  <meta property="article:tag" content="零信任">
+  <meta property="article:tag" content="Cloudflare Tunnel">
+  <meta property="article:tag" content="Cloudflare Access">
+  <meta property="article:tag" content="SSH">
+  <meta property="article:tag" content="短时证书">
+  <meta property="article:tag" content="CGNAT">
+  <meta property="article:tag" content="内网穿透">
+  <meta property="article:tag" content="隧道">
+  <meta property="article:tag" content="身份认证">
+  <meta property="article:tag" content="安全加固">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书">
+  <meta name="twitter:description" content="《万物皆隧道》续集，一次真实的三重 NAT + 零信任改造复盘。背景：光猫 WAN = 100.69.89.58（100.64.0.0/10，CGNAT），出口 117.185.174.4 ≠ 光猫 WAN，证明上游还有运营商 NAT —— IPv4 端口映射物理不可能，DDNS 无意义。方案对比：mTLS 三处不可行">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书",
+  "description": "《万物皆隧道》续集。上一篇假设你有个公网可达入口（我家是 IPv6），这一篇解决更硬的约束：登进光猫发现 WAN 地址是 100.69.89.58，落在 100.64.0.0/10 —— 运营商 CGNAT，公网 IPv4 根本不归你，DDNS 和端口映射全部无意义。改用 Cloudflare Tunnel 出口-only 隧道 + Access 短时 SSH 证书：同一台机器三条路并存（CF 隧道 / IPv6 直通 / LAN）；每个访问端现场签一张证书，3 分钟后自动失效，没有可长期窃取的凭据。文中记录 mTLS 为何在 Free 套餐走不通（且 cloudflared 不带客户端证书参数）、用 cloudflared tunnel login 绕开 API token 权限、ingress 必须写 ssh:// 且必须配 originRequest.access.audTag（否则卡在 banner exchange）、Cloudflare 证书 principal 是邮箱前缀与本地用户名不匹配需 AuthorizedPrincipalsFile 映射、以及一个非技术坑：本机设备级过滤器专拦 Go 二进制导致 cloudflared WebSocket 卡死（python/curl 正常）。",
+  "datePublished": "2026-10-06",
+  "dateModified": "2026-10-06",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-06_orange-pi-cloudflare-zero-trust-ssh/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "零信任, Cloudflare Tunnel, Cloudflare Access, SSH, 短时证书, CGNAT, 内网穿透, 隧道, 身份认证, 安全加固, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书",
+        "item": "https://freelamp.com/articles/2026-10-06_orange-pi-cloudflare-zero-trust-ssh/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-06">2026-10-06</div>
+        <h1 class="post-title" itemprop="headline">万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E9%9B%B6%E4%BF%A1%E4%BB%BB/">零信任</a><a itemprop="keywords" href="/tags/Cloudflare%20Tunnel/">Cloudflare Tunnel</a><a itemprop="keywords" href="/tags/Cloudflare%20Access/">Cloudflare Access</a><a itemprop="keywords" href="/tags/SSH/">SSH</a><a itemprop="keywords" href="/tags/%E7%9F%AD%E6%97%B6%E8%AF%81%E4%B9%A6/">短时证书</a><a itemprop="keywords" href="/tags/CGNAT/">CGNAT</a><a itemprop="keywords" href="/tags/%E5%86%85%E7%BD%91%E7%A9%BF%E9%80%8F/">内网穿透</a><a itemprop="keywords" href="/tags/%E9%9A%A7%E9%81%93/">隧道</a><a itemprop="keywords" href="/tags/%E8%BA%AB%E4%BB%BD%E8%AE%A4%E8%AF%81/">身份认证</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA/">安全加固</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>主题：零信任 · 隧道 · 身份认证 · 基础架构。本文为<strong>原创架构复盘</strong>，是《万物皆隧道》的续集。上一篇解决了「在家和在外用同一份配置」，这一篇解决一个更硬的约束：<strong>你的公网 IPv4 根本不归你</strong>。文中域名、IP、账号均已脱敏。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>承接上一篇，我给香橙派又加了一条路：<strong>Cloudflare 零信任隧道 + SSH 短时证书</strong>。</p>
+<p>结果是这样：同一台机器，三条路并存，分别对应三个场景。</p>
+<pre><code class="">ssh pi-ssh.example.net    → Cloudflare 隧道 + 短时证书   （IPv4 / 任意网络）
+ssh pi6.example.net       → IPv6 直通                    （快，不经 CF）
+ssh pi.lan                → 局域网直连                    （不走隧道）
+</code></pre>
+<p>而最关键的一点是：<strong>每个访问端有自己的证书，有效期 3 分钟，自动轮换，没有可以长期偷走的凭据。</strong></p>
+<h2>为什么上一篇的架构还不够</h2>
+<p>上一篇的结论是「服务只听 127.0.0.1，隧道来拉」。那套东西在 <strong>IPv6 直通</strong>的前提下工作得很好。</p>
+<p>但它有一个隐含假设：<strong>你的服务有个能被外面访问到的入口</strong>。而我家的入口是 IPv6 —— 只有 AAAA 记录。这意味着：</p>
+<ul>
+<li><strong>纯 IPv4 网络下连不上</strong>（很多公共 Wi-Fi、公司网络、手机热点）</li>
+<li>出门在外，能不能用完全看对方网络给不给 IPv6</li>
+</ul>
+于是很自然想到：那就给 IPv4 也加一条路，用 DDNS 把公网 IPv4 同步到 A 记录。
+<p><strong>结果发现这条路根本不存在。</strong></p>
+<h2>第一步：先确认你的公网 IPv4 到底是谁的</h2>
+<p>这个调查是整个故事的转折点。我登进光猫看 WAN 状态，看到的是：</p>
+<pre><code class="">INTERNET  PPPoE  已连接   IP地址 100.64.12.34   网关 100.64.0.1
+</code></pre>
+<p><code>100.64.12.34</code> 这个地址落在 <strong><code>100.64.0.0/10</code></strong>，也就是 RFC 6598 定义的<strong>运营商级 NAT（CGNAT）</strong>地址段。</p>
+<p>再看一个旁证就很清楚了：</p>
+<pre><code class="">光猫 WAN 地址  : 100.64.12.34     ← 运营商给你的，私网
+实际出口地址   : 203.0.113.88    ← 互联网看到的
+                   ↑ 两者不同 = 上游还有一层你无权配置的 NAT
+</code></pre>
+<p><strong>这是三重 NAT：</strong></p>
+<pre><code class="">香橙派(10.20.30.40) → 家用路由(10.20.30.1) → 光猫WAN(100.64.12.34)
+                                                ↑ CGNAT，不属于你
+                                                └→ 运营商NAT → 出口(117.x) → 互联网
+</code></pre>
+<p>结论很硬：<strong>你在自己设备上做任何端口映射，都到不了公网</strong>，因为那个"公网" IP 本身在运营商的私网里。</p>
+<p>所以：</p>
+<ul>
+<li>❌ DDNS 更新 A 记录：无意义，映射不进来</li>
+<li>❌ 光猫/JD 路由上做端口转发：白做</li>
+<li>✅ 只有一条路：<strong>让内网主动往外连</strong></li>
+</ul>
+<h2>第二步：为什么不选 mTLS</h2>
+<p>你（本文的读者）可能会想：既然要"每个访问端独立证书"，那不就是 <strong>mTLS（双向 TLS）</strong>吗？</p>
+<p>我认真试了，<strong>三个硬约束让它走不通</strong>：</p>
+<table>
+<tr><th>约束</th><th>实测结果</th></tr>
+<tr><td><strong>套餐</strong></td><td>Cloudflare 官方文档明确：「Access mTLS 仅 Enterprise / pay-as-you-go，<strong>不含 Free</strong>」。我的账号实测是 <code>teams_free</code></td></tr>
+<tr><td><strong>客户端</strong></td><td><code>cloudflared access ssh</code> 的参数里<strong>没有任何客户端证书选项</strong>（只有 header / service-token-id / service-token-secret）</td></tr>
+<tr><td><strong>语义</strong></td><td>mTLS 是给 HTTP(S) 握手用的，而 SSH 隧道走 WebSocket 升级</td></tr>
+</table>
+<p>也就是说：即使你花钱升级套餐拿到 mTLS，客户端 <code>cloudflared</code> 也不会在 SSH 流里带上那张客户端证书。</p>
+<p><strong>顺带排除了另一个方案：Access Service Token。</strong></p>
+<p>Service Token 也能做到"每端独立、可单独吊销"，而且 Free 可用。但它是<strong>长期凭据</strong>，我试着创建时默认有效期就是 <code>8760h</code>（一年）。一旦泄露，在有效期内一直能用。</p>
+<p><strong>而短时证书的凭据……只有 3 分钟。</strong></p>
+<h2>第三步：整条链路长什么样</h2>
+<p>先看全景：</p>
+<pre><code class="">                    Internet
+                        │
+            ┌───────────┴────────────┐
+            │  Cloudflare Edge        │
+            │  · TLS 终止             │
+            │  · Access 策略校验 JWT   │
+            │  · 隧道接入点            │
+            └───────────┬────────────┘
+                        │  ①隧道主动外连（QUIC/HTTP2）
+                        │   出口-only，不开任何入站端口
+                        │
+                 ┌──────┴───────┐
+                 │  香橙派       │
+                 │  cloudflared │
+                 │      ↓       │
+                 │  sshd :22    │  ← ②这里校验 CF 签发的短时证书
+                 └──────────────┘
+<p>客户端：cloudflared（ProxyCommand）→ 现场申请证书 → 认证
+</code></pre></p>
+<p><strong>关键点：出口-only。</strong> 香橙派从不接受入站连接，它主动连到 Cloudflare。所以 NAT 在第几层、有没有 CGNAT，<strong>完全不重要</strong>。</p>
+<h2>第四步：搭隧道的路上踩的坑</h2>
+<h3>坑一：API token 权限不够，而且我不打算去求它</h3>
+<p>我一开始想用 Cloudflare API 脚本化创建隧道，结果：</p>
+<pre><code class="">POST /accounts/<id>/cfd_tunnel
+→ {"code": 10000, "message": "Authentication error"}
+</code></pre>
+<p>我的 token 有 Tunnel 的<strong>读</strong>权限，但没有<strong>写</strong>权限（缺 <code>Cloudflare Tunnel: Edit</code>）。</p>
+<p><strong>更优雅的解法</strong>：<code>cloudflared</code> 自己带了一套免 API token 的流程。</p>
+<pre><code class="bash">cloudflared tunnel login      # 打开浏览器授权，生成 cert.pem
+cloudflared tunnel create  pi-ssh
+cloudflared tunnel route dns pi-ssh pi-ssh.example.net
+</code></pre>
+<p><code>tunnel login</code> 会给你一个 URL，浏览器里点一下"授权这个域名"，认证信息就落到 <code>cert.pem</code>。此后 <code>create</code> / <code>route dns</code> 全由 cloudflared 自己完成。</p>
+<p><strong>这条路更好，不只是因为绕开了权限</strong>：凭据天然只存在那台机器上，而且整个流程可以完全在没有 API token 的环境里跑。</p>
+<h3>坑二：ingress 里两个"不写就不通"的配置</h3>
+<p>隧道建好后，第一次连接卡在这里：</p>
+<pre><code class="">Connection timed out during banner exchange
+</code></pre>
+<p>TCP 握手是通的（能连到 Cloudflare），但 SSH 协议根本走不起来。两个原因：</p>
+<p><strong>① service 必须写 <code>ssh://</code>，不是 <code>tcp://</code></strong></p>
+<pre><code class="yaml">ingress:
+  - hostname: pi-ssh.example.net
+    service: ssh://localhost:22        # ← ssh:// 而不是 tcp://
+</code></pre>
+<p><code>ssh://</code> 会让 cloudflared 讲 SSH 的 WebSocket 协议，并在任何字节到达 sshd 之前先校验 Access 的 JWT。</p>
+<p><strong>② 必须声明 <code>originRequest.access.audTag</code></strong></p>
+<pre><code class="yaml">    originRequest:
+      access:
+        required: true
+        teamName: myteam
+        audTag:
+          - <你的 Access 应用的 aud>
+</code></pre>
+<p><code>audTag</code> 告诉隧道"只接受这个 Access 应用的 JWT"。<strong>不写它，Access 保护的非 HTTP 路由会卡死在 banner exchange</strong>。这个症状非常有误导性，看起来像网络问题，其实是鉴权没配完。</p>
+<h3>坑三：dashboard API 的读写行为不一致</h3>
+<p>创建 Access 应用和 SSH CA 时发现一个规律：</p>
+<pre><code class="">GET  /api/v4/...   → 可用（带浏览器 cookie 或 API token 都行）
+POST /api/v4/...   → 常常 403，且返回 text/html 而不是 JSON
+</code></pre>
+<p>最后发现<strong>最可靠的方式是用 dashboard 的 UI 按钮</strong>：</p>
+<pre><code class="">Zero Trust → Access controls → Service credentials → SSH
+  → Generate certificate → 选对应的 Access 应用
+</code></pre>
+<p>还有个小陷阱：SSH CA 的 API 端点是<strong>按应用</strong>的：</p>
+<pre><code class="">POST /accounts/<id>/access/apps/<app_id>/ca     ← 正确
+POST /accounts/<id>/access/gateway_ca           ← 报 Authentication error
+</code></pre>
+<p>后者是账号级的另一个东西，不是我们要的。</p>
+<h2>第五步：每个访问端一张证书</h2>
+<p>这是本文最想讲的部分。</p>
+<h3>生成 CA，让服务器信任它</h3>
+<p>Cloudflare 会为你的 Access 应用生成一对 SSH CA 密钥：</p>
+<pre><code class="">CA 公钥: ecdsa-sha2-nistp256 AAAA... open-ssh-ca@cloudflareaccess.org
+</code></pre>
+<p>私钥在 Cloudflare 手里（它负责签发证书），公钥你装到服务器上（服务器用它验证签名）。<strong>你手上没有 CA 私钥</strong>，这正是零信任的意义：签发权不在你的基础设施上，即使服务器被攻破，攻击者也签不出新证书。</p>
+<h3>服务器端：让 sshd 信任这个 CA</h3>
+<p>在香橙派上放一个 drop-in：</p>
+<pre><code class="ini">TrustedUserCAKeys /etc/ssh/cf_access_ca.pub
+AuthorizedPrincipalsFile /etc/ssh/authorized_principals/%u
+</code></pre>
+<h3>一个必须处理的身份不匹配</h3>
+<p><strong>这是整个流程里最容易卡住的地方。</strong></p>
+<p>Cloudflare 签发证书时，<strong>principal 固定取邮箱的本地部分</strong>。我的邮箱是 <code>me@example.net</code>，所以：</p>
+<pre><code class="">证书 Key ID    : "me@example.net"
+证书 Principals: me
+</code></pre>
+<p>但香橙派上的登录用户叫 <strong><code>myuser</code></strong>。而 sshd 的默认行为是：<strong>证书里的 principal 必须等于你登录的那个用户名</strong>。<code>me</code> ≠ <code>myuser</code>，认证直接失败。</p>
+<p><strong>解法：<code>AuthorizedPrincipalsFile</code>。</strong> 用一个文件声明"哪些 principal 可以登录这个账号"：</p>
+<pre><code class=""># /etc/ssh/authorized_principals/myuser
+me
+</code></pre>
+<p>这样 Cloudflare 发来的 <code>me</code> 就能登进 <code>myuser</code> 账号，<strong>不需要为此新建一个用户</strong>。</p>
+<p>（认证成功后的实测输出：<code>id -un</code> 返回 <code>myuser</code>。）</p>
+<h3>客户端：连之前现场领证书</h3>
+<p>客户端配置（<code>cloudflared access ssh-config --short-lived-cert</code> 能直接生成）：</p>
+<pre><code class="sshconfig">Match host pi-ssh.example.net exec "cloudflared access ssh-gen --hostname %h"
+    ProxyCommand cloudflared access ssh --hostname %h
+    IdentityFile ~/.cloudflared/%h-cf_key
+    CertificateFile ~/.cloudflared/%h-cf_key-cert.pub
+</code></pre>
+<p><code>Match ... exec</code> 的意思是：<strong>每次连接前先跑 <code>ssh-gen</code></strong>，现场向 Cloudflare 申请一张新证书。然后 <code>ProxyCommand</code> 用这张证书走隧道进去。</p>
+<h3>3 分钟到底有多短？</h3>
+<p>实测一张证书：</p>
+<pre><code class="">Type       : ecdsa-sha2-nistp256-cert-v01@openssh.com user certificate
+Key ID     : "me@example.net"
+Valid      : from 2026-10-06T00:11:51 to 2026-10-06T00:15:51   ← 4 分钟
+Principals : me
+Extensions : permit-port-forwarding, permit-pty
+</code></pre>
+<p>Cloudflare 官方博客的原话是 <strong>3 分钟</strong>，并且特意解释了这个设计：</p>
+<blockquote>"The 3-minute time window on the SSH certificate <strong>only applies to the time window during which the user has to authenticate</strong> to the target server; it does not apply to the length of the SSH session, <strong>which can be arbitrarily longer than 3 minutes</strong>."</blockquote>
+<strong>这句话是理解整个方案的关键：</strong>
+<pre><code class="">├─ 0s        你敲 ssh pi-ssh.example.net
+├─ 0–3min    证书有效期窗口 ← 只有认证阶段
+│            ssh-gen 现场签发 → 拿去认证
+├─ 认证成功  证书使命完成（作废也无所谓）
+└─ 之后      会话可以一直开着，几小时、几天都行
+</code></pre>
+<p>3 分钟这个数字的选择理由也很讲究：<strong>够短</strong>，降低证书被窃风险；<strong>够长</strong>，覆盖慢网络下的认证延迟，别让用户网络一慢就认证超时。</p>
+<h2>为什么这个方案值得做</h2>
+<p>把所有约束和结果放在一起看：</p>
+<table>
+<tr><th></th><th>传统 SSH 密钥</th><th>Service Token</th><th><strong>短时证书</strong></th></tr>
+<tr><td>存在形式</td><td>长期私钥文件</td><td>长期 ID+Secret</td><td><strong>每次连接现签</strong></td></tr>
+<tr><td>泄露后果</td><td>一直可用</td><td>有效期内可用</td><td><strong>3 分钟后失效</strong></td></tr>
+<tr><td>每端独立</td><td>是（但你得管 N 个密钥）</td><td>是</td><td>是</td></tr>
+<tr><td>手工轮换</td><td>要</td><td>要</td><td><strong>不要</strong></td></tr>
+<tr><td>需要入站端口</td><td>要</td><td>要</td><td><strong>不要</strong></td></tr>
+<tr><td>CGNAT 下可用</td><td>否</td><td>否</td><td><strong>是</strong></td></tr>
+<tr><td>免费套餐</td><td>—</td><td>是</td><td>是</td></tr>
+</table>
+<p>一句话：<strong>它把"凭据管理"这件事从你的待办清单上删掉了。</strong> 没有长期密钥要生成、分发、备份、轮换、吊销。攻击者即使拿到证书，3 分钟后它自己就死了。</p>
+<p>而且因为走的是<strong>出口-only 隧道</strong>，你的服务器上没有开放任何入站端口，攻击面比"开个 22 端口 + 防火墙规则"小得多。</p>
+<h2>遇到的三个非技术坑</h2>
+<p>写下来是因为它们跟 Cloudflare 无关，但会让你多花几小时：</p>
+<p><strong>① 本机的 Go 二进制出网被拦</strong></p>
+<p><code>cloudflared</code> 的 WebSocket 连接一直卡住不返回。一开始我以为是 DNS 超时，查了半天。</p>
+<p>真相是：<strong>这台机器上有个设备级出网过滤器，专门拦 Go 编译的二进制</strong>。同环境下 <code>python</code> 和 <code>curl</code> 一切正常，唯独 Go 程序连不上任何外部 TCP。</p>
+<p>关掉那个过滤器（我本机是 OpenSnitch 应用防火墙没给 cloudflared 放行）之后，WebSocket 立刻升级成功（<code>HTTP/1.1 101 Switching Protocols</code>）。</p>
+<p><strong>教训</strong>：排查"某个程序连不上网"时，先做一个对照实验：<strong>换一个非同类实现试同一个目标</strong>。如果 <code>python</code> 通而 Go 不通，那问题八成不在网络层，而在这个程序本身被区别对待了。</p>
+<p><strong>② 首次连接需要一次浏览器授权</strong></p>
+<p><code>cloudflared access ssh</code> 第一次会打印一个 URL：</p>
+<pre><code class="">A browser window should have opened at the following URL:
+https://pi-ssh.example.net/cdn-cgi/access/cli?aud=...
+</code></pre>
+<p>浏览器里完成一次登录，JWT 就缓存到 <code>~/.cloudflared/</code>，之后连接免交互。</p>
+<p><strong>③ 别让本机做代理</strong></p>
+<p>这个坑是我自己犯的：我一开始想用本机的代理去跑 Cloudflare API，但那既多余又会绕远。<strong>隧道就该在那台服务器上建、在那台服务器上跑</strong>，一条命令的事，还省掉一整层依赖。</p>
+<h2>最终的形态</h2>
+<p>回头看，这条路径解决的是一个<strong>所有权</strong>问题，而不只是连通性问题：</p>
+<table>
+<tr><th></th><th>上一篇（IPv6 直通）</th><th>这一篇（CF 零信任）</th></tr>
+<tr><td>入口</td><td>必须有公网可达地址</td><td><strong>主动外连，不需要任何入口</strong></td></tr>
+<tr><td>CGNAT</td><td>不受影响（走 v6）</td><td><strong>完全无关</strong></td></tr>
+<tr><td>纯 IPv4 网络</td><td>❌ 连不上</td><td>✅ 可用</td></tr>
+<tr><td>认证</td><td>SSH 密钥</td><td><strong>短时证书 + Access 策略</strong></td></tr>
+<tr><td>凭据管理</td><td>自己管</td><td><strong>没有凭据要管</strong></td></tr>
+</table>
+<p>所以最后是三条路并存，各管一个场景：</p>
+<pre><code class="">pi-ssh.example.net    → CF 隧道 + 短时证书   （最通用，IPv4/IPv6 都行）
+pi6.example.net       → IPv6 直通            （最快，但对方得有 v6）
+pi.lan                → LAN                  （在家，不走隧道）
+</code></pre>
+<p><strong>如果你也发现自己家宽是 CGNAT，别在端口映射上浪费时间了。</strong> 让内网主动往外连，用零信任网关做认证，这条路才是通的。</p>
+<p>---</p>
+<p><em>本文涉及的域名、IP、账号、隧道/应用/CA 标识符均已脱敏替换为保留示例值。基于一次真实的三重 NAT 环境下的零信任改造整理。</em>
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-06_orange-pi-cloudflare-zero-trust-ssh/",
+      title: "\u4e07\u7269\u7686\u96a7\u9053\uff08\u7eed\uff09\uff1a\u7ed9\u9999\u6a59\u6d3e\u63a5\u4e0a Cloudflare \u96f6\u4fe1\u4efb SSH\uff0c\u6bcf\u4e2a\u8bbf\u95ee\u7aef\u4e00\u5f20 3 \u5206\u949f\u8bc1\u4e66"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

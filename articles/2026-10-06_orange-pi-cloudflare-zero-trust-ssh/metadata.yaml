@@ -1,0 +1,22 @@
+---
+title: '万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书'
+date: "2026-10-06"
+slug: orange-pi-cloudflare-zero-trust-ssh
+author: FreeLAMP.com
+category: "Linux 运维"
+tags:
+  - 零信任
+  - Cloudflare Tunnel
+  - Cloudflare Access
+  - SSH
+  - 短时证书
+  - CGNAT
+  - 内网穿透
+  - 隧道
+  - 身份认证
+  - 安全加固
+  - 原创
+summary: "《万物皆隧道》续集。上一篇假设你有个公网可达入口（我家是 IPv6），这一篇解决更硬的约束：登进光猫发现 WAN 地址是 100.69.89.58，落在 100.64.0.0/10 —— 运营商 CGNAT，公网 IPv4 根本不归你，DDNS 和端口映射全部无意义。改用 Cloudflare Tunnel 出口-only 隧道 + Access 短时 SSH 证书：同一台机器三条路并存（CF 隧道 / IPv6 直通 / LAN）；每个访问端现场签一张证书，3 分钟后自动失效，没有可长期窃取的凭据。文中记录 mTLS 为何在 Free 套餐走不通（且 cloudflared 不带客户端证书参数）、用 cloudflared tunnel login 绕开 API token 权限、ingress 必须写 ssh:// 且必须配 originRequest.access.audTag（否则卡在 banner exchange）、Cloudflare 证书 principal 是邮箱前缀与本地用户名不匹配需 AuthorizedPrincipalsFile 映射、以及一个非技术坑：本机设备级过滤器专拦 Go 二进制导致 cloudflared WebSocket 卡死（python/curl 正常）。"
+description: "《万物皆隧道》续集，一次真实的三重 NAT + 零信任改造复盘。背景：光猫 WAN = 100.69.89.58（100.64.0.0/10，CGNAT），出口 117.185.174.4 ≠ 光猫 WAN，证明上游还有运营商 NAT —— IPv4 端口映射物理不可能，DDNS 无意义。方案对比：mTLS 三处不可行（官方限 Enterprise/pay-as-you-go、cloudflared access ssh 无客户端证书参数、语义是 HTTP 握手）；Service Token 虽 Free 可用但是 1 年长期凭据；最终选 Cloudflare Access 短时 SSH 证书。搭建要点：① 隧道用 cloudflared tunnel login 的浏览器授权建（绕开 API token 缺 Cloudflare Tunnel: Edit），全程在服务器上完成；② ingress 必须 ssh://localhost:22 而非 tcp://，且必须写 originRequest.access.audTag + teamName + required，否则 Access 保护的非 HTTP 路由卡在 Connection timed out during banner exchange；③ SSH CA 端点是 per-application（/access/apps/{id}/ca），账号级 gateway_ca 报错；④ dashboard API GET 可用但 POST 常 403 text/html，实战用 dashboard UI 按「Generate certificate」；⑤ 短时证书 principal = 邮箱本地部分（me@example.net → me），与本机登录用户（myuser）不匹配，需 sshd 的 AuthorizedPrincipalsFile 做映射，无需新建用户。短时证书实测：Valid from 00:11:51 to 00:15:51 = 4 分钟；官方博客原话 3 分钟，且明确「3 分钟只约束认证阶段，会话本身可任意长」。安全收益：无长期密钥需生成/分发/轮换/吊销，证书 3 分钟后自动死，且走出口-only 隧道服务器零入站端口。非技术坑：本机设备级出网过滤器专拦 Go 编译二进制，cloudflared WebSocket 因此静默卡死（同环境 python/curl 正常），关闭 OpenSnitch 后立即 HTTP/1.1 101 Switching Protocols；教训是排查此类问题时先做「换一个非同类实现试同一目标」的对照实验。"
+published: true
+---
