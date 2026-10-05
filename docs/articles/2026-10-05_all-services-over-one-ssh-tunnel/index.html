@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口 — FreeLAMP.com</title>
+  <meta name="description" content="框架式架构复盘：如何用一条 SSH 隧道把家里的 DNS(53)、HTTP 代理(8888)、RDP(3389)、RustDesk(21118)、模型网关(7863) 全部拉到笔记本本地 127.0.0.1，同时让香橙派对公网只暴露 22 端口。八组关键设计：①服务只听 127.0.0.1，隧道来拉（实测 loopba">
+  <meta name="keywords" content="SSH 隧道, 内网收敛, 端口转发, DNS, 代理, 远程桌面, RustDesk, systemd, 安全加固, 架构设计, 原创">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-05">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口">
+  <meta property="og:description" content="框架式架构复盘：如何用一条 SSH 隧道把家里的 DNS(53)、HTTP 代理(8888)、RDP(3389)、RustDesk(21118)、模型网关(7863) 全部拉到笔记本本地 127.0.0.1，同时让香橙派对公网只暴露 22 端口。八组关键设计：①服务只听 127.0.0.1，隧道来拉（实测 loopba">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-05">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="SSH 隧道">
+  <meta property="article:tag" content="SSH 隧道">
+  <meta property="article:tag" content="内网收敛">
+  <meta property="article:tag" content="端口转发">
+  <meta property="article:tag" content="DNS">
+  <meta property="article:tag" content="代理">
+  <meta property="article:tag" content="远程桌面">
+  <meta property="article:tag" content="RustDesk">
+  <meta property="article:tag" content="systemd">
+  <meta property="article:tag" content="安全加固">
+  <meta property="article:tag" content="架构设计">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口">
+  <meta name="twitter:description" content="框架式架构复盘：如何用一条 SSH 隧道把家里的 DNS(53)、HTTP 代理(8888)、RDP(3389)、RustDesk(21118)、模型网关(7863) 全部拉到笔记本本地 127.0.0.1，同时让香橙派对公网只暴露 22 端口。八组关键设计：①服务只听 127.0.0.1，隧道来拉（实测 loopba">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口",
+  "description": "一次假期前的网络架构改造：把本地 DNS、HTTP 代理、远程桌面、RustDesk、模型网关全部收敛到 127.0.0.1，由一条 SSH 隧道按需拉取。家里那台香橙派对公网只留 22 端口，其余服务一律只听回环。核心洞察：一旦服务只绑 127.0.0.1，就不再需要信任网络——不需要 VLAN、不需要内网 ACL、不需要 VPN，暴露面从一个网段收敛到一个端口。文中记录了 ssh -L 在 Debian 13 / OpenSSH 10.3 上绑不了 IPv4 字面量（需 socat 桥）、启动门禁不能探目标端口（IPv4-only 服务 + IPv6-only 域名会误判）、DNS 自举循环（隧道自己的解析依赖隧道）、UDP 不能直接走 ssh -L（需两端 socat 转换）、以及「一个 DNS 答案服务不了两种网络位置」这个必须在本机 /etc/hosts 解决的位置相关问题。",
+  "datePublished": "2026-10-05",
+  "dateModified": "2026-10-05",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "SSH 隧道, 内网收敛, 端口转发, DNS, 代理, 远程桌面, RustDesk, systemd, 安全加固, 架构设计, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口",
+        "item": "https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-05">2026-10-05</div>
+        <h1 class="post-title" itemprop="headline">国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/SSH%20%E9%9A%A7%E9%81%93/">SSH 隧道</a><a itemprop="keywords" href="/tags/%E5%86%85%E7%BD%91%E6%94%B6%E6%95%9B/">内网收敛</a><a itemprop="keywords" href="/tags/%E7%AB%AF%E5%8F%A3%E8%BD%AC%E5%8F%91/">端口转发</a><a itemprop="keywords" href="/tags/DNS/">DNS</a><a itemprop="keywords" href="/tags/%E4%BB%A3%E7%90%86/">代理</a><a itemprop="keywords" href="/tags/%E8%BF%9C%E7%A8%8B%E6%A1%8C%E9%9D%A2/">远程桌面</a><a itemprop="keywords" href="/tags/RustDesk/">RustDesk</a><a itemprop="keywords" href="/tags/systemd/">systemd</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA/">安全加固</a><a itemprop="keywords" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>主题：基础架构 · 隧道 · 内网收敛 · 安全意识。本文为<strong>原创架构复盘</strong>，素材来自一次真实的假期前改造：把家里所有自建服务收敛到只暴露一个 SSH 端口，外出时全部通过隧道按需取用。文中域名、IP、用户名均已做脱敏替换。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>回家的路上，我在高铁上把笔记本从「依赖一堆内网地址」改成「只有一个 <code>127.0.0.1</code>」。DNS、代理、远程桌面、模型网关，全部走同一条 SSH 隧道按需拉取。<strong>家里那台香橙派上，对公网只留 22 一个端口，其余服务一律只听 <code>127.0.0.1</code>。</strong></p>
+<p>这件事的价值不在「隧道」本身，隧道是个古老的技术。价值在于<strong>架构方向的翻转</strong>：过去每个服务都要在防火墙上开一个洞、在内网里有一个可路由地址；现在服务全都缩回各自机器的回环地址，由一条统一的、经过认证和加密的通道按需把它们「拉」到使用者的本地。暴露面从「N 个端口」收敛到「1 个端口」。</p>
+<h2>为什么要在国庆前干这件事</h2>
+<p>假期要回老家，网络环境会变三次：出门前的公司网络、路上的热点、家里的宽带。而我日常依赖的东西，本地 DNS、HTTP 代理、远程桌面、一个自建的模型网关，全都指向内网地址。</p>
+<p>如果什么都不做，现实是这样：</p>
+<ul>
+<li><strong>内网地址在外网不可达</strong>，代理直接挂，浏览器上不了网</li>
+<li><strong>DNS 解析到内网地址</strong>，解析成功但连不上，比解析失败更迷惑</li>
+<li><strong>每加一个服务就要加一条规则</strong>，网络环境一变就要重新配一遍</li>
+</ul>
+这正是「把服务暴露在内网」这种架构的通病：<strong>服务的可达性绑定在网络位置上</strong>。你在家能用，出门就废。
+<h2>架构：一条隧道，五个服务</h2>
+<p>先看最终形态。核心是<strong>单一入口</strong>：</p>
+<pre><code class="">                    公网 IPv6
+                        │
+        ┌───────────────┴────────────────┐
+        │   香橙派 (跳板机, aarch64)      │
+        │   仅对外开放: 22  (SSH)         │
+        │   其余服务全部只听 127.0.0.1     │
+        └───────────────┬────────────────┘
+                        │  SSH 隧道 (加密 + 公钥认证)
+                        │
+                  笔记本 (127.0.0.1)
+        ┌───────┬───────┬──────┬─────────┬──────────┐
+      :53     :8888   :3389  :21118    :7863       :8053
+      DNS     代理    RDP   RustDesk  API 网关    DNS 别名
+</code></pre>
+<p>每一个端口都是一个独立的 systemd 单元：</p>
+<table>
+<tr><th>本地端口</th><th>用途</th><th>对端</th><th>机制</th></tr>
+<tr><td><code>53/udp</code></td><td>本地 DNS</td><td>跳板机 unbound</td><td>系统级单元 + 特权端口</td></tr>
+<tr><td><code>8888/tcp</code></td><td>HTTP 代理</td><td>跳板机代理</td><td><code>ssh -L</code> + IPv4 桥</td></tr>
+<tr><td><code>3389/tcp</code></td><td>远程桌面</td><td>内网 Win11 机器</td><td>二段跳（跳板机再转）</td></tr>
+<tr><td><code>21118/tcp</code></td><td>RustDesk 直连</td><td>内网 Win11 机器</td><td>同上</td></tr>
+<tr><td><code>7863/tcp</code></td><td>模型网关</td><td>跳板机本机</td><td><code>ssh -L</code></td></tr>
+<tr><td><code>8053/udp</code></td><td>DNS 别名</td><td>跳板机 unbound</td><td>UDP over SSH 通道</td></tr>
+</table>
+<p>注意第 3、4 行：<strong>我没有给 Win11 机器单独开端口</strong>。它藏在跳板机后面，隧道从跳板机二次转发过去。对外，整条链路只有一个 22。</p>
+<h2>关键设计一：服务只听 127.0.0.1，隧道来拉</h2>
+<p>这是整个改造的地基。举一个实测例子：香橙派上有个服务只听 <code>127.0.0.1:1053</code>，从内网任何机器都连不上它。但只要它在那台机器上，隧道就能把它拉出来：</p>
+<pre><code class="bash">ssh -N -L "[::1]:1053:127.0.0.1:1053" jump.example.net
+<h1>结果：笔记本的 [::1]:1053 打通了</h1>
+$ ss -tlnH | grep 1053
+LISTEN 0  128  [::1]:1053  [::]:*
+</code></pre>
+<p><code>-L</code> 的作用是「在本地开一个监听，把连接从远端拉过来」，而「远端」那一段是从<strong>跳板机自己的视角</strong>解析的。所以「远端的 <code>127.0.0.1</code>」= 跳板机的回环。</p>
+<p>这就带来一个非常重要的性质：<strong>服务不需要信任网络，只需要信任本机</strong>。防火墙、内网 ACL、VLAN 隔离全都不需要了，因为服务根本没在网络上监听。</p>
+<p>我把这条推广到了全部服务：<code>8888</code> 不再绑 <code>0.0.0.0</code>，<code>7863</code> 不再绑 <code>*</code>，unbound 也改成只服务本机。<strong>唯一的例外是 22</strong>，因为它是入口。</p>
+<h2>关键设计二：<code>ssh -L</code> 在这个系统上绑不了 IPv4</h2>
+<p>这一条踩得比较实在，值得单独讲。</p>
+<p>这台笔记本的 OpenSSH 是 10.3（Debian 13），glibc 也偏新。表现是：</p>
+<pre><code class="bash">$ ssh -N -L 127.0.0.1:3389:10.20.30.50:3389 jump.example.net
+channel_setup_fwd_listener_tcpip: getaddrinfo(127.0.0.1): Address family for hostname not supported
+Could not request local forwarding.
+</code></pre>
+<p><strong>显式写 IPv4 字面量会直接失败。</strong> 换成 <code>[::1]</code> 就没问题：</p>
+<pre><code class="bash">ssh -N -L "[::1]:3389:10.20.30.50:3389" jump.example.net   # 可以
+ssh -N -L "3389:10.20.30.50:3389" jump.example.net          # 也可以（绑到 ::1）
+</code></pre>
+<p>但这样一来，本地的监听只在 IPv6 回环上。而很多客户端（Remmina、mstsc、RustDesk 的「直连 IP」输入框）只会写 <code>127.0.0.1</code>。于是每个这样的服务都需要配一个 <strong>IPv4 → IPv6 桥</strong>：</p>
+<pre><code class="bash">socat TCP4-LISTEN:3389,bind=127.0.0.1,fork,reuseaddr TCP6:[::1]:3389
+</code></pre>
+<p>这就是为什么 RDP 和 RustDesk 在 systemd 里是<strong>两个单元</strong>：</p>
+<pre><code class="">rdp-tunnel.service            # ssh -L [::1]:3389
+rdp-tunnel-v4-bridge.service  # socat 127.0.0.1:3389 -> [::1]:3389
+</code></pre>
+<p>后者用 <code>After=</code> 和 <code>Requires=</code> 依赖前者。<strong>这是一个看起来多余、但不写就不通的单元</strong>。排障时如果只看到 <code>ssh</code> 起来了却连不上，先想想是不是缺这个桥。</p>
+<h2>关键设计三：启动前先探测，别让 ssh 自己超时</h2>
+<p>最初的隧道单元是这样写的：</p>
+<pre><code class="ini">ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=30 -L ... jump.example.net
+Restart=on-failure
+RestartSec=10
+</code></pre>
+<p>问题在于<strong>开机时</strong>：网络还没就绪，<code>ssh</code> 会自己花几十秒去连、失败、退出、等 10 秒、再试。日志里一堆噪音，恢复也慢。</p>
+<p>改成统一的<strong>可达性门禁</strong>：</p>
+<pre><code class="ini">ExecStartPre=/usr/local/bin/tunnel-precheck 10.20.30.40,jump.example.net 22 4 3
+ExecStart=/usr/bin/ssh -N -L ... jump.example.net
+</code></pre>
+<p><code>tunnel-precheck</code> 先探一下跳板机的 22 通不通，不通就立刻失败让 systemd 退避重试。逻辑很朴素，但有三个细节值得写下来：</p>
+<h3>细节 1：探 22，不要探目标端口</h3>
+<p>我一开始想「既然要转发 53，那就探 53」。<strong>这是错的。</strong></p>
+<p>跳板机上的 unbound 监听的是 <code>0.0.0.0:53</code>，<strong>只绑了 IPv4</strong>。而跳板机的公网地址是 <strong>IPv6-only</strong>（只有 AAAA 记录）。用 IPv6 去连它的 53，结果是 <code>connection refused</code>：<strong>明明服务活着，却判定不可达</strong>。</p>
+<p>注意这里的迷惑性：在跳板机上跑 <code>ss</code> 会看到 <code>tcp 0.0.0.0:53 LISTEN</code>，看起来「TCP 53 在监听」。但那是 IPv4 的那条，IPv6 连接会被拒。</p>
+<p><strong>结论：隧道门禁一律探 SSH 端口 22。</strong> 它才是这条链路真正依赖的东西。</p>
+<h3>细节 2：必须绕开回环 DNS，否则永远起不来</h3>
+<p>这是个更隐蔽的坑。改造完成后，本地 <code>/etc/resolv.conf</code> 的第一行是：</p>
+<pre><code class="">nameserver 127.0.0.1
+</code></pre>
+<p>也就是<strong>本地 DNS 指向隧道</strong>。如果 <code>tunnel-precheck</code> 用它来解析跳板机域名，就形成了循环依赖：</p>
+<pre><code class="">要启动隧道 -> 需要解析跳板机域名 -> 需要本地 DNS -> 需要隧道先启动
+</code></pre>
+<p><strong>结果：隧道一旦断了，就永远起不来。</strong> 这是典型的自举问题。</p>
+<p>修法是解析时按顺序尝试，且<strong>主动跳过回环解析器</strong>：</p>
+<ol>
+<li>1. 先查 <code>/etc/hosts</code>（静态，不依赖网络）</li>
+<li>2. 再用<strong>非回环</strong>的 nameserver 直接查（<code>dig @<ns></code>）</li>
+<li>3. 最后才回落到系统解析器</li>
+</ol>
+实测对比很直观。隧道关闭时：
+<pre><code class="">$ getent ahosts jump.example.net
+（空，超时）
+<p>$ tunnel-precheck jump.example.net 22 3 1
+（0.08 秒返回可达）
+</code></pre></p>
+<p>同一个域名，系统解析器卡死，门禁脚本瞬间完成。差别就在于它绕开了 <code>127.0.0.1</code>。</p>
+<h3>细节 3：多主机列表 = 「在家用内网，在外用公网」</h3>
+<p>门禁支持逗号分隔的多个地址，任意一个可达即通过：</p>
+<pre><code class="ini">ExecStartPre=/usr/local/bin/tunnel-precheck 10.20.30.40,jump.example.net 22 4 3
+</code></pre>
+<ul>
+<li><strong>在家</strong>：<code>10.20.30.40</code> 直接可达，走内网，不经公网</li>
+<li><strong>在外</strong>：内网地址超时，自动落到 <code>jump.example.net</code></li>
+</ul>
+这就解决了一个很实际的体验问题：在家时不用绕公网一圈。
+<h2>关键设计四：<code>MODE=auto</code>，一条隧道两种走法</h2>
+<p>上面的「在家/在外」如果只是探测，还不够。真正的差别在于<strong>数据怎么走</strong>：</p>
+<ul>
+<li><strong>在家</strong>：跳板机就在同一个二层网络里，直接 <code>socat</code> 转发即可，<strong>不需要 SSH</strong></li>
+<li><strong>在外</strong>：走公网 IPv6 + SSH</li>
+</ul>
+所以我写了一个小的监督进程，启动时探测一次，之后每 30 秒复查：
+<pre><code class="bash"># 伪代码
+detect_mode() {
+  if 能连上 ${REMOTE}:${PORT}; then echo lan; else echo ssh; fi
+}
+<p>mode=$(detect_mode)
+if [ "$mode" = lan ]; then
+  socat TCP4-LISTEN:${LPORT},bind=127.0.0.1 TCP4:${REMOTE}:${RPORT}
+else
+  ssh -N -L "[::1]:${LPORT}:127.0.0.1:${RPORT}" "$JUMP"
+  socat TCP4-LISTEN:${LPORT},bind=127.0.0.1 TCP6:[::1]:${LPORT}   # IPv4 桥
+fi
+</code></pre></p>
+<p>网络切换时（比如从公司 Wi-Fi 换到手机热点），模式变了就主动退出，让 systemd 重启并重新探测。<strong>客户端全程只认 <code>127.0.0.1</code>，完全感知不到背后换了一条路。</strong></p>
+<p>这个「自动切换」解决的不只是性能，它让「在家」和「在外」<strong>用同一份配置</strong>。我不需要在笔记本上维护两套 profile。</p>
+<h2>关键设计五：端口归属要划清，否则两个单元互相抢</h2>
+<p>这里犯过一个错误，值得单独说。</p>
+<p>一开始我把 DNS 同时配在用户级和系统级两个单元里，两边都写了 <code>8053</code>。结果两个服务互相抢同一个监听端口，<strong>必然有一个进重启循环</strong>。</p>
+<p>后来划清了边界：</p>
+<table>
+<tr><th>单元</th><th>级别</th><th>端口</th><th>原因</th></tr>
+<tr><td><code>tunnel-unbound</code></td><td><strong>系统级</strong>（root）</td><td><code>53/udp</code></td><td>绑特权端口 + 写 <code>/etc/resolv.conf</code></td></tr>
+<tr><td><code>tunnel-orangepi</code></td><td>用户级</td><td><code>8888</code>、<code>8053</code></td><td>普通权限足够</td></tr>
+</table>
+<p>为什么 53 必须是系统级？两个实测约束：</p>
+<p><strong>其一</strong>，<code>/etc/resolv.conf</code> 的 <code>nameserver</code> 只接受<strong>纯 IP，没有端口语法</strong>：</p>
+<pre><code class="">nameserver Name server IP address
+    Internet address of a name server that the resolver should query,
+    either an IPv4 address (in dot notation), or an IPv6 address ...
+</code></pre>
+<p><code>man 5 resolv.conf</code> 里 <code>nameserver</code> 的定义通篇没有 <code>port</code>。所以 <code>nameserver 127.0.0.1:8053</code> 是<strong>无效的</strong>，glibc 只会去问 53。这意味着<strong>想让解析器用上隧道，就必须监听 53</strong>。</p>
+<p><strong>其二</strong>，本机 <code>net.ipv4.ip_unprivileged_port_start = 1024</code>，绑 53 需要特权：</p>
+<pre><code class="">$ python3 -c 'socket bind 127.0.0.1:53'
+PermissionError: [Errno 13] Permission denied
+</code></pre>
+<p><code>systemctl --user</code> 加 <code>AmbientCapabilities=CAP_NET_BIND_SERVICE</code> 也失败（<code>status=218/CAPABILITIES</code>，user manager 起不来特权）。所以 53 只能交给系统级单元。</p>
+<h2>关键设计六：改 DNS 要能自动回滚，别把自己锁死</h2>
+<p>把 <code>resolv.conf</code> 指向隧道是有风险的：<strong>如果隧道没起来而解析器已经指向它，就等于把 DNS 掐了。</strong></p>
+<p>所以写入逻辑做了三层保护：</p>
+<p><strong>第一，只在隧道真正监听之后才写入。</strong> 用一个轮询等待：</p>
+<pre><code class="bash"># ExecStartPost：等 53 起来，最多 40 秒
+/my/helper wait-up 40
+</code></pre>
+<p>等不到就不写，<code>resolv.conf</code> 保持原样。<strong>宁可 DNS 走老路，也不能指到一个死地址</strong>。</p>
+<p><strong>第二，把 <code>127.0.0.1</code> 插在最前面，但保留原有服务器。</strong></p>
+<pre><code class=""># tunnel-unbound: managed block start
+nameserver 127.0.0.1
+<h1>tunnel-unbound: managed block end</h1>
+nameserver 10.20.30.1
+nameserver 203.0.113.53
+</code></pre>
+<p>glibc 的行为是「第一个超时就试下一个」。所以即使隧道死了，DNS 会自动回退到 DHCP 给的服务器，<strong>只是慢一点，不会断</strong>。</p>
+<p><strong>第三，停止时用 <code>ExecStopPost</code> 摘掉。</strong></p>
+<pre><code class="ini">ExecStopPost=/my/helper down
+</code></pre>
+<h2>关键设计七：DNS 是位置相关的，必须在本机解决</h2>
+<p>这一条是本次改造里最有意思的发现，也是唯一一个「不能靠改服务端解决」的问题。</p>
+<p>场景：浏览器代理插件配置里写的是 <code>proxy.lan:8888</code>。这个内网域名由<strong>家里的 DNS</strong> 解析，答案是跳板机的内网地址。</p>
+<p>问题来了：接入隧道后，DNS 查询经过 SSH 到达跳板机的 unbound。而 unbound 给出的 <code>proxy.lan</code> 答案是<strong>内网地址</strong>，<strong>在外网不可达</strong>。</p>
+<p>我先想的是「那就改服务端 unbound，让它返回一个外面也能用的地址」。<strong>但这条路走不通</strong>，原因很微妙：</p>
+<blockquote>隧道过来的 DNS 查询，<strong>源地址是跳板机自己的 <code>127.0.0.1</code></strong>。unbound 看到的来源永远是回环，<strong>它分不清</strong>这个查询来自「在外面的笔记本」还是「家里的某台机器」。</blockquote>
+所以：
+<ul>
+<li>返回内网地址 → 家里机器对，笔记本在外错</li>
+<li>返回公网地址 → 笔记本在外对，家里机器错</li>
+</ul>
+<strong>一个答案服务不了两种网络位置。</strong>
+<p>正确的做法是<strong>在本机 <code>/etc/hosts</code> 里钉死</strong>：</p>
+<pre><code class="">127.0.0.1  proxy.lan
+</code></pre>
+<p>为什么指向 <code>127.0.0.1</code> 而不是跳板机地址？因为隧道已经把本地的 <code>127.0.0.1:8888</code> 映射到了跳板机的代理。所以：</p>
+<ul>
+<li><strong>在家</strong> → <code>proxy.lan</code> → <code>127.0.0.1:8888</code> → socat 直连内网</li>
+<li><strong>在外</strong> → <code>proxy.lan</code> → <code>127.0.0.1:8888</code> → SSH 隧道</li>
+</ul>
+<strong>两种情况都对，而且不需要随网络切换。</strong> 这是整套架构最优雅的一处：因为隧道抹平了网络位置的差异，<code>127.0.0.1</code> 反而成了一个全局有效的答案。
+<p>（技术细节：<code>/etc/hosts</code> 优先于 DNS，因为 <code>nsswitch.conf</code> 是 <code>hosts: files dns</code>。顺带的好处是，这条记录也让<strong>被污染的 DNS 无法再影响这个域名</strong>。）</p>
+<h2>关键设计八：UDP 不能直接走 <code>ssh -L</code></h2>
+<p>SSH 的 <code>-L</code> 转发的是 <strong>TCP 字节流</strong>。DNS 通常走 UDP，直接转发会丢掉报文边界（一个 UDP 数据报可能被切成几段 TCP 段）。</p>
+<p>所以 UDP 需要一个「流 → 报文」的转换层，两端各一个 <code>socat</code>：</p>
+<pre><code class="">本地 socat:  UDP4-LISTEN:53  ->  TCP4:127.0.0.1:<通道端口>
+SSH:         ✁ 加密隧道 ✁
+远端 socat:  TCP4-LISTEN:<通道端口>  ->  UDP4:127.0.0.1:53
+</code></pre>
+<p>远端那个 <code>socat</code> 由 SSH 会话本身拉起，所以<strong>它会随着 SSH 一起死</strong>：</p>
+<pre><code class="bash">ssh -N -L "[::1]:<chan>:127.0.0.1:<chan>" "$JUMP" \
+  "exec socat TCP4-LISTEN:<chan>,reuseaddr,fork UDP4:127.0.0.1:53"
+</code></pre>
+<p>不过硬杀（<code>kill -9</code>）会留下孤儿进程占着端口。所以启动前先清理同一通道的残留：</p>
+<pre><code class="bash">pgrep -f '^socat TCP4-LISTEN:<chan>,' | xargs -r kill; sleep 0.3; exec socat ...
+</code></pre>
+<p>（用的是<strong>锚定</strong>的 <code>pgrep</code>；松散的 <code>pgrep -f socat</code> 会匹配到脚本自己的命令行，把自己杀掉。）</p>
+<h2>当前态 vs 目标态：一个正在进行的收敛</h2>
+<p>诚实地说，这套改造<strong>还没有完成</strong>。当前香橙派上仍有一批服务监听着 <code>0.0.0.0</code>：</p>
+<pre><code class="">tcp 0.0.0.0:80        tcp 0.0.0.0:443      tcp 0.0.0.0:53
+tcp <em>:8888            tcp </em>:7863           tcp 0.0.0.0:1080
+...
+</code></pre>
+<p>而目标是全部收敛到 <code>127.0.0.1</code>，只留 <code>22</code>。这不是遗漏，是<strong>正在做的过程</strong>，因为「隧道能不能替代直连」这件事必须先验证再收缩。</p>
+<p>现在验证已经完成：<strong>隧道能完整替代所有直连场景</strong>。所以下一步就是把每个服务的监听地址改掉，然后关掉防火墙上的洞。</p>
+<p>我把这个状态写出来，是因为<strong>架构改造的真实节奏就是这样</strong>：先建新路、验证新路、再拆旧路。上来就断掉所有直连，出了问题没有退路。</p>
+<h2>这套架构到底解决了什么</h2>
+<p>回头看，这次改造真正改变的是一组<strong>默认假设</strong>：</p>
+<table>
+<tr><th></th><th>改造前</th><th>改造后</th></tr>
+<tr><td>服务监听</td><td><code>0.0.0.0</code>（对内网开放）</td><td><code>127.0.0.1</code>（只认同机）</td></tr>
+<tr><td>可达性</td><td>绑定网络位置</td><td>绑定身份认证</td></tr>
+<tr><td>暴露面</td><td>N 个端口 + 防火墙规则</td><td><strong>1 个端口</strong></td></tr>
+<tr><td>加新服务</td><td>开端口、加规则、改配置</td><td>加一行隧道配置</td></tr>
+<tr><td>在家的体验</td><td>直连</td><td>直连（自动切换）</td></tr>
+<tr><td>在外的体验</td><td>不可用</td><td>和在家一样</td></tr>
+</table>
+<p>核心是那一句：<strong>「服务不需要信任网络，只需要信任本机。」</strong></p>
+<p>一旦这个假设立住，很多事情自然就顺了：</p>
+<ul>
+<li><strong>不需要 VLAN 隔离</strong>：服务没在网络上监听，隔不隔离无所谓</li>
+<li><strong>不需要内网 ACL</strong>：唯一的入口是 SSH，认证和授权都在这里做</li>
+<li><strong>不需要 VPN</strong>：VPN 的本质就是「把远端网络拉到本地」，而 SSH 隧道是<strong>按端口、按需</strong>地做这件事，粒度更细、攻击面更小</li>
+<li><strong>不需要为每个网络位置维护配置</strong></li>
+</ul>
+<h2>安全上我特意做的几件事</h2>
+<ol>
+<li>1. <strong>只留一个入口。</strong> 全部服务缩回回环，公网只剩 22。这不仅是少开端口，更是<strong>把攻击面从「N 个应用」收敛到「一个 OpenSSH」</strong>。OpenSSH 是被审计最多的软件之一，比任何一个自建服务的暴露面都更可控。</li>
+</ol>
+<ol>
+<li>2. <strong>密钥 + 禁用密码。</strong> <code>BatchMode=yes</code> 意味着纯公钥认证（失败不交互提示）。隧道全部无密码自动化。</li>
+</ol>
+<ol>
+<li>3. <strong>主机密钥严格校验，且不因走 IP 而失效。</strong> 因为会把域名 pin 到解析出的 IP，我用 <code>HostKeyAlias</code> 保留按<strong>域名</strong>校验。这一点在本项目里不是理论担忧。<strong>中途真的发生过 DNS 污染</strong>：跳板机域名被解析到一个陌生的境外地址，host key 立刻不匹配，SSH 拒绝连接。</li>
+</ol>
+   当时如果没有严格校验，就会把 API key 发到那台陌生服务器上。所以：
+   <pre><code class="bash">   ssh -o HostName=<解析出的IP> -o HostKeyAlias=jump.example.net ...
+   </code></pre>
+<p>   实测确认：<code>HostKeyAlias</code> 正确时通过，故意写错时被拒（<code>Host key verification failed</code>）。<strong>pin 地址不会削弱校验。</strong></p>
+<ol>
+<li>4. <strong>敏感信息不进依赖 DNS 的路径。</strong> 隧道里的流量（API key、DNS 查询）全程加密，且落地在 <code>127.0.0.1</code>，不经任何可路由的中间节点。</li>
+</ol>
+<ol>
+<li>5. <strong>服务无状态、无本地凭据。</strong> 隧道本身只是一个转发进程，不持有任何密钥（用 SSH 的公钥认证），杀掉即无残留。</li>
+</ol>
+<h2>如果只带走一句话</h2>
+<p><strong>把服务缩回 <code>127.0.0.1</code>，然后用一条 SSH 隧道按需把它们拉出来。</strong></p>
+<p>这一句话同时买到三件事：<strong>暴露面收敛到一个端口</strong>、<strong>在外和在家体验一致</strong>、<strong>加服务不用改网络</strong>。成本是一条隧道，收益是整个可达性模型的重构。</p>
+<h2>附：完整命令速查</h2>
+<pre><code class="bash"># 生成一条 TCP 隧道（本地 5432 -> 跳板机上的 127.0.0.1:5432）
+ssh -N -L "[::1]:5432:127.0.0.1:5432" jump.example.net
+<h1>需要 IPv4 客户端时补一个桥</h1>
+socat TCP4-LISTEN:5432,bind=127.0.0.1,fork,reuseaddr TCP6:[::1]:5432
+<h1>二段跳：本地 -> 跳板机 -> 内网机器</h1>
+ssh -N -L "[::1]:3389:10.20.30.50:3389" jump.example.net
+<h1>UDP（如 DNS）：两端各一个 socat，中间走 SSH，且远端 socat 随会话退出</h1>
+ssh -N -L "[::1]:5300:127.0.0.1:5300" jump.example.net \
+  "exec socat TCP4-LISTEN:5300,reuseaddr,fork UDP4:127.0.0.1:53"
+<h1>门禁：启动前确认跳板机可达（多地址 = 在家/在外都能用）</h1>
+tunnel-precheck 10.20.30.40,jump.example.net 22 4 3
+<h1>本机把内网域名钉到隧道（在家在外都有效）</h1>
+grep -q proxy.lan /etc/hosts || echo "127.0.0.1 proxy.lan" >> /etc/hosts
+</code></pre>
+<p>---</p>
+<p><em>本文涉及的域名、IP、用户名均已脱敏替换为保留示例值；文中命令可直接用于你自己的环境。基于一次真实的假期前网络架构改造整理。</em>
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/",
+      title: "\u56fd\u5e86\u56de\u8001\u5bb6\uff0c\u4e07\u7269\u7686\u96a7\u9053\uff1a\u628a\u5bb6\u91cc\u6240\u6709\u670d\u52a1\u6536\u655b\u5230\u53ea\u5269\u4e00\u4e2a SSH \u7aef\u53e3"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

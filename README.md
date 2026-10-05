@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-05 | [国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口](https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/) | SSH 隧道 · 内网收敛 · 端口转发 · DNS · 代理 · 远程桌面 · RustDesk · systemd · 安全加固 · 原创 |
 | 2026-10-03 | [Ubuntu 正在给 Debian 的 APT 加 SHA3：为 SHA2 万一被攻破提前十年铺路](https://freelamp.com/articles/2026-10-03_ubuntu-sha3-apt/) | Ubuntu · Debian · APT · SHA3 · SHA2 · 密码学 · 包管理 · 供应链安全 · 密码敏捷性 · 译文 |
 | 2026-10-02 | [Ubuntu 把 OpenPGP 也换成 Rust：Sequoia PGP 进入 26.10，未来或取代 GnuPG](https://freelamp.com/articles/2026-10-02_ubuntu-sequoia-pgp/) | Ubuntu · Sequoia PGP · OpenPGP · GnuPG · Rust · uutils · 内存安全 · 26.10 · 译文 |
 | 2026-10-01 | [从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘](https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/) | Goodix · 指纹 · libfprint · 逆向工程 · Wine · 虚拟化 · TLS-PSK · DPAPI · WBDI · 驱动适配 · 原创 |

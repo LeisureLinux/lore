@@ -1,0 +1,22 @@
+---
+title: '国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口'
+date: "2026-10-05"
+slug: all-services-over-one-ssh-tunnel
+author: FreeLAMP.com
+category: "Linux 运维"
+tags:
+  - SSH 隧道
+  - 内网收敛
+  - 端口转发
+  - DNS
+  - 代理
+  - 远程桌面
+  - RustDesk
+  - systemd
+  - 安全加固
+  - 架构设计
+  - 原创
+summary: "一次假期前的网络架构改造：把本地 DNS、HTTP 代理、远程桌面、RustDesk、模型网关全部收敛到 127.0.0.1，由一条 SSH 隧道按需拉取。家里那台香橙派对公网只留 22 端口，其余服务一律只听回环。核心洞察：一旦服务只绑 127.0.0.1，就不再需要信任网络——不需要 VLAN、不需要内网 ACL、不需要 VPN，暴露面从一个网段收敛到一个端口。文中记录了 ssh -L 在 Debian 13 / OpenSSH 10.3 上绑不了 IPv4 字面量（需 socat 桥）、启动门禁不能探目标端口（IPv4-only 服务 + IPv6-only 域名会误判）、DNS 自举循环（隧道自己的解析依赖隧道）、UDP 不能直接走 ssh -L（需两端 socat 转换）、以及「一个 DNS 答案服务不了两种网络位置」这个必须在本机 /etc/hosts 解决的位置相关问题。"
+description: "框架式架构复盘：如何用一条 SSH 隧道把家里的 DNS(53)、HTTP 代理(8888)、RDP(3389)、RustDesk(21118)、模型网关(7863) 全部拉到笔记本本地 127.0.0.1，同时让香橙派对公网只暴露 22 端口。八组关键设计：①服务只听 127.0.0.1，隧道来拉（实测 loopback-only 服务可被 ssh -L 转发）；②OpenSSH 10.3 拒绝绑定 IPv4 字面量，需 [::1] + socat IPv4 桥；③统一可达性门禁 tunnel-precheck，必须探 22 而非目标端口（跳板机 unbound 绑 0.0.0.0:53 是 IPv4-only，而公网名是 AAAA-only）；④门禁解析必须跳过回环 nameserver，否则「启动隧道需要解析跳板机、解析跳板机需要隧道」形成自举死锁；⑤MODE=auto 探测 LAN/WAN，在家用 socat 直连不走 SSH，在外走公网 IPv6，网络切换时主动退出重启；⑥53 必须系统级单元（resolv.conf 无端口语法 + ip_unprivileged_port_start=1024）；⑦改 DNS 的三层保护（只在实际监听后写入、127.0.0.1 置顶但保留 DHCP DNS 兜底、ExecStopPost 摘除）；⑧UDP over SSH 需两端 socat 做流/报文转换，远端 socat 随会话退出。另有安全实践：HostKeyAlias 让 IP pinning 不削弱主机密钥校验（本项目真实遭遇过 DNS 污染导致 host key 不匹配，严格校验挡下了向陌生服务器发送 API key）。"
+published: true
+---
