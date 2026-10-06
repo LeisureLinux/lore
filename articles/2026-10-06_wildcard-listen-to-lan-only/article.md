@@ -211,6 +211,38 @@ done
 3. **`bind=<具体地址>` 是关键**：写成 `0.0.0.0` 就前功尽弃
 4. **改完一定要验证 IPv6**：`ss -tlnH | grep -c "[::]:"`，直觉在这里不可靠
 
+## 延伸阅读：我写了一本关于 SSH 加固的书
+
+这篇文章只处理了一个很窄的切面，**暴露面收敛**。如果你在做的是把 SSH 当成生产入口来管，那要覆盖的东西要多得多。
+
+我把自己这些年做 SSH 加固的思路整理成了一本开源电子书：
+
+> **《SSH 纵深加固：从攻击链到六层防御体系》**
+> SSH Brute-Force Defense in Depth — 协议层密码学、攻击链分析、六层纵深防御、堡垒机架构与零信任远程访问。
+
+它的出发点是一个不太乐观的现实：全球任意时刻有 **2000–3000 万个 SSH 服务暴露在公网**（Censys 2023），而一次全 IPv4 的 22 端口扫描，成本不到 1 美元、耗时几分钟。凭证滥用连续多年位居 Verizon DBIR 初始访问向量第一。
+
+网上关于 SSH 加固的教程很多，但大多停在**「改端口 + fail2ban + 禁密码」**这三板斧。这本书想做的是把它做成一套可落地的工程方案：
+
+```
+第 1 层：减少暴露面   — 让攻击者根本找不到你
+第 2 层：认证加固     — 让攻击者即便找到了也进不来
+第 3 层：访问控制     — 让攻击者即便进来了也不能随便做事
+第 4 层：主动阻断     — 让攻击者反复尝试时付出代价
+第 5 层：入侵检测     — 让攻击者已经进来了能被我们看到
+第 6 层：审计与响应   — 让攻击者造成的损失可追溯、可止血
+```
+
+每一层都有可复制粘贴的配置、脚本和部署指南，并对齐 **CIS Benchmarks · NIST SP 800-53 · DISA STIG · MITRE ATT&CK · PCI DSS 4.0** 等合规框架。上面讲的通配监听、`0.0.0.0` 的语义、以及 SPA / 零信任远程访问这些话题，在第 1 层和第 3 层里有更系统地展开。
+
+**在线阅读与下载**（MIT 许可，免费）：
+
+- 仓库：[github.com/LeisureLinux/ebook-ssh-hardening](https://github.com/LeisureLinux/ebook-ssh-hardening)
+- HTML 在线版：[leisurelinux.github.io/ebook-ssh-hardening](https://leisurelinux.github.io/ebook-ssh-hardening/)
+- PDF / ePub：仓库的 [Releases](https://github.com/LeisureLinux/ebook-ssh-hardening/releases) 页
+
+如果它帮你把某台机器收紧了，欢迎在仓库里提 issue 补充你遇到的场景。
+
 ---
 
 *本文涉及的域名、IP、用户名均已脱敏替换为保留示例值（`2001:db8::/32` 与 `10.20.30.0/24` 均为文档/内网保留段）。方案基于一次真实的 IPv6 暴露面收敛整理。*
