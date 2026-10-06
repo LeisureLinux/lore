@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-06 | [zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转](https://freelamp.com/articles/2026-10-06_zram-streams-rework/) | Linux内核 · zram · 内存压缩 · zcomp · 内核补丁 · 优先级反转 · zstd · lz4hc · swap · 译文 |
 | 2026-10-06 | [一个布尔值把内网服务变成了公网服务：把通配监听收回内网（socat 桥模式）](https://freelamp.com/articles/2026-10-06_wildcard-listen-to-lan-only/) | 网络安全 · 暴露面收敛 · socat · systemd · IPv6 · 通配监听 · 安全加固 · 原创 |
 | 2026-10-06 | [万物皆隧道（续）：给香橙派接上 Cloudflare 零信任 SSH，每个访问端一张 3 分钟证书](https://freelamp.com/articles/2026-10-06_orange-pi-cloudflare-zero-trust-ssh/) | 零信任 · Cloudflare Tunnel · Access · SSH · 短时证书 · CGNAT · 内网穿透 · 安全加固 · 原创 |
 | 2026-10-05 | [国庆回老家，万物皆隧道：把家里所有服务收敛到只剩一个 SSH 端口](https://freelamp.com/articles/2026-10-05_all-services-over-one-ssh-tunnel/) | SSH 隧道 · 内网收敛 · 端口转发 · DNS · 代理 · 远程桌面 · RustDesk · systemd · 安全加固 · 原创 |

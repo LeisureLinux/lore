@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转 — FreeLAMP.com</title>
+  <meta name="description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少、以及普通用户该不该关心">
+  <meta name="keywords" content="Linux内核, zram, 内存压缩, zcomp, 内核补丁, 优先级反转, zstd, lz4hc, swap, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-06">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-06_zram-streams-rework/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转">
+  <meta property="og:description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少、以及普通用户该不该关心">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-06_zram-streams-rework/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-06">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux内核">
+  <meta property="article:tag" content="Linux内核">
+  <meta property="article:tag" content="zram">
+  <meta property="article:tag" content="内存压缩">
+  <meta property="article:tag" content="zcomp">
+  <meta property="article:tag" content="内核补丁">
+  <meta property="article:tag" content="优先级反转">
+  <meta property="article:tag" content="zstd">
+  <meta property="article:tag" content="lz4hc">
+  <meta property="article:tag" content="swap">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转">
+  <meta name="twitter:description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少、以及普通用户该不该关心">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转",
+  "description": "原文：Linux's ZRAM Reworked For Greater Memory Savings, Better Performancehttps://www.phoronix.com/news/Linux-ZRAM-Rework-Savings（Phoronix，2026-10-05，作者 Michael Larabel）。本文为译文 + 解读。  一句话结论 Google Chrome/",
+  "datePublished": "2026-10-06",
+  "dateModified": "2026-10-06",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-06_zram-streams-rework/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Linux内核, zram, 内存压缩, zcomp, 内核补丁, 优先级反转, zstd, lz4hc, swap, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转",
+        "item": "https://freelamp.com/articles/2026-10-06_zram-streams-rework/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-06">2026-10-06</div>
+        <h1 class="post-title" itemprop="headline">zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Linux%E5%86%85%E6%A0%B8/">Linux内核</a><a itemprop="keywords" href="/tags/zram/">zram</a><a itemprop="keywords" href="/tags/%E5%86%85%E5%AD%98%E5%8E%8B%E7%BC%A9/">内存压缩</a><a itemprop="keywords" href="/tags/zcomp/">zcomp</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8%E8%A1%A5%E4%B8%81/">内核补丁</a><a itemprop="keywords" href="/tags/%E4%BC%98%E5%85%88%E7%BA%A7%E5%8F%8D%E8%BD%AC/">优先级反转</a><a itemprop="keywords" href="/tags/zstd/">zstd</a><a itemprop="keywords" href="/tags/lz4hc/">lz4hc</a><a itemprop="keywords" href="/tags/swap/">swap</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>原文：<a href="https://www.phoronix.com/news/Linux-ZRAM-Rework-Savings">Linux's ZRAM Reworked For Greater Memory Savings, Better Performance</a>（Phoronix，2026-10-05，作者 Michael Larabel）。本文为<strong>译文 + 解读</strong>。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>Google Chrome/Chromium 团队的 <strong>Sergey Senozhatsky</strong> 提交了一组 <strong>zram 重构补丁</strong>：把压缩流<strong>拆成独立的 per-CPU 读流和写流</strong>，解决抢占式 zram 下的<strong>优先级反转</strong>问题；并让<strong>重压缩只用一个单例压缩上下文</strong>。内存节省的量级是<strong>「每个上下文、每个 CPU 从两位数 KB 到三位数 KB」</strong>，单看不多，但<strong>按 CPU 核心数 × 上下文数累积起来就相当可观</strong>。补丁已在 <strong>LKML 上送审</strong>。</p>
+<blockquote>顺带说一句背景：Phoronix 开篇提到的动机是<strong>「如今内存价格非常高」</strong>。这解释了为什么近期内核社区对内存占用如此敏感。</blockquote>
+<h2>一、这次重构解决的两个问题</h2>
+<h3>问题一：优先级反转，读被写挡住</h3>
+<p>这是补丁作者本人在邮件里解释的核心问题，值得完整引述：</p>
+<blockquote>「zcomp 部分主要是在解决<strong>某些配置下出现的优先级反转问题</strong>。在 zcomp 里，我们<strong>一直把读上下文和写上下文放在同一个 per-CPU 流里</strong>。有了可抢占的 zram，这就成了麻烦：<strong>一个更高优先级的读操作可以抢占写操作</strong>，而那个写操作<strong>可能持有流锁</strong>；由于压缩流被这个被抢占的写操作锁着，<strong>读操作就被挡在了同一把流锁上</strong>。」</blockquote>
+<strong>这段描述的因果链比较绕，拆开看</strong>：
+<ol>
+<li>1. 内核里，<strong>读操作（解压）的优先级高于写操作（压缩）</strong>：因为读往往是缺页处理的一部分，用户进程正等着；</li>
+<li>2. 但<strong>读和写共用同一个 per-CPU 压缩流，也就共用同一把锁</strong>；</li>
+<li>3. 于是出现经典的优先级反转：<strong>高优先级任务（读）被低优先级任务（写）持有的锁阻塞</strong>，而低优先级任务又没法被调度回来放锁；</li>
+<li>4. <strong>结果是「优先」二字失效</strong>：本该优先的读，被迫等写。</li>
+</ol>
+<h3>作者给出的解法：读写本来就不该共用流</h3>
+<p>关键论证是这一句：</p>
+<blockquote>「然而，<strong>我们没有任何理由让读上下文和写上下文共享并争抢同一个流</strong>，因为<strong>读（解压）和写（压缩）路径是完全独立的，它们从不触碰对方的缓冲区</strong>。因此，我们可以把压缩流<strong>拆成 per-CPU 读流和 per-CPU 写流</strong>，这样读和写就不会再互相阻塞了。」</blockquote>
+<blockquote>作者还特别注明：<strong>这个想法来自 Barry Song</strong>。（kudos 在开源邮件列表里通常标注真实贡献者，这点值得留意。）</blockquote>
+<strong>为什么「互不触碰缓冲区」是关键论据</strong>：把两个东西拆开需要证明「拆开是安全的」。作者的论据不是「拆开更快」，而是<strong>「它们本来就没有数据依赖」</strong>。既然读写路径不共享缓冲区，那么共用一个流就是<strong>纯粹的历史包袱，而非设计需要</strong>。
+<h3>问题二：重压缩流的分配浪费</h3>
+<p>这是<strong>内存节省的真正来源</strong>，作者解释得很清楚：</p>
+<blockquote>「系列里的最后一个补丁<strong>建立在读写流解耦之上</strong>，<strong>重做了二级流的处理方式</strong>。二级压缩流<strong>只被重压缩使用</strong>，而重压缩<strong>由设备锁串行化</strong>，也就是说它是<strong>单线程的</strong>。然而，<strong>我们仍然按 per-CPU 分配二级流</strong>（我们需要允许对重压缩后的对象进行并发读）。<strong>因为现在有了专用的读/写流</strong>，我们可以<strong>分配一个单例压缩上下文（用于重压缩），同时仍然保有 per-CPU 的解压上下文</strong>。这在<strong>某些后端和配置下（例如 zstd、deflate、lz4hc）能省下相当可观的内存</strong>。」</blockquote>
+<strong>这段话里的账要这么算</strong>：
+<table>
+<tr><th>项</th><th>旧行为</th><th>新行为</th></tr>
+<tr><td>二级流（重压缩用）</td><td><strong>按 per-CPU 分配</strong></td><td><strong>单例</strong></td></tr>
+<tr><td>实际并发使用</td><td><strong>同一时刻只用一个</strong>（重压缩被设备锁串行化）</td><td>仍是一个</td></tr>
+<tr><td>浪费</td><td><strong><code>num_online_cpus() - 1</code> 个流白分配</strong></td><td>消除</td></tr>
+<tr><td>解压上下文</td><td>复用二级流</td><td><strong>仍保持 per-CPU</strong></td></tr>
+</table>
+<p><strong>所以省下来的不是「一个新算法」，而是「每个优先级列表上都存在的、按 CPU 数倍增的空转分配」</strong>。作者特别点名的 <strong>zstd、deflate、lz4hc</strong> 是<strong>每个流的工作内存占用较大</strong>的后端：这些算法的 per-stream 状态越大，省得越多。</p>
+<blockquote>还有一个关键点：<strong>作者强调解压上下文仍然保持 per-CPU</strong>。也就是说这次是<strong>「把不需要 per-CPU 的东西收成单例」</strong>，而不是无脑减少并发度。<strong>压缩能省内存的地方省，解压该有的并发保留</strong>。这是个有取舍的设计，不是一刀切的激进简化。</blockquote>
+<h2>二、省了多少？性能提升多少？</h2>
+<p><strong>内存</strong>：官方说法是<strong>「每个上下文、每个 CPU 从两位数 KB 到三位数 KB」</strong>（double digits KB to triple digits KB）。Phoronix 补了一句很实在的话：<strong>「在 per-context 和 per-CPU 核心的基础上，这些改进有叠加效应。」</strong></p>
+<p><strong>性能</strong>：作者原话是「<strong>解耦读和写能在合成测试上带来明显的性能提升</strong>」（noticeable performance improvements on synthetic tests）。Phoronix 的说法更积极一些：拆分后端代码「<strong>显示出也能带来一些大幅改进的能力</strong>」。</p>
+<blockquote>⚠️ <strong>注意措辞的分寸</strong>：作者说的是「<strong>合成测试（synthetic tests）</strong>上明显」。<strong>这通常是内存管理类补丁的标准表述</strong>：合成测试能隔离变量，但<strong>真实负载（尤其是 swap 压力、编译、浏览器多标签）能否复现同样幅度，需要等更全面的基准或实际落地后再看</strong>。Phoronix 的「massive improvements」是媒体转述时的语气强化。</blockquote>
+<strong>现状</strong>：<strong>补丁已送 LKML 评审</strong>。也就是说，<strong>还没合入，还没到你我机器上</strong>。
+<h2>三、结合本机实测：zram 到底在替你干多少活</h2>
+<p>抽象讨论不如看真机。笔者手上这台机器的 zram 状态如下：</p>
+<pre><code class="">$ swapon --show
+NAME        TYPE      SIZE USED PRIO
+/dev/zram0  partition 7.7G 2.4G  100     ← zram 交换，已用 2.4G
+<p>$ cat /sys/block/zram0/comp_algorithm
+lzo-rle lzo lz4 lz4hc [zstd] deflate 842   ← 当前选中 zstd</p>
+<p>$ uname -r
+7.2.8-x64v3-xanmod1
+</code></pre></p>
+<p><strong>几个可以立刻对着看的点</strong>：</p>
+<p><strong>1. 这机器正在用 zstd 作为 zram 压缩算法</strong>，而作者点名的「内存节省明显」的后端里<strong>恰好就有 zstd</strong>。这类后端<strong>每个流的工作内存较大</strong>（zstd 的窗口/哈希表），所以「按 CPU 数白分配的二级流」在这里的绝对浪费是<strong>偏大</strong>的一档。</p>
+<p><strong>2. <code>2.4G</code> 已用</strong>说明 zram 不是摆设，它在<strong>真实承压</strong>。一台 16 核机器上，per-CPU 的流数量本身就是 16 份；<strong>如果二级流也按 CPU 分配，那就是 16 份里只有 1 份在用</strong>。</p>
+<p><strong>3. 算法列表里有 <code>lz4hc</code> 和 <code>deflate</code></strong>，也在作者列举的受益名单里。这意味着<strong>如果按文档启用多级压缩（<code>CONFIG_ZRAM_MULTI_COMP</code> + <code>recomp_algorithm</code>）做「空闲页重压缩」</strong>，二级流的分配方式就直接决定这项功能的<strong>内存性价比</strong>。</p>
+<blockquote><strong>从「重压缩」的机制能看出为什么二级流的浪费特别刺眼</strong>：zram 的多级压缩允许配置<strong>最多 4 个算法</strong>（1 主 + 3 副），副算法用更慢但压缩率更高的算法去<strong>重压「压缩得不理想的页」或「空闲冷页」</strong>。这套机制<strong>本身就是为了省内存</strong>，结果它自己的辅助数据结构却按 CPU 数倍地浪费内存，这个矛盾正是补丁要消除的。</blockquote>>
+<blockquote>参考内核文档里重压缩的用法（<code>/sys/block/zramX/recompress</code>）：<br>
+<pre><code class="bash">> # 空闲页重压缩，只处理大于 3000 字节的页<br>
+echo "type=idle threshold=3000 priority=1" > /sys/block/zramX/recompress<br>
+</code></pre><br>
+文档里还有一句实用提醒：<strong>「建议总是显式指定 <code>priority</code> 参数」</strong>：因为同一算法可以以不同优先级注册多次（参数不同），用 <code>algo</code> 名字去选可能选错。</blockquote>
+<h2>四、解读</h2>
+<p><strong>1. 这是一次「架构债清偿」，不是功能新增。</strong></p>
+<p>补丁没有引入任何新特性：<strong>没有新算法、没有新的 sysfs 旋钮、没有面向用户的新行为</strong>。它做的是<strong>把「读写共用一条流」这个早期设计决策纠正过来</strong>，并顺手收拾了二级流的分配策略。</p>
+<p>这类补丁的典型特征是：<strong>收益明确但不高调，评审周期反而可能较长</strong>，因为它动的是所有 zram 用户共享的并发路径。<strong>对内核来说，「把不该共享的东西拆开」往往比「加一个新功能」更有长期价值。</strong></p>
+<p><strong>2. 优先级反转这个点，比省内存更值得注意。</strong></p>
+<p>「省几十到几百 KB」听起来很小。但<strong>优先级反转是正确性问题，不是性能问题</strong>：读操作（通常是缺页路径）<strong>本该优先</strong>，却因为和写共用一把锁而被阻塞。<strong>在内存吃紧、swap 频繁的机器上，这种阻塞会表现为「明明有 zram，系统还是会卡顿」</strong>。而这类症状很难归因到「读写共享流」这个根因上。</p>
+<p><strong>换句话说：真正让这次重构有价值的是「读不再被写挡住」，省内存是顺带。</strong></p>
+<p><strong>3. 媒体叙事与补丁本意的温差，值得留一分清醒。</strong></p>
+<p>对照两边的措辞：
+<ul>
+<li><strong>作者</strong>：「合成测试上明显的性能提升」、「某些后端和配置下省下相当可观的内存」，<strong>限定条件写得很清楚</strong>；</li>
+<li><strong>标题/媒体</strong>：「Greater Memory Savings, Better Performance」、正文里更进一步的「massive improvements」。</li>
+</ul>
+<strong>这不是说媒体夸大</strong>。Phoronix 的转述基本忠实。但<strong>读者要自己分清：「合成测试上明显」和「你日常会感觉快」是两件事</strong>。内存管理补丁尤其如此，它的收益高度依赖<strong>你的负载是否恰好压在那个路径上</strong>。</p>
+<p><strong>4. 给运维的实际建议。</strong></p>
+<ul>
+<li><strong>现在</strong>：<strong>什么都不用做</strong>。补丁还在 LKML，没进任何稳定版。你机器上的 zram 行为不变。</li>
+<li><strong>值得关注</strong>：如果你<strong>大规模用 zram 做 swap</strong>（尤其是容器密度高、或内存超卖的虚拟化宿主），这类「按 CPU 数倍增的小额浪费」<strong>在整机尺度上会放大</strong>。可以趁现在记一笔，等补丁落地后<strong>对比同一负载下的 zram 内存占用</strong>。</li>
+<li><strong>如果你已经启用了多级压缩</strong>（<code>CONFIG_ZRAM_MULTI_COMP</code> + 多个 <code>recomp_algorithm</code>），<strong>你是这次改动最直接的受益者</strong>，因为二级流的浪费正是重压缩路径上的开销。</li>
+<li><strong>一个可以顺手做的自查</strong>（不需要新补丁）：</li>
+</ul>  <pre><code class="bash">  cat /sys/block/zram0/comp_algorithm
+  swapon --show
+  # 看内存压缩的实际效益（压缩后大小 / 原始大小）
+  cat /sys/block/zram0/mm_stat
+  </code></pre>
+  <strong><code>mm_stat</code> 的第 1、2 列分别是「原始数据大小」和「压缩后大小」</strong>，两者之比就是你的真实压缩比。<strong>如果这个比值不好看（比如低于 2），先调算法比等内核补丁的收益大得多</strong>：<code>zstd</code> 通常比 <code>lzo-rle</code> 压得好但慢一些，<code>lz4</code> 快但压得差，选哪个取决于你的 CPU 和 I/O 压力在哪一头。
+<p><strong>5. 放在更大的背景里看。</strong></p>
+<p>Phoronix 开篇那句「<strong>如今内存价格非常高</strong>」是个很实在的注解。<strong>这两年内核社区在内存效率上的投入明显加大</strong>：zram 的流管理、zswap、内存 cgroup 的精算、folio 化改造等等。</p>
+<p><strong>zram 这类技术的意义在于：它是「花 CPU 换内存」的杠杆。</strong> 当内存昂贵而 CPU 相对充裕时，这个杠杆的价值就上升。<strong>这次补丁把杆杠的「固定开销」（流的内存占用、锁竞争）压低了一点</strong>，方向很清楚。</p>
+<blockquote>来源边界：本文基于 Phoronix 报道（Michael Larabel，2026-10-05）与其引用的 <strong>LKML 补丁系列</strong>（作者 Sergey Senozhatsky，Google Chrome/Chromium 团队），以及 <strong>Linux 内核官方文档</strong>《zram: Compressed RAM-based block devices》。<strong>补丁仍在评审阶段，尚未合入主线</strong>；合并形态、最终收益与命名都可能变化。文中「合成测试上的性能提升」为作者原话，<strong>媒体标题的「better performance」措辞较原作者表述更为积极</strong>，请以补丁邮件原文为准。本机 zram 数据为笔者实测，仅代表该机器的具体配置。</blockquote>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-06_zram-streams-rework/",
+      title: "zram \u91cd\u6784\u8bfb\u5199\u6d41\uff1a\u5185\u5b58\u7701\u4e0b\u300c\u51e0\u5341\u5230\u51e0\u767e KB\u300d\uff0c\u4f46\u771f\u6b63\u7684\u770b\u70b9\u662f\u6d88\u9664\u4f18\u5148\u7ea7\u53cd\u8f6c"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
