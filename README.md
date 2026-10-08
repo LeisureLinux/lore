@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-08 | [OpenSSH 10.6：AI 把漏洞报告推高之后，他们改了发布节奏](https://freelamp.com/articles/openssh-10-6-ai-bug-reports/) | OpenSSH · 安全 · AI辅助审计 · 漏洞报告 · 后量子密码 · ML-DSA · SSH · 开源治理 · 译文 |
+| 2026-10-08 | [树莓派桌面终于出了 x86-64 版：但它的目标用户可能不是你](https://freelamp.com/articles/raspberry-pi-desktop-x86-64/) | Raspberry Pi · Raspberry Pi OS · Debian · Trixie · LXDE · 轻量桌面 · 教育 · 译文 |
+| 2026-10-08 | [Ubuntu 26.10 的安全清单：GRUB 瘦身、coreutils 全 Rust、OpenSSL 4.0 与 upki 吊销检查](https://freelamp.com/articles/ubuntu-26-10-security/) | Ubuntu · 安全加固 · GRUB · Secure Boot · TPM · Rust · uutils · OpenSSL · upki · CRLite · dbus-broker · 译文 |
 | 2026-10-08 | [华为 Peerium：新闻稿说「突破」冯·诺依曼，论文说「延续」冯·诺依曼](https://freelamp.com/articles/2026-10-08_huawei-peerium-lingqu-hc2026/) | 华为 · Peerium · 灵衢 · UnifiedBus · 昇腾 · Atlas950 · 超节点 · 冯诺依曼 · BSP · 国产算力 · 产业分析 |
 | 2026-10-08 | [LibreOffice 说「没有 AI」是个功能：但真正的价值是它给了六条验收标准](https://freelamp.com/articles/2026-10-08_libreoffice-no-ai-feature/) | LibreOffice · The Document Foundation · AI · 开源办公套件 · ODF · 隐私 · 本地推理 · Ollama · 供应商锁定 · 遥测 · 译文 |
 | 2026-10-06 | [机密计算落地看这四种模式：但证明「环境可信」不等于证明「它不会乱来」](https://freelamp.com/articles/2026-10-06_confidential-computing-use-cases/) | 机密计算 · Intel TDX · TEE · 远程证明 · 隐私计算 · 联邦学习 · 数据主权 · 安全架构 · 译文 |
