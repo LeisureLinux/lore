@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-08 | [LibreOffice 说「没有 AI」是个功能：但真正的价值是它给了六条验收标准](https://freelamp.com/articles/2026-10-08_libreoffice-no-ai-feature/) | LibreOffice · The Document Foundation · AI · 开源办公套件 · ODF · 隐私 · 本地推理 · Ollama · 供应商锁定 · 遥测 · 译文 |
 | 2026-10-06 | [机密计算落地看这四种模式：但证明「环境可信」不等于证明「它不会乱来」](https://freelamp.com/articles/2026-10-06_confidential-computing-use-cases/) | 机密计算 · Intel TDX · TEE · 远程证明 · 隐私计算 · 联邦学习 · 数据主权 · 安全架构 · 译文 |
 | 2026-10-06 | [红帽把零信任拆成 5 步：Ansible 自动化之路，以及它没说的三件事](https://freelamp.com/articles/2026-10-06_ansible-zero-trust-network/) | 零信任 · ZTNA · Ansible · Event-Driven Ansible · 网络自动化 · OPA · 策略即代码 · NIST · 安全架构 · 译文 |
 | 2026-10-06 | [zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转](https://freelamp.com/articles/2026-10-06_zram-streams-rework/) | Linux内核 · zram · 内存压缩 · zcomp · 内核补丁 · 优先级反转 · zstd · lz4hc · swap · 译文 |
