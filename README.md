@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-08 | [一支 AI 代理「机群」被追踪到抓取高德地图：但「署名 claude」暴露了归因的脆弱](https://freelamp.com/articles/ai-agent-fleet-amap-tencent/) | AI代理 · Agent安全 · 高德地图 · 腾讯 · 混元 · Claude · 模型归因 · 抓取 · 开源情报 · 产业分析 |
+| 2026-10-08 | [Anthropic 给安全团队开了「降低护栏」的口子：三层访问与一份厂商自测数据](https://freelamp.com/articles/anthropic-cyber-verification-program/) | Anthropic · Claude · AI安全 · 红队 · CVP · Glasswing · 护栏 · 代理治理 · 译文 |
+| 2026-10-08 | [Gartner 新增的 ISOC 类别：定义本身没问题，但解读它的人可能卖的就是它](https://freelamp.com/articles/gartner-isoc-category/) | Gartner · ISOC · SIEM · SOC · XDR · 安全运营 · TDIR · 厂商立场 · 采购决策 · 译文 |
 | 2026-10-08 | [OpenSSH 10.6：AI 把漏洞报告推高之后，他们改了发布节奏](https://freelamp.com/articles/openssh-10-6-ai-bug-reports/) | OpenSSH · 安全 · AI辅助审计 · 漏洞报告 · 后量子密码 · ML-DSA · SSH · 开源治理 · 译文 |
 | 2026-10-08 | [树莓派桌面终于出了 x86-64 版：但它的目标用户可能不是你](https://freelamp.com/articles/raspberry-pi-desktop-x86-64/) | Raspberry Pi · Raspberry Pi OS · Debian · Trixie · LXDE · 轻量桌面 · 教育 · 译文 |
 | 2026-10-08 | [Ubuntu 26.10 的安全清单：GRUB 瘦身、coreutils 全 Rust、OpenSSL 4.0 与 upki 吊销检查](https://freelamp.com/articles/ubuntu-26-10-security/) | Ubuntu · 安全加固 · GRUB · Secure Boot · TPM · Rust · uutils · OpenSSL · upki · CRLite · dbus-broker · 译文 |
