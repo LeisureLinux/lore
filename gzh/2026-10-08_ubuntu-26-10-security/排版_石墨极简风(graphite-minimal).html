@@ -1,0 +1,292 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">减少暴露在攻击面中的代码。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— Canonical 对 26.10 安全工作主线的定位</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">Canonical 给这版安全工作的定位很明确：</span><strong style="color:#27272A;"><span leaf="">在 AI 工具加速漏洞发现的背景下，「更快打补丁」是必要的，但操作系统本身的韧性必须能限制攻击者在补丁可用之前能达成什么。</span></strong><span leaf=""> 主线是</span><strong style="color:#27272A;"><span leaf="">减少暴露在攻击面中的代码</span></strong><span leaf="">：用内存安全实现替换、在组件替换时保持隔离。本文按改动逐项展开，并标出升级前必须检查的地方。</span></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">GRUB 瘦身与 TPM</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">Rust 化与 OpenSSL 4.0</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">升级检查清单</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">GRUB</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">签名版 GRUB：缩小攻击面（最需提前检查）</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">背景</span></strong><span leaf="">：UEFI Secure Boot 下，固件先加载 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">shim</span><span leaf="">，再由它校验并加载 GRUB。</span><strong style="color:#27272A;"><span leaf="">而 GRUB 包含文件系统、镜像格式、分区布局的解析器，这些年来一直是 Secure Boot 绕过漏洞的稳定来源。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">26.10 的做法是只保留 Ubuntu 启动所必需的部分</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">保留</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/boot</span><span leaf=""> 在 </span><strong style="color:#27272A;"><span leaf="">ext4、FAT、ISO9660</span></strong><span leaf=""> 上仍受支持；</span><strong style="color:#27272A;"><span leaf="">squashfs</span></strong><span leaf="">（用于 snap）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">从签名构建中移除</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Btrfs、HFS+、XFS、ZFS 的文件系统驱动</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">JPEG 与 PNG 图片加载</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">Apple 分区表</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">Secure Boot 下不再支持</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">`/boot` 位于 LVM</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">RAID1 以外的软件 RAID</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">LUKS 加密</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">原文对范围的说明很重要</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">这些改动只影响启动路径</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">运行中的系统里 LVM、RAID、LUKS、Btrfs、ZFS 照常工作</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">关闭 Secure Boot 时完整功能集也仍然可用</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 Canonical 解释了选择这个时间点的原因</span></strong><span leaf="">：</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">「我们**特意**在一个长期支持版本（此处是 Ubuntu 26.04 LTS）**之后**做这个改动，这样**任何依赖被移除特性的人，都可以留在 Ubuntu 26.04 LTS 直到 2041 年 5 月**（配合 Ubuntu Pro 与 Legacy add-on）。」</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这是一次有意识的「兼容性代价换攻击面缩小」</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">「在 LTS 之后动手」这个安排值得肯定</span></strong><span leaf="">：它给了需要旧特性的人一条明确的退路，而不是突然断掉。</span><strong style="color:#27272A;"><span leaf="">但升级前必须检查</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">如果你的 `/boot` 在 LVM、软 RAID（非 RAID1）或 LUKS 上，升级到 26.10 且保持 Secure Boot 开启会导致无法启动。</span></strong><span leaf=""> 这是硬性兼容性问题，不是警告。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">TPM 全盘加密：覆盖更多机器</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">TPM 全盘加密</span><strong style="color:#27272A;"><span leaf="">保护静态数据</span></strong><span leaf="">，并把</span><strong style="color:#27272A;"><span leaf="">自动解锁与系统的度量启动状态绑定</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">只有当那些度量满足所配置的安全策略时，TPM 才释放解锁密钥</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">26.10 的变化是：这项功能扩展到了没有硬件信任根的机器。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">代价说得很直白</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Ubuntu 在这些机器上无法自动验证固件，因此它们在安装时需要一个 PIN 或密码。</span></strong><span leaf="">而且：</span><strong style="color:#27272A;"><span leaf="">「管理员之后可以移除这个 PIN。然而，没有它，系统就不再受固件篡改的保护。」</span></strong><span leaf=""> 有硬件信任根的机器（覆盖 2021 年以来生产的大多数 PC）继续自动解锁。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">固件更新流程也改了</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">`fwupd` 现在只在「运行中的系统使用 TPM 加密，且固件更新可能影响用于解锁磁盘的度量」时才要求提供恢复密钥</span></strong><span leaf="">，而不是在更新不影响 TPM 解锁策略的系统上无谓地提示。</span><strong style="color:#27272A;"><span leaf="">这个修复也已回溯到 Ubuntu 26.04 LTS。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这个改进很实在</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">以前是「固件更新就弹恢复密钥」，现在是「只有真的会影响解锁策略时才问」。减少无谓提示能提高用户对提示的重视程度，这本身就是安全收益。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">RUST</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">coreutils 全 Rust 与 OpenSSL 4.0</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">coreutils：从「部分」到「全部」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Ubuntu 26.04 LTS 已把基于 Rust 的 uutils coreutils 设为默认，但为兼容性保留了 `cp`、`mv`、`rm` 的 GNU 实现。Ubuntu 26.10 迁移了这些剩余工具。现在默认核心工具完全运行在 Rust 上。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">原文对收益的表述很克制，值得完整保留</span></strong><span leaf="">：</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">「**Safe Rust 通过编译期检查，以及在必要时通过运行期检查，预防了整类内存安全问题，包括 use-after-free 和越界内存访问。这减少了内存破坏类漏洞的范围，尽管它并不能防止逻辑错误，也不能防止 unsafe 代码与依赖中的漏洞。**」</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这段自评的分寸很好</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">它没有说「Rust 就安全了」，而是明确划出三条 Rust 管不到的边界</span></strong><span leaf="">（逻辑错误、unsafe 代码、依赖漏洞）。</span><strong style="color:#27272A;"><span leaf="">而原文给的行动建议也点到了要害</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「我们鼓励所有人测试那些依赖细微命令行为的脚本，特别是复制、移动或删除文件的特权工作流。」</span></strong><span leaf=""> 也就是说，</span><strong style="color:#27272A;"><span leaf="">coreutils 替换的风险不在日常使用，而在「依赖未定义行为或边界行为的脚本」</span></strong><span leaf="">。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">OpenSSL 4.0：后量子与 ECH</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">背景</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">足够强大的量子计算机可以破解今天广泛部署的公钥算法（RSA、椭圆曲线）。Ubuntu 引入后量子算法，是因为今天加密的数据可能被收集、在未来被解密。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">26.10 的 OpenSSL 4.0 是自 3.0 以来第一个新主版本</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">ML-KEM、ML-DSA、SLH-DSA 对用户可用</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">混合后量子密钥交换在 TLS 配置中默认优先</span></strong><span leaf="">（当对端支持时）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">新增曲线 `curveSM2MLKEM768` 混合密钥交换组、`ML-DSA-MU` 伪摘要、`cSHAKE` 函数</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">新增 Encrypted Client Hello（ECH）支持，但原文给了一组很克制的限定</span></strong><span leaf="">：</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">「**当兼容的应用与服务器启用时**，ECH 保护内层 TLS ClientHello，**包括所请求的服务器名称**。**它不隐藏目标 IP 地址，也不能阻止所有流量分析**，而且**安装 OpenSSL 4.0 不会自动为每个应用启用 ECH。**」</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这段话值得单独肯定</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">它没有把 ECH 宣传成「匿名浏览」</span></strong><span leaf="">，而是明确说清了「不隐藏 IP」和「不阻止所有流量分析」这两个最容易被误解的边界。</span><strong style="color:#27272A;"><span leaf="">同时点出「装了库不等于启用了功能」，这对看发布说明的人来说是个常见的误读。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">被移除或限制的旧接口</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">ENGINE 接口被移除</span></strong><span leaf="">（改用 providers）；</span><strong style="color:#27272A;"><span leaf="">SSLv3 支持被移除</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">TLS 中已弃用的椭圆曲线、以及显式椭圆曲线参数的支持被禁用</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">证书与吊销检查收紧</span></strong><span leaf="">，包括在启用严格 X.509 验证时增加 authority key identifier 检查。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 这是本次升级里最可能「炸」生产环境的一项</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">ENGINE 接口移除是硬性破坏</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">任何用 ENGINE 接 HSM 或智能卡的部署，升级前必须先确认存在对应的 provider，并在测试环境完成迁移验证。</span></strong><span leaf=""> 原文也明确说了这「可能需要应用与配置变更」。</span><strong style="color:#27272A;"><span leaf="">OpenSSH 侧本次是 10.5</span></strong><span leaf="">（不是 10.6），</span><strong style="color:#27272A;"><span leaf="">混合后量子密钥交换仍是默认</span></strong><span leaf="">，并包含 10.3 引入的证书与命令行处理修复。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">CHECK</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">其余改动与升级检查清单</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">dbus-broker 替换 dbus-daemon</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">为什么 D-Bus 重要</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「D-Bus 让应用与服务通信……它是一个信任边界，因为非特权进程用它来触达特权进程。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">26.10 用 `dbus-broker` 替换了自 2004 年起使用的 `dbus-daemon`</span></strong><span leaf="">：新实现采用</span><strong style="color:#27272A;"><span leaf="">事件驱动架构</span></strong><span leaf="">，有更好的记账、可靠性与可扩展性；</span><strong style="color:#27272A;"><span leaf="">系统总线与每个用户会话总线都会变化</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">全新安装与升级都涉及</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">关键点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">这次替换保留了 AppArmor 对应用可以收发哪些 D-Bus 消息的控制</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">既有 confinement 策略继续被强制</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">「替换组件但保住隔离策略」这个做法值得肯定</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">D-Bus 是 Ubuntu 上 snap 沙箱的关键路径</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">如果换代导致 AppArmor 中介失效，等于所有 confinement 都被绕过</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">但它也是升级时需要留意的一项</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">若有依赖 dbus-daemon 特定行为的自定义集成，需要实测。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">内存安全的时间同步（可测试）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">为什么时间同步是安全问题</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">准确的时间支撑 TLS 证书验证、Kerberos、可靠的日志时间戳与审计追踪。如果系统时钟严重错误，有效证书可能看起来已过期或尚未生效，Kerberos 认证会因时钟偏移失败，安全日志也难以在不同系统间可靠关联。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">26.10 在归档中提供更新版的 `ntpd-rs`（内存安全的 NTP 实现）供测试，目标是在 Ubuntu 27.04 将其设为默认。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">为加速过渡，Canonical 成为了 Trifecta Tech Foundation 的 Gold Sponsor</span></strong><span leaf="">，资助包括</span><strong style="color:#27272A;"><span leaf="">与 chrony 的功能对齐</span></strong><span leaf="">（多线程 NTP 服务器、GPSd 支持）以及 </span><strong style="color:#27272A;"><span leaf="">AppArmor 与 seccomp 隔离</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">注意这条与前一版 Ubuntu 的关联</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Canonical 同一个基金会也赞助了 Rust coreutils</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">这是同一策略的延续：用资金换上游组件的功能对齐，再纳入默认。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">企业认证与本地语音识别</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">authd</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">支持用 Microsoft 密码登录，并通过 Microsoft Authenticator 完成多因素认证</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">现在直接从身份提供者的属性派生用户与组 ID</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">使这些 ID 在整个机群中保持一致</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">管理员可以为这些账户禁用本地密码认证</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">VPN</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">NetworkManager 获得 PKCS#11 与智能卡支持</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">用户可以通过标准桌面界面用硬件令牌（如 YubiKey）认证</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">Myna</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">桌面语音转文字，语音识别通过推理 snap 在本地完成</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">模型安装后听写无需联网</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">音频在内存中处理、用后丢弃、不上传</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">「这些变化帮助组织把既有的身份、MFA 与硬件令牌策略扩展到 Ubuntu 登录和 VPN 访问，而不必向审计方解释例外。」</span></strong><span leaf=""> 这个表述很实在：</span><strong style="color:#27272A;"><span leaf="">企业安全落地最大的摩擦往往不是技术，而是「标准流程之外的特例」，每多一个特例就多一套审计材料。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">Myna 的边界也写清了</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「这种隐私保护适用于语音识别。产生的文本会被插入你正在使用的应用，而那个应用自身的存储与网络行为仍然适用。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「输入方式隐私」不等于「内容隐私」。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">升级检查清单</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">🔴 会直接导致问题，必须提前确认</span></strong><span leaf="">：① </span><strong style="color:#27272A;"><span leaf="">`/boot` 的位置</span></strong><span leaf="">：如果在 </span><strong style="color:#27272A;"><span leaf="">LVM、非 RAID1 的软 RAID、或 LUKS</span></strong><span leaf=""> 上，</span><strong style="color:#27272A;"><span leaf="">升级 26.10 + Secure Boot 开启会无法启动</span></strong><span leaf="">；② </span><strong style="color:#27272A;"><span leaf="">OpenSSL ENGINE 依赖</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">如果你的 HSM、PKCS#11 令牌或 TPM 密钥走 ENGINE，必须迁移到 provider</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">🟡 需要实测</span></strong><span leaf="">：依赖 </span><strong style="color:#27272A;"><span leaf="">`cp`/`mv`/`rm` 边缘行为</span></strong><span leaf="">的脚本（特别是特权工作流）；</span><strong style="color:#27272A;"><span leaf="">自定义 D-Bus 集成</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">依赖旧 TLS 曲线</span></strong><span leaf="">的客户端/服务端</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">🟢 值得利用</span></strong><span leaf="">：开 </span><strong style="color:#27272A;"><span leaf="">TPM 全盘加密</span></strong><span leaf="">（理解 PIN 取舍）；用 </span><strong style="color:#27272A;"><span leaf="">authd + Microsoft MFA 与硬件令牌 VPN</span></strong><span leaf=""> 覆盖企业策略；</span><strong style="color:#27272A;"><span leaf="">观察 `ntpd-rs`</span></strong><span leaf="">（现在可测，27.04 计划转默认）</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">本次模式很清楚</span></strong><span leaf="">：用「减少特权组件里的代码」换安全，具体是三个动作：</span><strong style="color:#27272A;"><span leaf="">移除不需要的解析器</span></strong><span leaf="">（GRUB）、</span><strong style="color:#27272A;"><span leaf="">把组件换成内存安全实现</span></strong><span leaf="">（coreutils、ntpd-rs）、</span><strong style="color:#27272A;"><span leaf="">收紧旧接口</span></strong><span leaf="">（OpenSSL 的 ENGINE/SSLv3/旧曲线）。</span><strong style="color:#27272A;"><span leaf="">原文对 28.04 LTS 的定位是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">26.10 为 Ubuntu 28.04 LTS 定下方向：从 GRUB 到 OpenSSL，特权组件里的代码更少；整个系统内存安全更多；硬件支持的加密带有明确记录取舍。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">非 LTS 版本的存在意义就是消化破坏性变更的试验场</span></strong><span leaf="">，这也意味着 </span><strong style="color:#27272A;"><span leaf="">26.10 上的这些改动，大概率会以更成熟的形式进入 28.04 LTS</span></strong><span leaf="">。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">版本</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Ubuntu 26.10「Stonking Stingray」</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">主线</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">减少暴露在攻击面中的代码</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">GRUB</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">签名版仅保留 ext4/FAT/ISO9660/squashfs；移除 Btrfs/XFS/ZFS/HFS+/图片解析</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ 硬限制</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Secure Boot 下 /boot 不再支持 LVM、非 RAID1 软 RAID、LUKS</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">TPM</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">扩展到无硬件信任根的机器（需 PIN；移除即失去固件篡改保护）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">coreutils</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">cp/mv/rm 迁移完成，核心工具全部 Rust</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ OpenSSL</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">ENGINE 接口移除，HSM/智能卡必须迁到 provider</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">其他</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">upki 吊销检查、dbus-broker、ntpd-rs 可测、authd MFA、Myna 本地语音</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">把这次的改动连起来看，模式很清楚：移除不需要的解析器、把组件换成内存安全实现、收紧旧接口。而 Canonical 在三处地方没有把改动说成纯粹的进步，而是写清了代价：GRUB 瘦身牺牲 /boot 布局兼容、TPM 加密要 PIN、Rust 挡住内存问题但挡不住逻辑错误。对技术文档来说，把代价写清楚比把收益写漂亮更有价值，因为它直接决定了读者要不要升级。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· OpenSSH 10.6：AI 把漏洞报告推高之后，他们改了发布节奏</span><br>
+        <span leaf="">· Ubuntu 把 OpenPGP 也换成 Rust：Sequoia PGP 进入 26.10，未来或取代 GnuPG</span><br>
+        <span leaf="">· Ubuntu 内核改成每周更新：4/2 模型废了，CVE 暴涨逼出来的</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
