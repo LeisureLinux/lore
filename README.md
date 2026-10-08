@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [钓鱼防御打错了层级：域名封不过来，但服务器藏不住](https://freelamp.com/articles/2026-10-09_phishing-server-layer-aitm/) | 钓鱼 · AiTM · 会话劫持 · MFA · Microsoft 365 · 威胁狩猎 · 域名劫持 · CAA · 证书透明度 · Chrome · 译文 |
 | 2026-10-08 | [一支 AI 代理「机群」被追踪到抓取高德地图：但「署名 claude」暴露了归因的脆弱](https://freelamp.com/articles/ai-agent-fleet-amap-tencent/) | AI代理 · Agent安全 · 高德地图 · 腾讯 · 混元 · Claude · 模型归因 · 抓取 · 开源情报 · 产业分析 |
 | 2026-10-08 | [Anthropic 给安全团队开了「降低护栏」的口子：三层访问与一份厂商自测数据](https://freelamp.com/articles/anthropic-cyber-verification-program/) | Anthropic · Claude · AI安全 · 红队 · CVP · Glasswing · 护栏 · 代理治理 · 译文 |
 | 2026-10-08 | [Gartner 新增的 ISOC 类别：定义本身没问题，但解读它的人可能卖的就是它](https://freelamp.com/articles/gartner-isoc-category/) | Gartner · ISOC · SIEM · SOC · XDR · 安全运营 · TDIR · 厂商立场 · 采购决策 · 译文 |
