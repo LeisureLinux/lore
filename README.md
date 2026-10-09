@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [Deno 团队加入 Cloudflare：runtime 一年后停更，Deploy 六个月后关停](https://freelamp.com/articles/2026-10-09_deno-joins-cloudflare/) | Deno · Cloudflare · Workers · Durable Objects · celld · workerd · Ryan Dahl · Kenton Varda · 开源可持续性 · 供应商锁定 · 译文 |
 | 2026-10-09 | [Snapdragon X 笔记本的 Linux HDR 支持来了：静态 HDR10，补丁是 LLM 辅助写的](https://freelamp.com/articles/2026-10-09_qualcomm-msm-drm-hdr/) | Qualcomm · Snapdragon X · MSM驱动 · HDR · HDR10 · BT.2020 · DisplayPort · eDP · ARM笔记本 · 译文 |
 | 2026-10-09 | [ext4 弃用 data=journal：最「安全」的那个挂载模式，2028 年要走了](https://freelamp.com/articles/2026-10-09_ext4-deprecates-data-journal/) | ext4 · 文件系统 · data=journal · 日志 · 数据完整性 · O_DIRECT · 延迟分配 · 运维 · 译文 |
 | 2026-10-09 | [Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB](https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/) | Linux内核 · swap · 内存管理 · swap table · folio · zram · 内核补丁 · 译文 |
