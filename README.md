@@ -17,6 +17,13 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [Snapdragon X 笔记本的 Linux HDR 支持来了：静态 HDR10，补丁是 LLM 辅助写的](https://freelamp.com/articles/2026-10-09_qualcomm-msm-drm-hdr/) | Qualcomm · Snapdragon X · MSM驱动 · HDR · HDR10 · BT.2020 · DisplayPort · eDP · ARM笔记本 · 译文 |
+| 2026-10-09 | [ext4 弃用 data=journal：最「安全」的那个挂载模式，2028 年要走了](https://freelamp.com/articles/2026-10-09_ext4-deprecates-data-journal/) | ext4 · 文件系统 · data=journal · 日志 · 数据完整性 · O_DIRECT · 延迟分配 · 运维 · 译文 |
+| 2026-10-09 | [Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB](https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/) | Linux内核 · swap · 内存管理 · swap table · folio · zram · 内核补丁 · 译文 |
+| 2026-10-09 | [Google 开放 SynthID 检测器：它的价值不在「能不能识破 AI」，而在「阳性意味着什么」](https://freelamp.com/articles/2026-10-09_google-synthid-detector-public/) | SynthID · AI水印 · 内容溯源 · C2PA · 合成内容检测 · 数字取证 · 原创 |
+| 2026-10-09 | [Rembrandt：10 天做出一个 Lightroom 替代品，而它的 README 自己交代了原型来自 darktable](https://freelamp.com/articles/2026-10-09_rembrandt-photo-editor-github/) | Rembrandt · 照片编辑 · Lightroom · darktable · RAW · GPL · AI生成代码 · WebGPU · 原创 |
+| 2026-10-09 | [「Linux 桌面永远成功不了」这句话，2026 年该改口了：但作者抱怨的那些事是真的](https://freelamp.com/articles/2026-10-09_linux-desktop-not-expecting-experts/) | Linux桌面 · 可用性 · GNOME · KDE Plasma · 分数缩放 · Statcounter · Steam Deck · 原创 |
+| 2026-10-09 | [「我们可能会失去公钥密码学」：Green 那条推文背后到底在说什么](https://freelamp.com/articles/2026-10-09_green-public-key-cryptography-ai/) | 密码学 · 公钥加密 · 后量子密码 · MLWE · ECDLP · AI密码分析 · HAWK · 译文 |
 | 2026-10-09 | [452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案](https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/) | CRAM · 内存压缩 · zram · zswap · NUMA · Meta · Linux内核 · LPC2026 · CXL · 缺页异常 · 页表 · 内存层级 · 译文 |
 | 2026-10-09 | [Cloudflare 让 1.1.1.1 免于罚款：赢在程序，而 Quad9 可能因为同一个理由退出法国](https://freelamp.com/articles/2026-10-09_cloudflare-1111-france-piracy-blocking/) | Cloudflare · 1.1.1.1 · Quad9 · DNS · 域名封禁 · 版权执法 · ARCOM · Canal+ · UPC Telekabel · 欧盟DSA · 译文 |
 | 2026-10-09 | [一个散热器页面泄露的 EPYC Verano：72 核不难，24 通道 LPDDR5X 才是真信号](https://freelamp.com/articles/2026-10-09_epyc-verano-sb1-lpddr5x/) | AMD · EPYC · Verano · Zen 6 · Venice · SB1 · SOCAMM2 · LPDDR5X · JEDEC · 服务器CPU · AI主机 · 内存带宽 · 译文 |

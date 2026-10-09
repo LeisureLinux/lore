@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB — FreeLAMP.com</title>
+  <meta name="description" content="LWN 的 Jonathan Corbet 拆解了 Kairui Song（腾讯）对 Linux swap 子系统的现代化改造。这个系列要把 swap map（一张每个槽位一个字节、记录引用计数的数组）彻底删掉，把它最后剩下的职能塞进新的 swap table。配套动作还包括移除 4.15 引入的 swap bypas">
+  <meta name="keywords" content="Linux内核, swap, 内存管理, swap table, swap map, 交换子系统, Kairui Song, 腾讯, 大页, folio, zram, 内核补丁, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-09">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB">
+  <meta property="og:description" content="LWN 的 Jonathan Corbet 拆解了 Kairui Song（腾讯）对 Linux swap 子系统的现代化改造。这个系列要把 swap map（一张每个槽位一个字节、记录引用计数的数组）彻底删掉，把它最后剩下的职能塞进新的 swap table。配套动作还包括移除 4.15 引入的 swap bypas">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-09">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux内核">
+  <meta property="article:tag" content="Linux内核">
+  <meta property="article:tag" content="swap">
+  <meta property="article:tag" content="内存管理">
+  <meta property="article:tag" content="swap table">
+  <meta property="article:tag" content="swap map">
+  <meta property="article:tag" content="交换子系统">
+  <meta property="article:tag" content="Kairui Song">
+  <meta property="article:tag" content="腾讯">
+  <meta property="article:tag" content="大页">
+  <meta property="article:tag" content="folio">
+  <meta property="article:tag" content="zram">
+  <meta property="article:tag" content="内核补丁">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB">
+  <meta name="twitter:description" content="LWN 的 Jonathan Corbet 拆解了 Kairui Song（腾讯）对 Linux swap 子系统的现代化改造。这个系列要把 swap map（一张每个槽位一个字节、记录引用计数的数组）彻底删掉，把它最后剩下的职能塞进新的 swap table。配套动作还包括移除 4.15 引入的 swap bypas">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB",
+  "description": "原文：Modernizing swapping: the end of the swap maphttps://lwn.net/Articles/1057102/（LWN.net，2026-02-05，作者 Jonathan Corbet）  这是该系列的第二篇，第一篇见 LWN 1056405https://lwn.net/Articles/1056405/。  本文为译文 + 解读。⚠️ 重要",
+  "datePublished": "2026-10-09",
+  "dateModified": "2026-10-09",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Linux内核, swap, 内存管理, swap table, swap map, 交换子系统, Kairui Song, 腾讯, 大页, folio, zram, 内核补丁, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB",
+        "item": "https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-09">2026-10-09</div>
+        <h1 class="post-title" itemprop="headline">Linux swap 子系统要删掉那张「交换映射表」：省下的是 1TB 交换文件里的 256MB</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Linux%E5%86%85%E6%A0%B8/">Linux内核</a><a itemprop="keywords" href="/tags/swap/">swap</a><a itemprop="keywords" href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/">内存管理</a><a itemprop="keywords" href="/tags/swap%20table/">swap table</a><a itemprop="keywords" href="/tags/swap%20map/">swap map</a><a itemprop="keywords" href="/tags/%E4%BA%A4%E6%8D%A2%E5%AD%90%E7%B3%BB%E7%BB%9F/">交换子系统</a><a itemprop="keywords" href="/tags/Kairui%20Song/">Kairui Song</a><a itemprop="keywords" href="/tags/%E8%85%BE%E8%AE%AF/">腾讯</a><a itemprop="keywords" href="/tags/%E5%A4%A7%E9%A1%B5/">大页</a><a itemprop="keywords" href="/tags/folio/">folio</a><a itemprop="keywords" href="/tags/zram/">zram</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8%E8%A1%A5%E4%B8%81/">内核补丁</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>原文：<a href="https://lwn.net/Articles/1057102/">Modernizing swapping: the end of the swap map</a>（LWN.net，2026-02-05，作者 Jonathan Corbet）<br>
+这是该系列的第二篇，第一篇见 <a href="https://lwn.net/Articles/1056405/">LWN #1056405</a>。<br>
+本文为<strong>译文 + 解读</strong>。⚠️ <strong>重要时间提示</strong>：原文发表于 2026 年 2 月，文中描述的合并状态是当时的情况。截至本文写作时（2026 年 10 月），主线已到 7.3，相关补丁的最终落地状态请以 <code>git log</code> 或 LWN 后续报道为准。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>Linux 的 swap 子系统正在做一场结构性的清理，目标是<strong>删掉那张「交换映射表」（swap map）</strong>。这张表看起来简单到不能再简单：<strong>每个交换槽位一个字节，存的就是引用计数</strong>。但它身上挂着一堆历史包袱，包括<strong>被当位锁使用的 <code>SWAP_HAS_CACHE</code> 标志、一个 62 的上限、以及一套用溢出页扩展计数的「巴洛克式」设计</strong>。整个改造的收益很实在：<strong>swap 子系统的元数据开销减少约 30%，1TB 交换文件省下 256MB 内存</strong>；同时会解除一个很少有人注意的历史限制（大 folio 只能在引用计数为 1 时整块换入）。</p>
+<h2>一、先理解这张表是什么</h2>
+<p><code>struct swap_info_struct</code> 里的这一行，就是本文的主角：</p>
+<pre><code class="c">unsigned char <em>swap_map;  /</em> vmalloc'ed array of usage counts */
+</code></pre>
+<p><strong>一个交换设备一张表，每个槽位一个字节，值是「有多少引用指向这个槽位」。</strong> 每个指向该槽位的页表项算一个引用，而<strong>不管分到该槽位的页是否驻留在内存里</strong>。</p>
+<p>听起来不能再朴素了。但<strong>既然是 swap 代码，就一定有 complication</strong>，而这里的 complication 集中在一个字节的位分配上：</p>
+<table>
+<tr><th>值</th><th>含义</th></tr>
+<tr><td>普通计数</td><td>引用数</td></tr>
+<tr><td><strong>bit 6（0x40）= <code>SWAP_HAS_CACHE</code></strong></td><td>该槽位<strong>已分配了页</strong></td></tr>
+<tr><td><strong>0x3f = <code>SWAP_MAP_BAD</code></strong></td><td>底层存储坏了，不要用</td></tr>
+<tr><td><strong><code>SWAP_MAP_MAX</code> = 0x3e = 62</strong></td><td><strong>能存的最大引用计数</strong></td></tr>
+</table>
+<p><strong>为什么需要 <code>SWAP_HAS_CACHE</code>？</strong> 因为存在一些时间窗口，<strong>槽位已经分配、但尚无页表引用</strong>，此时引用计数是 0。这个标志用来把这种状态和「槽位未分配」区分开。</p>
+<p><strong>但它还有一个副作用，才是真正的问题所在</strong>：</p>
+<blockquote>这个标志<strong>还被当成一种位锁（bit lock）</strong>使用。存在大量竞态条件，可能导致内核并发地多次尝试换入一个页（或做其他修改）。在这种情况下，<strong>成功设置 <code>SWAP_HAS_CACHE</code> 位的那个线程，才是继续做这件事的那个</strong>。</blockquote>
+<strong>用状态标志兼作锁，代价是延迟重试循环（delay-and-retry loops）</strong>，而这类循环在 swap 代码里已经积累了不少，多年来造成了许多问题。<strong>这是整个改造想清掉的主要技术债之一。</strong>
+<h3>那个 62 的上限，和一套「巴洛克式」的溢出设计</h3>
+<p>因为 <code>0x3f</code> 被 <code>SWAP_MAP_BAD</code> 占用了，最大引用计数只能到 <strong>62</strong>。但<strong>当大量任务共享一个匿名页时，引用数轻松就能超过这个值</strong>。</p>
+<p>处理方式，原文的评价是「说得客气点，很有意思」：</p>
+<ol>
+<li>1. 每次递增计数都要检查溢出；</li>
+<li>2. 如果已经到最大值，<strong>设置最高位 0x80（<code>COUNT_CONTINUED</code>）</strong>，把 swap map 里的计数清零，<strong>再分配一个新页来提供 8 个更高有效位</strong>（这个新页同时为该页上所有其他条目服务）；</li>
+<li>3. 这个新页<strong>通过关联 page 结构里的 LRU 链表头</strong>和 swap map 页链接起来；</li>
+<li>4. 如果一个条目的引用很多、而溢出页里的计数也溢出了，<strong>就再分配一个页加到链表上</strong>。</li>
+</ol>
+<strong>原文对这套设计的成因给了一个诚实的说明</strong>：这个有点巴洛克味道的设计背后的动机<strong>在任何地方都没有文档记录</strong>，但可以推测：溢出情况必须被正确处理，同时又相对罕见（<strong>大规模共享匿名页不是常见场景</strong>）。而在引用计数较低时，这个结构提供了快速访问和最小的内存开销。
+<p><strong>我补一句解读</strong>：这是一个典型的「为罕见路径付出结构复杂度」的案例。<strong>罕见不等于不重要</strong>（溢出处理错了会出数据损坏级的问题），所以必须在；但它确实让主路径背上了读起来费劲的代码。</p>
+<h2>二、要删掉它，得先处理两件事</h2>
+<h3>第一件：移除 swap bypass</h3>
+<p><strong>背景</strong>：swap cache 的用途之一是持有并追踪正在与交换设备之间做 I/O 的 folio。缺页发生在已换出的 folio 上时，会分配新 folio、从交换文件读内容，这个读可能花时间，所以 folio 会被加入 swap cache，读操作发起，缺页进程等待读完成。<strong>swap 子系统通常还会预读当前位置之后的内容</strong>，赌进程很快也会缺页到后续页。</p>
+<p><strong>但 2018 年的 4.15 改变了一些东西</strong>：</p>
+<blockquote>曾经，交换主要是对旋转存储设备做的，它们很慢。<strong>但越来越常见的情况是，交换看起来很像只是把数据从内存的一部分复制到另一部分。</strong>「交换设备」可能是一组较慢的内存，<strong>或者一个像 zram 这样的内存压缩方案</strong>。<strong>在这类设备上，swap I/O 不再慢，而像预读这样的行为可能损害性能而不是提升它。</strong></blockquote>
+于是 Minchan Kim 在 4.15 加了 <strong>swap bypass</strong>：如果交换设备设了 <code>SWP_SYNCHRONOUS_IO</code> 标志（表示设备快到 I/O 应该同步做），<strong>并且</strong>某个槽位的引用计数为 1，那么换入该槽位的请求会<strong>同步执行、不做预读、新读入的页也不加入 swap cache</strong>。
+<p><strong>这个优化带来了明显的性能提升</strong>（避免相对昂贵的 swap cache 维护 + 阻止预读），但也<strong>给子系统加了不少复杂度，并随时间引入了各种 bug</strong>。</p>
+<p><strong>Kairui Song 的 phase-two 补丁系列的第一部分，就是专门移除 bypass 的。</strong> 理由很直接：</p>
+<blockquote><strong>phase one 的工作（特别是 swap table 的引入）让 swap cache 操作快了很多，以至于即使在使用快速交换设备时，绕过 swap cache 也没有真正的价值了。</strong></blockquote>
+配套动作是：<strong>把预读的控制分离出来，并且对快速设备基本上完全禁用预读</strong>。让所有 swap I/O 都走 swap cache，<strong>简化了代码，减少了麻烦的竞态条件</strong>。新代码对 <code>SWP_SYNCHRONOUS_IO</code> 设备会<strong>立即把换入的 folio 从 swap cache 移除</strong>，以释放那份被换出数据占用的内存。
+<p><strong>这里有一个我认为最值得注意的副作用</strong>：</p>
+<blockquote>在当前内核中，<strong>大（多页）folio 只有在引用计数为 1 时才能整块换入</strong>，换句话说只在 bypass 的情况下才行。<strong>移除 bypass 这个特性，使得从快速设备换入大 folio 不再受引用计数限制。</strong></blockquote>
+<strong>这意味着这次清理不只是「删代码」，它还顺手解开了一个功能限制。</strong> 大 folio 的换入对性能有实际影响，而过去它被 bypass 的实现细节绑住了。
+<p><strong>移除 bypass 还让 swap map 的管理变简单了</strong>，使系列后续的补丁能把 swap 槽位管理<strong>合并成一小套定义良好的函数</strong>。这些函数都是<strong>基于 folio</strong> 的，减少了 swap 子系统的「以页为中心」的历史倾向。它们用 cluster 锁和 folio 锁的组合来管理 swap cache；<strong>从这里再走一步，就可以用这些锁来控制对 swap map 的访问</strong>。</p>
+<h3>第二件：<code>SWAP_HAS_CACHE</code> 的最后一个用途，然后删掉它</h3>
+<p><strong>一旦 swap cache 承担起并发管理的角色，<code>SWAP_HAS_CACHE</code> 就只剩下一个用途了</strong>：<strong>标记「已分配但引用计数为 0」的交换槽位</strong>。而这个用途两端都能消除：</p>
+<ul>
+<li><strong>在换出侧</strong>：槽位一分配就立即把 folio 加入 swap cache，这种状态就不存在了；</li>
+<li><strong>在换入侧</strong>：从 swap cache 移除页时，<strong>引用计数为 0 的槽位立即释放</strong>。</li>
+</ul>
+<strong>到这一步，<code>SWAP_HAS_CACHE</code> 不再需要，系列接近末尾的一个补丁把它移除了。</strong>
+<p><strong>这几步的逻辑很值得注意</strong>：它不是「把位锁换成真锁」，而是<strong>让那个状态根本不再出现</strong>，于是标志就没用了。<strong>从代码清理的角度，这比打补丁更彻底。</strong></p>
+<h2>三、最终目标：删掉整张 swap map</h2>
+<p>上面那些工作，按原文的说法，当时位于 <strong>mm-unstable 仓库（因而也在 linux-next）</strong>，<strong>有可能在 7.0 版本并入主线</strong>。</p>
+<p><strong>而 phase three 更进一步：彻底消除 swap map。</strong></p>
+<p><strong>核心思路</strong>：新的 swap table 条目（就是简单的 <code>unsigned long</code> 值）把 swap map <strong>最后剩下的职能（追踪引用计数）塞进了 swap table 本身</strong>，于是 swap map 就可以整体删掉。</p>
+<p><strong>phase three 把表项格式改成支持五种类型</strong>：</p>
+<table>
+<tr><th>位模式</th><th>含义</th></tr>
+<tr><td>值为 0</td><td><strong>空槽位</strong></td></tr>
+<tr><td><strong>bit 0 置位</strong></td><td>已换出 folio 的 <strong>shadow 条目</strong>，<strong>高位部分存放引用计数</strong>（可用位数随架构变化）</td></tr>
+<tr><td><strong>低两位 = 10</strong></td><td><strong>驻留在内存中的 folio</strong>。<strong>高位存放引用计数</strong>。为了给计数腾出空间，<strong>存的是底层页的页帧号（PFN）而不是地址</strong></td></tr>
+<tr><td><strong>低三位 = 100</strong></td><td><strong>指针条目</strong>（当前系列未使用）</td></tr>
+<tr><td><strong>低四位 = 1000</strong></td><td><strong>坏槽位</strong>，不应使用</td></tr>
+</table>
+<p><strong>收益</strong>：</p>
+<ul>
+<li><strong>表示更紧凑，内存节省显著</strong>。Song 估计<strong>约 30% 的 swap 子系统元数据开销被消掉了</strong>，<strong>对 1TB 交换文件来说省下 256MB 内存</strong>；</li>
+<li><strong>顺手完成了两套数据结构的统一</strong>。在此之前，内核<strong>分别</strong>维护 swap map（追踪交换文件中槽位的状态）和 swap cache（追踪已放入交换的页）。<strong>Song 说这两套数据结构的统一大幅减少了记账开销，整体加速了 swap 系统。</strong></li>
+</ul>
+<strong>新格式还能存下比 swap map 更大的引用计数</strong>。举个例子：<strong>x86_64 系统需要 40 位存页帧号，加 2 位标记驻留 folio，剩下 22 位给引用计数</strong>；在有些架构（尤其是 32 位系统）上这个位数会更少，<strong>而且溢出的可能性依然存在</strong>。
+<p><strong>但处理方式变了，变得更简单</strong>：</p>
+<blockquote><strong>当前内核里用来处理引用计数溢出的那套复杂系统被移除了。取而代之，如果引用计数溢出，就为整个 cluster 分配一个 <code>unsigned long</code> 计数数组。</strong></blockquote>
+<strong>从「每个溢出条目链一个页」变成「整个 cluster 换成一个宽计数数组」，这是一个明显的简化。</strong>
+<p><strong>进度方面，原文给的信息很关键</strong>：</p>
+<blockquote>phase three 目前在第二版修订。<strong>到目前为止，两个版本都没有收到多少评审意见；这说明移除 swap map 还不是迫在眉睫的事。</strong></blockquote>
+<strong>而且做完了也还没结束</strong>：Song 提到过<strong>后续还有一个阶段，会把内存控制器（cgroup）的 swap 限制也整合进 swap table</strong>。
+<blockquote><strong>所以，就像内核的其他部分一样，swap 子系统不太可能很快被认为「完成」。</strong></blockquote>
+<h2>四、为什么这件事值得关注</h2>
+<p><strong>第一，它是一次典型的「还技术债」，而且方向选得很对。</strong> 整个改造的驱动逻辑是：<strong>先把基础设施（swap table）做好，然后用它把历史包袱一个接一个消掉</strong>。bypass 能删掉，是因为 swap cache 变快了；<code>SWAP_HAS_CACHE</code> 能删掉，是因为那个中间状态被消除了；swap map 能删掉，是因为它的最后一个职能有了新家。<strong>这比零散地打性能补丁要彻底得多。</strong></p>
+<p><strong>第二，它反映了一个更大的趋势：swap 的语义在变。</strong> 原文里那句观察是理解整件事的关键：</p>
+<blockquote>「交换设备」可能是一组较慢的内存，或者一个像 zram 这样的内存压缩方案。<strong>在这类设备上，swap I/O 不再慢，而像预读这样的行为可能损害性能而不是提升它。</strong></blockquote>
+<strong>这一句话解释了过去十几年 swap 子系统为什么会积累这么多复杂性</strong>：它最初是为旋转磁盘设计的机制（预读、异步 I/O、页面缓存式管理），而现在的实际使用场景（zram、CXL 内存、快速 NVMe）<strong>和当初的设计假设已经不同了</strong>。<strong>这次改造本质上是把 swap 子系统的假设重新对齐到现在的硬件现实。</strong>
+<p><strong>第三，省下的数字不大，但意义不止于数字。</strong> <strong>1TB 交换文件省 256MB</strong>，对大多数桌面用户来说无关紧要。但 30% 的元数据开销削减 + 两套结构统一，意味着<strong>路径更短、竞态更少、代码更容易维护和审查</strong>。对一个会被每个内存压力场景触发的子系统来说，<strong>可维护性和正确性的价值远超过那 256MB。</strong></p>
+<p><strong>第四，对我们这些写文章的也是个提醒</strong>：原文特别指出了一个细节，我认为值得所有人借鉴：</p>
+<blockquote>这个有点巴洛克味道的设计背后的动机<strong>在任何地方都没有文档记录</strong>。</blockquote>
+<strong>一个存活了多年的内核数据结构，没人写清它为什么长这样。</strong> 这不是 Linux 独有的问题，而是所有长期演进的系统的常态。<strong>好在这次改造的效果之一，就是把这些说不清的设计换成能说清的设计。</strong>
+<h2>五、给你的实际建议</h2>
+<p><strong>对运维和内核工程师来说，这件事的落地含义是</strong>：</p>
+<ul>
+<li><strong>短期内你不需要做任何事</strong>。这是内核内部的重构，接口层面没有需要你适配的变更（swap table 和 swap map 都是内核内部结构）；</li>
+<li><strong>值得留意的只有一处行为变化</strong>：<strong>大 folio 的换入不再受「引用计数必须为 1」的限制</strong>。如果你的工作负载有大量共享匿名页（比如大量 fork 的进程、某些数据库场景），<strong>这条改动理论上会改善换入性能</strong>；</li>
+<li><strong>迁移期间可以关注 7.0 前后的 release note</strong>。按原文的说法，phase two 当时预计会在 7.0 并入；phase three 当时还在评审、没有多少反馈。<strong>如果你在跟踪 stable 内核，值得在升级前看一眼 swap 相关的 changelog</strong>；</li>
+<li><strong>zram/zswap 用户是最直接的受益者</strong>，因为这套改造的动机很大程度上就来自这类「快速交换设备」的普及。<strong>而巧的是，我们前几天刚写过 Meta 的 CRAM 提案（想从根上绕过「缺页 + 解压 + 搬回」这条路径）</strong>，两件事正好是同一条技术线的两端：一个是把现有路径清理干净，一个是等硬件来绕开它。</li>
+</ul>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>作者</td><td>Kairui Song（腾讯）</td></tr>
+<tr><td>目标</td><td><strong>彻底删除 swap map</strong>，把它的引用计数职能并入新的 swap table</td></tr>
+<tr><td>swap map 定义</td><td><code>unsigned char *swap_map</code>，<strong>每个槽位一个字节</strong>存引用计数</td></tr>
+<tr><td>位分配</td><td>bit 6（0x40）= <code>SWAP_HAS_CACHE</code>（兼作<strong>位锁</strong>）；0x3f = <code>SWAP_MAP_BAD</code>；<code>SWAP_MAP_MAX</code> = <strong>62</strong></td></tr>
+<tr><td>溢出的旧设计</td><td>设 0x80（<code>COUNT_CONTINUED</code>）、清零计数、<strong>分配新页提供 8 个更高位</strong>，通过 page 结构的 LRU 链表头串联，可再溢出再加页（原文评「巴洛克」）</td></tr>
+<tr><td>附带改动一</td><td><strong>移除 4.15 引入的 swap bypass</strong>（<code>SWAP_SYNCHRONOUS_IO</code> + 引用计数为 1 时同步换入、不预读、不进 swap cache）</td></tr>
+<tr><td>移除 bypass 的理由</td><td>swap table 让 swap cache 操作快到<strong>绕过它已无价值</strong>；所有 I/O 走 swap cache 可简化代码、减少竞态</td></tr>
+<tr><td>⚠️ 功能性副作用</td><td>过去<strong>大 folio 只能在引用计数为 1（即 bypass 情形）时整块换入</strong>；移除 bypass 后<strong>不再受此限制</strong></td></tr>
+<tr><td>附带改动二</td><td>删除 <code>SWAP_HAS_CACHE</code>：靠「换出时立即入 swap cache」「移除时立即释放零引用槽位」消除该中间状态</td></tr>
+<tr><td>新表项格式</td><td>0=空；bit0=shadow 条目（高位存计数）；低两位 10=驻留 folio（<strong>存 PFN 而非地址</strong>以腾出计数位）；低三位 100=指针条目（未用）；低四位 1000=坏槽位</td></tr>
+<tr><td>引用计数上限</td><td>x86_64：<strong>40 位 PFN + 2 位标记 = 22 位计数</strong>；32 位更少，仍可能溢出</td></tr>
+<tr><td>溢出新解法</td><td>旧的多级溢出页机制移除；<strong>改为给整个 cluster 分配一个 <code>unsigned long</code> 计数数组</strong></td></tr>
+<tr><td>收益</td><td>元数据开销<strong>减少约 30%</strong>；<strong>1TB 交换文件省 256MB</strong>；swap map 与 swap cache <strong>两套结构统一</strong></td></tr>
+<tr><td>当时进度（2026-02）</td><td>phase two 位于 mm-unstable/linux-next，<strong>可能随 7.0 并入</strong>；phase three <strong>第二版修订，评审意见很少，不迫近</strong></td></tr>
+<tr><td>后续计划</td><td>还有一个阶段会把 <strong>cgroup 的 swap 限制</strong>整合进 swap table</td></tr>
+<tr><td>⚠️ 时间提示</td><td>原文发表于 2026-02；本文写作时主线已到 7.3，<strong>落地状态请以当前内核为准</strong></td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://lwn.net/Articles/1057102/">LWN 原文：Modernizing swapping: the end of the swap map</a></li>
+<li><a href="https://lwn.net/Articles/1056405/">LWN 系列第一篇 #1056405</a></li>
+<li><a href="/articles/2026-10-06_zram-streams-rework/">本站：zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转</a></li>
+<li><a href="/articles/2026-10-09_meta-cram-compressed-ram/">本站：452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案</a></li>
+<li><a href="/articles/2026-09-16_blk-iocost-bpf-cost-model/">本站：iocost 的七年之约：把 IO 成本模型交给 BPF</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-09_linux-swap-table-removing-swap-map/",
+      title: "Linux swap \u5b50\u7cfb\u7edf\u8981\u5220\u6389\u90a3\u5f20\u300c\u4ea4\u6362\u6620\u5c04\u8868\u300d\uff1a\u7701\u4e0b\u7684\u662f 1TB \u4ea4\u6362\u6587\u4ef6\u91cc\u7684 256MB"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
