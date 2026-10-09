@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [Cloudflare 让 1.1.1.1 免于罚款：赢在程序，而 Quad9 可能因为同一个理由退出法国](https://freelamp.com/articles/2026-10-09_cloudflare-1111-france-piracy-blocking/) | Cloudflare · 1.1.1.1 · Quad9 · DNS · 域名封禁 · 版权执法 · ARCOM · Canal+ · UPC Telekabel · 欧盟DSA · 译文 |
+| 2026-10-09 | [一个散热器页面泄露的 EPYC Verano：72 核不难，24 通道 LPDDR5X 才是真信号](https://freelamp.com/articles/2026-10-09_epyc-verano-sb1-lpddr5x/) | AMD · EPYC · Verano · Zen 6 · Venice · SB1 · SOCAMM2 · LPDDR5X · JEDEC · 服务器CPU · AI主机 · 内存带宽 · 译文 |
+| 2026-10-09 | [54% 掉到 22%：抗量子准备度这个指标，量错了层](https://freelamp.com/articles/2026-10-09_pqc-edge-quantum-readiness/) | 后量子密码学 · PQC · 量子安全 · TLS 1.3 · CDN · Cloudflare · 证书管理 · CBOM · NIST · PKI · 译文 |
 | 2026-10-09 | [ICANN 收到 1,615 份新顶级域申请和约 3.67 亿美元：但 55% 的申请注定撞在别人身上](https://freelamp.com/articles/2026-10-09_icann-2026-new-gtld-round/) | ICANN · gTLD · 新顶级域 · DNS · 域名圈地 · AI域名 · agent · agi · Anguilla · 互联网治理 · 译文 |
 | 2026-10-09 | [Quick Share 什么都好，除了它没有 Linux 客户端：手机与 PC 互传的四种走法](https://freelamp.com/articles/2026-10-09_quickshare-linux-android-file-transfer/) | Quick Share · Nearby Share · 文件传输 · Android · Linux · Packet · rquickshare · LocalSend · KDE Connect · Wi-Fi Direct · 互传联盟 · AirDrop |
 | 2026-10-09 | [微软把「跑不可信代码」做成了一个 SDK 依赖：九个沙箱后端与一份说清边界的文档](https://freelamp.com/articles/2026-10-09_microsoft-mxc-sandbox-sdk/) | Microsoft · MXC · 沙箱 · 代码执行隔离 · Bubblewrap · Seatbelt · AppContainer · WFP · MicroVM · Nanvix · Hyperlight · Windows Sandbox · 供应链安全 · 译文 |
