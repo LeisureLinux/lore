@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案 — FreeLAMP.com</title>
+  <meta name="description" content="Meta 工程师 Gregory Price 在 Linux Plumbers Conference 2026 上展示了 CRAM（Compressed RAM）：让硬件直接对压缩内存做缓存行级访问，压缩页保留在页表里，读不再走「缺页 + 解压 + 搬回普通内存」那条软件路径。幻灯片数据显示只读场景下吞吐是 DRAM ">
+  <meta name="keywords" content="CRAM, 内存压缩, zram, zswap, NUMA, Meta, Linux内核, LPC2026, CXL, 缺页异常, 页表, 内存层级, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-09">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案">
+  <meta property="og:description" content="Meta 工程师 Gregory Price 在 Linux Plumbers Conference 2026 上展示了 CRAM（Compressed RAM）：让硬件直接对压缩内存做缓存行级访问，压缩页保留在页表里，读不再走「缺页 + 解压 + 搬回普通内存」那条软件路径。幻灯片数据显示只读场景下吞吐是 DRAM ">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-09">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="CRAM">
+  <meta property="article:tag" content="CRAM">
+  <meta property="article:tag" content="内存压缩">
+  <meta property="article:tag" content="zram">
+  <meta property="article:tag" content="zswap">
+  <meta property="article:tag" content="NUMA">
+  <meta property="article:tag" content="Meta">
+  <meta property="article:tag" content="Linux内核">
+  <meta property="article:tag" content="LPC2026">
+  <meta property="article:tag" content="CXL">
+  <meta property="article:tag" content="缺页异常">
+  <meta property="article:tag" content="页表">
+  <meta property="article:tag" content="内存层级">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案">
+  <meta name="twitter:description" content="Meta 工程师 Gregory Price 在 Linux Plumbers Conference 2026 上展示了 CRAM（Compressed RAM）：让硬件直接对压缩内存做缓存行级访问，压缩页保留在页表里，读不再走「缺页 + 解压 + 搬回普通内存」那条软件路径。幻灯片数据显示只读场景下吞吐是 DRAM ">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案",
+  "description": "原文：New Linux tech compresses memory in RAM, as RAM, for 452x speeduphttps://www.tomshardware.com/software/linux/new-linux-tech-compresses-memory-in-ram-as-ram-for-452x-speedup-new-cram-method-offers-g",
+  "datePublished": "2026-10-09",
+  "dateModified": "2026-10-09",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "CRAM, 内存压缩, zram, zswap, NUMA, Meta, Linux内核, LPC2026, CXL, 缺页异常, 页表, 内存层级, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案",
+        "item": "https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-09">2026-10-09</div>
+        <h1 class="post-title" itemprop="headline">452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/CRAM/">CRAM</a><a itemprop="keywords" href="/tags/%E5%86%85%E5%AD%98%E5%8E%8B%E7%BC%A9/">内存压缩</a><a itemprop="keywords" href="/tags/zram/">zram</a><a itemprop="keywords" href="/tags/zswap/">zswap</a><a itemprop="keywords" href="/tags/NUMA/">NUMA</a><a itemprop="keywords" href="/tags/Meta/">Meta</a><a itemprop="keywords" href="/tags/Linux%E5%86%85%E6%A0%B8/">Linux内核</a><a itemprop="keywords" href="/tags/LPC2026/">LPC2026</a><a itemprop="keywords" href="/tags/CXL/">CXL</a><a itemprop="keywords" href="/tags/%E7%BC%BA%E9%A1%B5%E5%BC%82%E5%B8%B8/">缺页异常</a><a itemprop="keywords" href="/tags/%E9%A1%B5%E8%A1%A8/">页表</a><a itemprop="keywords" href="/tags/%E5%86%85%E5%AD%98%E5%B1%82%E7%BA%A7/">内存层级</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>原文：<a href="https://www.tomshardware.com/software/linux/new-linux-tech-compresses-memory-in-ram-as-ram-for-452x-speedup-new-cram-method-offers-giant-boost-to-compressed-memory-reads">New Linux tech compresses memory in RAM, as RAM, for 452x speedup</a>（Tom's Hardware，2026-10-07）<br>
+补充来源：<a href="https://www.phoronix.com/news/Linux-CRAM-Compressed-RAM">Phoronix：Meta Developing Compressed RAM "CRAM" For Linux</a>、<a href="https://lpc.events/event/20/contributions/2424/">LPC 2026 议题页</a>、演讲数据的整理与分析<br>
+本文为<strong>解读</strong>。第二、三节的演出数据来自公开的演讲材料整理，第三节的「三重限定」与第五节的硬件现状判断是笔者重点补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p>Meta 的工程师 Gregory Price 在布拉格的 <strong>Linux Plumbers Conference 2026</strong>（10 月 5 日）展示了 <strong>CRAM（Compressed RAM）</strong>。它和 zram/zswap 的根本差别不在压缩算法，而在<strong>访问路径</strong>：CRAM 让<strong>硬件直接按缓存行或字节级访问压缩内存</strong>，压缩页<strong>保留在页表里</strong>，读的时候由硬件解压，Linux 不需要把整页搬回普通 DRAM。只读场景下吞吐达到 DRAM 的 <strong>98% 以上</strong>，而 zram 约 <strong>1.1 M ops/s</strong>，两者相去除出了标题里那个 <strong>452 倍</strong>。<strong>但这个数字有三重限定，而且 CRAM 需要的那类硬件目前基本不存在。</strong></p>
+<h2>一、先说清 CRAM 和 zram/zswap 差在哪</h2>
+<p>这三种方案都做「把内存压缩在内存里」，差别在<strong>读回数据时各自要走什么路</strong>：</p>
+<table>
+<tr><th>方案</th><th>数据怎么放</th><th>读回时的动作</th></tr>
+<tr><td><strong>zram 用作 swap</strong></td><td>RAM 里的压缩块设备</td><td>处理缺页异常，解压到普通内存</td></tr>
+<tr><td><strong>zswap</strong></td><td>RAM 里压缩的 swap 页缓存</td><td>处理缺页异常，解压到分配的页</td></tr>
+<tr><td><strong>CRAM</strong></td><td><strong>硬件压缩、可直接访问的内存</strong></td><td><strong>保留可读映射，由硬件解压</strong></td></tr>
+</table>
+<p><strong>关键差别是最后一行那个「不再需要分配一个普通内存页作为解压目标」。</strong> CRAM 要求硬件支持<strong>按缓存行或字节级直接访问压缩内存区域</strong>，应用不自己解码数据，硬件把它呈现为一次普通的内存访问。</p>
+<p><strong>另一处架构选择是它暴露给 Linux 的形态</strong>：CRAM 把压缩内存作为一个<strong>私有的 NUMA 节点</strong>提供，而不是一个模拟的块设备。这样做的好处是<strong>内核可以直接复用既有的内存管理机制</strong>（内存迁移、回收、降级 demotion、ballooning），而不必为压缩内存单独写一套路径。</p>
+<p><strong>注意</strong>：不要把这个 CRAM 和几个同名旧东西搞混。有一个 2010 年的论文也叫 <strong>CRAM（Compressed Random Access Memory）</strong>，那是数据结构；有一个 2018 年的硬件论文也叫 <strong>CRAM</strong>，那是学术上的内存控制器压缩设计；Linux 里还有个 <strong>cramfs</strong> 文件系统。本文谈的是 2026 年 LPC 上 Meta 提出的这一个。</p>
+<h2>二、那个 452 倍是怎么算出来的</h2>
+<p>幻灯片里的只读测试数据（取自演讲第 11 页，比值是算出来的）：</p>
+<table>
+<tr><th>访问分布</th><th>CRAM（百万 ops/s）</th><th>DRAM 容量充足（百万 ops/s）</th><th>CRAM / DRAM</th></tr>
+<tr><td>偏斜访问（Zipf 0.99）</td><td><strong>321</strong></td><td>325</td><td>约 <strong>98.8%</strong></td></tr>
+<tr><td>均匀随机</td><td><strong>489</strong></td><td>498</td><td>约 <strong>98.2%</strong></td></tr>
+</table>
+<p>而 <strong>zram 约 1.1 M ops/s</strong>。<strong>489 ÷ 1.1 ≈ 444</strong>。也就是说，标题里的「452x」和这份数据大致是同一个量级的取点（不同测试组合可能略有出入）。</p>
+<p><strong>换句话说，「只读数据在 CRAM 里几乎和原生 DRAM 一样快」这个结论是站得住的</strong>：98% 到 99% 的吞吐比，对一个绕过了整条软件解压路径的方案来说，是相当强的结果。</p>
+<h2>三、三重限定：为什么这个数字比它听起来窄得多</h2>
+<p>这是全文最该被认真对待的部分，因为标题里的 452 倍如果脱离限定条件引用，会严重误导容量规划。</p>
+<h3>限定一：这是纯读场景，一加写就急剧缩小</h3>
+<p>压缩数据<strong>不能在原位置修改</strong>。写一个位于 CRAM 里的页，需要<strong>触发缺页异常、把该页迁移回原生 DRAM 节点</strong>、然后才能完成修改。所以写比率一上来，优势就掉得很快：</p>
+<table>
+<tr><th>场景</th><th>CRAM 相对 zram 的倍数</th></tr>
+<tr><td>纯读（导致的 452 倍那组）</td><td><strong>数百倍</strong></td></tr>
+<tr><td>均匀随机，2% 写比率</td><td><strong>约 37 倍</strong></td></tr>
+<tr><td>均匀随机，20% 写比率</td><td><strong>约 5.4 倍</strong></td></tr>
+</table>
+<p><strong>从几百倍到 5.4 倍，中间差的不是一星半点。</strong> 而真实工作负载里，写入是常态而非例外。</p>
+<h3>限定二：偏斜测试里 zram 直接被 OOM 杀掉了</h3>
+<p>在偏斜访问测试中，<strong>zram 在 10% 和 20% 写比率下被内存不足条件终止</strong>。也就是说那两组数据根本不是「两个方案都跑完然后比大小」，而是<strong>一方先崩了</strong>。这种对比不能当作等价比较来读。</p>
+<h3>限定三（最重要）：所有测量都在 DRAM 上完成</h3>
+<p>演讲材料自己对这一点有明确标注：</p>
+<blockquote><strong>所有测量都使用 DRAM，目的是隔离页错误处理的开销。</strong> 因此不应把它们读作展示压缩硬件本身速度或省电收益的产品基准。</blockquote>
+<strong>这句话是整个事件里最关键的限定</strong>。它意味着：那 452 倍展示的是「<strong>CRAM 保留可读映射这个设计，能把软件侧处理削减到什么程度</strong>」，而<strong>不是</strong>「压缩硬件有多快」，也<strong>不是</strong>「能省多少电」。
+<p><strong>这三个限定的实际含义</strong>：452 倍是一个<strong>关于软件路径开销的实验结论</strong>，不是一个可以拿来做容量与性能规划的产品数据。</p>
+<h2>四、真正有意思的部分：怎么防止「容量幻觉」</h2>
+<p>这一节是 CRAM 设计里最扎实的工程内容，也是我认为比那个倍数更值得读的地方。</p>
+<p><strong>问题的本质</strong>：压缩内存有一个固有矛盾。<strong>操作系统可见的容量，不一定等于硬件实际能装下的数据量。</strong> 高压缩率的数据能让更多信息塞进更少的物理内存；但如果重写导致压缩率变差，同样多的数据就需要更多空间。<strong>Linux 可能会以为自己有硬件其实支撑不了的容量。</strong></p>
+<p>Price 的设计用三个机制来堵这个洞：</p>
+<p><strong>① 限制写</strong>。迁移到 CRAM 的页被映射为<strong>只读</strong>。一旦发生写，就触发缺页异常，该页被<strong>返回普通 DRAM</strong>。读从压缩内存里直接服务；只有当内容确实要修改时，页才被搬到容量有保证的普通内存。</p>
+<p><strong>② 限制入口</strong>。不是应用每次申请内存就直接进 CRAM。Linux 是在<strong>内存回收（memory reclaim）时</strong>把页从普通 DRAM 迁移到 CRAM，目标是<strong>一个与正常分配路径分离的私有 NUMA 节点</strong>。把 CRAM 节点排除在常规分配目标之外，可以防止其他内核路径无意中使用压缩内存。</p>
+<p><strong>③ ballooning 动态调容量</strong>。开发代码里，<strong>驱动会向 CRAM 报告它实际达到的压缩率</strong>，并据此预留一部分内存，从而调整对 Linux 可见的容量。驱动还可以<strong>停止接受新页</strong>。把「压缩内存中页的写保护」和「停止新页流入」两者结合起来，目的是<strong>即使压缩率掉得比预期更差，也不会让容量缺口扩散出去</strong>。</p>
+<p><strong>所以下面这个推论是错的</strong>：「压缩率是 2 倍，所以我 64GB 内存能当 128GB 用」。实际上 <strong>Linux 和硬件必须共同管理页的读写权限、页何时迁移、以及压缩率变化时的容量调整与内存回收</strong>。这三件事都是新增的协同开销。</p>
+<h2>五、门槛：它需要的那类硬件，现在基本不存在</h2>
+<p>这是全篇最该被点明、但媒体报道里最容易被略过的一点。</p>
+<p><strong>CRAM 的前提是内存硬件能实时解压，并支持缓存行级访问。</strong> 这类「特定内存硬件」<strong>在普通硬件上并不存在</strong>。所以作为普通用户，你在自己的机器上是<strong>用不上 CRAM 的</strong>，无论内核什么时候合并它。</p>
+<p><strong>它更可能先落在哪里？</strong> 目前能看到的相关方向是 <strong>CXL 内存层上的硬件加速压缩引擎</strong>（例如 ZeroPoint Technologies 那类方案，对外展示的是给系统内存层级增加一个「压缩 CXL 内存层」）。</p>
+<p>这里有一个很有意思的旁证。Phoronix 在报道里提到：</p>
+<blockquote><strong>大多数支持 CRAM 所需的单个组件已经在主线（mainline）里了。</strong></blockquote>
+<strong>这句话反过来读很关键</strong>：软件侧的零件基本齐了，<strong>缺的是硬件</strong>。也就是说，CRAM 的现阶段性质是<strong>一个为尚未普及的硬件提前准备好的内核设计</strong>，而不是一个你升级内核就能享受的性能提升。这与我们前几天那篇 EPYC Verano 里看到的模式一致：<strong>标准与软件先到位，等硬件跟上。</strong>
+<h2>六、与 zram 那条技术线的关系</h2>
+<p>如果你看过我们 10 月 6 日那篇 <a href="/articles/2026-10-06_zram-streams-rework/">zram 重构读写流</a>，会发现这两件事其实在同一条线上。</p>
+<p><strong>zram 那边的进展是「把现有路径优化得更顺」</strong>：让读写流更简洁、消除优先级反转。</p>
+<p><strong>CRAM 这边是「想办法绕开整条路径」</strong>：既然「缺页异常 → 解压 → 分配一个普通页 → 搬运」这套动作是开销的来源，那就要求硬件能直接读压缩页，让这套动作不再需要。</p>
+<p><strong>两个方向都有价值，但它们的成本和受益面完全不同</strong>：</p>
+<table>
+<tr><th></th><th>zram/zswap 优化</th><th>CRAM</th></tr>
+<tr><td>硬件要求</td><td><strong>无</strong>（纯软件）</td><td><strong>需要能解压的内存硬件</strong></td></tr>
+<tr><td>现在能用吗</td><td><strong>能</strong></td><td><strong>不能</strong></td></tr>
+<tr><td>受益面</td><td>所有 Linux 用户</td><td>未来具备该硬件的平台</td></tr>
+<tr><td>优化对象</td><td>现有软件的路径开销</td><td>绕过软件路径</td></tr>
+</table>
+<p><strong>所以对今天的运维和内核工程师来说，可执行的结论很朴素</strong>：<strong>继续用 zram/zswap，并且关注它们的持续改进</strong>（Phoronix 的近期列表中就有 Qihoo 360 给 zram 提交的 QPaCE 驱动代码和 zswap 批量化写回的补丁）；把 CRAM 当作一个<strong>方向性信号</strong>记下来，而不是一个待落地的优化项。</p>
+<h2>七、我的判断</h2>
+<p><strong>第一，这个原型的价值在「验证了一件具体的事」。</strong> 它证明了：<strong>只要硬件允许直接访问压缩页，软件侧那套「缺页 + 解压 + 搬回」的开销是可以被整体消除的</strong>，而且消除之后只读吞吐能到 DRAM 的 98%。这是一个干净的结论，比那个倍数本身有价值得多。</p>
+<p><strong>第二，「452x」这个传播口径是有问题的。</strong> 它把一个<strong>纯读、在同一块 DRAM 上做对照、且作者明确声明不能当产品基准</strong>的实验结果，放进了一个看起来像产品性能公告的标题里。更准确的表述应该是：<strong>「在只读负载下，绕过软件解压路径可以让压缩内存的读取性能接近原生 DRAM」</strong>。至于和 zram 的倍数关系，高度依赖读写比、访问分布和数据本身的可压缩性。</p>
+<p><strong>第三，我最欣赏的部分其实是第三节那三个容量控制机制。</strong> 因为那才是「压缩内存」这件事真正的难点：<strong>不是压得动，而是压完之后你还敢不敢相信自己有多少内存。</strong> 用只读映射限制写、用私有 NUMA 节点限制入口、用 ballooning 动态调容量，这三个机制合起来是在回答一个很实际的问题：当压缩率是一个飘忽不定的数字时，操作系统怎么才能不把自己骗了。</p>
+<p><strong>第四，也是对普通读者最实用的一句</strong>：<strong>你短期内用不上它，而且这不是因为内核没合并。</strong> 门槛在硬件。对你今天的选择来说，zram 和 zswap 依然是对的答案，它们的改进（以及相关补丁）才是你真正能拿到的东西。CRAM 值得记住的理由是它标出了一个方向：<strong>内存压缩的未来可能不在压缩算法，而在于把解压这件事挪进硬件的访问路径里。</strong></p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>事件</td><td>Meta 的 Gregory Price 在 <strong>Linux Plumbers Conference 2026</strong>（布拉格，10 月 5 日）演讲</td></tr>
+<tr><td>CRAM 全称</td><td>Compressed RAM</td></tr>
+<tr><td>核心机制</td><td>硬件支持<strong>缓存行/字节级</strong>直接访问压缩内存；压缩页<strong>保留在页表</strong>里；读由硬件解压</td></tr>
+<tr><td>与 zram/zswap 的差别</td><td>读时<strong>不再需要分配一个普通内存页作为解压目标</strong></td></tr>
+<tr><td>暴露形态</td><td><strong>私有 NUMA 节点</strong>（而非模拟块设备），以复用既有内存管理机制</td></tr>
+<tr><td>只读性能</td><td>CRAM/DRAM 吞吐比：偏斜访问 <strong>98.8%</strong>、均匀随机 <strong>98.2%</strong>（321/325、489/498 M ops/s）</td></tr>
+<tr><td>zram 对照</td><td>约 <strong>1.1 M ops/s</strong>，据此得出标题的 452 倍量级（489 ÷ 1.1 ≈ 444）</td></tr>
+<tr><td>⚠️ 限定一</td><td>纯读场景；加写后，2% 写比率约 <strong>37 倍</strong>、20% 写比率约 <strong>5.4 倍</strong></td></tr>
+<tr><td>⚠️ 限定二</td><td>偏斜测试中 zram 在 10%、20% 写比率下<strong>被 OOM 终止</strong>，非等价比较</td></tr>
+<tr><td>⚠️ 限定三</td><td>演讲明确标注<strong>所有测量都在 DRAM 上完成</strong>，用于隔离缺页开销，<strong>不应作为产品基准或省电结论</strong></td></tr>
+<tr><td>容量控制三机制</td><td>① 进 CRAM 的页映射为<strong>只读</strong>，写即触发缺页并回原 DRAM；② 只在<strong>内存回收</strong>时迁入，目标是<strong>私有 NUMA 节点</strong>；③ <strong>ballooning</strong>：驱动报告实际压缩率并预留内存，可停止接受新页</td></tr>
+<tr><td>⚠️ 硬件门槛</td><td>需要能实时解压、支持缓存行访问的内存硬件，<strong>普通硬件上不存在</strong>；更可能先落在 <strong>CXL 内存层</strong>方案上</td></tr>
+<tr><td>软件侧状态</td><td>Phoronix：<strong>大多数支持 CRAM 所需的组件已在主线</strong></td></tr>
+<tr><td>其他同名混淆</td><td>2010 年论文 CRAM（数据结构）、2018 年论文 CRAM（内存控制器压缩）、cramfs 文件系统，均非本方案</td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://www.phoronix.com/news/Linux-CRAM-Compressed-RAM">Phoronix：Meta Developing Compressed RAM "CRAM" For Linux</a></li>
+<li><a href="https://lpc.events/event/20/contributions/2424/">LPC 2026：Compressed RAM 议题页</a></li>
+<li><a href="/articles/2026-10-06_zram-streams-rework/">本站：zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转</a></li>
+<li><a href="/articles/2026-09-14_ebpf-memoization-90-percent/">本站：把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI</a></li>
+<li><a href="/articles/2026-09-16_blk-iocost-bpf-cost-model/">本站：iocost 的七年之约：把 IO 成本模型交给 BPF</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/",
+      title: "452 \u500d\u662f\u771f\u7684\uff0c\u4f46\u5b83\u5728\u7b49\u4e00\u5757\u8fd8\u4e0d\u5b58\u5728\u7684\u5185\u5b58\u6761\uff1aMeta \u7684 CRAM \u63d0\u6848"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

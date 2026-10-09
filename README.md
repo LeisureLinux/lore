@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [452 倍是真的，但它在等一块还不存在的内存条：Meta 的 CRAM 提案](https://freelamp.com/articles/2026-10-09_meta-cram-compressed-ram/) | CRAM · 内存压缩 · zram · zswap · NUMA · Meta · Linux内核 · LPC2026 · CXL · 缺页异常 · 页表 · 内存层级 · 译文 |
 | 2026-10-09 | [Cloudflare 让 1.1.1.1 免于罚款：赢在程序，而 Quad9 可能因为同一个理由退出法国](https://freelamp.com/articles/2026-10-09_cloudflare-1111-france-piracy-blocking/) | Cloudflare · 1.1.1.1 · Quad9 · DNS · 域名封禁 · 版权执法 · ARCOM · Canal+ · UPC Telekabel · 欧盟DSA · 译文 |
 | 2026-10-09 | [一个散热器页面泄露的 EPYC Verano：72 核不难，24 通道 LPDDR5X 才是真信号](https://freelamp.com/articles/2026-10-09_epyc-verano-sb1-lpddr5x/) | AMD · EPYC · Verano · Zen 6 · Venice · SB1 · SOCAMM2 · LPDDR5X · JEDEC · 服务器CPU · AI主机 · 内存带宽 · 译文 |
 | 2026-10-09 | [54% 掉到 22%：抗量子准备度这个指标，量错了层](https://freelamp.com/articles/2026-10-09_pqc-edge-quantum-readiness/) | 后量子密码学 · PQC · 量子安全 · TLS 1.3 · CDN · Cloudflare · 证书管理 · CBOM · NIST · PKI · 译文 |
