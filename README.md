@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [ICANN 收到 1,615 份新顶级域申请和约 3.67 亿美元：但 55% 的申请注定撞在别人身上](https://freelamp.com/articles/2026-10-09_icann-2026-new-gtld-round/) | ICANN · gTLD · 新顶级域 · DNS · 域名圈地 · AI域名 · agent · agi · Anguilla · 互联网治理 · 译文 |
 | 2026-10-09 | [Quick Share 什么都好，除了它没有 Linux 客户端：手机与 PC 互传的四种走法](https://freelamp.com/articles/2026-10-09_quickshare-linux-android-file-transfer/) | Quick Share · Nearby Share · 文件传输 · Android · Linux · Packet · rquickshare · LocalSend · KDE Connect · Wi-Fi Direct · 互传联盟 · AirDrop |
 | 2026-10-09 | [微软把「跑不可信代码」做成了一个 SDK 依赖：九个沙箱后端与一份说清边界的文档](https://freelamp.com/articles/2026-10-09_microsoft-mxc-sandbox-sdk/) | Microsoft · MXC · 沙箱 · 代码执行隔离 · Bubblewrap · Seatbelt · AppContainer · WFP · MicroVM · Nanvix · Hyperlight · Windows Sandbox · 供应链安全 · 译文 |
 | 2026-10-09 | [钓鱼防御打错了层级：域名封不过来，但服务器藏不住](https://freelamp.com/articles/2026-10-09_phishing-server-layer-aitm/) | 钓鱼 · AiTM · 会话劫持 · MFA · Microsoft 365 · 威胁狩猎 · 域名劫持 · CAA · 证书透明度 · Chrome · 译文 |
