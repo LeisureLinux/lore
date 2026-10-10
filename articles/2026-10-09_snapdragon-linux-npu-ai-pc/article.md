@@ -29,7 +29,7 @@ published: true
 |---|---|
 | 开放范围 | **仅 Snapdragon X2 系列笔记本**；**不支持初代 X 系列**，**也不支持基于骁龙芯片的台式机** |
 | 上游化的驱动 | **Hexagon NPU**（经 fastRPC）与 **Adreno GPU**（经 Freedreno、Turnip、Rusticl） |
-| 参考用户态 | **Debian 13 "Trixie"** + 定制内核 |
+| 参考用户态 | **Debian 13 「Trixie」** + 定制内核 |
 | 镜像获取 | [qualcomm-linux/qcom-deb-images](https://github.com/qualcomm-linux/qcom-deb-images)（实测：2025-03 建仓，**58 stars，129 个未关闭 issue**，仓库今天仍在更新） |
 | 官方发行版时间表 | **Debian：2026 年底**；**Ubuntu：2027 上半年**（Canonical 认证镜像） |
 | OEM 承诺 | **HP、华硕、HUMAIN 计划 2027 上半年提供 Linux 支持** |
@@ -168,7 +168,7 @@ Linux 内核确实有专门的算力加速器子系统（`accel`），目前文�
 |---|---|
 | 事件 | 高通发布 **Snapdragon X2 系列 Linux 早期开发者预览**，并把 GPU 与 NPU 驱动上游化 |
 | 上游化内容 | **Hexagon NPU**（经 fastRPC）、**Adreno GPU**（Freedreno / Turnip / Rusticl） |
-| 参考环境 | **Debian 13 "Trixie"** + 定制内核 |
+| 参考环境 | **Debian 13 「Trixie」** + 定制内核 |
 | 镜像仓库 | [qualcomm-linux/qcom-deb-images](https://github.com/qualcomm-linux/qcom-deb-images)：2025-03 建仓，**58 stars，129 个未关闭 issue**，仍在更新 |
 | 发行版时间表 | **Debian：2026 年底**；**Ubuntu：2027 上半年**（Canonical 认证） |
 | OEM 承诺 | **HP、华硕、HUMAIN：2027 上半年**提供 Linux 支持 |
