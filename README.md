@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-09 | [三条来自 LWN 的时间线：Python 3.15、Let's Encrypt 的 64 天证书、systemd 的自我交代](https://freelamp.com/articles/2026-10-09_lwn-python-315-letsencrypt-systemd/) | Python · Python 3.15 · Let's Encrypt · 证书生命周期 · ACME · ARI · systemd · All Systems Go · JIT · 运维 · 译文 |
 | 2026-10-09 | [骁龙笔记本的 AI PC 叙事，在 Linux 上还缺最关键的那一环](https://freelamp.com/articles/2026-10-09_snapdragon-linux-npu-ai-pc/) | Qualcomm · Snapdragon X2 · Linux · NPU · Hexagon · AI PC · fastRPC · QNN · OpenVINO · 端侧AI · 译文 |
 | 2026-10-09 | [Windows Update 换证书：Win7 早就没补丁了，Win10 却还有个到 2027 年 10 月的活口](https://freelamp.com/articles/2026-10-09_windows-update-certificate-rotation-2027/) | Windows Update · 证书轮换 · Windows 7 · Windows 10 · ESU · 生命周期 · Secure Boot · 0patch · Linux 迁移 · 运维 · 译文 |
 | 2026-10-09 | [Deno 团队加入 Cloudflare：runtime 一年后停更，Deploy 六个月后关停](https://freelamp.com/articles/2026-10-09_deno-joins-cloudflare/) | Deno · Cloudflare · Workers · Durable Objects · celld · workerd · Ryan Dahl · Kenton Varda · 开源可持续性 · 供应商锁定 · 译文 |
