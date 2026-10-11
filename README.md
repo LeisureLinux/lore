@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-10 | [LTS 在 AI 时代过时了？补丁洪流是真的，但「改用滚动发布」是个假二选一](https://freelamp.com/articles/2026-10-10_lts-vs-rolling-release-genai/) | Linux · LTS · 滚动发布 · GenAI · 补丁洪流 · Linux内核 · 网络子系统 · LPC2026 · AI slop · 嵌入式 · 译文 |
+| 2026-10-09 | [SQLite 3.54 终于放弃 Windows XP：一个数据库引擎的兼容性债，还了二十多年](https://freelamp.com/articles/2026-10-09_sqlite-3-54-released/) | SQLite · 嵌入式数据库 · Windows XP · SRWL · 性能优化 · 查询计划器 · O_TMPFILE · 兼容性债 · 译文 |
 | 2026-10-09 | [三条来自 LWN 的时间线：Python 3.15、Let's Encrypt 的 64 天证书、systemd 的自我交代](https://freelamp.com/articles/2026-10-09_lwn-python-315-letsencrypt-systemd/) | Python · Python 3.15 · Let's Encrypt · 证书生命周期 · ACME · ARI · systemd · All Systems Go · JIT · 运维 · 译文 |
 | 2026-10-09 | [骁龙笔记本的 AI PC 叙事，在 Linux 上还缺最关键的那一环](https://freelamp.com/articles/2026-10-09_snapdragon-linux-npu-ai-pc/) | Qualcomm · Snapdragon X2 · Linux · NPU · Hexagon · AI PC · fastRPC · QNN · OpenVINO · 端侧AI · 译文 |
 | 2026-10-09 | [Windows Update 换证书：Win7 早就没补丁了，Win10 却还有个到 2027 年 10 月的活口](https://freelamp.com/articles/2026-10-09_windows-update-certificate-rotation-2027/) | Windows Update · 证书轮换 · Windows 7 · Windows 10 · ESU · 生命周期 · Secure Boot · 0patch · Linux 迁移 · 运维 · 译文 |
