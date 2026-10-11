@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-11 | [「很难」是过去时：一个人 8 天写出微内核操作系统，以及为什么 unikernel 又回来了](https://freelamp.com/articles/2026-10-11_unikernels-veda-agentic-os/) | unikernel · Veda · 微内核 · Rust · 操作系统 · AI辅助开发 · agentic OS · MirageOS · seL4 · 攻击面 · 设计债 · 译文 |
 | 2026-10-10 | [LTS 在 AI 时代过时了？补丁洪流是真的，但「改用滚动发布」是个假二选一](https://freelamp.com/articles/2026-10-10_lts-vs-rolling-release-genai/) | Linux · LTS · 滚动发布 · GenAI · 补丁洪流 · Linux内核 · 网络子系统 · LPC2026 · AI slop · 嵌入式 · 译文 |
 | 2026-10-09 | [SQLite 3.54 终于放弃 Windows XP：一个数据库引擎的兼容性债，还了二十多年](https://freelamp.com/articles/2026-10-09_sqlite-3-54-released/) | SQLite · 嵌入式数据库 · Windows XP · SRWL · 性能优化 · 查询计划器 · O_TMPFILE · 兼容性债 · 译文 |
 | 2026-10-09 | [三条来自 LWN 的时间线：Python 3.15、Let's Encrypt 的 64 天证书、systemd 的自我交代](https://freelamp.com/articles/2026-10-09_lwn-python-315-letsencrypt-systemd/) | Python · Python 3.15 · Let's Encrypt · 证书生命周期 · ACME · ARI · systemd · All Systems Go · JIT · 运维 · 译文 |
