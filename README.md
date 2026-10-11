@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-11 | [用 Claude 造 Office 替代品：ROADMAP 自己写着完成度约 50%，而仓库里的 CLAUDE.md 才是重点](https://freelamp.com/articles/2026-10-11_artcraft-office-clones-claude/) | ArtCraft · GridCraft · WordCraft · DeckCraft · Claude · AI辅助开发 · clean-room · Rust · OOXML · LibreOffice · MCP · 开源许可 · 原创 |
 | 2026-10-11 | [LineageOS 24 一次把 174 个设备搬上 Android 17：而它同时宣布了一条硬底线](https://freelamp.com/articles/2026-10-11_lineageos-24-changelog-32/) | LineageOS · Android 17 · 第三方 ROM · WebUSB · eBPF · 内核 · 设备支持 · AOSP · 可维修性 · 译文 |
 | 2026-10-11 | [「很难」是过去时：一个人 8 天写出微内核操作系统，以及为什么 unikernel 又回来了](https://freelamp.com/articles/2026-10-11_unikernels-veda-agentic-os/) | unikernel · Veda · 微内核 · Rust · 操作系统 · AI辅助开发 · agentic OS · MirageOS · seL4 · 攻击面 · 设计债 · 译文 |
 | 2026-10-10 | [LTS 在 AI 时代过时了？补丁洪流是真的，但「改用滚动发布」是个假二选一](https://freelamp.com/articles/2026-10-10_lts-vs-rolling-release-genai/) | Linux · LTS · 滚动发布 · GenAI · 补丁洪流 · Linux内核 · 网络子系统 · LPC2026 · AI slop · 嵌入式 · 译文 |
