@@ -1,0 +1,197 @@
+---
+title: "从 F-Droid 到应用宝：Android 应用市场的底层依赖图鉴，以及 microG 和 adb 精简的两个大坑"
+date: 2026-10-12
+slug: android-app-stores-gms-pitfalls
+tags: [Android, F-Droid, Aurora Store, microG, GMS, 应用宝, 应用市场, adb, 系统精简, 荣耀, Bootloader, 系统安全, 原创]
+category: 系统与软件
+author: FreeLAMP.com
+original_source: "F-Droid 官方文档 / microG 项目文档 / Aurora Store 官方仓库 / 各厂商应用市场实测"
+original_author: "FreeLAMP.com（基于真实设备排障实录与各项目官方文档核实）"
+original_date: 2026-10-12
+original_url: "https://freelamp.com/articles/2026-10-12_android-app-stores-gms-pitfalls/"
+description: "换一个应用市场，不只是换一个下载入口。本文按底层依赖把主流 Android 应用市场分成三类：不依赖 GMS 的（F-Droid）、依赖 GMS 签名的（Aurora Store / Play Store）、依赖厂商自有服务链的（应用宝、荣耀应用市场）。重点讲两块最容易踩的坑：microG 为什么在未解锁设备上就是装不上（不是你操作错了），以及用 adb 禁用厂商预装时为什么连 F-Droid 装应用都会被卡死（真实案例：荣耀畅玩50 禁用 72 个包后，安装器点继续安装按钮直接变灰，根因是应用市场的 DownloadInstallService 被禁）。"
+published: true
+---
+
+> 事实来源：本文所有结论来自一次在荣耀畅玩50（JDY-AN00，MagicOS 8，Bootloader 未解锁）上的完整排障实录——包括 adb logcat 的实机日志、F-Droid/Aurora Store 的实机行为、以及 72 个系统包禁用/恢复的全过程回滚验证。凡引用外部规范处均标注官方文档链接。
+
+## 一句话结论
+
+**「应用市场」从来不是一个单纯的应用下载入口，它是一条依赖链的入口。** 你下载的是 App，但 App 能不能跑起来，取决于它背后的三样东西：**签名验证链、运行时服务（GMS/厂商服务）、以及厂商的系统级安装通道**。换应用市场只换了第一环的来源，后两环原封不动地留在系统里。所以才会有这种局面：同一个 APK，从不同市场装进来，行为可能完全不同；同一个市场，在联发科机上好使、在荣耀机上装完点不开。
+
+本文按底层依赖把主流市场分成三类，然后讲两个这次实测踩到的、教程几乎都不提的坑：**microG 在未解锁设备上装不上是设计使然**，以及 **adb 精简厂商预装时，F-Droid 的安装按钮为什么会变灰**。
+
+## 一、应用市场的三种底层形态
+
+用「它装出来的 App 依赖什么」来划分，比按「知名度」划分有用得多：
+
+### 形态一：自包含仓库（F-Droid 及其镜像体系）
+
+F-Droid 的仓库是**自签名的**：每个仓库有一对 RSA 密钥，索引文件 `index.xml` 由仓库私钥签名，客户端内置或手动填入的 **fingerprint** 就是公钥指纹。这意味着：
+
+- **F-Droid 完全不依赖 GMS**。仓库里所有 App 都在 F-Droid 自己的构建机（fdroidserver）上从源码构建，签名由 F-Droid 掌管，和 Google Play 的签名体系**没有任何交集**。
+- 仓库本身可以通过**任意 HTTP/HTTPS 镜像分发**，因为签名保证了完整性。这就是为什么清华 TUNA、南京大学这类镜像站可以镜像 F-Droid 仓库——你从南京大学下载 APK 和从官方下载，只要指纹校验通过，就是同一个包。实测南京大学镜像下载 12.5MB 的 APK 只需 **0.5 秒（约 24MB/s）**，清华 TUNA 约 11MB/s，而官方 `f-droid.org` 直连在国内基本超时（实测 HTTP 000，20 秒超时，0 字节）。
+- **代价**：F-Droid 构建流程较慢（源码构建 + 复现构建），版本更新比上游慢几天到几周。有些流行 App（如 NewPipe）甚至不在主仓库，需要单独添加它们自己的仓库。
+
+**底层依赖：无 GMS、无厂商服务、只需要网络能通到镜像。** 这是所有市场里最「干净」的一条路。
+
+### 形态二：Play 协议客户端（Aurora Store、Play Store 本体）
+
+Aurora Store 是 **Google Play 协议的第三方客户端**——它和 Play Store 说的是同一套协议（连的是 `play.googleapis.com`、`android.clients.google.com` 这些端点），只是换了 UI 和账号策略（支持匿名下载）。
+
+这里有一个被大量教程混淆的点，必须掰清楚：
+
+- **Aurora Store 解决的是「下载」，不是「运行」。** 它能帮你把 Play Store 里的 APK 下下来装上（包括付费 App 的匿名获取、地区伪装），但装出来的 App 和从 Play Store 装的是**同一个包**，运行时的依赖一模一样。
+- **凡是需要 GMS 才能跑的 App，从 Aurora 装下来一样跑不起来。** 实测：在无 GMS 的荣耀畅玩50 上用 Aurora 安装官方 YouTube，启动时 logcat 反复刷：
+
+  ```
+  W GooglePlayServicesUtil: com.google.android.youtube requires the Google Play Store, but it is missing.
+  W GoogleApiAvailability: GMS core API Availability. ConnectionResult=9, methodKey=null, tag=null
+  W Metadata: Failed to find package ... NameNotFoundException: com.google.android.gms
+  ```
+
+  `ConnectionResult=9` 是 `API_UNAVAILABLE`——不是网络问题、不是签名问题，就是**系统里根本没有 GMS 这个包**。Chrome 能用而 YouTube 不能用，差别就在于 Chrome 对 GMS 的依赖极低，而 YouTube 的登录、通知、DRM、播放器内核加载全都调 GMS 的 API。
+- **GMS 的签名校验是系统级的**。Android 的 `PACKAGE_NEEDS_VERIFICATION` 和平台签名检查决定了：普通应用无法冒充 `com.google.android.gms` 这个包名去注册系统服务——包名 + 签名必须同时匹配系统里预置的 Google 平台密钥。这是下一节 microG 问题的根源。
+
+### 形态三：厂商自有服务链（应用宝、荣耀应用市场、华为应用市场、小米商店等）
+
+国内厂商市场有一个和前两类**完全不同**的特征：**它不只分发 App，还深度嵌入系统安装链路**。
+
+以这次实测的荣耀畅玩50 为例（其他国产厂商机制类似，细节略有差异）：
+
+- **安装器不是独立的**。AOSP 的 `com.android.packageinstaller` 在荣耀上被深度定制，荣耀应用市场（`com.hihonor.appmarket`）注册了 `DownloadInstallService`、`ApkInstallerSchemeActivity`、`SecureProxyActivity` 等组件，形成一个**「安全安装代理」层**。任何第三方来源（F-Droid、Aurora、浏览器下载）的 APK 安装，最终都会被引导到这条链上做一遍「安全确认」。
+- **这意味着：厂商市场被禁用或损坏时，整个系统的安装功能都可能跟着坏掉**——包括从 F-Droid 装应用。这不是 F-Droid 的 bug，是厂商把安装链做成了和市场绑定的私有实现。
+- 腾讯应用宝、华为应用市场、小米商店走的是类似思路，只是深度不同：应用宝相对独立（更接近普通 App），而荣耀/华为/小米的**系统级市场**和安装器的耦合更深。把系统级市场当普通 App 卸载，等于拆掉了安装链的一根承重梁。
+
+**底层依赖：厂商自有云服务（安全扫描、签名校验、推送通道）+ 系统签名权限。** 它们通常还依赖厂商推送（HMS Push / MIUI Push / 荣耀 Push）来做 App 更新通知。
+
+## 二、三个坑，每一个都值得单独立项
+
+### 坑一：microG 在未解锁设备上就是装不上去（不是你操作错了）
+
+microG 是 GMS 的开源重实现，思路是：用相同的包名（`com.google.android.gms`）和**兼容的签名**注册系统服务，让依赖 GMS 的 App 以为 GMS 存在。
+
+问题就出在「兼容的签名」上。Android 判断两个包是否冲突，看的是**包名 + 签名**。要装 microG，系统必须相信这个 `com.google.android.gms` 是合法的——但系统里预置的是 Google 的平台签名密钥，microG 不可能拿到。
+
+所以 microG 的安装路径只有几条，每条都有前提：
+
+| 路径 | 前提 | 为什么 |
+|---|---|---|
+| **自定义 ROM 内置 microG**（如 LineageOS for microG） | 刷第三方 ROM | ROM 构建时直接把 microG 打进系统，用 ROM 自己的签名规则 |
+| **开启签名伪装（signature spoofing）** | 定制 ROM 或 Xposed/LSPosed | 让系统对特定 App 返回伪造签名 |
+| **Root 后注入** | Magisk/KernelSU | 绕过常规包管理校验 |
+| **未解锁的原厂系统** | ❌ **没有路径** | 平台签名校验无法绕过，安装时直接报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 或签名冲突 |
+
+**很多教程会跳过这一行直接教你装 microG 的 APK，然后你在原厂系统上怎么装都失败，还以为自己下错了版本。** 真相是：**在 Bootloader 未解锁的原厂系统上，microG 从机制上就无法安装**。这不是版本问题、不是 arm64/x86 问题、不是你少点了某个开关。
+
+对应的判断方法很简单：**你能解锁 Bootloader 吗？** 荣耀（独立后）对绝大多数机型不开放解锁，华为同理，vivo/iQOO 几乎不可能。**这些设备上 microG 这条路是断的**，任何教程说「不用 root 也能装 microG」的，要么省略了前提（你已经解锁/root），要么在骗你。
+
+### 坑二：adb 禁用厂商预装，可能把「装应用」这件事本身禁掉
+
+`pm disable-user` 是无 root 精简的标准手段：不删数据、可逆、不需要解锁。但它有一个教程很少强调的副作用——**你禁用的可能不是「一个 App」，而是「系统功能的一个环节」**。
+
+真实案例（荣耀畅玩50，Android 14 / MagicOS 8）：为了去广告，用 adb 禁用了 72 个系统包，包括 `com.hihonor.appmarket`（荣耀应用市场）、`com.hihonor.systemappsupdater`、`com.hihonor.autoinstallapkfrommcc` 等。之后出现一个非常诡异的症状：
+
+- F-Droid 下载正常，点击安装，安全告警弹出，点「继续安装」
+- **按钮变灰，无任何提示，永远停在那**
+
+排查过程值得复述，因为每一步都在排除一个「想当然」的原因：
+
+1. **先怀疑是 Clash 代理** → 关掉、甚至卸了装别的，没用（后来发现 Clash 根本没启动时也一样卡）
+2. **怀疑是默认打开方式被 Termux 抢占** → `pm resolve-activity` 确实解析到了 Termux，但这是**结果**不是原因，清掉也没用
+3. **怀疑安装器被禁** → `pm enable com.android.packageinstaller` 恢复，没用
+4. **最后用 logcat 抓到这一行**：
+
+   ```
+   W ActivityManager: Unable to start service Intent {
+     act=com.hihonor.appmarket.intent.action.DownloadInstallService
+     pkg=com.hihonor.appmarket } U=0: not found
+   ```
+
+   安装器每 3 秒重试绑定荣耀应用市场的 `DownloadInstallService`，永远失败。**「继续安装」按钮的背后，不是系统在装包，而是在等厂商市场的服务响应。** 服务被禁了，它就永远等下去。
+
+**结论**：在荣耀这类深度定制的系统上，**`com.hihonor.appmarket` 不是「可以精简的预装应用市场」，它是系统安装链的一个组件**。禁用它等于禁用了「安装」这个动作的后半段。
+
+### 坑三：容器方案（Gspace/OurPlay）是 GMS 的临时 substitute，不是解决方案
+
+既然系统层装不了 GMS，容器类 App（Gspace、OurPlay、VirtualXposed 系）的思路是：**在一个 App 内部虚拟一套 GMS 环境**，让 Google 官方 App 跑在沙盒里。
+
+实测结论：**能用，但别抱期望**。
+
+- Gmail、Chrome 这类对 GMS 依赖浅的 App，容器里基本正常
+- YouTube 这类重度依赖的，容器里**横屏播放直接崩溃**——logcat 显示：
+
+  ```
+  E cr_ChromiumAndroidLinker: android_dlopen_ext: dlopen failed:
+    reserved address space 6082560 smaller than 207409152 bytes needed
+    for ".../com.android.chrome/base.apk!/lib/arm64-v8a/libchrome.so"
+  ```
+
+  容器虚拟化层为播放器内核预留的连续虚拟地址空间（6MB）远小于实际需求（207MB），竖屏能用是走了轻量路径，横屏触发 Activity 重建重载内核就必然失败
+- **容器内 App 的桌面快捷方式创建经常静默失败**——它靠广播触发系统 shortcut 服务，在荣耀的权限管控下请求根本没到达系统层（`dumpsys shortcut` 显示 `Calls: 0`）
+
+容器是**没有解锁条件下使用 Google App 的唯一现实路径**，但要清楚它的边界：体验差不是你配置错了，是虚拟化层的天花板。
+
+## 三、主流市场速查表
+
+| 市场 | 类型 | GMS 依赖 | 特点 | 适用 |
+|---|---|---|---|---|
+| **F-Droid** | 自包含仓库 | ❌ 无 | 全开源、可镜像、签名自校验 | 隐私敏感、追求开源、可接受更新慢 |
+| **Aurora Store** | Play 协议客户端 | 装出来的 App 依赖 GMS | 匿名下载、无需 Google 账号、可伪装地区 | 想从 Play 生态下载但不想登录 Google |
+| **Google Play Store** | Play 协议本体 | ✅ 深度依赖 | 官方、更新最快、Play Protect | 有 GMS 的设备（Pixel/国际版/部分国行） |
+| **腾讯应用宝** | 独立第三方 | 低（自有分发链） | 国内最全、有游戏礼包、相对独立 | 国内普通用户、需要国内特化 App |
+| **华为应用市场** | 厂商系统级 | 自有 HMS 体系 | HarmonyOS 生态、HMS Core 服务 | 华为/荣耀（海外版）用户 |
+| **荣耀应用市场** | 厂商系统级 | 自有（Yoyo/HMS 变体） | **深度绑定系统安装链，不可轻易禁用** | 荣耀国行用户 |
+| **小米商店** | 厂商系统级 | 自有推送 | MIUI 生态 | 小米用户 |
+| **酷安** | 社区型 | 低 | 开发者活跃、有大量非主流应用 | 想发现小众/独立应用 |
+| **TapTap** | 垂直（游戏） | 低 | 游戏评分社区、无广告 | 手游玩家 |
+| **ApkPure / APKMirror** | APK 直下站 | 装出来的 App 依赖 GMS | 有 Google 系 App 的历史版本 | 需要特定版本/回滚 |
+| **Accrescent** | 现代化开源 | ❌ 无 | 强制签名校验、隐私优先、Material 3 | F-Droid 用户想换口味 |
+
+## 四、给精简党的安全清单
+
+如果你打算用 adb 精简国产手机，以下是这次实测换来的红线，**这些包不要碰**：
+
+```
+# 安装链（禁了就装不了应用）
+com.android.packageinstaller          # AOSP 安装器
+com.hihonor.appmarket                 # 荣耀应用市场（DownloadInstallService 的宿主）
+com.hihonor.systemappsupdater         # 系统应用自更新
+com.hihonor.autoinstallapkfrommcc     # 自动装包
+
+# 安全/认证链（禁了可能连带安装、支付、指纹等）
+com.hihonor.behaviorauth              # 行为认证
+com.hihonor.trustagent                # 信任代理
+com.hihonor.deviceauth                # 设备认证
+com.hihonor.securityserver            # 安全服务
+com.hihonor.securitypluginbase        # 安全插件基座
+com.hihonor.systemmanager             # 手机管家（安全扫描中枢）
+com.hihonor.iaware                    # 智能资源调度
+
+# 输入法（禁了没键盘）
+com.sohu.inputmethod.sogou.honor      # 或你正在用的第三方输入法
+```
+
+而以下这些**通常可以安全禁用**（广告/遥测/预装，禁用不影响安装）：
+
+```
+com.hihonor.hiview / hiviewpush / hiviewtunnel   # 遥测上报
+com.hihonor.magazine                              # 杂志锁屏
+com.hihonor.lens                                  # 智慧视觉
+com.hihonor.gameassistant / game.kitserver        # 游戏中心
+com.hihonor.baidu.browser / browserhomepage       # 预装浏览器
+com.hihonor.search / searchservice                # 智慧搜索
+com.hihonor.ouc                                   # 系统更新推送
+```
+
+**精简的正确姿势**：一次禁 3-5 个，重启，用两天，确认没异常再下一批。**不要一次性禁 70 个然后出问题再逐个恢复**——这次 72 个包回滚花了半小时，而定位「哪个才是罪魁」如果用二分法可能要一整天。
+
+## 五、一句话收尾
+
+**应用市场的选择，本质是在选一条依赖链。** F-Droid 给你的是一条完全自主的链（仓库自签名、无 GMS、无厂商云），代价是更新慢、App 少；Play/Aurora 给你的是 Google 的链，代价是没有 GMS 就白装；厂商市场给你的是一条和你手机系统**焊死**的链，代价是你不能把它当普通 App 对待。
+
+那两个坑——microG 装不上、adb 精简坏安装——本质是同一件事的两个面：**Android 的安全模型里，包名和签名是身份，系统服务是契约。** 想替换身份（microG）需要改规则（解锁/Root），想删掉契约的一端（厂商服务）会连累依赖它的人（安装器）。理解了这一点，很多「教程里没写但就是不行」的问题就有了答案。
+
+---
+
+*本文基于荣耀畅玩50（JDY-AN00，MagicOS 8.0 / Android 14，Bootloader 未解锁）实测。涉及的具体包名和行为可能因机型、ROM 版本而异，请以你设备上 `adb shell pm list packages -d` 的实际输出为准。*
