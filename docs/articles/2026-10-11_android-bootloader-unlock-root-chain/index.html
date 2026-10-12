@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁 — FreeLAMP.com</title>
+  <meta name="description" content="解锁 Bootloader 和获取 Root 经常被混为一谈，但它们解决的是两个完全不同层级的问题：前者在引导层解除签名校验，后者在内核与用户空间换取 UID 0。本文从 AOSP 的 Android Verified Boot 语义出发，说清 LOCKED 与 UNLOCKED 到底意味着什么、为什么解锁必须擦数据、">
+  <meta name="keywords" content="Android, Bootloader, Root, Magisk, KernelSU, APatch, AVB, dm-verity, Play Integrity, Widevine, TEE, LineageOS, TWRP, 系统安全, 原创">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-11">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-11_android-bootloader-unlock-root-chain/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁">
+  <meta property="og:description" content="解锁 Bootloader 和获取 Root 经常被混为一谈，但它们解决的是两个完全不同层级的问题：前者在引导层解除签名校验，后者在内核与用户空间换取 UID 0。本文从 AOSP 的 Android Verified Boot 语义出发，说清 LOCKED 与 UNLOCKED 到底意味着什么、为什么解锁必须擦数据、">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-11_android-bootloader-unlock-root-chain/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-11">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Android">
+  <meta property="article:tag" content="Android">
+  <meta property="article:tag" content="Bootloader">
+  <meta property="article:tag" content="Root">
+  <meta property="article:tag" content="Magisk">
+  <meta property="article:tag" content="KernelSU">
+  <meta property="article:tag" content="APatch">
+  <meta property="article:tag" content="AVB">
+  <meta property="article:tag" content="dm-verity">
+  <meta property="article:tag" content="Play Integrity">
+  <meta property="article:tag" content="Widevine">
+  <meta property="article:tag" content="TEE">
+  <meta property="article:tag" content="LineageOS">
+  <meta property="article:tag" content="TWRP">
+  <meta property="article:tag" content="系统安全">
+  <meta property="article:tag" content="原创">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁">
+  <meta name="twitter:description" content="解锁 Bootloader 和获取 Root 经常被混为一谈，但它们解决的是两个完全不同层级的问题：前者在引导层解除签名校验，后者在内核与用户空间换取 UID 0。本文从 AOSP 的 Android Verified Boot 语义出发，说清 LOCKED 与 UNLOCKED 到底意味着什么、为什么解锁必须擦数据、">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁",
+  "description": "事实来源：AOSP：Android Verified Boot 2.0https://source.android.com/docs/security/features/verifiedboot/avb、AOSP：通用 boot 分区（GKI 与 init_boot）https://source.android.com/docs/core/architecture/partitions/gener",
+  "datePublished": "2026-10-11",
+  "dateModified": "2026-10-11",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-11_android-bootloader-unlock-root-chain/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Android, Bootloader, Root, Magisk, KernelSU, APatch, AVB, dm-verity, Play Integrity, Widevine, TEE, LineageOS, TWRP, 系统安全, 原创"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁",
+        "item": "https://freelamp.com/articles/2026-10-11_android-bootloader-unlock-root-chain/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-11">2026-10-11</div>
+        <h1 class="post-title" itemprop="headline">解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Android/">Android</a><a itemprop="keywords" href="/tags/Bootloader/">Bootloader</a><a itemprop="keywords" href="/tags/Root/">Root</a><a itemprop="keywords" href="/tags/Magisk/">Magisk</a><a itemprop="keywords" href="/tags/KernelSU/">KernelSU</a><a itemprop="keywords" href="/tags/APatch/">APatch</a><a itemprop="keywords" href="/tags/AVB/">AVB</a><a itemprop="keywords" href="/tags/dm-verity/">dm-verity</a><a itemprop="keywords" href="/tags/Play%20Integrity/">Play Integrity</a><a itemprop="keywords" href="/tags/Widevine/">Widevine</a><a itemprop="keywords" href="/tags/TEE/">TEE</a><a itemprop="keywords" href="/tags/LineageOS/">LineageOS</a><a itemprop="keywords" href="/tags/TWRP/">TWRP</a><a itemprop="keywords" href="/tags/%E7%B3%BB%E7%BB%9F%E5%AE%89%E5%85%A8/">系统安全</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>事实来源：<a href="https://source.android.com/docs/security/features/verifiedboot/avb">AOSP：Android Verified Boot 2.0</a>、<a href="https://source.android.com/docs/core/architecture/partitions/generic-boot">AOSP：通用 boot 分区（GKI 与 init_boot）</a>、<a href="https://kernelsu.org/">KernelSU 官方文档</a>、<a href="https://apatch.dev/faq.html">APatch 官方 FAQ</a>、<a href="https://github.com/bmax121/APatch/blob/main/docs/en/installation.md">APatch 安装文档</a>、<a href="https://developer.android.com/google/play/integrity">Play Integrity API 文档</a><br>
+本文为<strong>解读</strong>。文中纠正了一处流传较广的说法（见第四节），并在第五节补充了 Play Integrity 的判定分层与 Widevine 的具体后果。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>解锁 Bootloader（Unlock BL）和获取 Root 经常被放在一起讨论，但它们解决的是两个完全不同层级的问题。</strong> 用 AOSP 自己的话来说，<strong>解锁解掉的是「验证失败是否致命」这件事</strong>，也就是让引导链在遇到非官方镜像时不再直接拒绝；<strong>而 Root 要的是在内核与用户空间里拿到一个能切换 UID 到 <code>0</code> 的特权通道</strong>。<strong>解锁 BL 是 Root 的前置条件，但绝不是 Root 本身</strong>，两者之间隔着一整套注入、修补与隐蔽的工程。</p>
+<h2>一、Bootloader 解锁：它到底允许了什么</h2>
+<h3>Bootloader 在链条上的位置</h3>
+<p>设备通电后最先执行的<strong>不是 Linux 内核</strong>，而是固化在 Boot ROM / Flash 中的引导程序。它的职责是两个：<strong>初始化硬件</strong>（CPU 核心、内存控制器、存储总线、外设），以及<strong>验证即将加载的镜像</strong>（<code>boot.img</code>、<code>recovery.img</code>、<code>vbmeta</code> 等）是否带有可信签名。</p>
+<p><strong>这里需要先把验证的层次说清楚</strong>，因为「关闭 Secure Boot」这个说法过于笼统。现代 Android 用的是 <strong>Android Verified Boot 2.0（AVB）</strong>，它和「Secure Boot」不是同一个概念：</p>
+<table>
+<tr><th>概念</th><th>作用对象</th><th>说明</th></tr>
+<tr><td><strong>Bootloader 内的签名校验</strong></td><td>引导链本身</td><td>从 Boot ROM 的不可变密钥开始，逐级验证下一级引导程序与内核</td></tr>
+<tr><td><strong>AVB（Verified Boot 2.0）</strong></td><td>各分区镜像</td><td>用 <code>vbmeta</code> 分区存放描述符：<code>boot</code> 用哈希描述符，<code>system</code> 用 hashtree 描述符，并附内核命令行描述符来启用 dm-verity</td></tr>
+<tr><td><strong>dm-verity</strong></td><td>只读分区的块设备</td><td>内核在挂载时按哈希树逐块校验，<strong>篡改会立刻暴露而不是悄悄生效</strong></td></tr>
+</table>
+<p><strong>所以「解锁」触碰的是 AVB 的状态机</strong>，而不是某一项具体校验。</p>
+<h3>LOCKED 与 UNLOCKED 的精确语义</h3>
+<p>AOSP 对这两个状态的定义非常简洁，我认为比任何科普说法都准确：</p>
+<blockquote><strong>在 AVB 的语境里，LOCKED 状态意味着验证错误是致命的，而在 UNLOCKED 状态下它们不是致命的。</strong></blockquote>
+<strong>这句话值得反复咀嚼</strong>，因为它澄清了一个常见的误解：<strong>解锁并不是「关掉了验证」</strong>，而是<strong>把验证结果的后果从「拒绝启动」降级为「记录并继续」</strong>。所以：
+<ul>
+<li><strong>解锁后设备仍然知道自己在被篡改</strong>（verified boot state 依然会报告为 unlocked / orange）；</li>
+<li><strong>但它不再因此停止引导</strong>；</li>
+<li><strong>这个状态会被上报给上层</strong>，这正是后面第五节那些后果的来源。</li>
+</ul>
+<strong>与状态转换绑定的两条硬性约束</strong>（AOSP 原文要求）：
+<ul>
+<li><strong>状态转换必须确认用户的物理在场</strong>（<code>fastboot flashing unlock</code> 通常需要在设备屏幕上再确认一次，不能在没人看着的情况下被远程刷开）；</li>
+<li><strong>从 UNLOCKED 转回 LOCKED 时，如果设备要求全盘加密，就需要做一次数据擦除</strong>（区别只是强度较轻）。</li>
+</ul>
+<h3>为什么解锁一定要擦数据</h3>
+<p><strong>这是我建议所有刷机前都要理解的一点</strong>：解锁会擦除用户数据，<strong>不是厂商的惩罚设计，而是安全上的必要动作</strong>。</p>
+<p>原因是：<strong>在 LOCKED 状态下，加密密钥的保护与「已验证的引导状态」绑定在一起</strong>。如果允许「先解锁、刷入自制镜像、再读走数据」，那么任何拿到你设备实物的人都可以绕过锁屏。<strong>所以解锁这个动作本身必须让既有密钥失效</strong>，否则它就变成了一条物理访问的数据提取通道。这也解释了为什么解锁之后你需要重新设置设备、且原有的加密数据无法恢复。</p>
+<h3>关于关闭验证的两种合法姿势</h3>
+<p><strong>一种是这里说的解锁</strong>（设备承认自己处于 UNLOCKED，后果自负）。<strong>另一种在某些设备上存在</strong>：刷入<strong>自定义 AVB 密钥</strong>。AOSP 文档提到，Pixel 2 系列支持一个名为 <code>avb_custom_key</code> 的虚拟分区：</p>
+<pre><code class="bash">avbtool extract_public_key --key key.pem --output pkmd.bin
+fastboot flash avb_custom_key pkmd.bin
+</code></pre>
+<p><strong>这样做的意义是</strong>：你用自己的密钥签名自制镜像，<strong>于是可以重新 LOCK 回去</strong>，而引导链依然完整。<strong>代价是</strong>：一旦锁上你自己的密钥，官方 OTA 不再能安装（签名不匹配），而且<strong>密钥丢失等于设备变砖</strong>。<strong>所以它是一条「适合长期自维护设备」的路，不是普通刷机者的路。</strong></p>
+<blockquote><strong>核心结论</strong>：解锁 BL 消除的是<strong>引导层对镜像签名的强制性拦截</strong>。<strong>内核与用户空间的 Linux 权限模型、SELinux 策略、以及应用沙箱完全没有变化</strong>。因此<strong>解锁 BL 绝不会让系统自动获得 Root</strong>。</blockquote>
+<h2>二、Root：为什么它是一个「另加的东西」</h2>
+<h3>Android 的权限模型没有「root 应用」这个位置</h3>
+<p>Android 建立在 Linux 内核之上，其隔离模型由三层构成：<strong>Linux UID/GID</strong>、<strong>应用沙箱</strong>、以及 <strong>SEAndroid（SELinux for Android）</strong>。在未 Root 的系统里：</p>
+<ul>
+<li><strong>普通应用运行在独立沙箱中</strong>，UID 落在 <code>app_X</code> 范围内，互相之间无法读数据；</li>
+<li><strong>即使是系统级守护进程，UID 也受限于 <code>system</code>、<code>radio</code>、<code>shell</code> 等</strong>，<strong>并不能任意改写 <code>/system</code>、<code>/vendor</code></strong>；</li>
+<li><strong>而这些分区本身就是只读的</strong>：它们由 <strong>dm-verity</strong> 在挂载时按哈希树校验，<strong>改一个字节就会立刻暴露</strong>。</li>
+</ul>
+<strong>所以「root」在这个体系里不是「打开一个开关」，而是要在用户空间里放一个能够把调用者 UID 变成 <code>0</code> 的特权通道。</strong>
+<h3>传统做法为什么失效了</h3>
+<p><strong>早年最简单的方式是把 <code>su</code> 二进制塞进 <code>/system/xbin</code></strong>，再配合一个授权管理器。这条路在现代 Android 上已经走不通，原因有两层：</p>
+<table>
+<tr><th>机制</th><th>影响</th></tr>
+<tr><td><strong>System-as-Root（SAR）</strong></td><td><code>/system</code> 直接作为根文件系统使用，不再有可写的传统路径可以顺手塞文件</td></tr>
+<tr><td><strong>动态分区（dynamic partitions）</strong></td><td><code>/system</code>、<code>/vendor</code>、<code>/product</code> 等来自同一个 super 分区，<strong>物理布局由构建时决定，运行时不可随意改写</strong></td></tr>
+<tr><td><strong>dm-verity</strong></td><td>即使你改写了，<strong>挂载校验会失败</strong></td></tr>
+</table>
+<p><strong>这也解释了为什么现代方案都叫「Systemless（无系统）」</strong>：它们的目标是<strong>在不物理修改只读分区的前提下，让系统看起来像是被改过</strong>。做法是<strong>在启动早期把额外的内容叠加（overlay / bind mount）上去</strong>，<strong>而这一切必须在引导早期、在写保护生效之前完成</strong>。</p>
+<p><strong>而要修改引导流程，你就要动引导镜像。这正是必须解锁 BL 的原因</strong>：</p>
+<blockquote>如果不解锁 BL，<strong>你修改后的镜像会被引导程序直接拒绝加载</strong>。所以链条是：<strong>解锁 BL（允许加载非官方镜像）→ 修补引导镜像（注入提权逻辑）→ 启动早期劫持初始化流程 → 建立特权通道</strong>。</blockquote>
+<h3>一个容易被忽略的现代变化：为什么是 <code>init_boot.img</code></h3>
+<p><strong>这一点在 2026 年尤其重要，因为教程里常见的老说法会让人找错文件。</strong> AOSP 的通用 boot 分区文档写得很清楚：</p>
+<ul>
+<li><strong>从 Android 12 起</strong>，通用引导镜像（GKI，Generic Kernel Image）<strong>包含通用 ramdisk 和 GKI 内核</strong>；</li>
+<li><strong>对于出厂即 Android 13 的设备，通用 ramdisk 被从 boot 镜像里移出，放进了单独的 <code>init_boot</code> 分区</strong>，<strong>boot 镜像因此只剩下 GKI 内核</strong>。</li>
+</ul>
+<strong>所以</strong>：
+<ul>
+<li><strong>Android 13 之前（或从 12 升级上来的设备）</strong>：修补对象通常是 <strong><code>boot.img</code></strong>；</li>
+<li><strong>出厂 Android 13 及之后的新设备</strong>：由于 ramdisk 搬走了，<strong>修补对象是 <code>init_boot.img</code></strong>，而这恰好是 Magisk 那套「劫持 init」逻辑所需要的那部分。</li>
+</ul>
+<strong>选错分区是刷机失败最常见的原因之一</strong>，而它的根源就是这个分区拆分。
+<h2>三、完整链路图</h2>
+<p>从一台纯净原厂设备，到完成第三方系统刷入并建立提权栈，<strong>这里有两个分岔，而且它们互不依赖</strong>：</p>
+<pre><code class="">[ 原厂设备（BL 锁定，AVB 验证为 LOCKED）]
+         │
+         ▼  通过 Fastboot 协议 / 官方解锁工具（需物理确认，会清空数据）
+[ Unlock BL（引导层不再因验证失败而中止）]
+         │
+         ├───> [ 刷入第三方 Recovery（如 TWRP / Lineage Recovery）]
+         │              │
+         │              ▼
+         │       [ 刷入第三方 ROM（如 LineageOS）] ──> 此时依然是非 Root
+         │
+         └───> [ 建立提权栈（修补引导镜像）]
+                        │
+                        ├───> Magisk（修补 boot.img 或 init_boot.img，劫持 init）
+                        └───> KernelSU / APatch（在内核层拦截系统调用）
+</code></pre>
+<p><strong>这张图里最该记住的一点是那个分岔</strong>：<strong>刷第三方 ROM 和获取 Root 是两条独立的路</strong>。刷了 LineageOS、GrapheneOS 这类第三方系统，<strong>默认依然是非 Root 状态</strong>（这是它们的有意设计）。<strong>很多人以为「刷了机就是 root 了」，这是把两件事混成了一件。</strong></p>
+<h2>四、三种主流提权方案的机制差异</h2>
+<p><strong>先纠正一个流传较广的说法</strong>：<strong>Magisk 的核心机制是 magic mount（基于 tmpfs 的 bind mount），OverlayFS 是它在较新内核上的另一种可用手段，而 KernelSU 反而把挂载逻辑从核心里拿出去交给了「元模块」。</strong></p>
+<p>这个区分不是抠字眼，因为<strong>它直接决定了两者在「被检测」这件事上的不同表现</strong>：<strong>Magisk 的挂载是内置在核心里的（bind mount）</strong>，<strong>KernelSU 官方推荐的做法是用 <code>meta-overlayfs</code> 这类元模块来做 systemless 修改</strong>，<strong>文档自己的说法是这种分工「提供更多灵活性并减少检测面」</strong>。</p>
+<table>
+<tr><th>工具</th><th>技术实现</th><th>前置条件</th><th>特点与适用场景</th></tr>
+<tr><td><strong>Magisk</strong></td><td><strong>修补 <code>boot.img</code> / <code>init_boot.img</code> 的 ramdisk，用 <code>magiskinit</code> 替换 <code>/init</code></strong>，在引导早期以 PID 1 身份取得控制；<strong>文件系统替换以 magic mount（tmpfs bind mount）为核心</strong>，在支持的内核上也可用 <strong>OverlayFS</strong></td><td>解锁 BL；<strong>无需内核源码</strong></td><td><strong>兼容性最强</strong>。覆盖 Android 6.0 到 16+，模块生态最大。<strong>注意：Magisk 24 起内置的 MagiskHide 已被移除，改由 Zygisk + DenyList（配合 Play Integrity Fix 一类模块）承担隐蔽工作</strong></td></tr>
+<tr><td><strong>KernelSU</strong></td><td><strong>在内核态工作</strong>，直接在内核空间授予 root；<strong>提供内核接口</strong>（可在内核态对任意进程下硬件断点、访问物理内存、拦截任意系统调用）</td><td>解锁 BL；<strong>需要内核源码，或使用 GKI 内核</strong>（GKI 模式可编译进内核，也支持以模块加载的 LKM 与后加载模式）</td><td><strong>内核态提权</strong>，用户空间难以通过检查 <code>/system</code> 文件或进程来识别。<strong>挂载逻辑交由元模块（如 <code>meta-overlayfs</code>）</strong></td></tr>
+<tr><td><strong>APatch</strong></td><td><strong>基于 KernelPatch，直接对内核镜像做二进制修补</strong>；<strong>SELinux 不修改上下文，而是通过 hook 绕过</strong>；用 <strong>SuperKey</strong> 做超调用凭据</td><td>解锁 BL；<strong>只需 stock <code>boot.img</code>，不需要内核源码</strong>；<strong>ARM64</strong>；<strong>内核 3.18–6.12</strong>；<strong>需要 <code>CONFIG_KALLSYMS=y</code></strong>；<strong>与 Knox 保护的 Samsung 设备不兼容</strong></td><td>介于两者之间：<strong>既有 Magisk 式的「直接修补 boot 镜像」的便利，又有内核级 hook 的能力</strong>；<strong>可以选择不改 SELinux</strong>，从而<strong>在应用自己的线程上下文里直接提权（不需要 libsu 与 IPC）</strong></td></tr>
+</table>
+<p><strong>几个补充说明，能避免一些常见踩坑</strong>：</p>
+<ul>
+<li><strong>关于 KernelSU 的「需要源码」</strong>：官方 FAQ 的表述是<strong>KernelSU 需要设备内核源码，而源码并不总是 OEM 提供</strong>。这正是 <strong>APatch 存在的理由</strong>（它只需要 stock boot 镜像）。如果你的设备属于「OEM 不给源码」那一类，<strong>KernelSU 的可行路径就是 GKI 内核</strong>；</li>
+<li><strong>关于 APatch 的检测特性</strong>：因为它<strong>不修改 SELinux 上下文而是绕过它</strong>，所以可以在<strong>应用进程内部</strong>直接拿到 root 线程，<strong>省掉了「起一个新进程再 IPC」这一步</strong>。这在工程上更简洁，<strong>同时也是一个更隐蔽的形态</strong>；</li>
+<li><strong>关于「谁更难被检测」</strong>：三方文档各自都在强调自己的隐蔽性，<strong>但这属于持续对抗的领域</strong>（见下节）。</li>
+</ul>
+<h2>五、无法绕过的代价：这不是技术问题，是账本问题</h2>
+<p><strong>解锁 BL 和获取 Root 给了你对设备的绝对控制，但代价不是「可能有点风险」，而是几条会立即生效的具体后果。</strong></p>
+<h3>1. 硬件信任链的状态变了</h3>
+<p><strong>关键在于：解锁这个事实本身是被记录、并被上报的。</strong></p>
+<ul>
+<li><strong>基于 ARM TrustZone 的 TEE 安全状态会反映出来</strong>；</li>
+<li><strong>Keymaster / Keymint（密钥与证明服务）会报告设备处于 Unlocked</strong>；</li>
+<li><strong>于是所有以「设备完整性证明」为基础的校验都会失效</strong>。</li>
+</ul>
+<h3>2. Play Integrity API 的分级判定（这部分值得说清）</h3>
+<p><strong>先纠正一个时间点</strong>：<strong>SafetyNet Attestation 已经被 Play Integrity API 取代</strong>，现在讨论「过不过检测」应该以 Play Integrity 为准。它的判定是分级的：</p>
+<table>
+<tr><th>判定</th><th>含义</th><th>解锁 BL 后能否通过</th></tr>
+<tr><td><strong><code>MEETS_BASIC_INTEGRITY</code></strong></td><td>最弱的一级，只表示「检查发生在一台物理 Android 设备上」；<strong>引导状态可以是 locked 也可以是 unlocked，可以是 verified 也可以是 unverified</strong></td><td><strong>可以</strong>（即使已解锁、已 Root）</td></tr>
+<tr><td><strong><code>MEETS_DEVICE_INTEGRITY</code></strong></td><td>表示设备是<strong>正品且经过认证的 Android 设备</strong>。<strong>Android 13 及以后，这一判定要求设备引导器处于 locked、且加载的是厂商认证镜像</strong></td><td><strong>通常不能</strong>（Android 13+ 上尤其严格）</td></tr>
+<tr><td><strong><code>MEETS_STRONG_INTEGRITY</code></strong></td><td>最强的一级，还要求安全补丁级别在近一年内</td><td><strong>在解锁 BL 的设备上被普遍认为无法通过</strong></td></tr>
+</table>
+<p><strong>这里有一个很值得记的细节</strong>：Google 在 Android 13 之后<strong>强化了 <code>MEETS_DEVICE_INTEGRITY</code>，要求它必须有硬件支撑的、正面的 verified boot 结论</strong>。<strong>这意味着「软件层面的伪装」不再是决定性的</strong>。<strong>也就是说，隐蔽手段（DenyList、Play Integrity Fix 之类）能解决的是「App 看不见 Root」，而解决不了「设备状态本身就是 Unlocked」这个硬件结论。</strong> 这两件事经常被混为一谈，但<strong>它们的攻防难度完全不同</strong>。</p>
+<h3>3. Widevine 与流媒体清晰度</h3>
+<p><strong>在很多设备上，一旦解锁 BL，Widevine 安全级别会从 L1 掉到 L3</strong>（部分设备在重新锁定后可恢复）。<strong>原因是 L1 要求存在一条从安全引导器延伸出来的信任链，并且密钥的写入本身要求引导器处于锁定状态。</strong> 实际后果是<strong>高清晰度流媒体可能被降级</strong>。</p>
+<p><strong>注意这条的适用范围是「因设备而异」</strong>：有些设备解锁后保持不变，有些会降级，有些重新锁定后能恢复。<strong>所以它是一个需要按机型确认的事，不能一概而论。</strong></p>
+<h3>4. 攻击面扩大：你给自己开了一个内核级后门</h3>
+<p><strong>这是最容易被忽略的一条，而且它是纯粹的工程风险，与合规无关</strong>：</p>
+<ul>
+<li><strong>提权接口本身就是一个高价值目标</strong>。如果它的访问控制不够严格，<strong>恶意应用只要绕过授权确认，就直接拿到内核级的全盘控制权</strong>；</li>
+<li><strong>而「授权确认」这一层往往依赖一个运行在用户空间的管理器应用</strong>，它自己也可能有漏洞；</li>
+<li><strong>反过来看第三种方案的设计取向</strong>：APatch 的 SuperKey 机制、KernelSU 的内核态校验，<strong>本质都是在试图把「授权判断」放到更早、更内层的位置</strong>，减少被用户空间绕过的机会。</li>
+</ul>
+<h3>5. 数据安全：解锁状态下丢失设备的后果不同</h3>
+<p><strong>在解锁状态下，设备丢失后的风险模型发生了实质变化</strong>：<strong>攻击者可以刷入自定义镜像，绕过原有的锁屏与系统验证，直接通过物理接口尝试提取数据。</strong> 而现代 Android 的<strong>文件级加密</strong>在这里是关键防线，<strong>但「未加密分区」与「运行时内存挂载」这两条路径依然需要留意</strong>。</p>
+<p><strong>所以一条实用建议</strong>：<strong>如果你解锁了 BL，请确保全盘/文件级加密处于开启状态，并且不要给设备设置过长的解锁宽限期。</strong> 解锁本身已经把「物理访问」的门槛降低了，<strong>加密是剩下那层真正起作用的东西</strong>。</p>
+<h2>六、总结：一条链，两种边界</h2>
+<table>
+<tr><th></th><th>解锁 BL</th><th>Root</th></tr>
+<tr><td><strong>所在层级</strong></td><td><strong>硬件与引导层</strong></td><td><strong>内核与用户空间</strong></td></tr>
+<tr><td><strong>解决什么问题</strong></td><td><strong>能不能加载非官方的系统/内核镜像</strong></td><td><strong>进程能否获得 UID 0 的超级权限</strong></td></tr>
+<tr><td><strong>本质动作</strong></td><td>把 AVB 状态从 LOCKED 转为 UNLOCKED，<strong>验证失败不再致命</strong></td><td>注入特权通道（<code>su</code> / 内核 hook）<strong>并建立授权机制</strong></td></tr>
+<tr><td><strong>是否改变权限模型</strong></td><td><strong>完全不改变</strong></td><td>直接改变</td></tr>
+<tr><td><strong>是否影响设备完整性证明</strong></td><td><strong>是（这是根源）</strong></td><td>是（在已解锁的基础上进一步）</td></tr>
+<tr><td><strong>能否单独存在</strong></td><td><strong>可以</strong>（解锁后不 Root，只刷 ROM）</td><td><strong>不能</strong>（必须先解锁）</td></tr>
+</table>
+<p><strong>对于开发者与安全研究人员来说，把这条链的每一层边界分清，是理解 Android 系统定制、内核调试与逆向工作的前提。</strong> 而我认为其中最值得带走的一条判断是：</p>
+<blockquote><strong>解锁 BL 之后，你并没有获得任何新权限，你只是把「系统拒绝你」变成了「系统允许你改，但要记账」。</strong> 剩下的所有工作（提权、隐蔽、以及承受完整性判定的后果），都是从这一笔账开始的。</blockquote>
+<h2>附：工具链相关网站</h2>
+<h3>提权方案（Root）</h3>
+<table>
+<tr><th>工具</th><th>官方地址</th></tr>
+<tr><td><strong>Magisk</strong>（源码与发布）</td><td><a href="https://github.com/topjohnwu/Magisk">github.com/topjohnwu/Magisk</a></td></tr>
+<tr><td><strong>Magisk 官方文档</strong></td><td><a href="https://topjohnwu.github.io/Magisk/">topjohnwu.github.io/Magisk</a></td></tr>
+<tr><td><strong>KernelSU</strong>（官网，含安装与模块文档）</td><td><a href="https://kernelsu.org/">kernelsu.org</a></td></tr>
+<tr><td><strong>KernelSU</strong>（源码）</td><td><a href="https://github.com/tiann/KernelSU">github.com/tiann/KernelSU</a></td></tr>
+<tr><td><strong>APatch</strong>（官网 FAQ）</td><td><a href="https://apatch.dev/faq.html">apatch.dev</a></td></tr>
+<tr><td><strong>APatch</strong>（源码与安装文档）</td><td><a href="https://github.com/bmax121/APatch">github.com/bmax121/APatch</a></td></tr>
+<tr><td><strong>KernelPatch</strong>（APatch 的底层）</td><td><a href="https://github.com/bmax121/KernelPatch">github.com/bmax121/KernelPatch</a></td></tr>
+</table>
+<blockquote>提醒：网络上存在大量仿冒的「KernelSU / APatch 官网」下载站，<strong>请只从上述官方地址或官方 GitHub Release 获取</strong>，第三方站点打包的 Root 工具是植入后门的常见载体。</blockquote>
+<h3>刷机与系统</h3>
+<table>
+<tr><th>工具</th><th>官方地址</th></tr>
+<tr><td><strong>LineageOS</strong>（下载）</td><td><a href="https://download.lineageos.org/">download.lineageos.org</a></td></tr>
+<tr><td><strong>LineageOS</strong>（Wiki，含设备安装指南）</td><td><a href="https://wiki.lineageos.org/">wiki.lineageos.org</a></td></tr>
+<tr><td><strong>LineageOS 浏览器刷机工具</strong></td><td><a href="https://flash.lineageos.org/">flash.lineageos.org</a></td></tr>
+<tr><td><strong>TWRP</strong>（第三方 Recovery）</td><td><a href="https://twrp.me/">twrp.me</a></td></tr>
+<tr><td><strong>Android SDK Platform Tools</strong>（<code>adb</code> / <code>fastboot</code>）</td><td><a href="https://developer.android.com/tools/releases/platform-tools">developer.android.com/tools/releases/platform-tools</a></td></tr>
+</table>
+<h3>规范与背景文档（读一手材料）</h3>
+<table>
+<tr><th>主题</th><th>地址</th></tr>
+<tr><td><strong>Android Verified Boot 2.0（AVB）</strong></td><td><a href="https://source.android.com/docs/security/features/verifiedboot/avb">source.android.com/docs/security/features/verifiedboot/avb</a></td></tr>
+<tr><td><strong>通用 boot 分区（GKI 与 <code>init_boot</code> 拆分）</strong></td><td><a href="https://source.android.com/docs/core/architecture/partitions/generic-boot">source.android.com/docs/core/architecture/partitions/generic-boot</a></td></tr>
+<tr><td><strong>Verified Boot 总览（含 dm-verity）</strong></td><td><a href="https://source.android.com/docs/security/features/verifiedboot">source.android.com/docs/security/features/verifiedboot</a></td></tr>
+<tr><td><strong>Play Integrity API</strong>（含各判定含义）</td><td><a href="https://developer.android.com/google/play/integrity">developer.android.com/google/play/integrity</a></td></tr>
+<tr><td><strong>Play Integrity：Android 13+ 的判定改进说明</strong></td><td><a href="https://developer.android.com/google/play/integrity/improvements">developer.android.com/google/play/integrity/improvements</a></td></tr>
+</table>
+<h3>社区</h3>
+<table>
+<tr><th>站点</th><th>地址</th></tr>
+<tr><td><strong>XDA Forums</strong>（机型专版与排障讨论）</td><td><a href="https://xdaforums.com/">xdaforums.com</a></td></tr>
+</table>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>AVB 的 LOCKED / UNLOCKED</strong></td><td>AOSP 定义：<strong>LOCKED 意味着验证错误是致命的，UNLOCKED 意味着不致命</strong>（不是「关掉了验证」）</td></tr>
+<tr><td>状态转换的约束</td><td><strong>必须确认用户物理在场</strong>；<strong>UNLOCKED 转回 LOCKED 时若要求全盘加密则需擦除数据</strong></td></tr>
+<tr><td><strong>为什么解锁会擦数据</strong></td><td>加密密钥的保护与已验证引导状态绑定；<strong>不擦会让解锁变成物理访问的数据提取通道</strong></td></tr>
+<tr><td>自定义 AVB 密钥</td><td>部分设备（如 Pixel 2）支持 <code>avb_custom_key</code>，<strong>可用自己的密钥签名并重新锁回</strong>；代价是官方 OTA 失效、密钥丢失即变砖</td></tr>
+<tr><td><strong>SAR / 动态分区 / dm-verity</strong></td><td>三者共同导致<strong>传统「往 <code>/system/xbin</code> 塞 <code>su</code>」失效</strong>，所以现代方案都是 <strong>Systemless</strong></td></tr>
+<tr><td><strong><code>init_boot</code> 的来源</strong></td><td><strong>Android 12 起 GKI 镜像含通用 ramdisk；出厂 Android 13 的设备把 ramdisk 移到独立的 <code>init_boot</code> 分区</strong>，boot 镜像只剩内核</td></tr>
+<tr><td>因此修补对象</td><td><strong>Android 13 之前通常是 <code>boot.img</code>；出厂 Android 13+ 是 <code>init_boot.img</code></strong></td></tr>
+<tr><td><strong>Magisk 的真实机制</strong></td><td><strong><code>magiskinit</code> 替换 <code>/init</code>，在引导早期以 PID 1 取得控制</strong>；<strong>文件替换核心是 magic mount（tmpfs bind mount）</strong>，较新内核也可用 OverlayFS；<strong>Magisk 24 起移除 MagiskHide，改由 Zygisk + DenyList</strong></td></tr>
+<tr><td><strong>KernelSU 的机制与前提</strong></td><td><strong>内核态授予 root</strong>，可拦截任意系统调用；<strong>需要内核源码或 GKI 内核</strong>；<strong>挂载逻辑交给元模块（如 <code>meta-overlayfs</code>）</strong></td></tr>
+<tr><td><strong>APatch 的机制与前提</strong></td><td><strong>基于 KernelPatch 直接二进制修补内核镜像</strong>；<strong>只需 stock <code>boot.img</code>，无需内核源码</strong>；<strong>ARM64、内核 3.18–6.12、需 <code>CONFIG_KALLSYMS=y</code></strong>；<strong>不兼容 Knox 保护的 Samsung</strong>；<strong>不改 SELinux 上下文而用 hook 绕过</strong>，可在应用线程内直接提权</td></tr>
+<tr><td><strong>Play Integrity 三级</strong></td><td><strong><code>MEETS_BASIC_INTEGRITY</code> 解锁后仍可通过</strong>；<strong><code>MEETS_DEVICE_INTEGRITY</code> 在 Android 13+ 要求 locked + 认证镜像</strong>；<strong><code>MEETS_STRONG_INTEGRITY</code> 在解锁设备上普遍无法通过</strong></td></tr>
+<tr><td>⚠️ 关键区分</td><td><strong>隐蔽手段能解决「App 看不见 Root」，但解决不了「设备状态本身是 unlocked」这个硬件结论</strong></td></tr>
+<tr><td>Widevine</td><td>很多设备解锁后 <strong>L1 降为 L3</strong>（部分重新锁定可恢复）；<strong>因机型而异</strong></td></tr>
+<tr><td>最容易被忽略的风险</td><td><strong>提权通道本身就是一个内核级后门</strong>，其授权确认层若被绕过，恶意应用可直达全盘控制</td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="/articles/2026-10-11_lineageos-24-changelog-32/">本站：LineageOS 24 一次把 174 个设备搬上 Android 17：而它同时宣布了一条硬底线</a></li>
+<li><a href="/articles/2026-09-28_android-native-on-linux-waydroid/">本站：在 Linux 上原生跑安卓应用：Waydroid 实操与边界（不是模拟器，是容器化 LineageOS）</a></li>
+<li><a href="/articles/2026-10-09_windows-update-certificate-rotation-2027/">本站：Windows Update 换证书：Win7 早就没补丁了，Win10 却还有个到 2027 年 10 月的活口</a></li>
+<li><a href="https://source.android.com/docs/security/features/verifiedboot/avb">AOSP：Android Verified Boot 2.0</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-11_android-bootloader-unlock-root-chain/",
+      title: "\u89e3\u9501 Bootloader \u4e0d\u7b49\u4e8e Root\uff1aAndroid \u5237\u673a\u94fe\u7684\u6bcf\u4e00\u5c42\u5230\u5e95\u5728\u89e3\u4ec0\u4e48\u9501"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
