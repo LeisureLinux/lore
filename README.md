@@ -17,6 +17,11 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-12 | [Linus 用 Claude Code 改内核：这份 commit message 比那个性能数字更值得读](https://freelamp.com/articles/2026-10-12_linus-torvalds-claude-code-kernel/) | Linux内核 · Linus Torvalds · Claude Code · AI辅助开发 · folio · 页缓存 · RCU · 内存管理 · 译文 |
+| 2026-10-12 | [Ubuntu 的本地语音输入 Myna 进技术预览：它明确说「这不是语音助手」](https://freelamp.com/articles/2026-10-12_ubuntu-myna-speech-to-text-preview/) | Ubuntu · Myna · 语音识别 · Whisper · Parakeet · FunASR · 本地推理 · 隐私 · IBus · Snap · 原创 |
+| 2026-10-12 | [红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条](https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/) | 混沌工程 · Krkn · OpenShift · SLO · SLA · GameDay · 韧性 · 数据完整性 · 虚拟化 · 运维 · 译文 |
+| 2026-10-12 | [Intel 让 SGX 在 Diamond Rapids 之后退场：这不是失败，是「边界选错了」](https://freelamp.com/articles/2026-10-12_intel-sgx-phaseout-tdx-pivot/) | Intel · SGX · TDX · 机密计算 · Trusted I/O · TDX Connect · 后量子密码 · TEE · 虚拟化 · 译文 |
+| 2026-10-12 | [数据中心挨打这件事，现在能在互联网测量数据里读出来](https://freelamp.com/articles/2026-10-12_yandex-data-centers-bot-traffic-collapse/) | Yandex · 数据中心 · Cloudflare · NetBlocks · 互联网测量 · 基础设施韧性 · 单点故障 · 译文 |
 | 2026-10-11 | [解锁 Bootloader 不等于 Root：Android 刷机链的每一层到底在解什么锁](https://freelamp.com/articles/2026-10-11_android-bootloader-unlock-root-chain/) | Android · Bootloader · Root · Magisk · KernelSU · APatch · AVB · dm-verity · Play Integrity · Widevine · TEE · LineageOS · 系统安全 · 原创 |
 | 2026-10-11 | [用 Claude 造 Office 替代品：ROADMAP 自己写着完成度约 50%，而仓库里的 CLAUDE.md 才是重点](https://freelamp.com/articles/2026-10-11_artcraft-office-clones-claude/) | ArtCraft · GridCraft · WordCraft · DeckCraft · Claude · AI辅助开发 · clean-room · Rust · OOXML · LibreOffice · MCP · 开源许可 · 原创 |
 | 2026-10-11 | [LineageOS 24 一次把 174 个设备搬上 Android 17：而它同时宣布了一条硬底线](https://freelamp.com/articles/2026-10-11_lineageos-24-changelog-32/) | LineageOS · Android 17 · 第三方 ROM · WebUSB · eBPF · 内核 · 设备支持 · AOSP · 可维修性 · 译文 |

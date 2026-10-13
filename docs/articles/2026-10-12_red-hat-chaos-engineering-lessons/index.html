@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条 — FreeLAMP.com</title>
+  <meta name="description" content="红帽混沌工程团队负责人复盘了四个企业客户案例：交易平台的投产前验证、虚拟化迁移的韧性证明、有状态数据库的数据完整性、以及支付系统的事务成功路径。四个案例的失败注入各不相同，但作者提炼出的三条经验里有一条我认为被普遍低估：把验证过的实验变成可重放的工作流，在每次发布和配置变更时重跑并与基线对比。本文梳理四个案例各自验证了">
+  <meta name="keywords" content="混沌工程, Chaos Engineering, Krkn, OpenShift, SLO, SLA, GameDay, 韧性, 数据完整性, 虚拟化, 支付系统, 运维, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-12">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条">
+  <meta property="og:description" content="红帽混沌工程团队负责人复盘了四个企业客户案例：交易平台的投产前验证、虚拟化迁移的韧性证明、有状态数据库的数据完整性、以及支付系统的事务成功路径。四个案例的失败注入各不相同，但作者提炼出的三条经验里有一条我认为被普遍低估：把验证过的实验变成可重放的工作流，在每次发布和配置变更时重跑并与基线对比。本文梳理四个案例各自验证了">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-12">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="混沌工程">
+  <meta property="article:tag" content="混沌工程">
+  <meta property="article:tag" content="Chaos Engineering">
+  <meta property="article:tag" content="Krkn">
+  <meta property="article:tag" content="OpenShift">
+  <meta property="article:tag" content="SLO">
+  <meta property="article:tag" content="SLA">
+  <meta property="article:tag" content="GameDay">
+  <meta property="article:tag" content="韧性">
+  <meta property="article:tag" content="数据完整性">
+  <meta property="article:tag" content="虚拟化">
+  <meta property="article:tag" content="支付系统">
+  <meta property="article:tag" content="运维">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条">
+  <meta name="twitter:description" content="红帽混沌工程团队负责人复盘了四个企业客户案例：交易平台的投产前验证、虚拟化迁移的韧性证明、有状态数据库的数据完整性、以及支付系统的事务成功路径。四个案例的失败注入各不相同，但作者提炼出的三条经验里有一条我认为被普遍低估：把验证过的实验变成可重放的工作流，在每次发布和配置变更时重跑并与基线对比。本文梳理四个案例各自验证了">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条",
+  "description": "来源：Red Hat Blog：Chaos engineering in practice: Lessons from enterprise customershttps://www.redhat.com/en/blog/chaos-engineering-practice-lessons-enterprise-customers（2026-10-12，作者 Naga Ravi Chaitanya",
+  "datePublished": "2026-10-12",
+  "dateModified": "2026-10-12",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "混沌工程, Chaos Engineering, Krkn, OpenShift, SLO, SLA, GameDay, 韧性, 数据完整性, 虚拟化, 支付系统, 运维, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条",
+        "item": "https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-12">2026-10-12</div>
+        <h1 class="post-title" itemprop="headline">红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E6%B7%B7%E6%B2%8C%E5%B7%A5%E7%A8%8B/">混沌工程</a><a itemprop="keywords" href="/tags/Chaos%20Engineering/">Chaos Engineering</a><a itemprop="keywords" href="/tags/Krkn/">Krkn</a><a itemprop="keywords" href="/tags/OpenShift/">OpenShift</a><a itemprop="keywords" href="/tags/SLO/">SLO</a><a itemprop="keywords" href="/tags/SLA/">SLA</a><a itemprop="keywords" href="/tags/GameDay/">GameDay</a><a itemprop="keywords" href="/tags/%E9%9F%A7%E6%80%A7/">韧性</a><a itemprop="keywords" href="/tags/%E6%95%B0%E6%8D%AE%E5%AE%8C%E6%95%B4%E6%80%A7/">数据完整性</a><a itemprop="keywords" href="/tags/%E8%99%9A%E6%8B%9F%E5%8C%96/">虚拟化</a><a itemprop="keywords" href="/tags/%E6%94%AF%E4%BB%98%E7%B3%BB%E7%BB%9F/">支付系统</a><a itemprop="keywords" href="/tags/%E8%BF%90%E7%BB%B4/">运维</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://www.redhat.com/en/blog/chaos-engineering-practice-lessons-enterprise-customers">Red Hat Blog：Chaos engineering in practice: Lessons from enterprise customers</a>（2026-10-12，作者 Naga Ravi Chaitanya Elluri）<br>
+工具来源：<a href="https://krkn-chaos.dev/docs/">Krkn 官方文档</a>、<a href="https://krkn-chaos.dev/docs/krkn-operator/">Krkn Operator</a><br>
+本文为<strong>译文 + 解读</strong>。第四节对三条经验的排序与解读、第二节的「缺陷模式」归纳是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>红帽混沌工程团队负责人复盘了四个企业客户案例</strong>，而他的开篇就定了一个基调：<strong>「韧性是业务要求」</strong>：<strong>失败的事务打断收入、基础设施故障影响多个负载、数据库故障让关键数据处于风险中，而最要紧的是：反复发生的故障会侵蚀客户信任，这种损害可能比故障本身持续得更久。</strong></p>
+<p><strong>四个案例的失败注入各不相同</strong>（可用区故障、控制平面与工作节点同时丢失、网络分区、CPU 耗尽），<strong>但真正让我想写这篇的是三条经验里的最后一条</strong>：<strong>把验证过的实验保存成可重放的工作流，在每次发布和配置变更时重跑，并与基线对比</strong>。<strong>这一条把混沌工程从「一次性演练」变成了「持续回归测试」</strong>，而我认为这是它和「做过一次混沌工程」之间的分水岭。</p>
+<h2>一、先把逻辑链说清楚</h2>
+<p><strong>作者把「为什么做混沌工程」写成了一条很干净的链</strong>，值得完整保留：</p>
+<blockquote><strong>团队通过服务级别目标（SLO，例如可用性和事务延迟）把这些业务需求转化为可度量的目标。服务级别协议（SLA）定义了对客户的承诺以及未达成时的后果。混沌工程则引入受控故障，对照 SLO 检验系统行为，并暴露可能危及那些承诺的弱点。</strong></blockquote>
+<strong>这条链里的三个环节容易混淆，值得分开</strong>：
+<table>
+<tr><th>概念</th><th>回答的问题</th><th>谁定的</th></tr>
+<tr><td><strong>业务需求</strong></td><td>为什么这件事重要</td><td>业务方</td></tr>
+<tr><td><strong>SLO</strong></td><td>我们对自己的内部目标是多少</td><td>工程团队</td></tr>
+<tr><td><strong>SLA</strong></td><td>我们对客户的承诺是什么、没做到会怎样</td><td>业务 + 法务</td></tr>
+<tr><td><strong>混沌实验</strong></td><td>我们真的能做到吗</td><td>工程团队</td></tr>
+</table>
+<p><strong>混沌工程的位置很明确</strong>：<strong>它不是用来「制造故障」的，而是用来检验「第二个环节是否属实」的</strong>。<strong>而它检验的方式是把第三个环节（对客户的承诺）作为判据</strong>：<strong>这正是它区别于「随便搞点故障看看」的地方</strong>。</p>
+<p><strong>顺带说一个贯穿全文的方法论要求</strong>（作者在四个案例里各强调了一次，措辞不同但指向同一个动作）：<strong>从应用的角度验证，而不是从基础设施的角度</strong>。<strong>基础设施健康不等于客户能完成事务</strong>，这个区别是后面几个案例的核心。</p>
+<h2>二、四个案例：各注入什么失败，暴露了什么</h2>
+<p><strong>原文明确说明这些都是匿名案例</strong>，并且注明「结果反映的是被测试的条件」。我把它们整理成表，因为这样能看出失败注入与暴露缺陷之间的对应关系：</p>
+<table>
+<tr><th>场景</th><th>注入的失败</th><th>暴露的问题 / 产出的改进</th></tr>
+<tr><td><strong>① 交易平台投产前验证</strong>（latency-sensitive 交易应用，跑在 ROSA 上）</td><td><strong>可用区故障、计算节点故障、Amazon Aurora 数据库故障、API 限流、存储耗尽</strong></td><td>暴露出<strong>此前测试没发现的可靠性与性能瓶颈</strong>，揭示了<strong>依赖故障如何影响事务</strong>，并据此改进恢复；<strong>让团队对上线决策有了更强证据</strong></td></tr>
+<tr><td><strong>② 虚拟化迁移</strong>（某大型机构把企业虚拟化负载迁到 OpenShift Virtualization）</td><td><strong>控制平面与工作节点同时丢失、存储中断、DNS 故障</strong>（同时观察 Windows 与 Linux 负载）</td><td>直接产出了 <strong>VirtIO 驱动修复、OpenShift Data Foundation 调优、I/O 限制、fencing 改进、告警改进</strong>；加固后<strong>在验证场景中报告存储可在数秒内恢复、无 VM 崩溃</strong></td></tr>
+<tr><td><strong>③ 有状态应用保数据</strong>（在 OpenShift Virtualization 上验证关键关系数据库）</td><td><strong>磁盘写满、可能造成脑裂的网络分区、活动计算节点突然丢失</strong></td><td>让平台工程师与数据库架构师<strong>调整了存储类与 IOPS 限制以适配崩溃恢复</strong>；<strong>在验证场景中报告数据得到保全、服务连续</strong></td></tr>
+<tr><td><strong>④ 支付系统跟随事务</strong>（金融环境，hub-and-spoke + GitOps 编排实验）</td><td><strong>网络丢包、CPU 耗尽</strong>（测微服务故障转移），外加<strong>定期 GameDay 演练排障与事件响应</strong></td><td>通过<strong>反复演练与联合根因分析</strong>报告恢复时间改善</td></tr>
+</table>
+<p><strong>四组失败注入的覆盖面很值得注意</strong>：<strong>从基础设施层（可用区、节点、存储、DNS）到网络层（丢包、分区）到资源层（CPU、存储耗尽）到外部依赖（数据库、API 限流）</strong>。而<strong>它没有去测「代码里的 bug」</strong>：<strong>混沌工程测的是「已知组件会坏，系统能不能撑住」，而不是「组件有没有 bug」。</strong></p>
+<p><strong>案例②里那份缺陷清单我认为最有实用价值</strong>，因为它显示了混沌实验的产出<strong>不是一份报告，而是一串具体的工单</strong>：</p>
+<ul>
+<li><strong>VirtIO 驱动修复</strong>（驱动层的实际问题）</li>
+<li><strong>存储调优</strong>（OpenShift Data Foundation）</li>
+<li><strong>I/O 限制</strong>（避免单个负载打满存储）</li>
+<li><strong>fencing 改进</strong>（节点失联时的隔离行为）</li>
+<li><strong>更好的告警</strong>（这可能是最重要的产出之一）</li>
+</ul>
+<strong>而「更好的告警」这一项值得单独说</strong>：<strong>混沌实验的副产品往往是发现「这个故障发生时我们居然没有告警」</strong>：<strong>这类发现只能通过真的制造那个故障才拿到</strong>。
+<h2>三、四个案例各自强调的「验证姿势」</h2>
+<p><strong>这一节我认为是全文最实用的部分</strong>，因为作者在四个案例里各给了一条可执行的原则，而且它们都是关于「怎么验证」而不是「怎么注入」：</p>
+<p><strong>① 投产前验证</strong>：</p>
+<blockquote><strong>把恢复证据纳入上线决策。</strong> 在发布就绪测试里加入几个高影响的故障，聚焦于那些可能打断关键客户旅程的依赖。<strong>使用与客户 SLA 承诺对齐的 SLO 和明确的恢复上限</strong>，来决定哪些缺口必须在上线前修掉。</blockquote>
+<strong>② 虚拟化迁移</strong>：
+<blockquote><strong>从应用的角度验证恢复。</strong> 在<strong>代表性的负载、流量模式和网络拓扑</strong>下测试。<strong>在检查 VM 与主机健康之外，还要验证应用可用性、数据完整性和恢复时间</strong>，因为<strong>一次基础设施故障可能打断多个业务服务</strong>。</blockquote>
+<strong>③ 有状态应用</strong>：
+<blockquote><strong>把数据完整性作为恢复要求。</strong> 从<strong>恢复时间目标与数据丢失目标</strong>开始，然后<strong>选择那些可能违反它们的具体故障</strong>。验证<strong>已确认的事务、复制健康度、一致性以及应用恢复</strong>。<strong>存储调优应该以它对恢复的影响来判断，而不只是看正常性能。</strong></blockquote>
+<strong>④ 支付系统</strong>：
+<blockquote><strong>跟随事务直到完成。</strong> 把请求<strong>追踪穿过应用、它的依赖、数据库、直到最终确认</strong>。对照 SLO 评估<strong>事务成功率与延迟</strong>，并检查<strong>重试、重复处理与恢复时间</strong>。<strong>这些度量能揭示仅看基础设施健康所遗漏的客户影响。</strong></blockquote>
+<strong>而且他补了支付那个案例的一条很关键的做法</strong>：
+<blockquote><strong>纳入部分故障</strong>，例如<strong>间歇性丢包和缓慢响应</strong>。<strong>留意不断增长的队列、过多的重试、以及故障在服务之间扩散</strong>。<strong>这些测试能在完全中断发生之前，揭示降级如何影响客户。</strong></blockquote>
+<strong>「部分故障」这个提醒我认为价值最高</strong>。<strong>完全的故障（进程挂掉）通常是容易发现的，而「变慢、丢一点包、重试变多」这类降级才是最难察觉、也最容易演变成事故的形态。</strong> 而<strong>「队列增长」与「重试放大」恰好是这类降级的两个可靠信号</strong>：<strong>重试放大尤其危险，因为它在故障期间自我放大，把一个慢依赖变成一个被打垮的依赖。</strong>
+<h2>四、三条经验，以及我为什么把第三条排在第一位</h2>
+<p><strong>作者在结尾提炼了三条经验</strong>：</p>
+<blockquote><strong>1. 度量对客户重要的事。</strong> 对交易和支付平台，成功意味着在 SLO 内完成事务；对虚拟化，意味着共享基础设施故障时应用仍然可用；对数据库，意味着在约定限制内恢复并保全数据完整性。<strong>用这些服务结果来判断韧性</strong>，并识别对客户 SLA 承诺的风险。</blockquote>>
+<blockquote><strong>2. 在验证系统恢复的同时，也验证团队的响应。</strong> 支付系统的 GameDay 表明，<strong>把检测、诊断与事件响应同自动故障转移一起测试</strong>是有价值的。<strong>给每次演练指定一个恢复负责人，度量响应时间，并用发现来改进告警和 runbook。重复演练以验证这些改进。</strong></blockquote>>
+<blockquote><strong>3. 保存并重放工作流，以便在每一次变更时跟踪韧性。</strong> 把已验证的实验变成<strong>可重用的工作流</strong>（Krkn Operator 与 Chaos Studio）。<strong>在每次发布和配置变更时重放它们，把韧性评分与基线对比，从而在推广之前捕获回归。</strong> 保持负载与 SLO 一致，并要求<strong>事务、数据完整性与恢复检查与评分一同通过</strong>。</blockquote>
+<strong>我的排序和原文相反：我认为第三条最重要</strong>，理由有三层：
+<p><strong>① 它解决了混沌工程最常见的失败模式：做一次，然后忘掉。</strong> <strong>混沌实验的第一次产出是最丰富的</strong>（因为你什么都没测过），<strong>但它的长期价值在于「回归检测」</strong>：<strong>而回归只能通过在新变更上重放旧实验来发现。</strong> <strong>一次性的混沌演练给出的是一份快照，重放的实验给出的是一个趋势线。</strong></p>
+<p><strong>② 它把混沌工程接进了 CI/CD 的位置。</strong> 「在每次发布和配置变更时重放」<strong>意味着混沌实验变成了发布流水线的一道门</strong>，而不是一个季度的活动。<strong>这改变了它的成本结构</strong>：<strong>一次性演练的边际成本很高（要组织人、要协调窗口），而自动化重放几乎为零。</strong></p>
+<p><strong>③ 原文那句「要求事务、数据完整性与恢复检查与评分一同通过」是个关键补充。</strong> <strong>它防止了一件很容易发生的事：把一个韧性指标本身当成目标</strong>。<strong>一个「韧性评分」如果只看系统是否存活，就会漏掉「事务其实失败了一半」这种情况</strong>：<strong>这就是为什么必须同时要求事务级与数据级的检查通过。</strong> <strong>指标一旦脱离它要度量的服务结果，就会开始说谎。</strong></p>
+<p><strong>而第二条（验证团队响应）我认为是其中最容易落地、也最常被跳过的一条</strong>。<strong>技术上的自动故障转移和人的排障流程是两套系统</strong>，而<strong>只有 GameDay 能同时压测这两者</strong>。<strong>给每次演练指定一个「恢复负责人」（recovery owner）这个建议很具体</strong>：<strong>它避免了一种常见情况：没有人明确负责，于是响应变成集体观望。</strong></p>
+<h2>五、给准备开始的人的实操建议</h2>
+<p><strong>原文给的起步方式只有一段，但很准确</strong>：</p>
+<blockquote><strong>从一个问题开始：什么故障对客户或业务的伤害最大？</strong> 选择一个关键服务，<strong>在代表性条件下</strong>测试那个风险，<strong>修掉实验揭示的问题</strong>。<strong>把这个测试保留下来</strong>，以便未来的变更可以对照同样的期望来检查。</blockquote>
+<strong>如果要展开成一个可执行的起步顺序，我会这样排</strong>：
+<ol>
+<li>1. <strong>先写 SLO，再写实验</strong>。<strong>没有 SLO 的混沌实验没有判据</strong>，你只能说「它没崩」，而不能说「它达标了」；</li>
+<li>2. <strong>选一个「一个依赖挂掉就会打断客户旅程」的场景</strong>，而不是选一个「最容易注入」的故障。<strong>先难后易，因为第一个实验的产出最丰富</strong>；</li>
+<li>3. <strong>在实验里同时观察应用层和基础设施层</strong>。<strong>只看 Pod 是否 Running 会漏掉「事务成功率掉了一半」</strong>；</li>
+<li>4. <strong>给每次实验指定一个恢复负责人</strong>，并要求它产出<strong>具体工单</strong>（而不是一份报告）：</li>
+</ol>   - 哪些告警缺失？
+   - 哪些 runbook 步骤是错的或缺失的？
+   - 哪些超时/重试参数需要调整？
+<ol>
+<li>5. <strong>修完之后重跑同一个实验</strong>。<strong>没有重跑的修复，等于没有验证的修复</strong>；</li>
+<li>6. <strong>把实验提交进版本控制，挂到发布流程上</strong>。<strong>这一步才把它变成回归测试。</strong></li>
+</ol>
+<strong>关于工具</strong>：原文提到用的是 <strong>Krkn</strong>（红帽的混沌工程工具）与 <strong>Krkn Operator</strong>（把实验变成可重用工作流）。<strong>而上面这套方法本身与工具无关</strong>：<strong>用任何能脚本化注入故障并采集事务级指标的东西都能做</strong>，<strong>Krkn 提供的是「把实验标准化成可重放工作流」这个能力</strong>。
+<p><strong>最后一条我认为最该被记住的，来自原文那句开场</strong>：</p>
+<blockquote><strong>最要紧的是：反复发生的故障会侵蚀客户信任，而这种损害可能比故障本身持续得更久。</strong></blockquote>
+<strong>这句话解释了为什么 SLO 里的数字不能只按「成本」来定</strong>：<strong>一次短暂但反复的不可用，和一次长时间但唯一的不可用，对信任的损害是不同的</strong>：<strong>而前者在单纯的可用性百分比里可能看起来更小。</strong>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>来源</td><td><strong>Red Hat Blog</strong>（2026-10-12），作者 <strong>Naga Ravi Chaitanya Elluri</strong>，红帽混沌工程团队负责人</td></tr>
+<tr><td>工具</td><td><strong>Krkn</strong> 与 <strong>Krkn Operator</strong>（把实验变成可重用工作流）</td></tr>
+<tr><td>核心论断</td><td><strong>韧性是业务要求</strong>；反复故障侵蚀客户信任，损害可能比故障本身持续更久</td></tr>
+<tr><td>逻辑链</td><td><strong>业务需求 → SLO（内部可度量目标）→ SLA（对客户的承诺与后果）→ 混沌实验（检验承诺是否属实）</strong></td></tr>
+<tr><td><strong>案例① 投产前验证</strong></td><td>交易应用（ROSA）：注入<strong>可用区故障、计算节点故障、Aurora 数据库故障、API 限流、存储耗尽</strong>；暴露此前未发现的可靠性与性能瓶颈；<strong>原则：把恢复证据纳入上线决策</strong></td></tr>
+<tr><td><strong>案例② 虚拟化迁移</strong></td><td>同时注入<strong>控制平面与工作节点丢失、存储中断、DNS 故障</strong>；产出 <strong>VirtIO 驱动修复、ODF 调优、I/O 限制、fencing 改进、告警改进</strong>；加固后<strong>存储数秒内恢复、无 VM 崩溃</strong>；<strong>原则：从应用的角度验证恢复</strong></td></tr>
+<tr><td><strong>案例③ 有状态数据</strong></td><td>注入<strong>磁盘写满、可能脑裂的网络分区、活动节点突然丢失</strong>；据此<strong>调优存储类与 IOPS 限制以适配崩溃恢复</strong>；<strong>原则：把数据完整性作为恢复要求</strong>（先定 RTO 与数据丢失目标，再选故障）</td></tr>
+<tr><td><strong>案例④ 支付系统</strong></td><td>注入<strong>网络丢包、CPU 耗尽</strong>（测微服务故障转移）+ 定期 <strong>GameDay</strong>；<strong>恢复时间改善</strong>；<strong>原则：跟随事务直到完成</strong>（追踪到最终确认，检查重试、重复处理、恢复时间）</td></tr>
+<tr><td>⚠️ 特别提醒</td><td><strong>纳入部分故障</strong>（间歇性丢包、缓慢响应）；<strong>留意队列增长、过多重试、故障跨服务扩散</strong>，这些能在完全中断前揭示降级影响</td></tr>
+<tr><td><strong>三条经验</strong></td><td>① 度量对客户重要的事；② <strong>验证团队响应</strong>（指定恢复负责人、度量响应时间、改进告警与 runbook、重复演练）；③ <strong>保存并重放工作流</strong>（每次发布与配置变更时重放，与基线对比，<strong>并要求事务/数据完整性/恢复检查与评分一同通过</strong>）</td></tr>
+<tr><td>起步方式</td><td><strong>从「什么故障对客户伤害最大」开始</strong>；选一个关键服务、在代表性条件下测试、修掉问题、<strong>保留测试</strong>供未来变更对照</td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://www.redhat.com/en/blog/chaos-engineering-practice-lessons-enterprise-customers">Red Hat Blog：Chaos engineering in practice: Lessons from enterprise customers</a></li>
+<li><a href="https://krkn-chaos.dev/docs/">Krkn 官方文档</a> 与 <a href="https://krkn-chaos.dev/docs/krkn-operator/">Krkn Operator</a></li>
+<li><a href="/articles/2026-10-10_lts-vs-rolling-release-genai/">本站：LTS 在 AI 时代过时了？补丁洪流是真的，但「改用滚动发布」是个假二选一</a></li>
+<li><a href="/articles/2026-09-29_ubuntu-weekly-kernel-updates/">本站：Ubuntu 内核改成每周更新：废掉 4/2 模型、启用重叠双周流水线</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/",
+      title: "\u7ea2\u5e3d\u7684\u6df7\u6c8c\u5de5\u7a0b\u590d\u76d8\uff1a\u56db\u4e2a\u5ba2\u6237\u6848\u4f8b\u91cc\uff0c\u6211\u6700\u5728\u610f\u7684\u662f\u300c\u4fdd\u5b58\u5b9e\u9a8c\u300d\u8fd9\u4e00\u6761"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
