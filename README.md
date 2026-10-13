@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-14 | [内网域名没有一个是安全的：.lan / .local / .home / .corp 的真实状态，以及 ICANN 给出的 .internal](https://freelamp.com/articles/2026-10-14_internal-tld-name-collision/) | DNS · 内网命名 · 名字碰撞 · ICANN · IANA · home.arpa · .internal · mDNS · Active Directory · 安全加固 · 原创 |
 | 2026-10-12 | [Linus 用 Claude Code 改内核：这份 commit message 比那个性能数字更值得读](https://freelamp.com/articles/2026-10-12_linus-torvalds-claude-code-kernel/) | Linux内核 · Linus Torvalds · Claude Code · AI辅助开发 · folio · 页缓存 · RCU · 内存管理 · 译文 |
 | 2026-10-12 | [Ubuntu 的本地语音输入 Myna 进技术预览：它明确说「这不是语音助手」](https://freelamp.com/articles/2026-10-12_ubuntu-myna-speech-to-text-preview/) | Ubuntu · Myna · 语音识别 · Whisper · Parakeet · FunASR · 本地推理 · 隐私 · IBus · Snap · 原创 |
 | 2026-10-12 | [红帽的混沌工程复盘：四个客户案例里，我最在意的是「保存实验」这一条](https://freelamp.com/articles/2026-10-12_red-hat-chaos-engineering-lessons/) | 混沌工程 · Krkn · OpenShift · SLO · SLA · GameDay · 韧性 · 数据完整性 · 虚拟化 · 运维 · 译文 |
