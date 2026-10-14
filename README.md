@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-14 | [Firefox 要进企业市场，但它的赌注押在一个不确定的假设上：欧洲真的会为「不依赖美国」付钱](https://freelamp.com/articles/2026-10-14_firefox-enterprise-digital-sovereignty/) | Mozilla · Firefox · 企业浏览器 · 数字主权 · Gecko · Chromium · DORA · NIS2 · AI治理 · 商业模式 · 译文 |
+| 2026-10-14 | [NPU 终于能用 PyTorch 跑了：Mesa 接下这件事，靠的是一条被 AI 加速行业忽略的捷径](https://freelamp.com/articles/2026-10-14_mesa-torx-yolox-pytorch-npu/) | Mesa · NPU · Torx · ExecuTorch · PyTorch · Gallium · NIR · Ethos-U · Etnaviv · Rocket · 边缘AI · 开源驱动 · 译文 |
 | 2026-10-13 | [npm 拿「名字」而不是「ID」验证发布者：SlugFest 让 1500 个包的发布权可以被继承](https://freelamp.com/articles/2026-10-13_npm-trusted-publishing-slugfest/) | npm · 供应链安全 · Trusted Publishing · OIDC · 开源治理 · AI代理 · 依赖管理 · provenance · 译文 |
 | 2026-10-13 | [Asterinas 0.19：用 Rust 重构内核的另一种思路，是「不减少地址空间，只减少 unsafe」](https://freelamp.com/articles/2026-10-13_asterinas-0-19-framekernel/) | Asterinas · Rust · 操作系统 · 内核 · framekernel · 微内核 · 内存安全 · OSTD · DRM · AArch64 · Kata Containers · hypervisor · 译文 |
 | 2026-10-14 | [内网域名没有一个是安全的：.lan / .local / .home / .corp 的真实状态，以及 ICANN 给出的 .internal](https://freelamp.com/articles/2026-10-14_internal-tld-name-collision/) | DNS · 内网命名 · 名字碰撞 · ICANN · IANA · home.arpa · .internal · mDNS · Active Directory · 安全加固 · 原创 |

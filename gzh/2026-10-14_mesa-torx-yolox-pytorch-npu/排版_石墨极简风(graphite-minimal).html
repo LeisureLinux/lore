@@ -1,0 +1,315 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">与 TensorFlow Lite 不同，ExecuTorch 把模型的编译与执行分成两个独立的步骤。因此模型可以在与目标设备不同的机器上编译，在那些机器上应用比边缘级硬件能跑得起的更昂贵的优化是可行的。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— Tomeu Vizoso</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Mesa 的 Torx 代码合并了 YOLOX 支持</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">Torx 是 Mesa 里的 ExecuTorch 后端</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">作用是给机器学习模型提供一条用 NPU 来编译与执行的路径</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">合并之后，用户可以用 PyTorch 配合 Mesa 里的 NPU 驱动来运行 YOLOX</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">实际效果是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">YOLOX-Nano，416×416 输入，量化成 8 位整数，在一块 i.MX93 开发板上跑，单帧推理 17 毫秒。</span></strong><strong style="color:#27272A;"><span leaf="">而这件新闻里最值得记的，是它暴露的一条捷径</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">图形驱动栈和 AI 加速器驱动的形状是完全一样的。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">Torx 与 Teflon 的关系</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">图形栈为何能接管 NPU</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">真正的看点是 AOT</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ARCHITECTURE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">先说清 Torx 是什么，以及它和 Teflon 的关系</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Mesa 的官方文档对 Torx 的定义很简短</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「Torx 是 Mesa 的 ExecuTorch 后端：它可以利用 NPU 来加速机器学习推理，实现为 ExecuTorch 这个端侧 AI 框架的一个自定义后端。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而 Tomeu Vizoso（这条技术路线的核心开发者）在自己的博客里把位置关系说清楚了</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「Torx 坐在 Teflon 旁边，也就是已有的 TensorFlow Lite 委托旁边，两者使用同一个 Gallium ML API。今天 Torx 与 ethosu 驱动配合工作。Torx 实现了 ExecuTorch 提供的后端 API，用于把模型图的一部分运行在 NPU 或 GPU 这类专用硬件上。然后它使用 Gallium ML API 在可用硬件上编译并执行这些部分。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">也就是说，这块的架构是三层</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 框架对接层</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Teflon</span></strong><span leaf="">（TensorFlow Lite 委托）／</span><strong style="color:#27272A;"><span leaf="">Torx</span></strong><span leaf="">（ExecuTorch 后端），</span><strong style="color:#27272A;"><span leaf="">把框架的图切出一部分交给硬件</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">② 共用中间层</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Gallium ML API</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">编译与执行，屏蔽具体硬件</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">③ 硬件驱动层</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">ethosu</span></strong><span leaf="">（Arm Ethos-U）／</span><strong style="color:#27272A;"><span leaf="">etnaviv</span></strong><span leaf="">（Vivante）／</span><strong style="color:#27272A;"><span leaf="">rocket</span></strong><span leaf="">（Rockchip）／</span><strong style="color:#27272A;"><span leaf="">thames</span></strong><span leaf="">（TI C7x DSP），</span><strong style="color:#27272A;"><span leaf="">把模型翻译成硬件命令</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这个结构里我认为最值得注意的是「共用中间层」这一格。因为它意味着每加一个 NPU，只需要写硬件驱动部分，而不需要重新对接框架。而反过来也一样：每加一个框架（TFLite → PyTorch），上层的硬件驱动不用改。这是 Mesa 能同时推进多条 NPU 路线的结构性原因。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这些驱动也确实来自不同来源</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">ethosu 是 Arm Ethos 系列</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">etnaviv 是 Vivante/VIP 系列</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">用在 NXP i.MX 8M Plus 和 Amlogic A311D 上</span></strong><span leaf="">）、</span><strong style="color:#27272A;"><span leaf="">rocket 是逆向工程出来的 Rockchip NPU</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">主线内核 6.18 起支持</span></strong><span leaf="">）、</span><strong style="color:#27272A;"><span leaf="">thames 面向德州仪器 C7x DSP</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">用在 BeagleY-AI 这类板子上</span></strong><span leaf="">）。</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 kernel 侧是另一条线。Tomeu 在 7 月的文章里说明了主线驱动的来历</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「Rob Herring，因为在设备树基础设施上的工作而为 Linux 社区熟知，他在一年多前于 DRM/Accel 子系统里开始了一个全新的内核驱动，这个驱动会直接从主 CPU 驱动 Ethos-U，绕过 Cortex-M，从而绕过对固件的需要。该驱动使用 DRM 既有的实践来定义 UAPI，并重用 DRM 子系统的代码，例如 GEM 和 gpu-drm-scheduler。这个驱动被合并进了 Linux 内核的 6.19 版本，从一开始就支持 NXP 的 i.MX93 SoC。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这句话里有两个设计决策值得单独指出</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">第一，绕过 Cortex-M</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">第二，重用 DRM 的 GEM 与调度器</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">第二个正是那条捷径的具体形态</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">NPU 驱动的内核侧，本质上就是「管理缓冲 + 调度任务」，而 DRM 子系统已经把这套东西做好十年了。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">WHY IT WORKS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">图形栈为什么适合接管 NPU</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这条技术路线值得写，是因为它的成立原因很「物理」，而不是「顺手」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">把一个加速器接进操作系统并提供给上层框架，需要四件事，而它们和 GPU 领域已有的答案是同构的</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">用户态驱动</span></strong><span leaf="">：GPU 侧是 </span><strong style="color:#27272A;"><span leaf="">Gallium 驱动</span></strong><span leaf="">；AI 侧需要</span><strong style="color:#27272A;"><span leaf="">把模型图翻译成硬件命令</span></strong><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">同构</span></strong><span leaf="">（都是编译一张图到硬件指令）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">中间表示与优化</span></strong><span leaf="">：GPU 侧是 </span><strong style="color:#27272A;"><span leaf="">NIR</span></strong><span leaf="">（Mesa 的 IR）；AI 侧需要</span><strong style="color:#27272A;"><span leaf="">算子融合、布局转换、量化降低</span></strong><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">同构</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">内存与缓冲管理</span></strong><span leaf="">：GPU 侧是 </span><strong style="color:#27272A;"><span leaf="">GEM / dumb buffers</span></strong><span leaf="">；AI 侧需要</span><strong style="color:#27272A;"><span leaf="">输入输出张量、权重、中间特征图</span></strong><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">同构</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">任务提交与调度</span></strong><span leaf="">：GPU 侧是 </span><strong style="color:#27272A;"><span leaf="">DRM scheduler</span></strong><span leaf="">；AI 侧需要</span><strong style="color:#27272A;"><span leaf="">把推理任务投给 NPU 队列</span></strong><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">同构</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">四件事里有四件同构，所以复用不是巧合，而是「抽象层次刚好对上了」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而 NIR 这条线尤其能说明问题</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">Phoronix 在报道 XDC2025 上 Tomeu 的演讲时，记下了他 2026 年的计划</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「PyTorch/ExecuTorch 支持，以及用 NIR 做优化 pass 和把模型降低到硬件。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">NIR 原本是 Mesa 用来统一图形驱动的中间表示，现在它在 AI/ML 上「获得了越来越多的曝光」。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为这件事有一个更大的含义</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">一个编译器中间表示的价值，取决于有多少种硬件需要被降低到。Mesa 面对的是十几家 GPU 厂商、几十代架构，这套 IR 就是被这种多样性逼出来的。而 AI 加速器领域的现状恰好是「硬件极度碎片化、每家一套 SDK」，这正是 NIR 能派上用场的地方。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而这条线不是突然出现的，它有一个可以追溯的时间轴</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">2024-01</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Teflon 合并进 Mesa 24.1</span></strong><span leaf="">，作为 Gallium3D 前端供 TensorFlow </span><strong style="color:#27272A;"><span leaf="">加载并委托网络中算子的执行</span></strong><span leaf="">，最初是为 Etnaviv 驱动做的；</span><strong style="color:#27272A;"><span leaf="">2025-10</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Arm Ethos NPU 的 Gallium3D 驱动合并</span></strong><span leaf="">（进入 Mesa 25.3），</span><strong style="color:#27272A;"><span leaf="">复用 Teflon 框架</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">2026-01</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Thames</span></strong><span leaf="">，面向 TI C7x DSP 的 DRM accel 驱动 + 配套 Gallium3D 驱动；</span><strong style="color:#27272A;"><span leaf="">2026-03</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Ethos U85 支持进入 Mesa 26.1</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">2026-07</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">主线 Ethos-U 驱动合并进 Linux 6.19</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">Rob Herring，绕过 Cortex-M</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">2026-08</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">YOLOX 在 Etnaviv 驱动上跑通</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">Vivante VIP 系列，含 i.MX 8M Plus、A311D</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">2026-10</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Torx 合并 YOLOX 支持</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">即本条新闻，进入 Mesa 26.3</span></strong><span leaf="">）。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">从这个时间轴能看出一个节奏</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">这条路线走了将近三年，从「用 TFLite 跑分类模型」推进到「用 PyTorch 跑目标检测」，而每一步都是「补齐一部分算子 + 打通一条新硬件或新框架」。它没有一次性的突破，而是一条持续叠加的线。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE REAL POINT</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">真正的技术看点是 AOT：编译在别处，执行在这里</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Tomeu 的博客里有一段我认为是整条新闻里最重要的技术信息</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「与 TensorFlow Lite 不同，ExecuTorch 把模型的编译与执行分成两个独立的步骤。因此模型可以在与目标设备不同的机器上编译，在那些机器上应用比边缘级硬件能跑得起的更昂贵的优化是可行的。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这句话值得展开，因为它说明的不是「性能提升」，而是「一条被浪费掉的可能」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">把两种模式对比一下</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">运行时编译</span></strong><span leaf="">（TFLite 委托的典型形态）→ </span><strong style="color:#27272A;"><span leaf="">编译发生在目标设备上，或至少由目标设备的工具链完成</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">优化预算受限于边缘设备的算力与内存</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">提前编译（AOT）</span></strong><span leaf="">（ExecuTorch 的做法）→ </span><strong style="color:#27272A;"><span leaf="">可以在一台完全不同的、算力更强的机器上编译</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">可以跑昂贵的优化</span></strong><span leaf="">（更激进的算子融合、布局、量化策略），</span><strong style="color:#27272A;"><span leaf="">对开发流程的影响是「模型 → 构建机 → 产物 → 设备」</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这意味着：边缘设备的算力限制，本来不应该限制「模型能被优化到什么程度」，因为优化这件事可以在别处做完。而把编译从执行里拆出来，恰好打开了这个空间。这也解释了 Torx 为什么要实现 ExecuTorch 那套「后端 API」：它的职责是「在可用硬件上编译并执行那些被切出来的部分」，而编译被视为一个独立的、可以提前完成的步骤。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">两个能说明开发体验的细节</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，测试是怎么做的</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「Torx 测试套件把单个神经网络算子与 CPU 参考实现做对比。用于测试的模型从另一个仓库获取。测试时，test_torx 直接跑在 NPU 板子上，在 NPU 上执行每个 .pte，并把结果与 CPU 参考做比较。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，当整个模型精度不对时，怎么定位</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「split_torx_tests.py --ranges 把一个模型切成累积的前缀子图 [0..0] 到 [0..N-1]，而不是切成本个算子。用同一条流水线编译并运行这些前缀，可以让一个「整模型精度失败」被二分定位到引入问题的那个算子，同时为每一个前缀复现真实的分区决策。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为第二点是这篇文档里最精巧的一处工程。因为它同时解决了两个问题：「定位到是哪个算子出错」（二分）以及「保证复现真实的分区决策」。后者是关键，因为如果把模型拆成单个算子分别测，算子之间的分区与融合就不会发生，测试就不再反映真实执行路径。用「累积前缀」而不是「单个算子」，正是为了保留这个上下文。而这恰好对应了一条判断：真实的负载会暴露你在单元测试里根本想不到的问题。这里是它的一个正向应用：测试设计必须保留真实执行路径的结构，否则测出来的通过率是假的。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这条新闻表面上是「又支持了一个模型」，实质上是「Mesa 从 GPU 库变成加速器运行时」，而后者才是值得关注的趋势。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">Phoronix 那条报道的措辞是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「虽然 Mesa 主要用于 GPU 驱动，但开源开发者 Tomeu Vizoso 持续在推进 Mesa 驱动栈里 NPU 的能力。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这句话的语法很有意思：「虽然 Mesa 主要用于 GPU 驱动」是一个让步状语，说明连报道者都意识到这里有个范畴变化。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而我认为这个变化是合理的、甚至是必然的。因为决定性因素不是「Mesa 想不想做 AI」，而是「NPU 驱动和 GPU 驱动的工程形状是同构的」。当一个抽象层正好覆盖了另一类硬件的需求时，接管它只是时间问题。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这对开源 AI 加速的意义很大</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">过去每家 NPU 厂商的做法是提供一个闭源或半闭源的专用 SDK，于是「支持某个 NPU」就等于「用 PyTorch 跑不了，除非厂商写了适配」。而 Mesa 这条路线把问题变成了「给一个已有中间层写一个后端」，这是一个小得多的工程量，而且结果对所有框架同时生效。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，AOT 那段是我认为最该被单独记住的技术点，因为它指出了一个被普遍浪费的空间。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">边缘 AI 的部署流程里，长期存在一个不对称：推理必须在设备上跑（因为算力/延迟/功耗/数据的约束），但优化不必须在设备上做。而很多运行时把这两件事绑在一起了，结果是「设备越弱 → 编译时的优化预算越少 → 模型效率越差 → 更容易超过设备能力」这样一个自我强化的循环。把编译与执行拆开，就打开了这个循环。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而我觉得这里有一个可以推广的判断：当一个系统的性能瓶颈来自「执行环境太弱」时，先问一句「这件事必须在那个环境里做吗？」很多时候，把准备工作搬到别处，比在现场挤性能更有效。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，那些限制条件需要被诚实列出，因为它们划出了这条路线当前的真实边界。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">目前 Torx 只在 Arm EthosU 驱动上工作</span></strong><span leaf="">，测试用的是 </span><strong style="color:#27272A;"><span leaf="">NXP i.MX93</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">该 SoC 里的 Ethos U-65 标称 0.5 TOPS，640 KB SRAM</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">Etnaviv（Vivante NPU）驱动「应该已经支持所有算子」，但仍缺少配合 Torx 使用所需的基础设施工作</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">性能目前很低</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">Tomeu 在 2025 年 10 月介绍 ethosu 驱动时自己说的是「对于目前已实现的算子，功能相当完整，但由于缺乏任何优化，性能目前非常低」</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">一块模型不是整个跑在 NPU 上</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">YOLOX 的卷积层全部跑在 U65 上，而最后的解码步骤需要浮点运算，所以跑在 CPU 上</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">其他 NPU 驱动要等到支持 Gallium ML API 的「提前编译扩展」之后，才能从 ExecuTorch 使用。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">最后一条尤其重要，因为它说明这条路线有一个前进的条件</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">它不是自动对所有硬件生效的，每个驱动都需要实现那个 AOT 扩展。换句话说，「PyTorch 支持」目前是一个驱动一个驱动地加出来的，而这正是硬件驱动层需要持续投入的原因。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">第四，数据本身值得记住，因为它是这条路线可行性的最直接证据。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">17 毫秒一帧这个数字，在语境里才看得清</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">一块面向嵌入式、标称 0.5 TOPS、只有 640 KB SRAM 的微 NPU，跑一个 416×416 的目标检测模型，每秒约 59 帧。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而 Tomeu 对这类「微 NPU」的观察我认为也值得记下来</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「Arm 把它们叫做微 NPU，而它们确实包含较少的计算单元，但在我的测试中，它们可以匹配计算单元数量多达六倍的 NPU 的性能。在我看来，这是因为架构非常干净，不同子模块之间配合得很好，以及软件栈优秀，允许相当不错的占用率。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「计算单元少六倍但性能相当，原因是架构干净和占用率」这个观察，其实是在说一件事：NPU 的实际吞吐更取决于「能不能喂饱它」，而不是「它有多少计算单元」。而这也解释了为什么软件栈（编译器、调度、驱动）在这个领域如此关键，因为大部分性能是从「让硬件不闲下来」里挤出来的，而不是从峰值算力里。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">事件</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Mesa 的 Torx 代码合并 YOLOX 支持**（2026-10-13 报道）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**Torx 是什么**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Mesa 的 ExecuTorch 后端**：**利用 NPU 加速机器学习推理，实现为 ExecuTorch 这个端侧 AI 框架的自定义后端**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**实际效果**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**可以用 PyTorch 配合 Mesa 里的 NPU 驱动来运行 YOLOX**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**已测试硬件**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Arm EthosU NPU，使用 NXP i.MX93 SoC**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**性能实测**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**YOLOX-Nano，416×416 输入，8 位整数量化，i.MX93 + Ethos-U65 上单帧 17 毫秒**（约 59 帧/秒）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**计算分布**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**YOLOX 的卷积层全部跑在 U65 上**；**最后解码步骤需要浮点，所以跑在 CPU 上**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**进入版本**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Mesa 26.3**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**⚠️ 其他驱动状态**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Etnaviv（Vivante）「应该已支持所有算子」，但仍缺少配合 Torx 的基础设施工作**；**其他 NPU 驱动需等支持 Gallium ML API 的「提前编译扩展」后才能从 ExecuTorch 使用**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**兄弟组件**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Torx 坐在 Teflon（TensorFlow Lite 委托）旁边，两者使用同一个 Gallium ML API**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**架构分层**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**框架对接层**（Teflon / Torx）→ **共用中间层 Gallium ML API** → **硬件驱动层**（ethosu / etnaviv / rocket / thames）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**关键技术差异**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**与 TensorFlow Lite 不同，ExecuTorch 把编译与执行分成独立两步**，**因此模型可在与目标不同的机器上编译，应用边缘硬件跑不起的昂贵优化**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**协作方**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Tomeu Vizoso**（Mesa 侧）；**Rob Herring（Arm）**（内核侧）；**YOLOX 的 Etnaviv 工作与 Ideas On Board 合作**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**内核侧**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Rob Herring 在 DRM/Accel 子系统写新驱动，直接从主 CPU 驱动 Ethos-U，绕过 Cortex-M 从而绕过固件**；**重用 GEM 与 gpu-drm-scheduler**；**合并进 Linux 6.19**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**⚠️ 绕开 Cortex-M 的原因**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**厂商反馈：Cortex-M 的中介使 ML 模型无法在 CPU 与 NPU 上高效协同执行，而且客户部署新模型很麻烦**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**另一个推动因素**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Arm 的 Ethos-U 软件栈虽开源，但没预集成进厂商用的发行版，也缺少成熟多厂商项目那样的标准回贡路径**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**测试方法**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**把单个算子与 CPU 参考实现对比**；**test_torx 直接跑在 NPU 板子上，执行每个 .pte 并对比 CPU 参考**；**模型来自独立的 npu-model-zoo 仓库**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**调试工具**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`split_torx_tests.py --ranges` 把模型切成累积前缀子图**，**用于二分定位引入精度问题的算子，同时复现每个前缀的真实分区决策**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**构建方式**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`-Dgallium-drivers=ethosu -Dtorx=true`**；**需要 ExecuTorch 的 nightly 构建**（只有 nightly wheel 带 Torx 需要的 `executorch.pc`）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**NIR 的角色**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**NIR 原本是统一图形驱动的 IR，现在在 AI/ML 上获得越来越多曝光**；**Tomeu 在 XDC2025 提到 2026 年计划包括用 NIR 做优化 pass 与降低模型到硬件**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**微 NPU 的性能观察**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「它们确实包含较少的计算单元，但在我的测试中，它们可以匹配计算单元多达六倍的 NPU 的性能」**，**原因是架构干净 + 软件栈优秀带来的良好占用率**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**⚠️ 性能现状**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**ethosu 驱动在 2025-10 的官方描述是「功能相当完整，但性能目前非常低，因为缺乏任何优化」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**相关历史节点**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Teflon 进 Mesa 24.1（2024-01）**；**Arm Ethos Gallium3D（2025-10，Mesa 25.3）**；**Thames/TI C7x（2026-01）**；**Ethos U85 进 Mesa 26.1（2026-03）**；**主线 Ethos-U 进 Linux 6.19（2026-07）**；**YOLOX 在 Etnaviv 跑通（2026-08）**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**硬件背景**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**i.MX93 里的 Ethos U-65 标称 0.5 TOP/s、640 KB SRAM**；**U85 宣传上比 U55/U65 能效高 20%，可扩展 128–2048 个 MAC 单元**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**已在 Mesa 里的 NPU 驱动**</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">**ethosu（Arm Ethos-U）**、**etnaviv（Vivante，含 i.MX 8M Plus、A311D）**、**rocket（Rockchip，逆向工程，主线内核 6.18 起）**、**thames（TI C7x DSP）**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这条新闻表面上只是「又支持了一个模型」，实质上是 Mesa 从 GPU 库变成加速器运行时。而它之所以能这样，是因为 NPU 驱动和 GPU 驱动的工程形状是同构的：编译一张图到硬件、中间表示与优化、内存缓冲管理、任务提交与调度，四件事四件对得上。所以这不是 Mesa 想做 AI，而是抽象层刚好覆盖了另一类硬件。更值得记的是 AOT 那一段：推理必须在设备上跑，但优化不必须在设备上做，把这两件事拆开就打开了一个长期被浪费的空间。可以推广的判断是：当一个系统的瓶颈来自「执行环境太弱」时，先问一句「这件事必须在那个环境里做吗？」</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Asterinas 0.19：用 Rust 重构内核的另一种思路，是「不减少地址空间，只减少 unsafe」</span><br>
+        <span leaf="">· zram 重构读写流：读不再被写挡住</span><br>
+        <span leaf="">· Linux 桌面不是给专家用的：这句话被引用了二十年，现在它该被拆开了</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
