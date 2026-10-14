@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-13 | [npm 拿「名字」而不是「ID」验证发布者：SlugFest 让 1500 个包的发布权可以被继承](https://freelamp.com/articles/2026-10-13_npm-trusted-publishing-slugfest/) | npm · 供应链安全 · Trusted Publishing · OIDC · 开源治理 · AI代理 · 依赖管理 · provenance · 译文 |
+| 2026-10-13 | [Asterinas 0.19：用 Rust 重构内核的另一种思路，是「不减少地址空间，只减少 unsafe」](https://freelamp.com/articles/2026-10-13_asterinas-0-19-framekernel/) | Asterinas · Rust · 操作系统 · 内核 · framekernel · 微内核 · 内存安全 · OSTD · DRM · AArch64 · Kata Containers · hypervisor · 译文 |
 | 2026-10-14 | [内网域名没有一个是安全的：.lan / .local / .home / .corp 的真实状态，以及 ICANN 给出的 .internal](https://freelamp.com/articles/2026-10-14_internal-tld-name-collision/) | DNS · 内网命名 · 名字碰撞 · ICANN · IANA · home.arpa · .internal · mDNS · Active Directory · 安全加固 · 原创 |
 | 2026-10-12 | [Linus 用 Claude Code 改内核：这份 commit message 比那个性能数字更值得读](https://freelamp.com/articles/2026-10-12_linus-torvalds-claude-code-kernel/) | Linux内核 · Linus Torvalds · Claude Code · AI辅助开发 · folio · 页缓存 · RCU · 内存管理 · 译文 |
 | 2026-10-12 | [Ubuntu 的本地语音输入 Myna 进技术预览：它明确说「这不是语音助手」](https://freelamp.com/articles/2026-10-12_ubuntu-myna-speech-to-text-preview/) | Ubuntu · Myna · 语音识别 · Whisper · Parakeet · FunASR · 本地推理 · 隐私 · IBus · Snap · 原创 |
