@@ -17,6 +17,13 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-15 | [同一周里，四个开源项目对 AI 贡献给出了四种答案：分歧不在技术，而在「声明」到底有什么用](https://freelamp.com/articles/2026-10-15_open-source-ai-contribution-policies-compared/) | GCC · Linux内核 · Debian · Flathub · LLVM · AI治理 · 开源治理 · Assisted-by · DCO · 译文 |
+| 2026-10-15 | [KDE 选在自己 30 岁生日当天退役 X11：这不是告别，而是一次刻意的对齐](https://freelamp.com/articles/2026-10-15_kde-plasma-6-8-x11-retirement/) | KDE · Plasma · Wayland · X11 · 桌面环境 · 无障碍 · Union · HDR · 译文 |
+| 2026-10-15 | [GNU Boot 加入 FSF 财政赞助：这一步解决的是「谁替你收钱」，但没解决「我的笔记本能不能用」](https://freelamp.com/articles/2026-10-15_gnu-boot-fsf-fiscal-sponsorship/) | GNU Boot · FSF · Libreboot · coreboot · 固件 · 自由软件 · 财政赞助 · 可复现构建 · 译文 |
+| 2026-10-15 | [Cloud Hypervisor 54 承诺「前两个版本可迁移」：把一条口头保证变成了可执行的承诺](https://freelamp.com/articles/2026-10-15_cloud-hypervisor-54-live-migration/) | Cloud Hypervisor · 虚拟化 · VMM · Rust · 热迁移 · VFIO · SEV-SNP · ARM SMMUv3 · 译文 |
+| 2026-10-15 | [RISC-V 最尴尬的一个问题终于要解决了：怎么知道「我这台机器符不符合 RVA23」](https://freelamp.com/articles/2026-10-15_riscv-rva23-hwprobe-detection/) | RISC-V · RVA23 · hwprobe · Linux内核 · glibc · 二进制分发 · 发行版 · LPC · 译文 |
+| 2026-10-15 | [红帽的两篇新文章，讲的其实是同一件事：当 AI 让「发现漏洞」变便宜之后](https://freelamp.com/articles/2026-10-15_red-hat-lightwell-backport-netops-as-code/) | Red Hat · Lightwell · IBM · Ansible · 回移补丁 · 供应链安全 · SBOM · VEX · 自动化 · 译文 |
+| 2026-10-15 | [Nothing OS 5 开始推送：真正该看的不是「我能升级吗」，而是「大版本和补丁是两条时间线」](https://freelamp.com/articles/2026-10-15_nothing-os-5-android-17-rollout/) | Nothing · CMF · Android 17 · 固件更新 · 安全补丁 · 支持周期 · 企业移动管理 · 译文 |
 | 2026-10-14 | [Firefox 要进企业市场，但它的赌注押在一个不确定的假设上：欧洲真的会为「不依赖美国」付钱](https://freelamp.com/articles/2026-10-14_firefox-enterprise-digital-sovereignty/) | Mozilla · Firefox · 企业浏览器 · 数字主权 · Gecko · Chromium · DORA · NIS2 · AI治理 · 商业模式 · 译文 |
 | 2026-10-14 | [NPU 终于能用 PyTorch 跑了：Mesa 接下这件事，靠的是一条被 AI 加速行业忽略的捷径](https://freelamp.com/articles/2026-10-14_mesa-torx-yolox-pytorch-npu/) | Mesa · NPU · Torx · ExecuTorch · PyTorch · Gallium · NIR · Ethos-U · Etnaviv · Rocket · 边缘AI · 开源驱动 · 译文 |
 | 2026-10-13 | [npm 拿「名字」而不是「ID」验证发布者：SlugFest 让 1500 个包的发布权可以被继承](https://freelamp.com/articles/2026-10-13_npm-trusted-publishing-slugfest/) | npm · 供应链安全 · Trusted Publishing · OIDC · 开源治理 · AI代理 · 依赖管理 · provenance · 译文 |
