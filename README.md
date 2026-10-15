@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-15 | [无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数](https://freelamp.com/articles/2026-10-15_headless-wechat-channels-automation/) | 无头浏览器 · Chromium · CDP · wujie · shadow DOM · Vue · 微前端 · Ozone · 微信视频号 · 扫码登录 · 浏览器自动化 · 故障排查 · 运维 · 原创 |
 | 2026-10-15 | [同一周里，四个开源项目对 AI 贡献给出了四种答案：分歧不在技术，而在「声明」到底有什么用](https://freelamp.com/articles/2026-10-15_open-source-ai-contribution-policies-compared/) | GCC · Linux内核 · Debian · Flathub · LLVM · AI治理 · 开源治理 · Assisted-by · DCO · 译文 |
 | 2026-10-15 | [KDE 选在自己 30 岁生日当天退役 X11：这不是告别，而是一次刻意的对齐](https://freelamp.com/articles/2026-10-15_kde-plasma-6-8-x11-retirement/) | KDE · Plasma · Wayland · X11 · 桌面环境 · 无障碍 · Union · HDR · 译文 |
 | 2026-10-15 | [GNU Boot 加入 FSF 财政赞助：这一步解决的是「谁替你收钱」，但没解决「我的笔记本能不能用」](https://freelamp.com/articles/2026-10-15_gnu-boot-fsf-fiscal-sponsorship/) | GNU Boot · FSF · Libreboot · coreboot · 固件 · 自由软件 · 财政赞助 · 可复现构建 · 译文 |

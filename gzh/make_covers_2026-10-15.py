@@ -65,6 +65,12 @@ CFG = [
          l2="但大版本和补丁是两条线",
          sub="拿不到 Android 17，不等于停止收安全补丁",
          bar="10 款机型排到 2027 年 1 月 · CMF Phone 1 八月仍在收补丁"),
+    # 浏览器自动化复盘：用终端蓝强调（技术/排障语义）
+    dict(slug="2026-10-15_headless-wechat-channels-automation", accent=(88, 166, 255),
+         l1="无头浏览器自动化",
+         l2="真凶是一个屏幕参数",
+         sub="二维码「加载失败」不是跨域，是 iframe 落在虚拟屏幕外",
+         bar="screen 800×600 < window 1400×1100 · wujie 微前端 · 三张白扫的码"),
 ]
 
 
