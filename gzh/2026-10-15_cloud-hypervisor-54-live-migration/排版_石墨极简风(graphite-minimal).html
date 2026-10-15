@@ -1,0 +1,280 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">以前，从同一个快照恢复的所有 VM 会以相同的随机数生成器状态启动，并产生相同的 /dev/urandom 输出，直到有什么东西重新播种它。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— Cloud Hypervisor v54.0 release notes</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Cloud Hypervisor 54 于 2026 年 10 月 14 日发布</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">一个用 Rust 写的虚拟机监视器（VMM）</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">最初是 Intel 的开源项目，后来演变成多厂商参与的 Linux 基金会项目。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这个版本里最重要的一项改动不是新功能，而是一个兼容性承诺</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">从现在起，热迁移保证至少支持从之前两个大版本迁入（n-2）。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而我认为这段话的分量比它看起来重得多，因为它把一句本来只能靠信任的承诺，变成了一条可以依赖的工程约束。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">为什么 n-2 承诺最有价值</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">VFIO 设备热迁移</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">那个最严重的修复</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE PROMISE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">为什么「n-2 承诺」是这一版最有价值的改动</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">热迁移（live migration）指的是把一台正在运行的虚拟机从一台宿主机搬到另一台，而服务不中断。它在实践中通常被用来做：宿主机维护</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">要给物理机打内核补丁、换硬件、做固件升级，但上面的 VM 不能停</span></strong><span leaf="">）、</span><strong style="color:#27272A;"><span leaf="">负载均衡</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">把热的 VM 挪到更空闲的机器上</span></strong><span leaf="">）、</span><strong style="color:#27272A;"><span leaf="">故障规避</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">在硬件出现预警信号时提前搬走</span></strong><span leaf="">）、</span><strong style="color:#27272A;"><span leaf="">集群升级</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">滚动升级整个虚拟化平台</span></strong><span leaf="">）。 </span><strong style="color:#27272A;"><span leaf="">而这里有一个绕不开的问题：热迁移的双方是两台宿主机上的同一个 VMM，但它们可能跑着不同的版本。在滚动升级的过程中，你的集群里一定会同时存在新版本和旧版本——除非你接受停机，而这正是热迁移存在的意义。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">所以「能从哪里迁到哪里」这个问题，直接决定了升级路径能不能走通。而在这个版本之前，答案是不确定的：迁移协议的版本是一个需要关心的事情，而两个版本能不能互通是一个需要试、或者需要查资料的问题。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">现在 Cloud Hypervisor 给了三条明确的规则</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 保证支持 n-2</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">v54.0 接受来自 v52.0 和 v53.0 的迁移</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">② 推荐增量升级</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">跨越多版本「也许能工作」，但强烈建议 v54 → v56 → v58 这样走</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">③ 新功能不影响旧 VM</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">「新功能的添加方式保证旧版本的 VM 继续可用，因此只有新创建的 VM 才能使用新功能」</span></strong><span leaf="">）。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而第三条是让前两条成立的关键。因为兼容性承诺最容易在「新功能需要改协议」时被打破，而 Cloud Hypervisor 给出的解法是：新功能只对新创建的 VM 生效。也就是说，一个从 v53 迁过来的 VM 在 v54 上运行时，它的行为仍然是 v53 的样子——它的「功能集」是在创建时确定的，迁移不会给它加上新能力。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这个做法有一个明确的代价：一个长期运行的 VM 永远不会获得新功能，除非重建它。但它换来的是一个干净得多的不变量：迁移的语义不依赖于目标版本支持什么，只依赖于源 VM 是什么。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而「迁移协议版本现在是一个内部细节」这一句，我认为是整段里最漂亮的一句。因为它意味着：用户不再需要知道协议版本这回事。以前运维人员需要回答的问题「我的源和目标协议版本匹配吗」，现在被替换成了「我的版本差距在两个以内吗」——后者是一个可以直接从版本号回答的问题，不需要查任何文档。这是一个把「内部实现细节」和「运维可见的契约」分开的做法。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">顺带说一句我认为重要的诚实表述</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「迁移回旧版本在官方上是不受支持的。它也许能工作，取决于 VMM 和 VM 的配置，但没有保证。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这句话是必要的，因为它划清了「n-2」这个承诺的边界：它是单向的（旧→新），不是双向的。而明确写出「不支持回迁」，比含糊地说「通常可以」要好得多——因为回迁在实际运维里恰恰是最容易被当作逃生方案来用的东西，而如果它没有保证，运维人员必须提前知道这一点。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">VFIO</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">VFIO 设备热迁移：把最难搬的东西搬走了</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二个重要改动是 VFIO 设备的热迁移</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「带有可迁移 VFIO 设备的 VM，例如绑定到 mlx5_vfio_pci 的 ConnectX VF，现在可以做热迁移了。设备状态与 guest 一起被传输，而设备写入的内存在迁移期间被跟踪。这要求 --platform iommufd=on 和一个支持迁移的宿主驱动。在目标端，预打开的 VFIO 设备和 iommufd 文件描述符可以通过 receive-migration 与 restore 的新的 vfio_fds 和 iommufd_fd 选项传入。虚拟 IOMMU 后面的 VFIO 设备目前还不能迁移。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这里的技术难点值得解释一句：直通（passthrough）设备的迁移一直是热迁移里最难的部分，因为设备的状态不只存在于软件里，也存在于硬件寄存器里，而且设备可能在迁移过程中直接向 guest 内存做 DMA 写入。而 Cloud Hypervisor 的做法是「设备状态与 guest 一起被传输，而设备写入的内存在迁移期间被跟踪」——也就是需要一边搬运内存、一边追踪硬件往哪里写了东西。而它要求宿主驱动本身支持迁移，这意味着这件事不是 VMM 单方面能做的，需要网卡驱动配合。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而那句「虚拟 IOMMU 后面的 VFIO 设备目前还不能迁移」的限定很重要，因为它说明了这个能力的适用面：能迁的是那些「设备自身的迁移机制足够好」的设备，而不是「所有直通设备」。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">迁移取消：处理「不收敛」这个麻烦情况</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这个功能值得单独讲，因为它处理的是热迁移里最麻烦的一类情况：不收敛的迁移。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">热迁移有一个众所周知的困难：如果 guest 的内存修改速度超过了迁移复制的速度，迁移就永远追不上。这时你会陷入一个状态：迁移在进行、服务性能在下降、但它不知道什么时候能结束。而在此之前，可选的动作很少。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而现在有了取消能力</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">进行中的热迁移可以通过新的 vm.cancel-migration API 端点或 ch-remote cancel-migration 命令取消。这让管理软件能够中止一个「不收敛」的迁移、目标端已不再是最佳选择的迁移，或给网络带来太大负载的迁移。VM 继续在源端运行，并发出 vm.migration-cancelled 事件。失败或取消后，如果源 VM 尚未移动到目标端，Cloud Hypervisor 会尝试把它恢复到迁移前状态。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「VM 继续在源端运行」意味着取消不会导致服务中断，只是回到原点。而「会尝试把它恢复到迁移前状态」这一句，说明他们考虑了「取消时已经搬了一部分」这个中间状态。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">另外两项改进也值得肯定</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「事件监视器（--event-monitor）现在被完整地文档化了，包括格式和所有事件。目标是保持事件稳定，让管理软件可以依赖它们。新的 vmm.started 事件表示 VMM 已准备好服务 API 请求。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「目标是保持事件稳定」这一条的言外之意是：他们意识到这些事件现在是一个公共契约，而不是内部调试输出。而 vmm.started 这个事件解决的是一个真实的竞态：管理软件需要知道什么时候可以开始发 API 请求。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE FIX</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">那个容易被跳过但后果最严重的修复</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">在这些显眼的功能之外，我认为这个版本里有一个修复值得单独拿出来讲，因为它的后果比它的名字严重</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「在 x86_64 和 AArch64 上，VM 现在有了一个 VM Generation ID 设备，它的值在每次 restore 和传入的热迁移时都会变化。以前，从同一个快照恢复的所有 VM 会以相同的随机数生成器状态启动，并产生相同的 /dev/urandom 输出，直到有什么东西重新播种它。用 CONFIG_VMGENID 构建的 guest 内核现在会在恢复后重新播种。该设备始终存在，无需配置。应用如果自己给随机数生成器播种过，则保留那个状态，必须在恢复后自己重新取随机性。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这段话说的是一个真实的、且后果严重的问题：从同一个快照克隆出来的多台 VM，会在一段时间内产生完全相同的随机数。而这意味着任何依赖随机性来保证安全的东西都会失效</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">TLS 的会话密钥、SSH 的会话密钥、临时令牌、加密盐值</span></strong><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">如果多台 VM 用同一份「随机」字节，那么它们生成的密钥就是相同的，攻击者可以从一台 VM 推出另一台的状态。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而问题的形态很有意思：它不是「随机数不够随机」，而是「随机数恢复得太整齐了」。这类问题在虚拟化环境里特别容易发生，因为快照/克隆是这个环境的核心能力——而快照会把 RNG 的状态一起拍进去。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">Cloud Hypervisor 的解法是标准的：引入一个 generation ID 设备，它的值在每次 restore 和传入迁移时变化，而用 CONFIG_VMGENID 构建的 guest 内核会在检测到变化后重新播种。而「该设备始终存在，无需配置」是一个好的默认值设计——因为这类修复如果要求用户显式开启，那么真正需要它的用户往往不会知道要开。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而那句关于应用自身 RNG 的限定也很准确：应用如果自己给随机数生成器播种过，则保留那个状态，必须在恢复后自己重新取随机性。这是在说清楚修复的边界：内核能重新播种内核的 RNG，但没法替应用做决定——如果应用自己维护了一份种子，它得自己处理。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">两个实用的性能改善</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">① 前预取 guest 内存快得多</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「前预取 guest 内存（prefault=on）在大型宿主机上现在快得多。内存区现在会在其宿主 NUMA 节点上并行前预取，这把一台两路宿主机上一个 3 TiB guest 的前预取时间从 51.8 秒降到 7.4 秒。这适用于 VM 引导和快照恢复两者。此外，当宿主 THP 策略为 madvise 时，前预取的内存现在由透明大页支撑。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">51.8 秒到 7.4 秒是一个 7 倍的改善，而这类改动的价值在于它缩短的是「不可用窗口」：对大内存 VM 来说，启动和快照恢复的这段时间是实打实的停机。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">② 快照/恢复的改进</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「对 vCPU 很多的 VM，保存和恢复 vCPU 状态快了 5 到 9 倍」</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">「16 块磁盘的 VM 序列化状态小了约 29%」</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">新增 memory_restore_mode=copyonwrite</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">从同一快照恢复的 VM 共享页缓存</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">新增 preserve_source=on</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">在卸载快照后让源 VM 保持暂停而不是关闭</span></strong><span leaf="">）。**</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这个版本最值得学的不是任何一项功能，而是它处理「兼容性」的方式。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「保证前两个版本可迁移 + 新功能只对新 VM 生效 + 协议版本变成内部细节」这三条组合起来，构成了一套完整的兼容性设计。而它的聪明之处在于：它没有试图做到「任意版本互通」</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">那会极大地限制实现自由</span></strong><span leaf="">），</span><strong style="color:#27272A;"><span leaf="">而是选了一个明确的窗口（n-2），然后用「功能集在创建时确定」这个不变量来保证窗口内的兼容性。我认为这个模式可以被推广到任何有状态的长生命周期系统上：先确定兼容窗口的宽度，再确定「状态何时被固定」，然后把版本协商藏进实现里。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而对比一下另一种常见做法会看得更清楚：很多系统把版本协商暴露给用户（「你需要配置协议版本」），结果是每个运维人员都得知道一个本不该由他们关心的细节，而且一旦配错就要在生产上排错。Cloud Hypervisor 选了把这个问题从用户视野里拿掉，代价是它必须在内部维护 n-2 的兼容逻辑。我认为这个交换是划算的，因为内部逻辑可以写测试、可以回归，而运维人员的配置错误只能靠事故发现。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，VM Generation ID 那个修复，是这个版本里后果最严重的改动，也是最容易被忽略的。它的重要性和它的曝光度完全不成比例：它不会出现在任何功能列表的显眼位置，但它修复的是一个「从同一快照克隆出的多台 VM 产生相同随机数」的问题。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这件事的形态值得记下来，因为它是虚拟化特有的一类风险：快照是一个「让状态可复制」的能力，而随机性恰好是「不应该被复制」的东西。这两个需求在快照这个动作上直接冲突。所以任何依赖快照/克隆的系统都需要回答：哪些状态被复制之后就坏了？</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">随机数生成器的状态是其中之一，而通常不是唯一一个。除此之外常见的还有：唯一的机器标识符、单调递增的序列号、非重复的令牌、以及任何用于「去重」的 ID。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而对用户的可操作推论是：如果你在用快照克隆 VM，那么检查一下克隆之后有没有重新播种随机数、以及有没有重置那些「本应唯一」的标识符。而 Cloud Hypervisor 这个修复的价值在于它把内核侧那部分自动化了，但应用侧那部分仍然需要你自己处理。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">第三，从这一版的改动分布看，项目在同时做三件事，而它们的优先级很清楚</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">可运维性</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">n-2 迁移承诺、迁移取消、事件监视器文档化、balloon 统计</span></strong><span leaf="">）服务的是</span><strong style="color:#27272A;"><span leaf="">把它用在生产环境里的人</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">硬件覆盖</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">ARM SMMUv3、VMDK、Grace GPU 相关修正、AArch64 引导</span></strong><span leaf="">）服务的是</span><strong style="color:#27272A;"><span leaf="">把它跑在新平台和混合平台上的人</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">正确性</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">VM Generation ID、SEV-SNP 内存、HyperTransport 范围、PCI 段</span></strong><span leaf="">）服务的是</span><strong style="color:#27272A;"><span leaf="">所有人的安全底线</span></strong><span leaf="">。 </span><strong style="color:#27272A;"><span leaf="">而第三类是最不容易被看见、但最不应该被跳过的。VM Generation ID 和 HyperTransport 内存范围这两条，都属于「平时没感觉，一旦命中就是生产事故」的类型——前者导致多处随机数相同，后者导致内存超过 1011 GiB 的 guest VFIO DMA 映射失败。这两个问题都有一个共同特点：它们在测试环境里不会出现，因为测试环境的 VM 不够大、也不会从同一快照克隆很多台。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">所以如果你在评估这个版本，我的建议是：不要只看功能列表，去看这些「修正」条目，因为那些才是在你的规模上会咬你的东西。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">最后补一个我认为很实用的安全设计细节，来自 VMDK 支持那一条</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「因为描述符文件通过路径引用其他文件，VMDK 镜像只在 backing_files=on 把镜像标记为可信时才被打开，且相对 extent 路径被限制在描述符所在目录内。只支持同步 I/O。配合 Landlock 时，extent 路径必须通过 --landlock-rules 被允许。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这是一个正确的默认值取向：默认不信任，需要时显式开启，并且开启后仍然做路径约束。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而同一版里还有几项针对 ARM 服务器用户的改动值得一提</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">实验性 ARM SMMUv3 仿真</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">在 AArch64 上，直通设备现在可以被放到一个仿真的 ARM SMMUv3 后面。与 virtio-iommu 不同，guest 使用它自带的 arm-smmu-v3 驱动，而翻译通过 iommufd 卸载到物理 SMMUv3。这使得分配那些自己就使用 IOMMU 的设备成为可能，例如 NVIDIA Grace-Blackwell GPU</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">以及 AArch64 引导的改进</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">支持固件辅助的直接内核引导、通过 ACPI 使用 Cloud Hypervisor 提供的 EFI 表、以及新的 ACPI Time and Alarm Device 提供 RTC</span></strong><span leaf="">）。 </span><strong style="color:#27272A;"><span leaf="">「让 NVIDIA Grace-Blackwell GPU 可以被分配」这一条值得单独指出，因为 Grace-Blackwell 是那种「自己就用 IOMMU」的设备，而在此之前 virtio-iommu 方案对这类设备不适用。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">版本</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Cloud Hypervisor 54**（**v54.0 发布于 2026-10-14 09:44 UTC**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">项目定位</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**用 Rust 写的虚拟机监视器（VMM）**，**最初是 Intel 开源项目，后演变为多厂商的 Linux 基金会项目**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**热迁移兼容性承诺**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**保证接受来自之前两个版本的热迁移（「n-2」）**；**例如 v54.0 接受 v52.0 和 v53.0**；**强烈建议增量升级（v54 → v56 → v58）**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**兼容性的关键机制**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**新功能的添加方式保证旧版本的 VM 继续可用，因此只有新创建的 VM 才能使用新功能**；**迁移协议版本现在是一个内部细节**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ 承诺的边界</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**迁移回旧版本在官方上不受支持**（**也许能工作，但没有保证**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**VFIO 设备热迁移**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**可迁移 VFIO 设备（如绑定到 mlx5_vfio_pci 的 ConnectX VF）现在可以热迁移**；**设备状态与 guest 一起传输，设备写入的内存在迁移期间被跟踪**；**要求 --platform iommufd=on 和支持迁移的宿主驱动**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ VFIO 的限制</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**虚拟 IOMMU 后面的 VFIO 设备目前还不能迁移**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**迁移取消**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**新 API vm.cancel-migration 与命令 ch-remote cancel-migration**；**VM 继续在源端运行，并发出 vm.migration-cancelled 事件**；**失败或取消后若源 VM 尚未移动，会尝试恢复到迁移前状态**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**事件监视器**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**--event-monitor 现在被完整文档化（含格式与所有事件）**；**目标是保持事件稳定，让管理软件可依赖**；**新增 vmm.started**（**VMM 已准备好服务 API 请求**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**实验性 ARM SMMUv3 仿真**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**AArch64 上直通设备可放到仿真的 ARM SMMUv3 后面**（--device ...,iommu=smmuv3）；**guest 用自带的 arm-smmu-v3 驱动，翻译通过 iommufd 卸载到物理 SMMUv3**；**使分配「自己就使用 IOMMU」的设备成为可能，例如 NVIDIA Grace-Blackwell GPU**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ SMMUv3 的限制</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**需要 KVM、--platform iommufd=on、支持嵌套翻译的宿主内核**；**不支持热插拔、快照/恢复、热迁移**；**不能与 iommu=virtio 混用**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**flat VMDK 支持**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**--disk image_type=vmdk**；**只在 backing_files=on 把镜像标记为可信时才打开**，**相对 extent 路径被限制在描述符目录内**；**只支持同步 I/O**；**配合 Landlock 时须通过 --landlock-rules 允许**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**balloon 统计**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**通过 vm.balloon-stats API、ch-remote balloon-stats、D-Bus API 查询**；**需 guest 驱动支持**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**更快的内存前预取**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**内存区在宿主 NUMA 节点上并行前预取**：**两路宿主机上 3 TiB guest 的前预取从 51.8 秒降到 7.4 秒**；**宿主 THP 策略为 madvise 时由透明大页支撑**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**AArch64 引导改进**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**支持固件辅助的直接内核引导**（**通过 fw_cfg 传内核/命令行/initramfs**）；**直接内核引导也可用 ACPI**（**内核命令行加 acpi=on**），**可在无固件时做 PCI 热插拔**；**新的 ACPI Time and Alarm Device 提供 RTC**；**AArch64 guest 现在收到含 --platform 值的 SMBIOS 表**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**⚠️ VM Generation ID（重要修复）**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**x86_64 与 AArch64 上 VM 现在有 VM Generation ID 设备，其值在每次 restore 和传入热迁移时变化**；**此前从同一快照恢复的所有 VM 会以相同随机数生成器状态启动，产生相同的 /dev/urandom 输出**；**用 CONFIG_VMGENID 构建的 guest 内核现在会在恢复后重新播种**；**该设备始终存在，无需配置**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**⚠️ VM Generation ID 的边界**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**应用如果自己给随机数生成器播种过，则保留该状态，必须在恢复后自己重新取随机性**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**SEV-SNP 增强**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**带 VFIO 设备的 SEV-SNP VM 使用的宿主内存约减半**；**内存与 CPU 热插拔、大页、虚拟 IOMMU 现在对 SEV-SNP guest 被拒绝**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**快照/恢复改进**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**多 vCPU 的 VM 保存与恢复 vCPU 状态快 5 到 9 倍**；**16 块磁盘的 VM 序列化状态小约 29%**；**新增 memory_restore_mode=copyonwrite**；**新增 preserve_source=on**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**其他平台修正**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**AMD HyperTransport 范围（1012 GiB 到 1 TiB）现被保留在 guest 内存布局里**，**使内存超过 1011 GiB 的 guest 的 VFIO DMA 映射不再失败**；**PCI 主机桥现在只在 PCI 段 0 上创建**（**NVIDIA Grace GPU 需要**）；**带直通 GPU 的 VM 启动快约 400 毫秒／每 GPU**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">**其他新增**</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">**--console socket=&lt;path&gt;**（**virtio-console over Unix socket**）；**--disk 新增 guest_block_size**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">Cloud Hypervisor 54 最值得学的是它处理兼容性的方式：选一个明确的窗口（n-2），用「功能集在创建时确定」这个不变量保证窗口内的兼容，然后把版本协商藏进实现里。这套模式可以推广到任何有状态的长生命周期系统。而这一版里后果最严重的改动其实是那个曝光度最低的：VM Generation ID 修复了「从同一快照克隆的多台 VM 产生相同随机数」这个问题。它是虚拟化特有的一类风险——快照让状态可复制，而随机性恰好是最不该被复制的东西。所以如果你在用快照克隆 VM，值得检查一下克隆后有没有重新播种随机数、以及有没有重置那些「本应唯一」的标识符。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Asterinas 0.19：用 Rust 重构内核的另一种思路，是「不减少地址空间，只减少 unsafe」</span><br>
+        <span leaf="">· Intel 把 SGX 收起来，转向 TDX：这是一个更聪明的选择，但代价说清楚了吗</span><br>
+        <span leaf="">· 机密计算的四种模式，以及「证明」为什么不能代替「承诺」</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
