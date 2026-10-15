@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数 — FreeLAMP.com</title>
-  <meta name="description" content="一次无头浏览器自动化扫码登录的深度复盘。问题：在常驻 headless Chromium 里自动登录微信视频号并发布视频，二维码永远显示「加载失败，点击重试」，用户反复扫码无法完成登录。方法：bsk(CDP) 驱动 + shadow DOM 遍历 + Vue 实例读取 + 截图像素统计验证。关键发现：① 真因是 --o">
-  <meta name="keywords" content="浏览器自动化, 无头浏览器, headless Chromium, CDP, BrowserSkill, 微信视频号, 扫码登录, wujie, shadow DOM, Vue, 微前端, Ozone, 故障排查, 运维, 原创">
+  <meta name="description" content="一次基于 BrowserSkill（bsk 0.3.x）的无头浏览器自动化扫码登录深度复盘。工具交代：bsk 是让 AI agent 驱动「你已登录的浏览器」的 CLI（daemon + 浏览器扩展 + CDP），与 Playwright/Selenium 自起干净实例不同，复用登录态且不接触凭据；核心概念：sessi">
+  <meta name="keywords" content="BrowserSkill, bsk, 浏览器自动化, 无头浏览器, headless Chromium, CDP, Chrome 扩展, Agent Window, 微信视频号, 扫码登录, wujie, shadow DOM, Vue, 微前端, Ozone, 故障排查, 运维, 原创">
   <meta name="author" content="FreeLAMP.com">
   <meta name="date" content="2026-10-15">
   <link rel="canonical" href="https://freelamp.com/articles/2026-10-15_headless-wechat-channels-automation/">
@@ -15,18 +15,21 @@
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数">
-  <meta property="og:description" content="一次无头浏览器自动化扫码登录的深度复盘。问题：在常驻 headless Chromium 里自动登录微信视频号并发布视频，二维码永远显示「加载失败，点击重试」，用户反复扫码无法完成登录。方法：bsk(CDP) 驱动 + shadow DOM 遍历 + Vue 实例读取 + 截图像素统计验证。关键发现：① 真因是 --o">
+  <meta property="og:description" content="一次基于 BrowserSkill（bsk 0.3.x）的无头浏览器自动化扫码登录深度复盘。工具交代：bsk 是让 AI agent 驱动「你已登录的浏览器」的 CLI（daemon + 浏览器扩展 + CDP），与 Playwright/Selenium 自起干净实例不同，复用登录态且不接触凭据；核心概念：sessi">
   <meta property="og:url" content="https://freelamp.com/articles/2026-10-15_headless-wechat-channels-automation/">
   <meta property="og:site_name" content="FreeLAMP.com">
   <meta property="og:locale" content="zh_CN">
   <meta property="article:published_time" content="2026-10-15">
   <meta property="article:author" content="FreeLAMP.com">
-  <meta property="article:section" content="浏览器自动化">
+  <meta property="article:section" content="BrowserSkill">
+  <meta property="article:tag" content="BrowserSkill">
+  <meta property="article:tag" content="bsk">
   <meta property="article:tag" content="浏览器自动化">
   <meta property="article:tag" content="无头浏览器">
   <meta property="article:tag" content="headless Chromium">
   <meta property="article:tag" content="CDP">
-  <meta property="article:tag" content="BrowserSkill">
+  <meta property="article:tag" content="Chrome 扩展">
+  <meta property="article:tag" content="Agent Window">
   <meta property="article:tag" content="微信视频号">
   <meta property="article:tag" content="扫码登录">
   <meta property="article:tag" content="wujie">
@@ -41,7 +44,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数">
-  <meta name="twitter:description" content="一次无头浏览器自动化扫码登录的深度复盘。问题：在常驻 headless Chromium 里自动登录微信视频号并发布视频，二维码永远显示「加载失败，点击重试」，用户反复扫码无法完成登录。方法：bsk(CDP) 驱动 + shadow DOM 遍历 + Vue 实例读取 + 截图像素统计验证。关键发现：① 真因是 --o">
+  <meta name="twitter:description" content="一次基于 BrowserSkill（bsk 0.3.x）的无头浏览器自动化扫码登录深度复盘。工具交代：bsk 是让 AI agent 驱动「你已登录的浏览器」的 CLI（daemon + 浏览器扩展 + CDP），与 Playwright/Selenium 自起干净实例不同，复用登录态且不接触凭据；核心概念：sessi">
   <meta name="twitter:site" content="@LeisureLinux">
   <meta name="twitter:creator" content="@LeisureLinux">
 
@@ -51,7 +54,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数",
-  "description": "在无头 Chromium 里做微信视频号的扫码登录与自动发布，踩了一串坑后的完整复盘。核心发现：① 二维码永远显示「加载失败」，真因不是跨域也不是无头，而是 --ozone-override-screen-size(800,600) 比 --window-size(1400,1100) 窄，二维码 iframe 落在虚拟屏幕外从不被绘制——对比 screen.width 与 window.innerWidth 一行定位；② 视频号后台是 wujie 微前端，关键数据（objectId 即图文卡片要的 data-id、分享短链）不在 DOM 里，在 Vue 实例的 __vue__.$props.post 上，短链还要手动触发组件异步方法才能取到；③ 二维码绑着轮询会话，三个操作会让用户的码白扫——另开标签页取码（造孤儿，登录永远完不成）、为查状态而导航（每次重载都换新码，实测把用户正在扫的码刷掉三次）、上来就点「点击重试」（把已渲染好的元素重置回加载中）；④ 发布环节：SPA 入口要点击而不能直接导航、首次声明原创会再弹说明框把页面 occluded 导致「发表」按钮消失、observe 的 ref 会因重渲染失效、保存草稿全程静默无提示；⑤ 表单校验读的是框架内部状态而非 DOM value，填值必须逐字符发真实按键。另附三个非浏览器坑：cron 的 PATH 残缺导致静默降级、共享凭据多机各自换 token 会互踢（改用 stable_token）、通知成功与否要看返回值而非日志（因此误判重复补发）。最终沉淀 11 条原则，以及一条最重要的：在别人正依赖某个状态时，不要去动那个状态——排查用户操作失败时，先怀疑自己的排查动作。",
+  "description": "用 BrowserSkill（bsk 0.3.x）在无头 Chromium 里做微信视频号的扫码登录与自动发布，踩了一串坑后的完整复盘。先交代 bsk 是什么、和 Playwright/Selenium 的选型差异（驱动你已登录的浏览器而不是另起一个干净实例）、核心概念（daemon/session/Agent Window/observe/@eN 引用/debug 抓包）与常用命令，再讲坑。核心发现：① 二维码永远显示「加载失败」，真因不是跨域也不是无头，而是 --ozone-override-screen-size(800,600) 比 --window-size(1400,1100) 窄，二维码 iframe 落在虚拟屏幕外从不被绘制——对比 screen.width 与 window.innerWidth 一行定位；② 视频号后台是 wujie 微前端，关键数据（objectId 即图文卡片要的 data-id、分享短链）不在 DOM 里，在 Vue 实例的 __vue__.$props.post 上，短链还要手动触发组件异步方法才能取到；③ 二维码绑着轮询会话，三个操作会让用户的码白扫——另开标签页取码（造孤儿，登录永远完不成）、为查状态而导航（每次重载都换新码，实测把用户正在扫的码刷掉三次）、上来就点「点击重试」（把已渲染好的元素重置回加载中）；④ 用 bsk 的三条硬规矩：observe 只列可见元素（occluded by L1 这句提示是关键线索）、@eN 引用会随重渲染失效（观察→立即操作→失败重观察）、navigate 是写操作不是读操作；另有一条隐性优点：session 串行 = 天然互斥；⑤ 发布环节：SPA 入口要点击而不能直接导航、首次声明原创会再弹说明框把页面 occluded 导致「发表」按钮消失、observe 的 ref 会因重渲染失效、保存草稿全程静默无提示；⑥ 表单校验读的是框架内部状态而非 DOM value，填值必须逐字符发真实按键。另附三个非浏览器坑：cron 的 PATH 残缺导致静默降级、共享凭据多机各自换 token 会互踢（改用 stable_token）、通知成功与否要看返回值而非日志（因此误判重复补发）。最终沉淀 11 条原则，以及一条最重要的：在别人正依赖某个状态时，不要去动那个状态——排查用户操作失败时，先怀疑自己的排查动作。",
   "datePublished": "2026-10-15",
   "dateModified": "2026-10-15",
   "author": {
@@ -71,7 +74,7 @@
   "license": "https://creativecommons.org/licenses/by-sa/4.0/",
   "proficiencyLevel": "Expert",
   "inLanguage": "zh-CN",
-  "keywords": "浏览器自动化, 无头浏览器, headless Chromium, CDP, BrowserSkill, 微信视频号, 扫码登录, wujie, shadow DOM, Vue, 微前端, Ozone, 故障排查, 运维, 原创"
+  "keywords": "BrowserSkill, bsk, 浏览器自动化, 无头浏览器, headless Chromium, CDP, Chrome 扩展, Agent Window, 微信视频号, 扫码登录, wujie, shadow DOM, Vue, 微前端, Ozone, 故障排查, 运维, 原创"
 }
   </script>
 
@@ -282,7 +285,7 @@
       <div class="post-header">
         <div class="post-date" itemprop="datePublished" content="2026-10-15">2026-10-15</div>
         <h1 class="post-title" itemprop="headline">无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数</h1>
-        <div class="post-tags"><a itemprop="keywords" href="/tags/%E6%B5%8F%E8%A7%88%E5%99%A8%E8%87%AA%E5%8A%A8%E5%8C%96/">浏览器自动化</a><a itemprop="keywords" href="/tags/%E6%97%A0%E5%A4%B4%E6%B5%8F%E8%A7%88%E5%99%A8/">无头浏览器</a><a itemprop="keywords" href="/tags/headless%20Chromium/">headless Chromium</a><a itemprop="keywords" href="/tags/CDP/">CDP</a><a itemprop="keywords" href="/tags/BrowserSkill/">BrowserSkill</a><a itemprop="keywords" href="/tags/%E5%BE%AE%E4%BF%A1%E8%A7%86%E9%A2%91%E5%8F%B7/">微信视频号</a><a itemprop="keywords" href="/tags/%E6%89%AB%E7%A0%81%E7%99%BB%E5%BD%95/">扫码登录</a><a itemprop="keywords" href="/tags/wujie/">wujie</a><a itemprop="keywords" href="/tags/shadow%20DOM/">shadow DOM</a><a itemprop="keywords" href="/tags/Vue/">Vue</a><a itemprop="keywords" href="/tags/%E5%BE%AE%E5%89%8D%E7%AB%AF/">微前端</a><a itemprop="keywords" href="/tags/Ozone/">Ozone</a><a itemprop="keywords" href="/tags/%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5/">故障排查</a><a itemprop="keywords" href="/tags/%E8%BF%90%E7%BB%B4/">运维</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/BrowserSkill/">BrowserSkill</a><a itemprop="keywords" href="/tags/bsk/">bsk</a><a itemprop="keywords" href="/tags/%E6%B5%8F%E8%A7%88%E5%99%A8%E8%87%AA%E5%8A%A8%E5%8C%96/">浏览器自动化</a><a itemprop="keywords" href="/tags/%E6%97%A0%E5%A4%B4%E6%B5%8F%E8%A7%88%E5%99%A8/">无头浏览器</a><a itemprop="keywords" href="/tags/headless%20Chromium/">headless Chromium</a><a itemprop="keywords" href="/tags/CDP/">CDP</a><a itemprop="keywords" href="/tags/Chrome%20%E6%89%A9%E5%B1%95/">Chrome 扩展</a><a itemprop="keywords" href="/tags/Agent%20Window/">Agent Window</a><a itemprop="keywords" href="/tags/%E5%BE%AE%E4%BF%A1%E8%A7%86%E9%A2%91%E5%8F%B7/">微信视频号</a><a itemprop="keywords" href="/tags/%E6%89%AB%E7%A0%81%E7%99%BB%E5%BD%95/">扫码登录</a><a itemprop="keywords" href="/tags/wujie/">wujie</a><a itemprop="keywords" href="/tags/shadow%20DOM/">shadow DOM</a><a itemprop="keywords" href="/tags/Vue/">Vue</a><a itemprop="keywords" href="/tags/%E5%BE%AE%E5%89%8D%E7%AB%AF/">微前端</a><a itemprop="keywords" href="/tags/Ozone/">Ozone</a><a itemprop="keywords" href="/tags/%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5/">故障排查</a><a itemprop="keywords" href="/tags/%E8%BF%90%E7%BB%B4/">运维</a><a itemprop="keywords" href="/tags/%E5%8E%9F%E5%88%9B/">原创</a></div>
         <meta itemprop="author" content="FreeLAMP.com">
         <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
       </div>
@@ -308,11 +311,77 @@
 <p><strong>落在虚拟屏幕外的元素，永远不会被绘制。</strong> 页面于是显示"加载失败，点击重试"，而你把同一个 URL 丢进独立标签页打开，它一切正常——因为那里它落在屏幕内。</p>
 <p>我为此排查了很久，期间还亲手把用户手里正在扫的三张二维码刷掉。下面把两个环节（<strong>扫码登录</strong>、<strong>自动发布</strong>）踩过的坑逐个讲清楚。</p>
 <p>---</p>
-<h2>一、先说结论：这次要自动化的两件事</h2>
+<h2>零、先交代工具：bsk（browser-skill）</h2>
+<p>这篇文章里的命令全部来自 <strong>bsk</strong>——一个叫 <strong>browser-skill</strong>、专门让 AI agent 驱动浏览器的 CLI。</p>
+<pre><code class="bash">$ bsk --version
+bsk 0.3.3
+</code></pre>
+<blockquote>下面所有命令与行为均基于 <strong>0.3.x</strong>（写作时本机 0.3.3，实际跑自动化那台机器是 0.3.2）。</blockquote>
+<h3>它和 Playwright / Selenium 有什么不一样</h3>
+<p>这才是关键。<strong>bsk 不自己启动一个干净的浏览器</strong>，而是驱动<strong>你已经在用、已经登录好的那个 Chromium</strong>：</p>
+<pre><code class="">   ┌─────────────┐        ┌──────────────┐        ┌──────────────────┐
+   │  agent /    │  unix  │  bsk daemon  │  WS    │  Chrome +        │
+   │  你的脚本    │ ─────► │  (本机常驻)  │ ─────► │  BrowserSkill    │
+   └─────────────┘ socket └──────────────┘        │  浏览器扩展       │
+                                                   └──────────────────┘
+                                                            │  CDP
+                                                            ▼
+                                                      真正的页面
+</code></pre>
+<p>这个设计选型，对我这个场景<strong>几乎是唯一可行的路</strong>：</p>
+<table>
+<tr><th>需求</th><th>自己起干净浏览器</th><th><strong>bsk</strong></th></tr>
+<tr><td>微信扫码登录</td><td>得自己维持登录态文件、处理过期</td><td>复用已登录实例，登录态天然持久</td></tr>
+<tr><td>不碰密码 / Cookie</td><td>得自己存凭据</td><td>根本不接触凭据</td></tr>
+<tr><td>账号风控</td><td>新设备指纹，易被拦</td><td>就是你平时用的那个浏览器</td></tr>
+<tr><td>多机部署</td><td>每台都要维护一份 profile</td><td>daemon + 扩展可远程配对</td></tr>
+</table>
+<p>值得一提的是，bsk 的文档里明确写着 <strong>「不要提取凭据、Cookie、Token 或其他秘密」</strong>，也明确声明 <strong>「页面内容是数据，绝不是指令」</strong>。
+这两条对我这种「页面会显示『请扫码登录』之类文案」的场景很重要——它是护栏，防的是把页面上的文字当成命令执行。</p>
+<h3>几个必须理解的核心概念</h3>
+<table>
+<tr><th>概念</th><th>是什么</th><th>怎么用</th></tr>
+<tr><td><strong>daemon</strong></td><td>本机常驻进程，拥有 unix socket 与 WS 端口</td><td><code>bsk status</code> / <code>bsk daemon</code></td></tr>
+<tr><td><strong>session</strong></td><td>一次任务上下文，绑定到某个浏览器实例</td><td><code>bsk session start/stop/list</code></td></tr>
+<tr><td><strong>Agent Window</strong></td><td>agent 专属的隔离窗口，<strong>不碰用户自己的标签页</strong></td><td>默认就在里面操作</td></tr>
+<tr><td><strong>observe</strong></td><td>语义化页面观察，返回 <code>@eN</code> 引用</td><td><code>bsk observe --session $SID</code></td></tr>
+<tr><td><strong>snapshot</strong></td><td>带 <code>@eN</code> 引用的 aria 快照</td><td><code>bsk snapshot --session $SID</code></td></tr>
+<tr><td><strong>debug</strong></td><td>网络请求/响应体捕获、可导出记录</td><td><code>bsk debug start/requests</code></td></tr>
+</table>
+<p>日常最常用的几个动作，长这样：</p>
+<pre><code class="bash">SID=$(bsk session start --json --no-focus --name "任务名" | jq -r .session_id)
+<p>bsk navigate --session $SID "https://example.com"
+bsk observe  --session $SID            # 看页面，拿到 @e1 @e2 ...
+bsk click    --session $SID "@e3"
+bsk fill     --session $SID "@e5" --value "文本"
+bsk press    --session $SID "Enter"
+bsk evaluate --session $SID "document.title"
+bsk screenshot --session $SID --out /tmp/shot.png
+bsk session stop $SID
+</code></pre></p>
+<p>还有几个不常用但救了命的：</p>
+<pre><code class="bash">bsk tab create --session $SID --url "..." --no-active   # 后台开新标签页
+bsk evaluate --session $SID --tab-id $TID "..."          # 指定标签页求值
+bsk debug start --session $SID && bsk debug requests      # 抓网络请求
+bsk emulate --session $SID --width 780 --height 900       # 改视口
+bsk doctor                                                # 自检 + 修复建议
+</code></pre>
+<h3>为什么我觉得这个工具选对了</h3>
+<p>不吹，就说这次实际用到的：</p>
+<ol>
+<li>1. <strong><code>observe</code> 给的是语义引用而不是选择器</strong>——我全程没写过一个 CSS 选择器去点按钮。对一个会随时改版的后台来说，这是巨大的省心。</li>
+<li>2. <strong><code>evaluate</code> 能拿到真实页面上下文</strong>——<code>document.cookie</code>、<code>screen.width</code>、Vue 实例，都能读。上面那个屏幕尺寸的真凶就是这么找到的。</li>
+<li>3. <strong><code>debug</code> 能抓响应体</strong>——我用它确认了一个反直觉现象：「这个列表页<strong>根本没有</strong>任何携带目标 ID 的网络请求」，从而得出去 Vue 实例里找的结论。没有这个功能，这一步纯靠猜。</li>
+<li>4. <strong><code>--tab-id</code> 支持多标签页定位</strong>——登录页 + 二维码页两个上下文同时存在时，这个参数是刚需。</li>
+<li>5. <strong>session 是串行的</strong>（一条命令没结束，下一条会被拒绝）。这既是限制，也<strong>避免了我自己跟自己踩踏</strong>——在「等用户扫码」这种场景下，串行比并发安全得多。</li>
+</ol>
+当然它也有需要适应的脾气，主要是三条（后面详述）：<code>observe</code> <strong>只列可见元素</strong>、<code>@eN</code> 引用<strong>会随重渲染失效</strong>、<code>navigate</code> 是<strong>写操作</strong>不是读操作。
+<p>---</p>
+<h2>一、这次要自动化的两件事</h2>
 <p>微信视频号<strong>没有开放发布 API</strong>，只能走浏览器自动化。整条链路是：</p>
 <table>
 <tr><th>环节</th><th>手段</th></tr>
-<tr><td>驱动浏览器</td><td>BrowserSkill（bsk）——通过 CDP 驱动一台常驻的 headless Chromium</td></tr>
+<tr><td>驱动浏览器</td><td>BrowserSkill（bsk）——通过 CDP 驱动一台常驻的 headless Chromium（见上一节）</td></tr>
 <tr><td>扫码登录</td><td>把登录页二维码发给管理员，管理员手机扫</td></tr>
 <tr><td>发布视频</td><td>在创作者后台填表、传封面、选合集、声明原创、点发表</td></tr>
 <tr><td>保活</td><td>每 30 分钟检查登录态，掉线自动重推二维码</td></tr>
@@ -362,6 +431,7 @@ v.shortLink;    // → https://weixin.qq.com/sph/XXXXXXXXX
 <p>但<strong>同一个二维码 URL，在独立标签页打开就完全正常</strong>：</p>
 <pre><code class="bash">curl "https://open.weixin.qq.com/connect/qrcode/XXXXXXXX" \
      -o qr.jpg
+<h1>→ 470×470 的真二维码 JPEG，48KB</h1>
 </code></pre>
 <p>我一开始的结论是"跨域 iframe 在无头下渲染不出来"，于是绕道去开新标签页抓图——<strong>结果把用户的码变成了孤儿</strong>（见第四节）。</p>
 <h3>真因</h3>
@@ -516,7 +586,56 @@ except:
 <p>我在日志里 grep 不到"登录成功"，<strong>误判成没发出去，于是补发了一条</strong>——用户收到两条。</p>
 <p>判断"通知发成功没有"要看<strong>发送接口的返回值</strong>（<code>errcode == 0</code>），而不是看日志里有没有那句话。<strong>只发消息不打日志的代码，是给自己挖坑。</strong></p>
 <p>---</p>
-<h2>七、把这次的经验固化成几条原则</h2>
+<h2>七、用 bsk 的三条硬规矩</h2>
+<p>如果只针对 bsk 本身，有三条文档里没明说、但踩过才知道的规矩。</p>
+<h3>规矩一：<code>observe</code> 只列可见元素，看不到的不等于不存在</h3>
+<p>这是全文「发表按钮消失」的根源：元素被弹窗盖住时，<code>observe</code> <strong>不会</strong>返回它——它只列可见可交互的东西。</p>
+<pre><code class="">L1 modal cover=100%
+  heading "原创权益"
+L2 page … occluded by L1 (~148 nodes, not actionable)
+</code></pre>
+<p>注意那行 <strong><code>occluded by L1</code></strong>。bsk 其实<strong>告诉你了</strong>——它明说下层被遮盖、不可操作。
+如果你只看「没找到按钮」就完事，就会错过这行提示。</p>
+<blockquote><strong>实战建议</strong>：把 <code>observe</code> / <code>snapshot</code> 的<strong>原文输出</strong>先打出来看一眼，比在那儿猜选择器快十倍。<br>
+这是我这篇文章里最值钱的一条排查手法。</blockquote>
+<h3>规矩二：<code>@eN</code> 引用是快照，会随重渲染失效</h3>
+<pre><code class="">bsk click @e41
+→ error: observation ref was not found for this tab
+  hint: rerun <code>bsk observe</code> for the current tab and use one of the returned refs
+</code></pre>
+<p>bsk 的报错写得很清楚：<strong>重新 observe 再取一次</strong>。
+所以模式应该是「<strong>观察 → 立即操作 → 失败则重新观察重试</strong>」，而不是「先拿一堆 ref 存着慢慢用」。</p>
+<pre><code class="python">for attempt in range(4):
+    ref = ref_for(obs, "publish")
+    if ref:
+        try:
+            bsk.click(sid, ref)
+            break
+        except BskError:
+            pass                 # ref 失效，重新观察
+    time.sleep(5)
+    obs = bsk.observe(sid, max_tokens=4000)
+</code></pre>
+<h3>规矩三：<code>navigate</code> 是写操作，不是读操作</h3>
+<p>这条是全文最贵的教训。<strong>爬取思维会让人以为去看一眼没事</strong>——但导航会重建页面。</p>
+<p>在扫码登录场景里，代价是用户手里的二维码被刷掉（详见第四节）。</p>
+<p>正确的「读」姿势：</p>
+<pre><code class="bash"># ✗ 写操作：会重建页面
+bsk navigate --session $SID "https://.../platform"
+<h1>✓ 真正的读：不产生导航</h1>
+bsk evaluate --session $SID "document.cookie"
+bsk status
+cat /path/to/state.json
+</code></pre>
+<h3>还有一条隐性优点：session 串行 = 天然互斥</h3>
+<p>bsk 的 session 是串行的，一条命令没结束下一条会被拒：</p>
+<pre><code class="">details: session already has an unfinished command
+</code></pre>
+<p>刚开始我觉得这是限制，后来发现它<strong>帮了我</strong>：在「等用户扫码」这种场景下，
+串行意味着<strong>不会出现两个进程抢同一个页面</strong>。
+我后来就是把「保活循环」和「手动取码」错开跑，才让扫码成功的。</p>
+<p>---</p>
+<h2>八、把这次的经验固化成原则</h2>
 <p>如果只能记住几条：</p>
 <p><strong>关于渲染</strong>
 <ol>
@@ -542,7 +661,7 @@ except:
 <li>11. <strong>通知的成功与否看返回值</strong>，不看日志。</li>
 </ol>
 ---</p>
-<h2>八、最后说一句</h2>
+<h2>九、最后说一句</h2>
 <p>这次排查真正值钱的收获，不是某一行代码，而是<strong>一条被我反复违反的原则</strong>：</p>
 <blockquote><strong>在别人正依赖某个状态的时候，不要去动那个状态。</strong></blockquote>
 用户"第一时间就扫好了"却始终登不上，不是因为扫得不对，也不是腾讯的问题——是因为我在等他扫码的过程中，用"查一下状态"这种看起来无害的动作，<strong>把页面重载了三次，每次都在他不知道的时候换掉了他要扫的码</strong>。
