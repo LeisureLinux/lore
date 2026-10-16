@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-15 | [广告不是图片，是可执行代码：AdFection 用「先验身份、再发载荷」把实时竞价变成了一条零点击投毒通道](https://freelamp.com/articles/2026-10-15_adfection-zero-click-spyware-targeted-ads/) | AdFection · Citizen Lab · 零点击 · 间谍软件 · 恶意广告 · RTB · NOAS · ADINT · 供应链安全 · 译文 |
 | 2026-10-15 | [无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数](https://freelamp.com/articles/2026-10-15_headless-wechat-channels-automation/) | BrowserSkill · bsk · 浏览器自动化 · 无头浏览器 · headless Chromium · CDP · Chrome 扩展 · wujie · shadow DOM · Vue · 微前端 · Ozone · 微信视频号 · 扫码登录 · 故障排查 · 运维 · 原创 |
 | 2026-10-15 | [同一周里，四个开源项目对 AI 贡献给出了四种答案：分歧不在技术，而在「声明」到底有什么用](https://freelamp.com/articles/2026-10-15_open-source-ai-contribution-policies-compared/) | GCC · Linux内核 · Debian · Flathub · LLVM · AI治理 · 开源治理 · Assisted-by · DCO · 译文 |
 | 2026-10-15 | [KDE 选在自己 30 岁生日当天退役 X11：这不是告别，而是一次刻意的对齐](https://freelamp.com/articles/2026-10-15_kde-plasma-6-8-x11-retirement/) | KDE · Plasma · Wayland · X11 · 桌面环境 · 无障碍 · Union · HDR · 译文 |
