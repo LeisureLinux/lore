@@ -1,0 +1,301 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">它能读完上千行 USB 抓包，注意到某个序列在重复、只有一个字节在变，并提出那个字节是什么意思。它能写出验证这个猜测的测试，而且它不会觉得无聊。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— Christian Schaller，Red Hat</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Red Hat 的 Christian Schaller 在博客里记录了一件具体的事</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">他用 Claude Code 给两台硬件写了 Linux 驱动</span></strong><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">一台芯片组换过、没有 Linux 支持的 Plustek 8200i 底片扫描仪</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">以及自己笔记本上出图发暗的 MIPI 摄像头。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这条新闻真正值得记的不是「AI 会写驱动了」，而是他公开的那套方法</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">他没有让 AI 去猜硬件寄存器，而是给它搭了一个可以观察到真实行为的实验台。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">两个项目与那个失败起点</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">hw-harness 四步</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">为什么这套方法让 AI 有用</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE START</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">两个项目，以及那个失败的起点</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">先说清楚他的起点，因为这段说明了 AI 不是一开始就管用。他买扫描仪的原因是私人的</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「我母亲去世后，我最终得到了一大箱老胶片底片，里面有童年家庭旅行的照片等等。所以我决定买一台底片扫描仪，发现 Plustek 8200i 在 Linux 下受支持，就买了它。结果发现扫描仪里的芯片组换成了一个在 Linux 下不再受支持的。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而他自己先尝试过，但失败了</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「我之前用 Claude code 为一些硬件做过 Linux 配置工具，所以我想，也许 Claude 能帮我做出一个能用的 SANE 驱动。但我基本上卡住了，很久都没有进展，甚至基本上放弃了这个项目好几个月。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而转机来自他看到别人的做法</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「然后我在 X 上看到 Tom Crider（也就是 Glorious Eggroll）的一篇帖子，讲他如何用 AI 工具修好了一个鼠标驱动。他基本上描述了自己如何设置，使 AI 智能体完全控制一个 Windows 实例，用来捕获修复驱动所需的数据。所以我把他的推文粘到 Claude 里，让它帮我设置一个 Windows 虚拟机，做 Tom 为我的扫描仪所做的同样的事。我认为能在 Windows 下运行扫描并同时捕获 USB 数据，这个组合起了神奇的作用。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">结果是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「几个小时内我完成了有史以来第一次在 Linux 下成功扫描，当然还有一些质量问题，但百分之百能认出底片上的图像。几天后我就有了一个近乎完美的驱动，包括对红外扫描的支持，正准备发布，结果发现在我从放弃到再次尝试的这段时间里，已经有人向 SANE 提交了支持这台扫描仪的代码……这种事有时候会发生。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为「结果别人已经提交了」这个结尾值得保留，因为它是一个诚实的收尾：这类工作有时候的产出不是「第一个完成」，而是「产出被验证过了一遍」。而从可验证的角度看，这件事提供了一个额外的信息：他独立得出的实现与上游别人提交的实现在功能上重合，这至少说明他通过观察硬件行为得出的结论是可复现的，而不是一套只有他自己的环境才能工作的推测。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而第二个项目是摄像头</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「扫描仪这件事成功之后我想，我能不能用这个来最终修好我笔记本上 MIPI 摄像头支持的最后一些问题。所以我让 claude 复用它之前创建的测试台，尝试通过按需更新内核驱动和 libcamera 来修好笔记本上的 MIPI 摄像头。我早上开始这个工作，到那天结束时，我已经有了内核和 libcamera 两边的补丁，情况大为改善。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">背景是：那台笔记本是联想 ThinkPad X1 Carbon Gen 14 Aura Edition，Intel IPU7 后面是一颗索尼传感器，而出图发暗并伴有其他问题。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE HARNESS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">hw-harness：这套方法到底做了什么</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一节是核心。因为「用 AI 修驱动」这句话本身没有信息量，有价值的是他搭的那套东西。官方把 hw-harness 的用途写成了四步</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">① 录一段参考会话</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">在 KVM 虚拟机里运行厂商的 Windows 驱动，把真实设备透传给 guest</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">② 从虚拟机外面抓</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">在 Linux 宿主上用 usbmon 记录流量。它位于透传层之下，所以 guest 看不到它</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">③ 在 Linux 上做同样的操作</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">用你自己的驱动重复同一操作，并以同样的方式抓下来</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">④ 对比两条 trace</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">两者来自同一台仪器，所以可以直接比较。差异就是你的驱动 bug 清单</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而针对没有总线可以接的设备（比如内置 MIPI 摄像头），方法换成了</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「对于没有总线可接的设备，例如内置 MIPI 摄像头，测试台改用 Windows 侧的检查。也就是说 INF 文件、注册表数据、ACPI 表和设备属性。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而他对这套方法为什么合规的说明，是整篇博客里最重要的一段</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「这个方法应该是没问题的，因为它不依赖复制任何代码，而是观察硬件做了什么，并且只从 Windows 驱动里提取配置数据，所以新驱动里的每一个常量都能追溯到某个被记录下来的东西。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这句话值得慢慢读，因为它同时回答了技术问题和法律问题。技术层面：这套方法不试图理解厂商驱动的实现（那是不可得的，也是授权受限的），而是观察「硬件在做什么」。而「硬件行为」是一个可观测的外部事实，它和「厂商怎么写的代码」是两件事。法律层面：「每一个常量都能追溯到某个被记录下来的东西」这句话，实际上是在说这个驱动的每一个参数都有观察依据，而不是从反编译里抄来的。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而我认为这正好解释了为什么「把真机透传进 Windows 虚拟机」这一步是不能省的。因为如果不这么做，你只能从厂商驱动的行为去猜；而做了这一步之后，你有了一个「参照实现」——它能工作这件事本身，就是关于硬件行为的一份可信文档。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">最精巧的地方：从虚拟机外面抓包</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">为什么这一步关键：如果抓包发生在 guest 里，那么 Windows 驱动就能看到它、甚至可能改变行为。而从宿主侧的 usbmon 抓，位置在透传层之下，所以 guest 完全不知道自己在被观察。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这个细节值得单独指出，因为它体现了「观测必须不改变被观测对象」这条原则。而这条原则在很多领域都成立：在生产系统上做性能分析时，观测工具本身的开销会改变被测系统的行为；在安全分析里，被观察的恶意软件如果检测到分析环境就会改变行为。而 Schaller 的做法给出了一个干净的解：把被观察的东西放在一层抽象之下，然后在抽象之外观察它。这样「观察」和「被观察」在物理上分离了。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">WHY AI WORKS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">为什么这套方法让 AI 真的有用</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一节我分析一下机制，因为「AI 能读上千行抓包」这句话背后有具体的道理。先把人类做这件事的流程拆开，再看 AI 在每一环上的相对优势</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">观察</span></strong><span leaf="">：抓一段 USB 流量，得到成千上万行十六进制 → </span><strong style="color:#27272A;"><span leaf="">AI 无优势</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">抓包本身是机械操作</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">找规律</span></strong><span leaf="">：在噪声里找重复的序列 → </span><strong style="color:#27272A;"><span leaf="">强</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">它可以在上下文里一次性读进大量结构化文本，并在其中定位「只有一个字节在变」这类模式</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">形成假设</span></strong><span leaf="">：猜测「这个字节是亮度」 → </span><strong style="color:#27272A;"><span leaf="">有用</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">它能基于大量既有驱动的知识提出候选解释</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">写测试 + 迭代</span></strong><span leaf="">：改一个值、跑一次、看结果 → </span><strong style="color:#27272A;"><span leaf="">强</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">把假设落成可执行测试是它擅长的，而且它不会因为重复而降低注意力</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">在真机上验证</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">必须由人做</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">决定要造什么</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">目标由人定</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为这张表解释了为什么「AI 写驱动」这个说法既对又不对。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">对的部分：驱动逆向工程的瓶颈确实在「耐心」而不在「智力」</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">Schaller 的原话是「这些在概念上都不难」</span></strong><span leaf="">），</span><strong style="color:#27272A;"><span leaf="">而耐心恰好是 AI 不消耗的东西。不对的部分：如果没有那套 harness，AI 面对的就只是一堆它无法理解的信息。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">也就是说：让它有用不是靠「换个更强的模型」，而是靠「给它一个能观察到真实行为的实验台」。而这一点可以推广：AI 在一个任务上是否有用，很大程度上取决于你能否为它构造一个「有反馈信号的环境」。在驱动这件事里，反馈信号是「两条 trace 的差异」。而 Schaller 真正做的事情，是为一个以前没有快速反馈的任务造出了反馈。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这条新闻的真正内容是「给 AI 造一个能观察现实的接口」，而不是「AI 会写代码」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">如果我们把这件事的要素拆开，会发现 AI 只出现在中间几个环节：它读 trace、提假设、写测试。而让它能读 trace 的前提是有人先搭好了「真机透传 + 宿主侧抓包」这套装置；让它能验证假设的前提是有人定义了「差异在哪里」这个问题。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这个结构与我们此前反复见到的几件事是同一个形状</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Linus 那份用 AI 写的补丁</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">有效的关键是「人验过了」，而且他精确披露了哪部分是人做的</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">Asterinas 的 aster-code-review skill</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">把规范拆成可引用的条目、用从自身历史挖出的基准来度量召回，本质上是给审查这件事造出了可量化的反馈</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">AdFection 那件事里的两段式投放</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">它绕过了「检查内容」的防御，因为防御方检查的不是实际行为</span></strong><span leaf="">）。 </span><strong style="color:#27272A;"><span leaf="">它们的共同点是：AI 或者攻击者能做的事，取决于「环境提供了什么反馈」。所以当我们判断「AI 能不能干这件事」时，更该问的是「能不能为它造出反馈信号」，而不是「模型够不够强」。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">第二，关于「这台扫描仪的驱动后来别人也提交了」这件事，我认为它不削弱这个故事的价值。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">Schaller 自己的表述是「这种事有时候会发生」，语气很平淡。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而他从这件事里真正留下的产物是两个：一个泛化后的 harness 和它的文档，以及一个负片扫描应用（Negative Vibes）。而我认为后者其实很重要，因为他在博客里明确说了：「我问了 Claude 把 harness 做通用并写文档，以便让任何想在自己硬件上尝试的人的路更容易一些。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">另外值得一提的是他对这套方法的来历的说明：「请注意我没有以这个形式在项目里使用 hw-harness，因为那时代码基本上是定制的，所以这个项目是试图把我在做这件事时用的脚本变得更通用、更可分享。」这个顺序值得留意：先解决了一个具体问题，然后才去问「哪些部分是通用的」。而这个顺序在很多工程经验里是通用的——先把它做出来，再把它做对。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，这一版里有一件事需要说清：它不能被读成「AI 可以替代驱动开发者」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">几个理由</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">他有前置条件</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">一台能跑 KVM 和真机透传的机器、一台 Windows 环境、以及他自己此前已经具备的驱动开发知识，他能判断「第一条 trace 和第二条不一致」意味着什么</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">他的产出是补丁，不是上游接受</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">博客说的是「ready to go」和「patches ready」</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">他验证的是自己的一台设备</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">这正是「人类仍然……检查它在真实硬件上能不能用」的实际含义</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">这套方法对某些设备不适用</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">对没有总线可接的设备，信息来源的性质不同</span></strong><span leaf="">）。 </span><strong style="color:#27272A;"><span leaf="">所以我倾向于把这件事定位成「一个降低了特定环节成本的工具」，而不是「驱动开发被自动化了」。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">第四，关于这件事的观察价值。在这批 AI 相关的新闻里，我认为这一条提供的信息和别的不太一样。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">别的几条讨论的是「AI 生成的代码该不该接受」（那四份开源 AI 政策）、或者「AI 写的补丁好不好」（Linus 那份补丁），它们关注的都在代码这一侧。而这一条关注的是一件事的上游：在写代码之前，你得先知道硬件到底怎么工作。而那一步在以前完全没有捷径（Schaller 说「你抓总线流量，盯着十六进制转储，形成假设，然后一个个测试，通常要花几周」）。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">也就是说：它介入的不是「写代码」这个环节，而是「搞清楚要写什么」这个环节。而后者在这个领域一直是真正的瓶颈，因为代码本身不难写，难的是不知道那几百个寄存器各自是什么意思。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">最后补一个经济层面的含义：Linux 硬件支持长期有两个瓶颈，一个是厂商不提供开源驱动（政策问题），另一个是即使有人想自己写，逆向工程的工作量太大（成本问题）。而这件事针对的是第二个。而如果逆向的成本从「几周」降到「几小时加几天」，那么「自己修好它」就变成了一个理性选项——因为有些设备的使用者很少，驱动开发的固定成本对少数用户来说是难以分摊的。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**事件**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Red Hat 的 Christian Schaller 用 Claude Code 为两台硬件写了 Linux 驱动**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**一手来源**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**他的博客：Using Artificial Intelligence to reverse engineer hardware**（**2026-10-15**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**媒体报道**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Phoronix（2026-10-15，Michael Larabel）**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**项目一**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Plustek OpticFilm 8200i 底片扫描仪的 SANE 后端**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**它的问题**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**同名的旧型号用 GL845 且 SANE 已支持，而新款换了 Genesys GL128 控制器（USB 07b3:1825），没有 Linux 支持**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**它支持的能力**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**彩色、灰度、红外、彩色+红外模式**；**300 到 7200 dpi，每通道 8 或 16 位**；**从红外通道做灰尘与划痕去除**；**用于密集底片的曝光倍率**；**打包为 Fedora RPM，每次 push 自动构建**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**项目二**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**联想 ThinkPad X1 Carbon Gen 14 Aura Edition 的 MIPI 摄像头**（**Intel IPU7 后面是索尼传感器**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**成果**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**一天之内拿到内核与 libcamera 两边的补丁**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **方法论名称**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**hw-harness**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **四步流程**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**① 在 KVM 虚拟机里跑厂商 Windows 驱动，真机透传给 guest**；**② 在 Linux 宿主上用 usbmon 抓包（位于透传层之下，guest 看不到）**；**③ 在 Linux 上用自家驱动做同样操作并同样抓包**；**④ 对比两条 trace——差异就是驱动 bug 清单**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**无总线可接的设备**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**改用 Windows 侧检查：INF 文件、注册表数据、ACPI 表、设备属性**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **合规性说明**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「不依赖复制任何代码，而是观察硬件做了什么，并且只从 Windows 驱动里提取配置数据，所以新驱动里的每一个常量都能追溯到某个被记录下来的东西。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**灵感来源**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Tom Crider（Glorious Eggroll）在 X 上关于用 AI 修鼠标驱动的帖子**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **为什么适合 AI**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「那类工作很适合 AI 模型。它能读完上千行 USB 抓包，注意到某个序列在重复、只有一个字节在变，并提出那个字节是什么意思。它能写出验证这个猜测的测试，而且它不会觉得无聊。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**人的职责**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「人类仍然决定要造什么、并检查它在真实硬件上能不能用，但那份苦力活大大缩短了。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **一个诚实的结尾**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**他准备发布时发现，在他放弃的几个月里已经有人向 SANE 提交了支持这台扫描仪的代码**；**上游 SANE 的 genesys 后端也在 2026 年 9 月加入了这台扫描仪的支持**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">**附带产物**</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">**Negative Vibes（负片扫描应用）**；**泛化并文档化的 hw-harness**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这条新闻的真正内容是「给 AI 造一个能观察现实的接口」，而不是「AI 会写代码」。AI 只出现在中间几个环节：读 trace、提假设、写测试。而让它能读 trace 的前提是有人先搭好了那套装置，让它能验证假设的前提是有人定义了「差异在哪里」。所以当我们判断「AI 能不能干这件事」时，更该问的是「能不能为它造出反馈信号」，而不是「模型够不够强」。而这件事真正留下的产物是一套泛化并文档化的方法论——先解决一个具体问题，再问「哪些部分是通用的」，这个顺序本身也值得记住。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Linus 用 Claude Code 改内核：这份 commit message 比那个性能数字更值得读</span><br>
+        <span leaf="">· 同一周里，四个开源项目对 AI 贡献给出了四种答案</span><br>
+        <span leaf="">· NPU 终于能用 PyTorch 跑了：Mesa 接下这件事，靠的是一条被 AI 加速行业忽略的捷径</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>

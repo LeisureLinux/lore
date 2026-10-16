@@ -1,0 +1,373 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">它们都在把「一个大而模糊的信任声明」拆成「多个小而精确、可以分别验证的声明」。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— 本文对 systemd v262 的判断</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">systemd v262 于 2026 年 9 月 22 日发布</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">Lennart Poettering 事后在 Mastodon 上发了 35 条帖子介绍重点，并整理成一篇索引。</span></strong><span leaf=""> ⚠️ </span><strong style="color:#27272A;"><span leaf="">需要先说清一点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">那个链接是 35 条帖子的索引页，不是变更清单本身</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">所以本文的事实取自 v262 的官方 NEWS 文件。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而我此前已单独写过这一版里最显眼的那条（AI/LLM 提交金丝雀），所以这篇换个做法</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">不从 35 条里逐条挑亮点，而是找出贯穿其中的两条主线。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">主线一：信任链</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">verity 与 LUKS 的顺序</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">主线二：Varlink</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">TRUST CHAIN</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">主线一：把启动信任链切成可逐段签名的段</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一版的改动里，有相当密集的一组都指向同一件事：让「哪些代码在哪一阶段被验证过」变成可以分别声明、分别签名的东西。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我把它们按「解决什么问题」重新组织。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">NvPCR 不再依赖锚定秘密</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**NvPCR 的锚定方式得到了改进。它们现在创建的写入策略只允许从 initrd 环境执行初始 extend，并且不再依赖一个密封到 TPM 的秘密（也就是「锚定秘密」）。为了让 NvPCR 工作，所有 NvPCR 定义（/usr/lib/nvpcr/*.nvpcr）现在必须被打包在 UKI 里。UKI 还必须嵌入一个签名的 PCR 策略，它绑定到 initrd 引导阶段、并带有「initrd」策略引用。**</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我需要把这个改动解释清楚，因为它涉及一个容易被忽略的信任问题。先说 NvPCR 是什么</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">TPM 的 PCR 是用来「记录启动过程中每一段代码的度量值」的，而 NvPCR 是在普通 PCR 之外额外提供的一个机制，它的价值在于能被「扩展」多次而不像普通 PCR 那样在重启时被清空。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而在此之前，NvPCR 的可用性依赖一个「锚定秘密」（一个密封到 TPM 的秘密）。报告说这个设计现在被换掉了，换成的是：写入策略只允许从 initrd 阶段做初始 extend，加上 NvPCR 定义必须打包进 UKI。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这个改动解决的是一个具体而根本的问题：如果 NvPCR 的可用性依赖一个「被别人也知道的秘密」，那么它记录的内容的可信度就有上限。而改成「只有 initrd 能初始化它」之后，NvPCR 的内容就获得了一个来自启动路径本身的可信保证。而代价是明确的：NvPCR 定义必须进 UKI，并且要嵌一个带 initrd 策略引用的签名 PCR 策略。这提高了打包要求，但也正是它让保证变得可验证，因为「必须打包进 UKI」意味着它进入了被签名的范围。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">PCR policyrefs：不同启动阶段用不同签名</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">紧跟着的一条改动，恰好补上了上一节提到的那个「策略引用」</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">systemd-measure 新增了 --policyref=，而 systemd-cryptenroll 与 systemd-repart 里对应的 --tpm2-public-key-policyref= 选项，用来选择 TPM 对象在解锁时所要求的那个引用。这使得例如「仅限 initrd 的签名策略」成为可能，而 ukify 可以通过 --sign-initrd-pcrs 生成它，无需为后续启动阶段复用同一个签名。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这一条是整组改动里最能说明「精细化」方向的。把它和旧的方式对比一下会很清楚</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">旧方式是一个签名覆盖整个启动流程，initrd 与后续阶段复用同一个签名</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">而 policyrefs 让不同阶段可以用不同的签名，且可以不共用。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">也就是说：它让「信任的粒度」和「信任的对象」对齐了。在此之前，一个签名必须同时证明「这个 initrd 可信」和「这个后续启动阶段可信」，而这两件事的验证时机和风险面其实不同。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">只读 ESP、持久化 TPM EK、CoCo 的系统凭据</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">只读 ESP</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">systemd-boot / systemd-stub 支持只读 ESP。ESP 在很多平台上需要被固件读写，但它的内容在正常运行时不需要变</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">所以支持只读可以让「启动路径的输入不可被运行时改写」这件事更明确</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">持久化 TPM EK</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">会在可能的情况下从 EK 证书验证生成的 EK，然后再持久化它；优先使用受支持的高区间 EK 模板，从而让背书层级保持受保护</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">CoCo 系统凭据</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">systemd-vmspawn 支持 Intel TDX CoCo，并为 CoCo VM 提供系统凭据</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">「持久化 EK」那一条的措辞值得留意：它强调「在持久化之前先用证书验证」。这说明改动关注的不是「能不能持久化」，而是「持久化的那个东西是不是真的」。在一套以 TPM 为信任根的机制里，这个顺序是不能省的。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE ORDERING</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">那个「verity 在外、LUKS2 在内」的顺序</span></h3>
+      </section>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**一个分区可以同时组合 Encrypt= 与 Verity=data。在这个模式下，repart 先写入 LUKS2 密文，然后在这个密文之上构建 dm-verity 元数据，所以 verity 构成外层真实性封装，而 LUKS2 是内层加密层。（换句话说，这提供了被认证的机密性。）**</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">「verity 是外层、LUKS2 是内层」这个顺序，是整句话里最关键的信息。而这个顺序不能被反过来</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">真实性必须由 dm-verity 提供，因为它必须验证「你读到的东西是原样的」——如果它在内层，那么外层的解密操作已经先处理了可能被篡改的密文</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">而机密性必须由 LUKS2 提供且在最内层，因为只有它需要看到明文。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">官方给这个组合的定性是「被认证的机密性」，我认为这个用词是准确的：它不是「加密 + 校验」这种简单叠加，而是两个属性各自由最适合的机制承担，且顺序由信任依赖决定。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为这是这一版里最适合拿来当教学例子的地方。它演示了一个通用原则：当两个安全属性需要叠加时，它们的顺序不是任意的，而是由「谁依赖谁」决定的。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">具体地说：真实性验证必须在解密之后做的那个假设不成立（因为如果先解密，你就已经把可能被篡改的数据喂给了密码学实现），而机密性必须是最后一道（因为只有它需要看到明文）。所以顺序被唯一确定了。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这个原则在别的地方也出现</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">比如 TLS 的「先握手验证身份，再加密传输数据」。在这些场景里，顺序错了不会立刻报错（系统照样运行），但会静默地削弱某个保证。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">VARLINK</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">主线二：Varlink 在稳步替换 D-Bus</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二条主线不像第一条那么显眼（因为它分散在十几个不同的组件里），但它的方向非常明确：新的接口先上 Varlink，而实验性的 D-Bus API 到点就撤。</span></strong></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">v263 的移除公告</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">实验性的 systemd-sysupdated D-Bus API 将在下一个版本（v263）中被移除。计划是客户端改为通过 Varlink IPC 直接与 systemd-sysupdate（也就是 systemd-sysupdated 的后端）通话</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">systemd-cryptenroll</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">实现了 Varlink API，允许通过 IPC 以编程方式登记额外的密钥</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">systemd-sysinstall</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">新增 Varlink IPC</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">systemd-report</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">成为 Varlink 服务并提供新指标；generate 与 upload 命令现在可以对其产生的报告做密码学签名，签名来自链接到 /run/systemd/report.sign/ 的后端 Varlink 签名器</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">journal</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">支持通过 Varlink 跟踪日志</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">.socket 单元</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">新增 Varlink socket 标记与 varlinkctl list-sockets</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为 systemd-report 那条最能说明 Varlink 的定位。注意它的签名机制：签名不是内置的，而是从一个「链接到 /run/systemd/report.sign/ 的后端 Varlink 签名器」获取的。也就是说：签名能力本身被做成了一个可插拔的后端，而 Varlink 是这个插拔的接口。这比「让 report 自己会签名」要灵活得多，因为在企业环境里，「谁来签名」往往需要一个集中式的密钥管理服务，而不是让每个组件自己管私钥。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而为什么是 Varlink 而不是继续用 D-Bus？报告在这一版里没有给长篇论证，但从两条改动的组合能推出方向：sysupdated 的 D-Bus API 被移除、客户端改为直接用 Varlink 与后端通话。而这个决定的前提是：那个 D-Bus 服务本身只是后端的一个包装。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这里有一个可以推广的判断：当一个 D-Bus 服务只是「把某个进程的能力暴露出去」时，它引入的是一个额外的中介；而 Varlink 的模型是「客户端直接和进程说话」。中介的价值在于「把能力聚合到一个总线上」，但如果这个能力只由一个进程提供、且没有聚合的需求，中介就只剩下成本。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">一条相关的改动：让脚本不用解析 --help</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">同一版里还有一条改动从另一个角度支持了这个方向</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">实验性的 --introspect-cli 现在提供机器可读的命令元数据（JSON），它由声明式的动词／选项描述生成。需要做命令／选项发现的脚本可以消费这个接口，而不是去解析人类可读的 --help 输出。该特性是实验性的，JSON schema 在未来的稳定化公告之前很可能会继续变化。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「让脚本不用解析 --help」这件事，和 Varlink 的取向是一致的：两者都在把「人可读的输出」和「机器可读的接口」分开。而这个分开是必要的，因为人类可读的输出会为了可读性而变更，而机器接口一旦被依赖就很难改。而官方特意标注「schema 很可能会变」是正确做法：它意味着这个接口目前是给人试用的，不是给人依赖的。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这一版的真正主题是「把信任的粒度调到和信任的对象一样细」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我之所以把这个判断放在最前面，是因为如果只看那 35 条的标题，会觉得 v262 是「又一个功能密集的版本」（35 条里有 15 个不同的组件，看起来像是平均用力）。但把它们按「关注点」重排之后，会发现三分之一都在做同一件事</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">NvPCR 换掉锚定秘密</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">让「这段度量是在 initrd 里初始化的」这件事本身获得保证</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">PCR policyrefs</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">让不同阶段的策略可以分别签名</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">加密 + verity 的 DDI</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">让「机密性」和「真实性」各由最适合的机制承担</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">只读 ESP</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">让启动路径的输入在运行时不可被改写</span></strong><span leaf="">）；</span><strong style="color:#27272A;"><span leaf="">持久化 TPM EK 之前先验证</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">让被持久化的那个东西是「已验证的」</span></strong><span leaf="">）。 </span><strong style="color:#27272A;"><span leaf="">这五条的共同点是：它们都在把「一个大而模糊的信任声明」拆成「多个小而精确、可以分别验证的声明」。而这正是可信启动这个领域长期以来的核心难点——因为「我的系统是可信的」这句话在没有粒度的情况下是不可验证的。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">第二，Varlink 的替换是渐进的，而它给出的理由值得那些设计内部接口的人参考。注意它的做法不是「宣布 D-Bus 过时」，而是：新接口一律先上 Varlink，而对已有的实验性 D-Bus API 给一个明确的移除版本号。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这一版里 --introspect-cli 那条改动从另一个角度印证了同一个方向：它把「人可读的 --help」和「机器可读的 JSON」分开。这两件事被混在一起是很多工具的长期问题，而分开之后，人类可读的输出可以为了可读性自由变更，而机器接口则获得了一个可以被明确版本化的形态。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，这一版里有几条改动会破坏既有行为，而这些改动的处理方式值得单独看。最明显的一条是 Type=notify-reload 的收紧</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">这类服务现在在发送 READY=1 时被要求捕获或阻塞 ReloadSignal=。如果它们既不捕获也不阻塞，服务会以协议错误启动失败。此前允许启动，尽管后续的重载可能触发信号的默认动作并终止服务。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这条改动的处理方式是教科书式的：它把一个「可能在生产里某次重载时静默死亡」的问题，变成了「启动时就明确失败」。而在 init 系统这个位置，「早失败且说清楚」的价值远高于兼容性。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">另一条是 DNS-SD 的行为修正，而它的说明方式更值得学</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「由于一个 bug，客户端跟踪从来没有工作过，这类服务过去会一直保持注册直到 systemd-resolved 退出（但也没有在守护进程重启后存活）。」</span></strong><span leaf=""> **「这个 bug 让功能从来没有真正生效过」这句话，实际上是在说：这个接口的文档行为与实际行为一直不一致，而没人发现。而现在的修正让行为与文档一致，代价是依赖旧（错误）行为的客户端会受影响。而报告给出的替代方案很具体：要独立于客户端生命周期注册，使用 *.dnssd 文件。这比「请注意行为变化」要有用得多，因为它直接指出了该走哪条路。**</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第四，那两条「未来移除」的预告，比任何新增功能都更能说明这个项目的工作方式。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">回顾一下那两条：移除 /run/boot-loader-entries/（理由是「据我们所知它没有被任何项目使用」），移除 sysupdated 的 D-Bus API（理由是客户端可以直接用 Varlink 与后端通话）。而两条预告有一个共同的结构：先说清「为什么可以移除」，再给出明确的版本号。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这个模式值得所有维护长期接口的项目参考，因为它同时满足了两件通常冲突的目标：一方面它给了使用者足够的水位信息（v263，也就是下一个版本），另一方面它没有为了兼容而无限期背负无用的代码。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而第一条的表述「据我们所知它没有被任何项目使用」，实际上也暴露了一件事：维护者对「自己的接口被用在哪里」的可见度是有限的。而他们选择的处理方式是：把「我们观察到的情况」说出来（而不是断言「没人用」），然后给一个版本号的缓冲。这给了使用者一个反驳的机会——如果有人正在用，可以在 v263 发布前说明。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">最后，我想指出这一版里我最欣赏的一处工程判断，它不在任何一条功能列表里，而在一条「更严格」的改动里</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「对于不使用参数字段的 tmpfiles.d/ 行类型，systemd-tmpfiles 现在会拒绝非空的参数字段。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这条改动的价值在于「拒绝无意义输入」。一个不该有参数的行类型，如果被写上了参数，那么它在旧行为下会被静默忽略——而用户会以为那个参数生效了。而在一套管理启动和文件系统状态的工具里，静默忽略是比报错危险得多的行为。因为报错会在部署时被发现，而静默忽略会在某次「为什么没生效」的排查里被发现，而那时距离写出那行配置可能已经过去了几个月。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**版本**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**systemd v262**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**发布时间**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**2026 年 9 月 22 日**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**用户给的链接**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Lennart Poettering 的《Mastodon Stories for systemd v262》**（**2026-10-15**），**是 35 条帖子的索引，不是变更清单本身**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**下一版预告**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**v263 的同类帖子将在几周内开始，标签 #systemd263**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **本站已写过的**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」**（**涉及 AI 金丝雀**，**本文不重复**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **主线一**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**NvPCR 换掉锚定秘密、PCR policyrefs、加密 + verity 的 DDI、只读 ESP、持久化 TPM EK 前先验证**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**NvPCR 的改动**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**写入策略只允许从 initrd 执行初始 extend**；**不再依赖密封到 TPM 的「锚定秘密」**；**所有 NvPCR 定义必须打包进 UKI**；**UKI 还须嵌入绑定到 initrd 阶段、带「initrd」策略引用的签名 PCR 策略**（**ukify 的 --sign-initrd-pcrs**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**PCR policyrefs**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**systemd-measure 新增 --policyref=**；**cryptenroll 与 repart 新增 --tpm2-public-key-policyref=**；**使「仅限 initrd 的签名策略」成为可能，无需为后续阶段复用同一签名**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**加密 + verity 的 DDI**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**可组合 Encrypt= 与 Verity=data**；**repart 先写 LUKS2 密文，再在密文上构建 dm-verity 元数据**；**所以 verity 是外层真实性封装，LUKS2 是内层加密层**（**「被认证的机密性」**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**只读 ESP**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**systemd-boot / systemd-stub 支持只读 ESP**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**持久化 TPM EK**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**可能时从 EK 证书验证生成的 EK，然后再持久化**；**优先使用受支持的高区间 EK 模板**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **主线二**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**v263 将移除 sysupdated 的 D-Bus API**，**客户端改为通过 Varlink 直接与 systemd-sysupdate 通话**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**本版新增的 Varlink 接口**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**cryptenroll**、**sysinstall**、**journal**、**systemd-report**、**.socket 单元的 Varlink 标记 + varlinkctl list-sockets**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**systemd-report 的签名**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**generate 与 upload 可对报告做密码学签名**；**签名来自链接到 /run/systemd/report.sign/ 的后端 Varlink 签名器**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**--introspect-cli**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**以 JSON 提供机器可读的命令元数据**；**脚本可消费它而不必解析 --help**；⚠️ **实验性，schema 很可能继续变化**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**ActivatingConcurrencyMax=**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Slice 单元新增**，**限制一个切片层级里同时处于 activating 状态的单元数**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**原子操作**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**EnqueueUnitJobMany() 原子入队多个任务**；**AddAndRemoveTags() 原子设置与取消标签**；**hostnamectl tags 接受 +TAG／-TAG**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**恢复密钥登记**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**新增 systemd-cryptenroll-firstboot.service 提供首次启动向导**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**home 密码轮换**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**先添加所有替换 keyslot，再移除旧的**；**新槽失败则旧槽保留，避免登记失败时被锁在外面**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**fscrypt v2**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**systemd-homed 支持**；**v1 home 仍可解锁／重加密／停用，但无原地 v1→v2 升级**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**overlayfs 上可执行**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**允许在 dm-verity 保护的文件系统上执行，仍拒绝可写上层里的文件**；**需内核 v7.2+**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**静态单二进制构建**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**支持静态、单二进制的服务管理器构建**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**/etc/clonetab**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**新增 dm-clone 引导集成**；**条目可设 region-size= 控制预填充粒度**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**FONT_SCALE=**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**vconsole 配置新增**；**目前只支持 100% 与 200%，其他值夹到最近支持值**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**主机名词表通配符**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**原有 ? 解析为哈希派生的十六进制字符**；**新增 $ 从词表文件挑选一个词**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**内核 coredump socket 协议**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**支持 Linux 6.17 起**；**systemd-coredumpd.service 监听 /run/systemd/coredumpd/kernel**；⚠️ **改 coredump.conf 需重载该服务**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**机密计算**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**systemd-vmspawn 支持 Intel TDX CoCo**；**为 CoCo VM 提供系统凭据**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**kexec 可观测性**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**PID 1 新增 KExecCount**；**systemd-analyze time 用它们报告 kexec／实时更新耗时**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**DNS-SD 行为修正**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**注册客户端断开总线时自动注销**（**与 Avahi API 一致**）；**此前因 bug，客户端跟踪从未工作**；**要独立于客户端生命周期，请用 *.dnssd 文件**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **Type=notify-reload 收紧**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**发送 READY=1 时须捕获或阻塞 ReloadSignal=**；**否则以协议错误启动失败**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**tmpfiles 更严格**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**对不使用参数字段的行类型，拒绝非空参数字段**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**v263 移除预告**</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">**① /run/boot-loader-entries/ 及相关接口**（**理由：据我们所知没有任何项目使用**）；**② 实验性的 sysupdated D-Bus API**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这一版的真正主题是把信任的粒度调到和信任的对象一样细：NvPCR 不再依赖锚定秘密、policyrefs 让不同启动阶段可以分别签名、verity 与 LUKS2 的层次顺序由信任依赖决定、只读 ESP 让启动输入不可被运行时改写、持久化 EK 之前先验证。而 verity 在外的那个顺序演示了一个通用原则：当两个安全属性叠加时，顺序不是任意的，而是由「谁依赖谁」决定的——顺序错了不会立刻报错，但会静默地削弱某个保证。另一条主线 Varlink 对 D-Bus 的替换，其判断标准可以推广：当一个服务只是转发另一个进程的能力时，它引入的是中介，而中介只在有聚合需求时才值得存在。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」</span><br>
+        <span leaf="">· Cloud Hypervisor 54 承诺「前两个版本可迁移」：把一条口头保证变成了可执行的承诺</span><br>
+        <span leaf="">· 同一周里，四个开源项目对 AI 贡献给出了四种答案</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
