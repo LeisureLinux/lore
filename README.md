@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-16 | [RPKI 覆盖涨到 70%，而它没能拦住的恰恰是一次真实劫持：因为那次攻击是「RPKI 有效」的](https://freelamp.com/articles/2026-10-16_rpki-70-percent-coverage-hetzner-hijack/) | RPKI · ROA · BGP · 路由劫持 · maxLength · RFC 9319 · ASPA · Hetzner · Virtualizor · 译文 |
+| 2026-10-16 | [自托管 28 个服务的清单，与一个 €25 买断的文档工具：它们在做同一个选择](https://freelamp.com/articles/2026-10-16_self-hosting-list-and-buyout-local-tools/) | 自托管 · Jellyfin · Immich · Podman · 本地优先 · BYOK · MarkItDown · 迷你主机 · 译文 |
 | 2026-10-16 | [同一份 AdFection 报告，这篇多给了企业一份可执行清单：而清单里最有效的一条，是「别把你的广告 ID 交出去」](https://freelamp.com/articles/2026-10-16_adfection-enterprise-defense-checklist/) | AdFection · 广告标识符 · MDM · DNS拦截 · 企业安全 · Frank Dickson · 零点击 · 译文 |
 | 2026-10-16 | [systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链](https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/) | systemd · 可信启动 · TPM · NvPCR · UKI · dm-verity · Varlink · 机密计算 · 译文 |
 | 2026-10-16 | [Ubuntu 26.10 用 Sequoia 换掉 GnuPG 签名：发行版第一次把「量子威胁」写进了自己的包管理器](https://freelamp.com/articles/2026-10-16_ubuntu-26-10-stonking-stingray/) | Ubuntu · Sequoia PGP · 后量子 · APT · GNOME 51 · dbus-broker · TPM · RISC-V · 译文 |
