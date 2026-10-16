@@ -17,6 +17,11 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-16 | [systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链](https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/) | systemd · 可信启动 · TPM · NvPCR · UKI · dm-verity · Varlink · 机密计算 · 译文 |
+| 2026-10-16 | [Ubuntu 26.10 用 Sequoia 换掉 GnuPG 签名：发行版第一次把「量子威胁」写进了自己的包管理器](https://freelamp.com/articles/2026-10-16_ubuntu-26-10-stonking-stingray/) | Ubuntu · Sequoia PGP · 后量子 · APT · GNOME 51 · dbus-broker · TPM · RISC-V · 译文 |
+| 2026-10-16 | [用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了](https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/) | AI · Claude Code · 逆向工程 · 驱动开发 · hw-harness · usbmon · SANE · libcamera · 译文 |
+| 2026-10-16 | [两个「隐含假设」的修正：CPU boost 该不该默认开，复用缓冲区能不能只拷最新那帧](https://freelamp.com/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/) | ACPI · CPPC · cpufreq · Mutter · 多GPU · damage tracking · Wayland · 译文 |
+| 2026-10-16 | [微软把 Defender 装到了 Linux 桌面上：它卖的不是杀毒，而是「别让开发机成为可见性盲区」](https://freelamp.com/articles/2026-10-16_microsoft-defender-linux-desktop-preview/) | Microsoft · Defender · Linux桌面 · EDR · 开发机 · 企业安全 · 可见性 · 译文 |
 | 2026-10-15 | [广告不是图片，是可执行代码：AdFection 用「先验身份、再发载荷」把实时竞价变成了一条零点击投毒通道](https://freelamp.com/articles/2026-10-15_adfection-zero-click-spyware-targeted-ads/) | AdFection · Citizen Lab · 零点击 · 间谍软件 · 恶意广告 · RTB · NOAS · ADINT · 供应链安全 · 译文 |
 | 2026-10-15 | [无头浏览器做微信视频号自动化：最坑的不是「无头」，是一个屏幕尺寸参数](https://freelamp.com/articles/2026-10-15_headless-wechat-channels-automation/) | BrowserSkill · bsk · 浏览器自动化 · 无头浏览器 · headless Chromium · CDP · Chrome 扩展 · wujie · shadow DOM · Vue · 微前端 · Ozone · 微信视频号 · 扫码登录 · 故障排查 · 运维 · 原创 |
 | 2026-10-15 | [同一周里，四个开源项目对 AI 贡献给出了四种答案：分歧不在技术，而在「声明」到底有什么用](https://freelamp.com/articles/2026-10-15_open-source-ai-contribution-policies-compared/) | GCC · Linux内核 · Debian · Flathub · LLVM · AI治理 · 开源治理 · Assisted-by · DCO · 译文 |

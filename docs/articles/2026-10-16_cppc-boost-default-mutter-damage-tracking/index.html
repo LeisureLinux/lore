@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>两个「隐含假设」的修正：一个是 CPU boost 该不该默认开，一个是复用缓冲区能不能只拷最新那帧 — FreeLAMP.com</title>
+  <meta name="description" content="同一批内核与桌面提交里，有两个改动都在修正同一个东西：一个被默认接受的隐含假设。Huawei 的补丁要把 ACPI CPPC 的 CPU boost 从默认关闭改为默认开启，理由是服务器场景下通常想要峰值性能；而 Arm 的 Christian Loehle 反问的是更根本的问题，即现代硅片的功耗与散热包络已经足够复杂">
+  <meta name="keywords" content="ACPI, CPPC, CPU boost, cpufreq, ARM64服务器, 内核, Mutter, GNOME, 合成器, 多GPU, damage tracking, 混合显卡, Wayland, AI提交, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-16">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="两个「隐含假设」的修正：一个是 CPU boost 该不该默认开，一个是复用缓冲区能不能只拷最新那帧">
+  <meta property="og:description" content="同一批内核与桌面提交里，有两个改动都在修正同一个东西：一个被默认接受的隐含假设。Huawei 的补丁要把 ACPI CPPC 的 CPU boost 从默认关闭改为默认开启，理由是服务器场景下通常想要峰值性能；而 Arm 的 Christian Loehle 反问的是更根本的问题，即现代硅片的功耗与散热包络已经足够复杂">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-16">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="ACPI">
+  <meta property="article:tag" content="ACPI">
+  <meta property="article:tag" content="CPPC">
+  <meta property="article:tag" content="CPU boost">
+  <meta property="article:tag" content="cpufreq">
+  <meta property="article:tag" content="ARM64服务器">
+  <meta property="article:tag" content="内核">
+  <meta property="article:tag" content="Mutter">
+  <meta property="article:tag" content="GNOME">
+  <meta property="article:tag" content="合成器">
+  <meta property="article:tag" content="多GPU">
+  <meta property="article:tag" content="damage tracking">
+  <meta property="article:tag" content="混合显卡">
+  <meta property="article:tag" content="Wayland">
+  <meta property="article:tag" content="AI提交">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="两个「隐含假设」的修正：一个是 CPU boost 该不该默认开，一个是复用缓冲区能不能只拷最新那帧">
+  <meta name="twitter:description" content="同一批内核与桌面提交里，有两个改动都在修正同一个东西：一个被默认接受的隐含假设。Huawei 的补丁要把 ACPI CPPC 的 CPU boost 从默认关闭改为默认开启，理由是服务器场景下通常想要峰值性能；而 Arm 的 Christian Loehle 反问的是更根本的问题，即现代硅片的功耗与散热包络已经足够复杂">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "两个「隐含假设」的修正：一个是 CPU boost 该不该默认开，一个是复用缓冲区能不能只拷最新那帧",
+  "description": "来源：Phoronix：Huawei Proposes Enabling CPU Boost By Default For ACPI CPPC Linux Driverhttps://www.phoronix.com/news/Huawei-Proposes-Boost-Default（2026-10-15）  另一篇：Phoronix：Mutter Adds Damage Tracking Fo",
+  "datePublished": "2026-10-16",
+  "dateModified": "2026-10-16",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "ACPI, CPPC, CPU boost, cpufreq, ARM64服务器, 内核, Mutter, GNOME, 合成器, 多GPU, damage tracking, 混合显卡, Wayland, AI提交, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "两个「隐含假设」的修正：一个是 CPU boost 该不该默认开，一个是复用缓冲区能不能只拷最新那帧",
+        "item": "https://freelamp.com/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-16">2026-10-16</div>
+        <h1 class="post-title" itemprop="headline">两个「隐含假设」的修正：一个是 CPU boost 该不该默认开，一个是复用缓冲区能不能只拷最新那帧</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/ACPI/">ACPI</a><a itemprop="keywords" href="/tags/CPPC/">CPPC</a><a itemprop="keywords" href="/tags/CPU%20boost/">CPU boost</a><a itemprop="keywords" href="/tags/cpufreq/">cpufreq</a><a itemprop="keywords" href="/tags/ARM64%E6%9C%8D%E5%8A%A1%E5%99%A8/">ARM64服务器</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8/">内核</a><a itemprop="keywords" href="/tags/Mutter/">Mutter</a><a itemprop="keywords" href="/tags/GNOME/">GNOME</a><a itemprop="keywords" href="/tags/%E5%90%88%E6%88%90%E5%99%A8/">合成器</a><a itemprop="keywords" href="/tags/%E5%A4%9AGPU/">多GPU</a><a itemprop="keywords" href="/tags/damage%20tracking/">damage tracking</a><a itemprop="keywords" href="/tags/%E6%B7%B7%E5%90%88%E6%98%BE%E5%8D%A1/">混合显卡</a><a itemprop="keywords" href="/tags/Wayland/">Wayland</a><a itemprop="keywords" href="/tags/AI%E6%8F%90%E4%BA%A4/">AI提交</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://www.phoronix.com/news/Huawei-Proposes-Boost-Default">Phoronix：Huawei Proposes Enabling CPU Boost By Default For ACPI CPPC Linux Driver</a>（<strong>2026-10-15</strong>）<br>
+另一篇：<a href="https://www.phoronix.com/news/Mutter-2nd-GPU-Damage-Track">Phoronix：Mutter Adds Damage Tracking For Secondary GPU Copy Buffers</a>（<strong>2026-10-15</strong>）<br>
+本文为<strong>译文 + 解读</strong>。第一节对 boost 概念的分析、第三节把两者并列的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>这两条新闻看起来毫不相关</strong>（<strong>一条在内核的 ACPI CPUFreq 驱动里，一条在 GNOME 的合成器里</strong>），<strong>但我把它们放在一起，是因为它们修的是同一类东西：一个被默认接受的隐含假设。</strong></p>
+<table>
+<tr><th></th><th><strong>CPU boost 默认关闭</strong></th><th><strong>Mutter 只拷最新那帧的 damage</strong></th></tr>
+<tr><td><strong>隐含的假设是</strong></td><td><strong>「不给最高性能」是一个安全的默认</strong></td><td><strong>「复用缓冲区里的内容足够新」</strong></td></tr>
+<tr><td><strong>改动做了什么</strong></td><td><strong>把默认改成开启</strong></td><td><strong>记录每个目标缓冲区最后一次成功复制的源帧，并保留近期几帧的 damage</strong></td></tr>
+<tr><td><strong>而争议在哪</strong></td><td><strong>有人质疑这个机制本身的语义</strong></td><td><strong>假设在缓冲区复用与复制失败时会失效</strong></td></tr>
+</table>
+<p><strong>而这两件事里我认为更有价值的是后者</strong>，<strong>因为 Mutter 那个改动把「假设失效时会怎样」明确地写了出来</strong>：<strong>而 CPU boost 那条引出的问题，恰恰是「这个机制到底保证什么」还没有得到回答。</strong></p>
+<h2>一、CPU boost 该不该默认开：一个默认值的改动，引出对概念本身的质疑</h2>
+<h3>补丁在改什么</h3>
+<p><strong>先说清背景。</strong> <strong>ACPI CPPC（Collaborative Processor Performance Control，协作处理器性能控制）是 ACPI 里用于「OS 与平台协同管理 CPU 频率与功耗」的一套标准</strong>。 <strong>而在 Linux 上，使用这套机制的 CPUFreq 驱动有一项叫 boost 的功能</strong>：</p>
+<blockquote><strong>「对于使用通用的 ACPI 协作处理器性能控制（CPPC）CPUFreq 驱动的人（例如在许多 ARM64 Linux 服务器平台上），如果 CPU 支持 boost 模式，它是默认关闭的。但来自 Huawei 的一个补丁现在希望默认启用 Linux 上的 CPU boost 模式。」</strong></blockquote>
+<strong>而它给出的理由是这样的</strong>：
+<blockquote><strong>「对于最高性能水平高于标称性能水平的处理器，boost 模式在 ACPI CPPC 驱动里一直是默认关闭的，需要通过 sysfs 设置 boost 选项。特别是对 Linux 服务器平台来说，这可以被认为是一个糟糕的默认值，因为峰值性能潜力通常是想要的东西。这个补丁提议默认启用 boost，以避免需要用户空间手工设置。」</strong></blockquote>
+<strong>我认为这个理由的结构值得留意，因为它是一种很常见的论证方式</strong>：<strong>「在服务器场景里，人们通常想要峰值性能，而默认值要求他们手工去开，这很麻烦。」</strong> <strong>也就是说</strong>：<strong>它假设「想要峰值性能」是常态，而「默认关闭」是在给非常态让路。</strong>
+<h3>而反驳指向的是更根本的问题</h3>
+<p><strong>Arm 的工程师 Christian Loehle 的回应没有停留在「该不该默认开」，而是质疑这个机制本身还剩多少意义</strong>：</p>
+<blockquote><strong>「我常常想我们是不是应该干脆完全保留 boost，现代硅片上的功耗和散热包络已经足够复杂，以至于它几乎没有意义，它绝不保证不发生降频、也不保证你会得到所请求的性能。懂硅片的用户总是可以通过 scaling_max_freq 单独设置上限，使其对他们的平台／工作负载／环境组合『可用』。」</strong></blockquote>
+<strong>我认为这段话里有两个论点，而它们的分量不同。</strong>
+<p><strong>第一个论点是「boost 不做它名字暗示的事」</strong>：</p>
+<blockquote><strong>「它绝不保证不发生降频、也不保证你会得到所请求的性能。」</strong></blockquote>
+<strong>这一句击中了一个很实际的认知落差。</strong> <strong>「boost」这个词给人的印象是「打开它就能得到额外性能」</strong>，<strong>但 Loehle 说的是</strong>：<strong>它只是一个「请求」，而这个请求能否被满足，取决于散热的和功耗的约束</strong>：<strong>而那些约束不由这个机制控制。</strong>
+<p><strong>也就是说</strong>：<strong>这个开关的名字承诺了一件它无法承诺的事。</strong></p>
+<p><strong>第二个论点是「它可能是不必要的抽象层」</strong>：</p>
+<blockquote><strong>「懂硅片的用户总是可以通过 scaling_max_freq 单独设置上限，使其对他们的平台／工作负载／环境组合『可用』。」</strong></blockquote>
+<strong>这一句的逻辑是</strong>：<strong>如果真正的控制手段是「直接设置频率上限」，那么 boost 这个布尔开关就是一个间接的表达方式</strong>：<strong>它需要用户理解「boost 与标称性能的关系」，才能预测设了之后会发生什么。</strong> <strong>而直接设 <code>scaling_max_freq</code> 是明确的</strong>：<strong>你写多少，上限就是多少。</strong>
+<p><strong>而 Loehle 还有一句我认为值得单独引用</strong>，<strong>因为它指向了一个更具体的困扰</strong>：</p>
+<blockquote><strong>「由于提交 54e74df5d76d 也是 Huawei 引入的，我会好奇那里的用法，据我所知，在 Linux 上有一个 NOMINAL_PERF != HIGHEST_PERF 的平台，目前只是额外的麻烦？」</strong></blockquote>
+<strong>这句话的意思是</strong>：<strong>当「标称性能」与「最高性能」不相等时，Linux 需要额外处理这个差值</strong>，<strong>而这个处理是复杂性来源。</strong> <strong>而他在问：这个复杂性换来了什么。</strong>
+<p><strong>我认为这个问题是整条新闻里最值得记住的一句</strong>，<strong>因为它把一个「改默认值」的小补丁，变成了一个关于「抽象是否值得存在」的提问。</strong></p>
+<h3>需要说清的边界</h3>
+<p><strong>我要指出的是：这个补丁的状态是「提议」，而反对意见来自一位 Arm 工程师，不代表内核维护者的最终判断。</strong> <strong>原文的结尾也很克制</strong>：</p>
+<blockquote><strong>「所以我们将看到这个补丁会怎样，或者最终 Linux ACPI CPPC 代码会如何被清理，以帮助现代 ARM64 服务器。」</strong></blockquote>
+<strong>而这条新闻与同一周的另一条改动可以放在一起看</strong>：<strong>Phoronix 报道了针对 AMD Zen 6 客户端的 CPPC 改动</strong>，<strong>其中提到</strong>：
+<blockquote><strong>「Zen 6 客户端平台使用 CPPC 的方式与之前的平台不同，需要知道某个核心类型的最高频率才能做容量计算。更新版本的 ACPI 将引入一个获取这个信息的正式接口，但就目前而言，内核里加入了硬编码的值，以便这些系统按预期工作，并在等待期间解除对后续调度器工作的阻塞。」</strong></blockquote>
+<strong>把这两条放在一起，会看到一个共同的现象</strong>：<strong>CPPC 这个抽象在真实硬件上的行为，比规范描述的更复杂</strong>：<strong>一边是有平台需要硬编码值才能「按预期工作」，另一边是有人质疑一个布尔开关还剩多少意义。</strong>
+<h2>二、Mutter 的 damage 跟踪：一个假设的失效边界被明确写了出来</h2>
+<h3>问题在哪</h3>
+<p><strong>先说清背景。</strong> <strong>Mutter 是 GNOME 的合成器（compositor）</strong>，<strong>而它的 native backend 在显示器连接到不同 GPU 时会复制渲染好的帧</strong>：</p>
+<blockquote><strong>「原生后端在显示器连接到不同 GPU 时会复制渲染好的帧。取决于所选的复制模式，它使用两个 GPU 缓冲区或三个 CPU 可访问的缓冲区作为目标。传给这些路径的 damage 区域描述的是相对最新那一帧的变化。」</strong></blockquote>
+<strong>而 Ray Strode 在 merge request 里逐条列出了三条路径各自的问题</strong>，<strong>我把它们整理出来，因为这段技术说明写得非常清晰</strong>：
+<table>
+<tr><th>路径</th><th>原本的假设</th><th>假设如何失效</th></tr>
+<tr><td><strong>主 GPU 复制</strong></td><td><strong>「只拷最新那帧的 damage 就够了」</strong></td><td><strong>它在三个目标缓冲区之间轮转。一个被复用的缓冲区可能是好几帧之前的，所以只拷最新的 damage 会在缓冲区里留下更早的像素</strong></td></tr>
+<tr><td><strong>串行化的次 GPU 复制</strong></td><td><strong>「有一个有效的两帧假设」</strong></td><td><strong>这个假设只在每次复制都成功时成立；复制失败会让它的 damage 历史与缓冲区内容不一致</strong></td></tr>
+<tr><td><strong>CPU 回退路径</strong></td><td><strong>「整帧复制所以不用管 damage」</strong></td><td><strong>它当前在一次失败的读取之后仍然返回缓冲区</strong>。<strong>而一次成功的零拷贝区间也可能让回退缓冲区的状态比记录的更旧</strong></td></tr>
+</table>
+<p><strong>我认为这张表是这篇新闻里最有价值的部分</strong>，<strong>因为它展示了一个常见的问题形态</strong>：<strong>一个优化（只拷变化的部分）在一个前提（缓冲区内容足够新）下是对的，而那个前提在三条路径里各有不同的失效方式。</strong></p>
+<p><strong>而这三条失效方式的性质不同</strong>：</p>
+<ul>
+<li><strong>第一条是时序问题</strong>：<strong>「好几帧之前」这件事不会立刻表现为错误，而是表现为「偶尔留下的残影」</strong>：<strong>而这类 bug 很难复现，因为它的出现取决于帧率、复制耗时、以及缓冲区轮转的相位</strong>；</li>
+<li><strong>第二条是错误处理问题</strong>：<strong>「每次复制都成功」这个前提在设计里没有被写成不变量</strong>，<strong>于是失败就破坏了它</strong>；</li>
+<li><strong>第三条是状态一致性问题</strong>：<strong>「成功之后没有更新记录」意味着「记录」与「实际」会分岔</strong>。</li>
+</ul>
+<strong>而这三条的共同点是</strong>：<strong>它们都不会在「一切顺利」的情况下暴露。</strong>
+<h3>解法做了什么</h3>
+<p><strong>Strode 的解法引入了一个新结构 <code>MetaSecondaryGpuCopyState</code></strong>：</p>
+<blockquote><strong>「这个 merge request 加入了 MetaSecondaryGpuCopyState，它记录每个目标缓冲区里最后一次成功的源帧，并保留近期几帧的 damage。原生复制路径用它来包含所选缓冲区所需的所有变化。未知的或太旧的缓冲区会收到整帧，超过 16 个矩形的区域也一样。缓冲区选择只在一次成功复制之后才推进，而一次成功的零拷贝导入会让回退状态失效。」</strong></blockquote>
+<strong>我认为这段话里有三个设计决定值得单独指出。</strong>
+<p><strong>第一，「记录每个目标缓冲区最后一次成功的源帧」</strong>：<strong>这句话的核心是「成功」这个词</strong>。 <strong>它承认了复制可能失败</strong>，<strong>而失败时状态不应该被更新。</strong> <strong>这就修掉了上表第二条的那个问题。</strong></p>
+<p><strong>第二，「未知的或太旧的缓冲区会收到整帧」</strong>：<strong>这是一个明确的回退策略</strong>。 <strong>它的价值在于</strong>：<strong>与其去推测「这个缓冲区里可能有什么」，不如直接承认「不知道」，然后做最保守的事（整帧复制）。</strong></p>
+<p><strong>而「超过 16 个矩形的区域也一样」这个阈值是一个工程取舍</strong>：<strong>damage 区域用矩形列表表示，而当矩形数量太多时，「跟踪它们」的成本超过了「直接重画整帧」。</strong> <strong>也就是说</strong>：<strong>这条优化有一个明确的成本边界，越过边界就退回不优化。</strong></p>
+<p><strong>第三，「缓冲区选择只在一次成功复制之后才推进」</strong>：<strong>这一句修的是时序问题</strong>。 <strong>它把「推进到下一个缓冲区」这个状态转移，绑定在「这次复制成功了」这个条件上。</strong> <strong>而这一点很关键</strong>，<strong>因为原本的假设（「轮转到下一个意味着上一个已经好了」）只有在复制成功时才成立。</strong></p>
+<p><strong>以及「一次成功的零拷贝导入会让回退状态失效」</strong>：<strong>这句修的是上表第三条</strong>：<strong>它承认了两条路径（零拷贝与回退）的状态不是自动同步的，所以需要在切换时显式地作废。</strong></p>
+<p><strong>我认为这一整套改动的形态很值得留意</strong>：<strong>它没有换掉那个优化</strong>（<strong>仍然只拷变化的部分</strong>），<strong>而是给这个优化补上了「前提的检查与记录」。</strong> <strong>也就是说</strong>：<strong>它把「隐式假设」变成了「显式状态」。</strong></p>
+<h2>三、把两者放在一起看</h2>
+<p><strong>我之所以把这两条新闻放在一篇文章里，是因为它们在同一点上分道扬镳。</strong></p>
+<p><strong>两者都是「一个假设需要被审视」的情况</strong>：</p>
+<table>
+<tr><th></th><th><strong>boost 那条</strong></th><th><strong>Mutter 那条</strong></th></tr>
+<tr><td><strong>假设是什么</strong></td><td><strong>「默认关闭 boost = 保守的选择」</strong></td><td><strong>「复用缓冲区里的内容足够新」</strong></td></tr>
+<tr><td><strong>谁在质疑</strong></td><td><strong>Arm 的工程师，质疑机制语义</strong></td><td><strong>Red Hat 的工程师，动手修掉失效路径</strong></td></tr>
+<tr><td><strong>处理方式</strong></td><td><strong>改默认值（尚未定论）</strong></td><td><strong>引入显式状态跟踪</strong></td></tr>
+<tr><td><strong>留下的问题</strong></td><td><strong>这个开关到底保证什么</strong></td><td><strong>已明确：保证不了就退回整帧</strong></td></tr>
+</table>
+<p><strong>而我认为这个对照说明了两种处理「假设有问题」的方式</strong>：</p>
+<ul>
+<li><strong>一种是改默认值</strong>：<strong>它调整的是「在不知道具体情况时的默认行为」</strong>。<strong>这类改动见效快，但它不解决「这个机制语义不清」这件事</strong>；</li>
+<li><strong>另一种是补上状态与边界</strong>：<strong>它调整的是「机制本身在什么条件下成立」</strong>。<strong>这类改动更根本，但它需要先承认「原本的假设不总是成立」。</strong></li>
+</ul>
+<strong>而 Loehle 那句反问之所以我认为更值得记住，原因在这里</strong>：<strong>他问的不是「默认该设什么」，而是「这个机制是否还值得存在」。</strong> <strong>而当一个机制既不保证结果、又需要一个额外的抽象层来解释时，「它值不值得存在」就是一个合理的问题。</strong>
+<p><strong>而 Mutter 那边的答案正好提供了正面的例子</strong>：<strong>一个优化值得存在，前提是它的失效边界被明确写出、且失效时有保守的回退。</strong> <strong>Strode 的改动做到了这两点</strong>（<strong>「未知或太旧就整帧」、「太多矩形就整帧」</strong>），<strong>所以那个优化可以继续存在。</strong></p>
+<p><strong>把这个标准套回 boost</strong>：<strong>如果 boost 的语义能被表述成「在散热与功耗允许时请求最高性能」，并且「不生效时」有可观测的信号，那么它就站得住。</strong> <strong>但目前的表述是「最高性能水平高于标称性能水平时提供的一个开关」</strong>：<strong>它描述的是机制，不是保证。</strong> <strong>而这可能就是 Loehle 那句「它几乎没有意义」的实质。</strong></p>
+<h2>四、顺带记一条与上一批新闻相关的细节</h2>
+<p><strong>Phoronix 在 Mutter 那条报道的结尾加了一句，我认为必须原样保留，因为它和我在同一批里写过的另一篇直接相关</strong>：</p>
+<blockquote><strong>「代码是昨天通过这个 merge request 合并进 Mutter Git 的。代码是一个月前写的，尽管最初因为一些提交信息是 AI/LLM 生成的垃圾（slop）的担忧而被搁置。」</strong></blockquote>
+<strong>也就是说</strong>：<strong>这个改动在被合并之前，卡了近一个月，原因是提交信息的质量受到了质疑。</strong>
+<p><strong>我认为这个细节值得单独指出，因为它构成了一个真实的例子</strong>：<strong>它不是关于「AI 写的代码能不能用」，而是关于「AI 写的提交信息会让一个补丁卡住」。</strong></p>
+<p><strong>而这恰好印证了我在那篇四份 AI 政策对照里总结的一条</strong>：<strong>LLVM 的 RFC 提议禁止 AI 生成或实质 AI 辅助的</strong>文本沟通<strong>（含 PR 描述与 RFC 文本），而它给出的理由是</strong>：</p>
+<blockquote><strong>「AI 生成的 PR 描述剥夺了贡献者自己去理解一个 PR 做了什么、并用他自己的话表达出来的机会。这是『人在环』贡献模型的一个重要的健全性检查。」</strong></blockquote>
+<strong>而这个 Mutter 的例子把这个抽象理由落到了具体的后果上</strong>：<strong>代码本身是好的</strong>（<strong>它最终被合并了</strong>），<strong>但它的提交信息让维护者对「作者是否真的理解这个改动」产生了怀疑</strong>，<strong>于是合并被推迟了。</strong>
+<p><strong>也就是说</strong>：<strong>提交信息不只是文档，它同时是「作者理解了这个改动」的证据。</strong> <strong>而 AI 生成的提交信息会削弱这个证据</strong>：<strong>不是因为它写得不清楚，而是因为它不能证明任何事。</strong></p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>事件 ①</strong></td><td><strong>Huawei 提议在 Linux 的 ACPI CPPC CPUFreq 驱动里默认启用 CPU boost</strong></td></tr>
+<tr><td><strong>背景</strong></td><td><strong>对最高性能水平高于标称性能水平的处理器，boost 在 ACPI CPPC 驱动里一直默认关闭，需通过 sysfs 设置</strong></td></tr>
+<tr><td><strong>提议的理由</strong></td><td><strong>「特别是对 Linux 服务器平台来说，这可以被认为是一个糟糕的默认值，因为峰值性能潜力通常是想要的东西。」</strong>；<strong>避免用户空间手工设置</strong></td></tr>
+<tr><td><strong>适用场景</strong></td><td><strong>使用通用 ACPI CPPC CPUFreq 驱动的平台，例如许多 ARM64 Linux 服务器平台</strong></td></tr>
+<tr><td><strong>⭐ Arm 工程师的质疑</strong></td><td><strong>「我常常想我们是不是应该干脆完全保留 boost，现代硅片上的功耗和散热包络已经足够复杂，以至于它几乎没有意义，它绝不保证不发生降频、也不保证你会得到所请求的性能。」</strong>（Christian Loehle）</td></tr>
+<tr><td><strong>他的替代方案</strong></td><td><strong>「懂硅片的用户总是可以通过 scaling_max_freq 单独设置上限，使其对他们的平台／工作负载／环境组合『可用』。」</strong></td></tr>
+<tr><td><strong>他追问的问题</strong></td><td><strong>「在 Linux 上有一个 NOMINAL_PERF != HIGHEST_PERF 的平台，目前只是额外的麻烦？」</strong>（<strong>指提交 54e74df5d76d 也是 Huawei 引入的</strong>）</td></tr>
+<tr><td><strong>补丁状态</strong></td><td><strong>提议中，尚无定论</strong></td></tr>
+<tr><td><strong>相关背景</strong></td><td><strong>同一周 Phoronix 报道了针对 AMD Zen 6 客户端的 CPPC 改动</strong>：<strong>「Zen 6 客户端平台使用 CPPC 的方式与之前的平台不同，需要知道某个核心类型的最高频率才能做容量计算」</strong>；<strong>在新版 ACPI 提供正式接口之前，内核里加入了硬编码值</strong></td></tr>
+<tr><td><strong>事件 ②</strong></td><td><strong>Mutter 为次 GPU 复制缓冲区加入 damage 跟踪</strong>（<strong>Ray Strode，Red Hat</strong>）</td></tr>
+<tr><td><strong>意图加入的版本</strong></td><td><strong>原计划 GNOME 52，后更新为 GNOME 51.2</strong></td></tr>
+<tr><td><strong>解决什么</strong></td><td><strong>改进多 GPU 配置（例如某些混合笔记本）的体验</strong></td></tr>
+<tr><td><strong>⭐ 原本的假设及失效方式</strong></td><td><strong>主 GPU 复制</strong>：<strong>在三个目标缓冲区之间轮转，被复用的缓冲区可能已是好几帧之前，所以只拷最新 damage 会留下更早的像素</strong>；<strong>串行化次 GPU 复制</strong>：<strong>只在每次复制都成功时才有有效的两帧假设，失败会让 damage 历史与缓冲区内容不一致</strong>；<strong>CPU 回退</strong>：<strong>当前在一次失败的读取之后仍然返回缓冲区，而一次成功的零拷贝区间也可能让回退缓冲区比记录的更旧</strong></td></tr>
+<tr><td><strong>⭐ 解法</strong></td><td><strong>引入 <code>MetaSecondaryGpuCopyState</code></strong>：<strong>记录每个目标缓冲区里最后一次成功的源帧，并保留近期几帧的 damage</strong></td></tr>
+<tr><td><strong>三条边界规则</strong></td><td><strong>① 未知的或太旧的缓冲区收到整帧</strong>；<strong>② 超过 16 个矩形的区域也收到整帧</strong>；<strong>③ 缓冲区选择只在一次成功复制之后才推进，一次成功的零拷贝导入会让回退状态失效</strong></td></tr>
+<tr><td><strong>作者的其他项目</strong></td><td><strong>castkms</strong>（<strong>实验性的 Linux DRM/KMS 虚拟显示驱动</strong>）；<strong>Pronk</strong>（<strong>把 Google Cast 设备变成受管理的 Linux 桌面显示器</strong>）</td></tr>
+<tr><td><strong>⚠️ 一条相关细节</strong></td><td><strong>该代码一个月前写成，但最初因「一些提交信息是 AI/LLM 生成的垃圾（slop）」的担忧而被搁置，最终于 2026-10-14 合并</strong></td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://www.phoronix.com/news/Huawei-Proposes-Boost-Default">Phoronix：Huawei Proposes Enabling CPU Boost By Default For ACPI CPPC Linux Driver</a></li>
+<li><a href="https://www.phoronix.com/news/Mutter-2nd-GPU-Damage-Track">Phoronix：Mutter Adds Damage Tracking For Secondary GPU Copy Buffers</a></li>
+<li><a href="https://www.phoronix.com/news/AMD-Zen-6-Client-CPPC-Changes">Phoronix：Linux Changes For CPPC On Zen 6 Clients</a></li>
+<li><a href="https://docs.kernel.org/5.10/admin-guide/acpi/cppc_sysfs.html">内核文档：Collaborative Processor Performance Control (CPPC)</a></li>
+<li><a href="/articles/2026-10-15_open-source-ai-contribution-policies-compared/">本站：同一周里，四个开源项目对 AI 贡献给出了四种答案</a></li>
+<li><a href="/articles/2026-10-15_kde-plasma-6-8-x11-retirement/">本站：KDE 选在自己 30 岁生日当天退役 X11：这不是告别，而是一次刻意的对齐</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/",
+      title: "\u4e24\u4e2a\u300c\u9690\u542b\u5047\u8bbe\u300d\u7684\u4fee\u6b63\uff1a\u4e00\u4e2a\u662f CPU boost \u8be5\u4e0d\u8be5\u9ed8\u8ba4\u5f00\uff0c\u4e00\u4e2a\u662f\u590d\u7528\u7f13\u51b2\u533a\u80fd\u4e0d\u80fd\u53ea\u62f7\u6700\u65b0\u90a3\u5e27"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

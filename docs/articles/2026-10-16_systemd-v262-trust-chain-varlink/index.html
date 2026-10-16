@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链 — FreeLAMP.com</title>
+  <meta name="description" content="systemd v262 于 2026 年 9 月 22 日发布，Lennart Poettering 随后在 Mastodon 上发了 35 条帖子介绍重点变化，并整理成一篇索引。本文不逐条复述，而是从这 35 条里抽出两条主线：一条是启动信任链的精细化（NvPCR 换掉锚定秘密、PCR policyrefs 让不同">
+  <meta name="keywords" content="systemd, 可信启动, TPM, PCR, NvPCR, UKI, systemd-boot, dm-verity, LUKS, Varlink, D-Bus, 机密计算, TDX, coredump, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-16">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链">
+  <meta property="og:description" content="systemd v262 于 2026 年 9 月 22 日发布，Lennart Poettering 随后在 Mastodon 上发了 35 条帖子介绍重点变化，并整理成一篇索引。本文不逐条复述，而是从这 35 条里抽出两条主线：一条是启动信任链的精细化（NvPCR 换掉锚定秘密、PCR policyrefs 让不同">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-16">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="systemd">
+  <meta property="article:tag" content="systemd">
+  <meta property="article:tag" content="可信启动">
+  <meta property="article:tag" content="TPM">
+  <meta property="article:tag" content="PCR">
+  <meta property="article:tag" content="NvPCR">
+  <meta property="article:tag" content="UKI">
+  <meta property="article:tag" content="systemd-boot">
+  <meta property="article:tag" content="dm-verity">
+  <meta property="article:tag" content="LUKS">
+  <meta property="article:tag" content="Varlink">
+  <meta property="article:tag" content="D-Bus">
+  <meta property="article:tag" content="机密计算">
+  <meta property="article:tag" content="TDX">
+  <meta property="article:tag" content="coredump">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链">
+  <meta name="twitter:description" content="systemd v262 于 2026 年 9 月 22 日发布，Lennart Poettering 随后在 Mastodon 上发了 35 条帖子介绍重点变化，并整理成一篇索引。本文不逐条复述，而是从这 35 条里抽出两条主线：一条是启动信任链的精细化（NvPCR 换掉锚定秘密、PCR policyrefs 让不同">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链",
+  "description": "来源：Lennart Poettering：Mastodon Stories for systemd v262https://0pointer.net/blog/mastodon-stories-for-systemd-v262.html（2026-10-15）  一手材料：systemd v262 NEWShttps://raw.githubusercontent.com/systemd/sys",
+  "datePublished": "2026-10-16",
+  "dateModified": "2026-10-16",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "systemd, 可信启动, TPM, PCR, NvPCR, UKI, systemd-boot, dm-verity, LUKS, Varlink, D-Bus, 机密计算, TDX, coredump, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链",
+        "item": "https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-16">2026-10-16</div>
+        <h1 class="post-title" itemprop="headline">systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/systemd/">systemd</a><a itemprop="keywords" href="/tags/%E5%8F%AF%E4%BF%A1%E5%90%AF%E5%8A%A8/">可信启动</a><a itemprop="keywords" href="/tags/TPM/">TPM</a><a itemprop="keywords" href="/tags/PCR/">PCR</a><a itemprop="keywords" href="/tags/NvPCR/">NvPCR</a><a itemprop="keywords" href="/tags/UKI/">UKI</a><a itemprop="keywords" href="/tags/systemd-boot/">systemd-boot</a><a itemprop="keywords" href="/tags/dm-verity/">dm-verity</a><a itemprop="keywords" href="/tags/LUKS/">LUKS</a><a itemprop="keywords" href="/tags/Varlink/">Varlink</a><a itemprop="keywords" href="/tags/D-Bus/">D-Bus</a><a itemprop="keywords" href="/tags/%E6%9C%BA%E5%AF%86%E8%AE%A1%E7%AE%97/">机密计算</a><a itemprop="keywords" href="/tags/TDX/">TDX</a><a itemprop="keywords" href="/tags/coredump/">coredump</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://0pointer.net/blog/mastodon-stories-for-systemd-v262.html">Lennart Poettering：Mastodon Stories for systemd v262</a>（2026-10-15）<br>
+一手材料：<a href="https://raw.githubusercontent.com/systemd/systemd/v262/NEWS">systemd v262 NEWS</a>、<a href="https://github.com/systemd/systemd/releases/tag/v262">systemd v262 release</a>（<strong>发布于 2026-09-22</strong>）<br>
+说明：<strong>用户给的链接是那 35 条 Mastodon 帖子的索引页，不是变更清单本身。</strong> <strong>所以本文的事实部分取自 v262 的官方 NEWS 文件，索引页只用来确认哪些改动是作者本人认为的重点。</strong><br>
+⚠️ <strong>本站此前已单独写过 v262 里的一条</strong>：<a href="/articles/2026-09-22_systemd-262-released/">systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」</a>（<strong>2026-09-22</strong>）。<strong>那篇讲的是 AI/LLM 金丝雀那条</strong>，<strong>本文不重复</strong>，<strong>而是覆盖其余的技术主线。</strong><br>
+本文为<strong>解读</strong>。第一节对「两条主线」的归纳、第四节的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>systemd v262 于 2026 年 9 月 22 日发布</strong>，<strong>Lennart Poettering 事后在 Mastodon 上发了 35 条帖子介绍重点变化</strong>，<strong>并整理成一篇索引</strong>（<strong>就是用户给的链接</strong>）。</p>
+<p><strong>因为我此前已经单独写过这一版里最显眼的那条（AI/LLM 提交金丝雀），所以这篇我换一个做法</strong>：<strong>不从这 35 条里逐条挑亮点，而是找出贯穿其中、且能解释「为什么这些改动会一起出现」的主线。</strong></p>
+<p><strong>我的判断是两条</strong>：</p>
+<table>
+<tr><th>主线</th><th>内容</th><th>在 35 条里的占比</th></tr>
+<tr><td><strong>① 启动信任链精细化</strong></td><td><strong>让「信任」从「一个整体」变成「可以逐段签名、逐段验证的链」</strong></td><td><strong>约占三分之一</strong></td></tr>
+<tr><td><strong>② Varlink 持续替代 D-Bus</strong></td><td><strong>新接口一律先上 Varlink，实验性的 D-Bus API 到期就撤</strong></td><td><strong>横跨多条，且有一条明确的移除公告</strong></td></tr>
+</table>
+<p><strong>而这两条共同的底色，是这一版对未来变更的两次预告（都在 v263 生效）</strong>：</p>
+<blockquote><strong>① systemd-logind 对 UAPI.1 引导加载器规范的集成，此前支持一个特殊目录 <code>/run/boot-loader-entries/</code>……但看起来（据我们所知）它实际上没有被任何项目使用（这与 UAPI.1 本身形成鲜明对比，后者的采用远超 systemd），而且它的实现并不完整。在未来的 v263 版本中，我们打算移除对 <code>/run/boot-loader-entries/</code> 及相关接口的支持，以简化我们的代码库。对 UAPI.1 的支持当然会保留。</strong></blockquote>>
+<blockquote><strong>② 实验性的「systemd-sysupdated」D-Bus API 将在下一个版本（v263）中被移除。计划是客户端改为通过 Varlink IPC 直接与 systemd-sysupdate（也就是 systemd-sysupdated 的后端）通话。「updatectl」工具将沿着这个方向重做。</strong></blockquote>
+<strong>我认为第 ① 条值得单独留意，因为它是这 35 条里少见的「承认某个东西没人用」的表述</strong>。<strong>而它的措辞很克制</strong>：<strong>不是说「这个设计错了」，而是说「据我们所知它没被使用」。</strong> <strong>这种表述方式在技术项目里并不常见，而它实际上提供了一个很有用的信号</strong>：<strong>UAPI.1 本身被广泛采用，而 systemd 为兼容旧系统加的那个旁路目录没人用</strong>。 <strong>也就是说，这一条移除不是因为设计不好，而是因为「过渡期的兼容层」在过渡完成后变成了纯负担。</strong>
+<h2>一、主线一：把启动信任链切成可逐段签名的段</h2>
+<p><strong>这一版的改动里，有相当密集的一组都指向同一件事</strong>：<strong>让「哪些代码在哪一阶段被验证过」变成可以分别声明、分别签名的东西。</strong></p>
+<p><strong>我把它们按「解决什么问题」重新组织。</strong></p>
+<h3>NvPCR 不再依赖锚定秘密</h3>
+<p><strong>这是这组里我认为技术上最关键的一条</strong>：</p>
+<blockquote><strong>NvPCR 的锚定方式得到了改进。它们现在创建的写入策略只允许从 initrd 环境执行初始 extend，并且不再依赖一个密封到 TPM 的秘密（也就是「锚定秘密」）。为了让 NvPCR 工作，所有 NvPCR 定义（<code>/usr/lib/nvpcr/*.nvpcr</code>）现在必须被打包在 UKI 里。UKI 还必须嵌入一个签名的 PCR 策略，它绑定到 initrd 引导阶段、并带有「initrd」策略引用。这可以通过向 ukify 提供 <code>--sign-initrd-pcrs</code> 选项来创建。没有在 initrd 中定义或初始化的 NvPCR，如果在运行时尝试惰性初始化，将会失败。</strong></blockquote>
+<strong>我需要把这个改动解释清楚，因为它涉及一个容易被忽略的信任问题。</strong>
+<p><strong>先说 NvPCR 是什么</strong>：<strong>TPM 的 PCR（平台配置寄存器）是用来「记录启动过程中每一段代码的度量值」的</strong>。<strong>而 NvPCR（non-volatile PCR）是在普通 PCR 之外额外提供的一个机制</strong>，<strong>它的价值在于能被「扩展」多次而不像普通 PCR 那样在重启时被清空。</strong></p>
+<p><strong>而在此之前，NvPCR 的可用性依赖一个「锚定秘密」</strong>（<strong>一个密封到 TPM 的秘密</strong>）。<strong>报告说这个设计现在被换掉了</strong>，<strong>换成的是</strong>：<strong>写入策略只允许从 initrd 阶段做初始 extend，加上 NvPCR 定义必须打包进 UKI。</strong></p>
+<p><strong>我认为这个改动解决的是一个具体而根本的问题</strong>：<strong>如果 NvPCR 的可用性依赖一个「被别人也知道的秘密」，那么它记录的内容的可信度就有上限。</strong> <strong>而改成「只有 initrd 能初始化它」之后，NvPCR 的内容就获得了一个</strong>来自启动路径本身<strong>的保证。</strong></p>
+<p><strong>而代价是明确的</strong>：<strong>NvPCR 定义必须进 UKI</strong>（<strong>也就是那个统一内核镜像</strong>），<strong>并且要嵌一个带 <code>initrd</code> 策略引用的签名 PCR 策略。</strong> <strong>这提高了打包要求</strong>，<strong>但也正是它让保证变得可验证</strong>：<strong>因为「必须打包进 UKI」意味着它进入了被签名的范围。</strong></p>
+<h3>PCR policyrefs：不同启动阶段用不同签名</h3>
+<p><strong>紧跟着的一条改动，恰好补上了上一节提到的那个「策略引用」</strong>：</p>
+<blockquote><strong>systemd-measure 新增了 <code>--policyref=</code>，而 systemd-cryptenroll 与 systemd-repart 里对应的 <code>--tpm2-public-key-policyref=</code> 选项，用来选择 TPM 对象在解锁时所要求的那个引用。这使得例如「仅限 initrd 的签名策略」成为可能，而 ukify 可以通过 <code>--sign-initrd-pcrs</code> 生成它，无需为后续启动阶段复用同一个签名。</strong></blockquote>
+<strong>这一条我认为是整组改动里最能说明「精细化」这个方向的</strong>。<strong>把它和旧的方式对比一下会很清楚</strong>：
+<table>
+<tr><th></th><th><strong>旧方式</strong></th><th><strong>policyrefs</strong></th></tr>
+<tr><td><strong>签名覆盖范围</strong></td><td><strong>一个签名覆盖整个启动流程</strong></td><td><strong>不同阶段可以用不同的签名</strong></td></tr>
+<tr><td><strong>initrd 与后续阶段</strong></td><td><strong>复用同一个签名</strong></td><td><strong>可以分别签，且可以不共用</strong></td></tr>
+<tr><td><strong>泄露一个签名的影响</strong></td><td><strong>影响所有阶段</strong></td><td><strong>只影响它覆盖的那个阶段</strong></td></tr>
+<tr><td><strong>典型用法</strong></td><td>—</td><td><strong>「仅限 initrd 的签名策略」</strong></td></tr>
+</table>
+<p><strong>也就是说</strong>：<strong>它让「信任的粒度」和「信任的对象」对齐了</strong>。<strong>在此之前，一个签名必须同时证明「这个 initrd 可信」和「这个后续启动阶段可信」</strong>，<strong>而这两件事的验证时机和风险面其实不同。</strong></p>
+<h3>加密 + verity 的 DDI：把「机密性」和「真实性」分包在两套机制上</h3>
+<p><strong>这一条我读到时觉得设计非常讲究</strong>：</p>
+<blockquote><strong>一个分区可以同时组合 <code>Encrypt=</code> 与 <code>Verity=data</code>。在这个模式下，repart 先写入 LUKS2 密文，然后在这个密文之上构建 dm-verity 元数据，所以 verity 构成外层真实性封装，而 LUKS2 是内层加密层。（换句话说，这提供了被认证的机密性。）</strong></blockquote>
+<strong>「verity 是外层、LUKS2 是内层」这个顺序，是整句话里最关键的信息</strong>。<strong>而这个顺序不能被反过来，原因是两条</strong>：
+<table>
+<tr><th>关注的属性</th><th>由谁提供</th><th>为什么必须在这层</th></tr>
+<tr><td><strong>真实性（authenticity）</strong></td><td><strong>dm-verity</strong></td><td><strong>它必须验证「你读到的东西是原样的」。如果它在内层，那么外层的解密操作已经先处理了可能被篡改的密文</strong></td></tr>
+<tr><td><strong>机密性（confidentiality）</strong></td><td><strong>LUKS2</strong></td><td><strong>它必须是最内层，因为只有它需要看到明文</strong></td></tr>
+</table>
+<p><strong>而官方给这个组合的定性是「被认证的机密性」（authenticated confidentiality）</strong>，<strong>我认为这个用词是准确的</strong>：<strong>它不是「加密 + 校验」这种简单叠加，而是两个属性各自由最适合的机制承担，且顺序由信任依赖决定。</strong></p>
+<h3>只读 ESP、持久化 TPM EK、CoCo 的系统凭据</h3>
+<p><strong>这组里还有三条值得列出来，因为它们各自补了一个空档</strong>：</p>
+<table>
+<tr><th>改动</th><th>解决什么</th></tr>
+<tr><td><strong>systemd-boot / systemd-stub 支持只读 ESP</strong></td><td><strong>ESP（EFI 系统分区）在很多平台上需要被固件读写，但它的内容在正常运行时不需要变</strong>。<strong>支持只读可以让「启动路径的输入不可被运行时改写」这件事更明确</strong></td></tr>
+<tr><td><strong>持久化 TPM EK</strong></td><td><strong>EK（Endorsement Key）是 TPM 的身份密钥</strong>。<strong>这条改动会在可能的情况下从 EK 证书验证生成的 EK，然后再持久化它</strong>；<strong>优先使用受支持的高区间 EK 模板，从而让背书层级保持受保护，同时使用持久化的 EK</strong></td></tr>
+<tr><td><strong>systemd-vmspawn 里的 CoCo VM 系统凭据</strong></td><td><strong>把「给机密计算虚拟机注入系统凭据」这条路打通</strong>（<strong>与同版本里的 Intel TDX CoCo 支持配套</strong>）</td></tr>
+</table>
+<p><strong>而「持久化 EK」那一条的措辞值得留意</strong>：<strong>它强调「在持久化之前先用证书验证」。</strong> <strong>这说明改动关注的不是「能不能持久化」，而是「持久化的那个东西是不是真的」。</strong> <strong>在一套以 TPM 为信任根的机制里，这个顺序是不能省的。</strong></p>
+<h2>二、主线二：Varlink 在稳步替换 D-Bus</h2>
+<p><strong>第二条主线不像第一条那么显眼</strong>（<strong>因为它分散在十几个不同的组件里</strong>），<strong>但它的方向非常明确</strong>：<strong>新的接口先上 Varlink，而实验性的 D-Bus API 到点就撤。</strong></p>
+<h3>这一版新增或强化的 Varlink 接口</h3>
+<table>
+<tr><th>组件</th><th>改动</th></tr>
+<tr><td><strong>systemd-sysupdate</strong></td><td><strong>新增完成钩子</strong>；<strong>且 v263 将移除 sysupdated 的 D-Bus API，客户端改为直接通过 Varlink 与 sysupdate 通话</strong></td></tr>
+<tr><td><strong>systemd-cryptenroll</strong></td><td><strong>实现了 Varlink API，允许通过 IPC 以编程方式登记额外的密钥</strong></td></tr>
+<tr><td><strong>systemd-sysinstall</strong></td><td><strong>新增 Varlink IPC</strong></td></tr>
+<tr><td><strong>systemd-report</strong></td><td><strong>成为 Varlink 服务并提供新指标</strong>；<strong>generate 与 upload 命令现在可以对其产生的报告做密码学签名</strong>，<strong>签名来自链接到 <code>/run/systemd/report.sign/</code> 的后端 Varlink 签名器</strong>，<strong>新的 <code>--sign=</code> 选项用来选择</strong></td></tr>
+<tr><td><strong>journal</strong></td><td><strong>支持通过 Varlink 跟踪日志</strong></td></tr>
+<tr><td><strong>.socket 单元</strong></td><td><strong>新增 Varlink socket 标记与 <code>varlinkctl list-sockets</code></strong></td></tr>
+</table>
+<p><strong>我认为 systemd-report 那条最能说明 Varlink 的定位</strong>。<strong>注意它的签名机制：签名不是内置的，而是从一个「链接到 <code>/run/systemd/report.sign/</code> 的后端 Varlink 签名器」获取的。</strong></p>
+<p><strong>也就是说</strong>：<strong>签名能力本身被做成了一个可插拔的后端，而 Varlink 是这个插拔的接口。</strong> <strong>这比「让 report 自己会签名」要灵活得多</strong>：<strong>因为在企业环境里，「谁来签名」往往需要一个集中式的密钥管理服务，而不是让每个组件自己管私钥。</strong></p>
+<h3>为什么是 Varlink 而不是继续用 D-Bus</h3>
+<p><strong>报告在这一版里没有给长篇论证，但从两条改动的组合能推出方向</strong>：<strong>sysupdated 的 D-Bus API 被移除、客户端改为直接用 Varlink 与后端通话。</strong> <strong>而这个决定的前提是</strong>：<strong>那个 D-Bus 服务本身只是后端的一个包装。</strong></p>
+<p><strong>我认为这里有一个可以推广的判断</strong>：<strong>当一个 D-Bus 服务只是「把某个进程的能力暴露出去」时，它引入的是一个额外的中介；而 Varlink 的模型是「客户端直接和进程说话」。</strong> <strong>中介的价值在于「把能力聚合到一个总线上」</strong>，<strong>但如果这个能力只由一个进程提供、且没有聚合的需求，中介就只剩下成本。</strong></p>
+<p><strong>而在同一版里还有一条改动，从另一个角度支持了这个方向</strong>：</p>
+<blockquote><strong>实验性的 <code>--introspect-cli</code> 现在提供机器可读的命令元数据（JSON），它由声明式的动词／选项描述生成。需要做命令／选项发现的脚本可以消费这个接口，而不是去解析人类可读的 <code>--help</code> 输出。该特性是实验性的，JSON schema 在未来的稳定化公告之前很可能会继续变化。</strong></blockquote>
+<strong>「让脚本不用解析 <code>--help</code>」这件事，和 Varlink 的取向是一致的</strong>：<strong>两者都在把「人可读的输出」和「机器可读的接口」分开。</strong> <strong>而这个分开是必要的，因为人类可读的输出会为了可读性而变更，而机器接口一旦被依赖就很难改。</strong>
+<p><strong>而官方特意标注「schema 很可能会变」是正确做法</strong>：<strong>它意味着这个接口目前是给人试用的，不是给人依赖的。</strong></p>
+<h2>三、其余改动：按「谁会用得上」分类</h2>
+<p><strong>我把剩下的 35 条按使用者分类，这样比按组件分类更有参考价值。</strong></p>
+<h3>对做服务器与切片管理的人</h3>
+<table>
+<tr><th>改动</th><th>内容</th></tr>
+<tr><td><strong>ActivatingConcurrencyMax=</strong></td><td><strong>Slice 单元新增该配置，用来限制一个切片层级里同时处于 activating 状态的单元数量</strong>；<strong>后续的激活会被排队，并在槽位释放时自动启动</strong></td></tr>
+<tr><td><strong>原子地入队多个任务</strong></td><td><strong>manager 新增 D-Bus 方法 <code>EnqueueUnitJobMany()</code> 用来排队</strong></td></tr>
+<tr><td><strong>原子增删标签</strong></td><td><strong><code>AddAndRemoveTags()</code> 可以原子地设置一些标签并取消另一些</strong>；<strong><code>hostnamectl tags</code> 接受 <code>+TAG</code> 与 <code>-TAG</code> 参数，无需替换整个列表</strong>（<strong>即此前已写过的 LUO 相关话题之外的补充</strong>）</td></tr>
+<tr><td><strong>机器标签可以写成 key=value</strong></td><td><strong>同一个 key 不能被赋予多个不同的值</strong></td></tr>
+</table>
+<p><strong>「原子地入队」和「原子增删标签」这两条放在一起看，会发现一个共同的需求</strong>：<strong>调用方想要表达的是「最终状态」，而不是「一串操作」。</strong> <strong>而逐个操作的问题在于中途失败会留下一个中间状态</strong>，<strong>而这个中间状态在自动化脚本里往往没有被正确处理。</strong></p>
+<h3>对做安全启动与磁盘加密的人</h3>
+<table>
+<tr><th>改动</th><th>内容</th></tr>
+<tr><td><strong>首次启动时的恢复密钥登记</strong></td><td><strong>新增 <code>systemd-cryptenroll-firstboot.service</code> 单元提供这个向导</strong>；<strong>systemd-cryptenroll 新增 <code>--recovery-key-file</code> 之类的机制来以原子且相对安全的方式把恢复密钥写入文件</strong></td></tr>
+<tr><td><strong>LUKS 支持 rogue TPM 防护</strong></td><td><strong>针对 LUKS 登记提供防护</strong></td></tr>
+<tr><td><strong>home 的 fscrypt v2 支持</strong></td><td><strong>systemd-homed 支持 fscrypt v2</strong>；<strong>v1 的 home 仍可解锁、重加密与停用，但没有原地的 v1 到 v2 策略升级</strong></td></tr>
+<tr><td><strong>密码轮换的顺序</strong></td><td><strong>LUKS-backed home 的密码轮换现在会先添加所有替换 keyslot，再移除旧的</strong>；<strong>如果添加新槽失败，旧槽保持不变，避免在登记失败时被锁在外面</strong></td></tr>
+<tr><td><strong>TPM PCR bank 选择</strong></td><td><strong>现在会考虑 SHA384 与 SHA512 PCR bank</strong></td></tr>
+</table>
+<p><strong>「先加后删」这个顺序值得单独指出</strong>，<strong>因为它是所有密钥轮换操作都应该遵循的规则</strong>。<strong>而它的价值恰恰在失败路径上</strong>：<strong>轮换失败时，系统仍然可用</strong>。 <strong>而反过来做（先删后加）的后果是</strong>：<strong>一旦添加失败，你就失去了两把钥匙，而其中一把是你刚删掉的。</strong></p>
+<p><strong>这个模式和我在别处写过的一件事是同一个道理</strong>（<strong>DevOps 里改配置时的「先加新的、验证、再删旧的」</strong>）：<strong>关键不在于正常路径有多快，而在于失败路径有没有退路。</strong></p>
+<h3>对做容器、扩展与不可变系统的人</h3>
+<table>
+<tr><th>改动</th><th>内容</th></tr>
+<tr><td><strong>overlayfs 上可执行</strong></td><td><strong>允许在 dm-verity 保护的文件系统上执行，同时仍然拒绝可写上层里的文件</strong>；<strong>这需要内核 v7.2 或更新</strong>；<strong>在更老的内核上，从 overlayfs 挂载执行仍然被完全拒绝</strong></td></tr>
+<tr><td><strong>confext / sysext 应用时重启或重载单元</strong></td><td><strong>应用扩展时可以重启或重载单元</strong></td></tr>
+<tr><td><strong>静态、单二进制服务管理器构建</strong></td><td><strong>支持静态的、单二进制的构建</strong></td></tr>
+<tr><td><strong>加密加 verity 的 DDI</strong></td><td><strong>见上一节</strong></td></tr>
+<tr><td><strong><code>/etc/clonetab</code></strong></td><td><strong>新增 dm-clone 引导集成</strong>：<strong><code>/etc/clonetab</code> 条目由 <code>systemd-clonesetup-generator</code> 翻译成 <code>systemd-clonesetup@.service</code> 单元，由 <code>clonesetup.target</code> 拉入，而 <code>systemd-clonesetup</code> 创建和移除 device-mapper clone 设备</strong>；<strong>条目可以设置 <code>region-size=</code> 来控制预填充的粒度</strong></td></tr>
+<tr><td><strong>sysupdate 的 installdb</strong></td><td><strong>systemd-sysupdate 新增 installdb</strong></td></tr>
+</table>
+<p><strong>「静态单二进制构建」这一条值得留意</strong>，<strong>因为它的使用场景很窄但很关键</strong>：<strong>在最小容器镜像、initramfs、以及某些嵌入式环境里，动态链接器和共享库本身就是负担。</strong> <strong>而一个「静态、单二进制」的服务管理器意味着一个文件就能跑起来。</strong></p>
+<p><strong>而 <code>/etc/clonetab</code> 这条的设计（用 generator 从表文件生成单元）是 systemd 的典型做法</strong>：<strong>表文件给人写，单元给系统执行，中间的翻译由 generator 完成。</strong> <strong>而这个模式的价值在于</strong>：<strong>它让「配置」和「运行时对象」解耦</strong>：<strong>用户可以只维护一份简单的表，而不是一堆 .service 文件。</strong></p>
+<h3>对桌面与本地化的人</h3>
+<table>
+<tr><th>改动</th><th>内容</th></tr>
+<tr><td><strong>FONT_SCALE=</strong></td><td><strong>vconsole 配置新增 <code>FONT_SCALE=</code></strong>，<strong>配套 <code>vconsole.font_scale=</code> 内核命令行与 credential 支持</strong>；<strong>值可以写成因子或百分比</strong>；<strong>目前只支持 100% 与 200%，其他值会被夹到最近的支持值</strong></td></tr>
+<tr><td><strong>基于词表的主机名模式</strong></td><td><strong>主机名设置逻辑新增一种通配符</strong>：<strong>原有的 <code>?</code> 会解析为一个由机器 ID 哈希派生的十六进制字符</strong>，<strong>新增的 <code>$</code> 会从词表文件里挑选一个词</strong>（<strong>同样通过哈希</strong>）；<strong>这可以用来自动分配易记的主机名</strong></td></tr>
+</table>
+<p><strong>这两条的共同点是「把选择权交给配置，但把随机性交给哈希」</strong>。<strong>主机名那条尤其巧妙</strong>：<strong>它让多台机器自动获得不同的、但易记的名字，而不需要一个集中的分配服务。</strong> <strong>而「通过哈希派生」意味着这个过程是确定性的</strong>：<strong>同一台机器每次得到同一个名字，而不同机器得到不同名字。</strong></p>
+<p><strong>FONT_SCALE 那条的「其他值会被夹到最近的支持值」是一个正确的默认行为</strong>：<strong>它避免了「不支持就不要启动」这种硬失败，同时又不假装支持了没实现的缩放级别。</strong></p>
+<h3>对做崩溃分析与机密计算的人</h3>
+<table>
+<tr><th>改动</th><th>内容</th></tr>
+<tr><td><strong>内核 coredump socket 协议</strong></td><td><strong>systemd-coredump 现在支持 Linux 6.17 起可用的内核 coredump socket 协议</strong>；<strong>在支持的平台上，<code>systemd-coredumpd.service</code> 监听 <code>/run/systemd/coredumpd/kernel</code>，<code>systemd-coredump-register.service</code> 通过 <code>kernel.core_pattern</code> 注册该 socket</strong>；<strong>更老的内核继续使用每个 coredump 一个 <code>systemd-coredump@.service</code> 的路径</strong>；<strong>对 coredump.conf 的修改需要重载 <code>systemd-coredumpd.service</code></strong></td></tr>
+<tr><td><strong>机密的 CoCo 支持</strong></td><td><strong>systemd-vmspawn 支持 Intel TDX CoCo</strong>；<strong>并为 CoCo VM 提供系统凭据</strong></td></tr>
+<tr><td><strong>会话作为抑制剂</strong></td><td><strong><code>pam_systemd</code> 的 <code>inhibit=</code> 支持把会话当作抑制剂</strong></td></tr>
+<tr><td><strong>NvPCR 与 PCR policyrefs</strong></td><td><strong>见第一节</strong></td></tr>
+<tr><td><strong>socket inode 上的扩展属性</strong></td><td><strong>由 <code>.socket</code> 单元管理的 AF_UNIX socket 现在可以标记扩展属性</strong>；<strong>socket 单元新增 <code>XAttrEntryPoint=</code>、<code>XAttrListen=</code>、<code>XAttrAccept=</code> 辅助项，用来标记入口点等</strong></td></tr>
+</table>
+<p><strong>内核 coredump socket 那一条的技术含量在于它换掉了什么</strong>。<strong>旧的路径是「每个 coredump 都拉起一个服务实例」</strong>，<strong>而新的路径是「一个常驻服务监听一个 socket」。</strong> <strong>对崩溃这种可能短时间内大量发生的事件来说，前者会带来实例创建的开销与并发压力</strong>，<strong>而后者把这件事变成了「往一个 socket 写数据」。</strong></p>
+<p><strong>而「coredump.conf 修改需要重载 coredumpd.service」这句提示是必要的</strong>，<strong>因为常驻服务的配置通常不会自动重载</strong>：<strong>这个提示避免了「改了配置但没生效」这类排查。</strong></p>
+<h3>其余零散改动</h3>
+<table>
+<tr><th>改动</th><th>内容</th></tr>
+<tr><td><strong>DNS-SD 的行为修正</strong></td><td><strong>通过 systemd-resolved 的 D-Bus 方法注册的 DNS-SD 服务，现在会在注册它们的客户端从总线断开时自动注销</strong>，<strong>这与等效的 Avahi API 的行为一致</strong>；<strong>报告说明由于一个 bug，客户端跟踪从来没有工作过，这类服务过去会一直保持注册直到 systemd-resolved 退出</strong>；<strong>现在客户端必须在服务要保持注册期间保持总线连接打开</strong>，<strong>一次性的注册（例如通过 <code>busctl</code> 或 <code>gdbus</code>）会在工具退出后立即被撤销</strong>；<strong>要独立于客户端生命周期注册 DNS-SD 服务，请使用 <code>*.dnssd</code> 文件</strong></td></tr>
+<tr><td><strong>移除的构建选项</strong></td><td><strong>Meson 选项 <code>-Dlibiptc=</code>（v259 弃用）、<code>-Dlibidn=</code>、<code>-Drc-local=</code>、<code>-Dsysvinit-path=</code>、<code>-Dsysvrcnd-path=</code>（自 v260 起弃用且无效）已被移除</strong></td></tr>
+<tr><td><strong>Type=notify-reload 更严格</strong></td><td><strong>这类服务现在在发送 <code>READY=1</code> 时被要求捕获或阻塞 <code>ReloadSignal=</code></strong>；<strong>如果既不捕获也不阻塞，服务会以协议错误启动失败</strong>；<strong>此前允许启动，尽管后续的重载可能触发信号的默认动作并终止服务</strong></td></tr>
+<tr><td><strong>tmpfiles 更严格</strong></td><td><strong>对于不使用参数字段的 <code>tmpfiles.d/</code> 行类型，systemd-tmpfiles 现在会拒绝非空的参数字段</strong></td></tr>
+<tr><td><strong>systemd-report 签名</strong></td><td><strong>见第二节</strong></td></tr>
+<tr><td><strong>systemd.firstboot=headless</strong></td><td><strong>首次启动向导的无头模式</strong></td></tr>
+<tr><td><strong>systemd.credentials_boot_policy=</strong></td><td><strong>引导凭据策略</strong></td></tr>
+<tr><td><strong>systemctl kexec --kernel-cmdline-reuse</strong></td><td><strong>复用内核命令行</strong></td></tr>
+<tr><td><strong>RestartRandomizedDelaySec=</strong></td><td><strong>重启随机化延迟</strong></td></tr>
+<tr><td><strong>kexec 计数与关机时间戳</strong></td><td><strong>PID 1 新增 D-Bus 属性 <code>KExecCount</code>，表示自上次真正启动以来系统经历过的 kexec 重启次数</strong>；<strong>它还暴露上一个 kexec 周期的关机时间戳</strong>（<strong>仅在 LUO 可用时</strong>）；<strong><code>systemd-analyze time</code> 用它们来报告 kexec／实时更新的耗时</strong></td></tr>
+</table>
+<p><strong>「Type=notify-reload 更严格」这一条是这一版里少数会</strong>破坏既有服务<strong>的改动</strong>，<strong>所以值得单独说</strong>：<strong>它把一个「以前能用但埋着雷」的情况变成了「直接启动失败」。</strong> <strong>而报告解释了那颗雷是什么</strong>：<strong>后续的重载可能触发信号默认动作并终止服务。</strong> <strong>也就是说，旧行为下这个服务可能在某次重载时无声地死掉，而新行为让问题在启动时就暴露。</strong> <strong>对于一个 init 系统来说，「早失败且说清楚」几乎总是优于「晚失败且难定位」。</strong></p>
+<p><strong>而 <code>KExecCount</code> 和「暴露上一个 kexec 周期的关机时间戳」这两条，配合 <code>systemd-analyze time</code> 的改动，解决的是一个具体的可观测性问题</strong>：<strong>在用 kexec 做快速重启（或 LUO 做内核实时更新）时，「这次启动实际上包含了什么」在时间维度上变得不直观。</strong> <strong>而这两个量让它重新变得可测量。</strong></p>
+<h2>四、我的判断</h2>
+<p><strong>第一，这一版的真正主题是「把信任的粒度调到和信任的对象一样细」。</strong></p>
+<p><strong>我之所以把这个判断放在最前面，是因为如果只看那 35 条的标题，会觉得 v262 是「又一个功能密集的版本」</strong>（<strong>35 条里有 15 个不同的组件，看起来像是平均用力</strong>）。<strong>但把它们按「关注点」重排之后，会发现三分之一都在做同一件事</strong>：</p>
+<ul>
+<li><strong>NvPCR 换掉锚定秘密</strong> → <strong>让「这段度量是在 initrd 里初始化的」这件事本身获得保证</strong>；</li>
+<li><strong>PCR policyrefs</strong> → <strong>让「initrd 的策略」和「后续阶段的策略」可以分别签名</strong>；</li>
+<li><strong>加密 + verity 的 DDI</strong> → <strong>让「机密性」和「真实性」各自由最适合的机制承担，且顺序符合信任依赖</strong>；</li>
+<li><strong>只读 ESP</strong> → <strong>让启动路径的输入在运行时不可被改写</strong>；</li>
+<li><strong>持久化 TPM EK 之前先验证</strong> → <strong>让被持久化的那个东西是「已验证的」</strong>。</li>
+</ul>
+<strong>这五条的共同点是</strong>：<strong>它们都在把「一个大而模糊的信任声明」拆成「多个小而精确、可以分别验证的声明」。</strong> <strong>而这正是可信启动这个领域长期以来的核心难点</strong>：<strong>因为「我的系统是可信的」这句话在没有粒度的情况下是不可验证的。</strong>
+<p><strong>第二，那个「verity 在外、LUKS2 在内」的顺序，是这一版里最适合拿来当教学例子的地方。</strong></p>
+<p><strong>它演示了一个通用原则</strong>：<strong>当两个安全属性需要叠加时，它们的顺序不是任意的，而是由「谁依赖谁」决定的。</strong></p>
+<p><strong>具体地说</strong>：<strong>真实性验证必须在解密之后做的那个假设不成立</strong>（<strong>因为如果先解密，你就已经把可能被篡改的数据喂给了密码学实现</strong>），<strong>而机密性必须是最后一道</strong>（<strong>因为只有它需要看到明文</strong>）。<strong>所以顺序被唯一确定了。</strong></p>
+<p><strong>而我认为这个原则值得记住，因为它在别的地方也出现</strong>：<strong>比如 TLS 的「先握手验证身份，再加密传输数据」</strong>、<strong>以及我在别处提到的签名与加密在供应链安全里的应用顺序。</strong> <strong>在这些场景里，顺序错了不会立刻报错</strong>（<strong>系统照样运行</strong>），<strong>但会静默地削弱某个保证。</strong></p>
+<p><strong>而官方给这个组合起名叫「被认证的机密性」，而不是「加密 + 完整性校验」，我认为这个命名本身就是一种精确</strong>：<strong>它说的是「这两个属性都成立」，而不是「我用了两个机制」。</strong></p>
+<p><strong>第三，Varlink 对 D-Bus 的替换是渐进的，而它给出的理由值得那些设计内部接口的人参考。</strong></p>
+<p><strong>注意它的做法不是「宣布 D-Bus 过时」</strong>，<strong>而是</strong>：<strong>新接口一律先上 Varlink</strong>（<strong>sysinstall、cryptenroll、journal、report 都是新增的</strong>），<strong>而对已有的实验性 D-Bus API 给一个明确的移除版本号</strong>（<strong>sysupdated 在 v263 移除</strong>）。 <strong>而且移除的理由是清楚的</strong>：<strong>那个 D-Bus 服务只是后端（sysupdate）的一个包装</strong>，<strong>客户端可以直接通过 Varlink 与后端通话。</strong></p>
+<p><strong>我认为这个判断可以推广到很多内部服务的设计上</strong>：<strong>当一个服务只是「把另一个进程的能力转发到一条总线上」时，它存在的价值取决于「有多少个不同的消费者需要从这条总线上找到它」。</strong> <strong>如果只有一个或很少的消费者，那么这层转发带来的是额外的失败点和版本耦合，而不是解耦。</strong></p>
+<p><strong>而这一版里 <code>--introspect-cli</code> 那条改动从另一个角度印证了同一个方向</strong>：<strong>它把「人可读的 <code>--help</code>」和「机器可读的 JSON」分开。</strong> <strong>这两件事被混在一起是很多工具的长期问题</strong>：<strong>而分开之后，人类可读的输出可以为了可读性自由变更，而机器接口则获得了一个可以被明确版本化的形态。</strong></p>
+<p><strong>而官方给这个新接口标注「schema 很可能会变」是正确的做法</strong>：<strong>它明确划出了「可以试用」和「可以依赖」的界线</strong>，<strong>而这条界线在很多项目里是缺失的。</strong></p>
+<p><strong>第四，这一版里有几条改动会破坏既有行为，而这些改动的处理方式值得单独看。</strong></p>
+<p><strong>最明显的一条是 Type=notify-reload 的收紧</strong>：</p>
+<blockquote><strong>这类服务现在在发送 <code>READY=1</code> 时被要求捕获或阻塞 <code>ReloadSignal=</code>。如果它们既不捕获也不阻塞，服务会以协议错误启动失败。此前允许启动，尽管后续的重载可能触发信号的默认动作并终止服务。</strong></blockquote>
+<strong>我认为这条改动的处理方式是教科书式的</strong>：<strong>它把一个「可能在生产里某次重载时静默死亡」的问题，变成了「启动时就明确失败」。</strong> <strong>而在 init 系统这个位置，「早失败且说清楚」的价值远高于兼容性。</strong>
+<p><strong>另一条是 DNS-SD 的行为修正，而它的说明方式我认为更值得学</strong>：</p>
+<blockquote><strong>由于一个 bug，客户端跟踪从来没有工作过，这类服务过去会一直保持注册直到 systemd-resolved 退出（但也没有在守护进程重启后存活）。</strong></blockquote>
+<strong>「这个 bug 让功能从来没有真正生效过」这句话，实际上是在说</strong>：<strong>这个接口的文档行为与实际行为一直不一致，而没人发现。</strong> <strong>而现在的修正让行为与文档一致</strong>，<strong>代价是依赖旧（错误）行为的客户端会受影响</strong>（<strong>一次性的注册会在工具退出后被撤销</strong>）。
+<p><strong>而报告给出的替代方案很具体</strong>：<strong>要独立于客户端生命周期注册，使用 <code>*.dnssd</code> 文件。</strong> <strong>这比「请注意行为变化」要有用得多，因为它直接指出了该走哪条路。</strong></p>
+<p><strong>第五，那两条「未来移除」的预告，比任何新增功能都更能说明这个项目的工作方式。</strong></p>
+<p><strong>回顾一下那两条</strong>：<strong>移除 <code>/run/boot-loader-entries/</code></strong>（<strong>理由是「据我们所知它没有被任何项目使用」</strong>），<strong>移除 sysupdated 的 D-Bus API</strong>（<strong>理由是客户端可以直接用 Varlink 与后端通话</strong>）。</p>
+<p><strong>而两条预告有一个共同的结构</strong>：<strong>先说清「为什么可以移除」</strong>（<strong>一条是没人用，一条是有等价且更直接的替代</strong>），<strong>再给出明确的版本号</strong>。</p>
+<p><strong>我认为这个模式值得所有维护长期接口的项目参考</strong>，<strong>因为它同时满足了两件通常冲突的目标</strong>：<strong>一方面它给了使用者足够的水位信息</strong>（<strong>v263，也就是下一个版本</strong>），<strong>另一方面它没有为了兼容而无限期背负无用的代码</strong>。</p>
+<p><strong>而第一条的表述「据我们所知它没有被任何项目使用」，实际上也暴露了一件事</strong>：<strong>维护者对「自己的接口被用在哪里」的可见度是有限的。</strong> <strong>而他们选择的处理方式是</strong>：<strong>把「我们观察到的情况」说出来</strong>（<strong>而不是断言「没人用」</strong>），<strong>然后给一个版本号的缓冲</strong>。 <strong>这给了使用者一个反驳的机会</strong>：<strong>如果有人正在用，可以在 v263 发布前说明。</strong></p>
+<p><strong>最后，我想指出这一版里我最欣赏的一处工程判断，它不在任何一条功能列表里，而在一条「更严格」的改动里</strong>：</p>
+<blockquote><strong>对于不使用参数字段的 <code>tmpfiles.d/</code> 行类型，systemd-tmpfiles 现在会拒绝非空的参数字段。</strong></blockquote>
+<strong>这条改动的价值在于「拒绝无意义输入」</strong>。<strong>一个不该有参数的行类型，如果被写上了参数，那么它在旧行为下会被静默忽略</strong>：<strong>而用户会以为那个参数生效了。</strong>
+<p><strong>而在一套管理启动和文件系统状态的工具里，静默忽略是比报错危险得多的行为</strong>。 <strong>因为报错会在部署时被发现，而静默忽略会在某次「为什么没生效」的排查里被发现</strong>，<strong>而那时距离写出那行配置可能已经过去了几个月。</strong></p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>版本</strong></td><td><strong>systemd v262</strong></td></tr>
+<tr><td><strong>发布时间</strong></td><td><strong>2026 年 9 月 22 日</strong></td></tr>
+<tr><td><strong>用户给的链接</strong></td><td><strong>Lennart Poettering 的《Mastodon Stories for systemd v262》</strong>（<strong>2026-10-15</strong>），<strong>是 35 条 Mastodon 帖子的索引，不是变更清单本身</strong></td></tr>
+<tr><td><strong>下一版预告</strong></td><td><strong>v263 的同类帖子将在几周内开始，标签 <code>#systemd263</code></strong></td></tr>
+<tr><td><strong>⚠️ 本站已写过的</strong></td><td><strong><a href="/articles/2026-09-22_systemd-262-released/">systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」</a></strong>（<strong>涉及 AI/LLM 金丝雀</strong>，<strong>本文不重复</strong>）</td></tr>
+<tr><td><strong>⭐ 主线一：信任链精细化</strong></td><td><strong>NvPCR 换掉锚定秘密、PCR policyrefs、加密 + verity 的 DDI、只读 ESP、持久化 TPM EK 前先验证</strong></td></tr>
+<tr><td><strong>NvPCR 的改动</strong></td><td><strong>写入策略只允许从 initrd 环境执行初始 extend</strong>；<strong>不再依赖密封到 TPM 的「锚定秘密」</strong>；<strong>所有 NvPCR 定义（<code>/usr/lib/nvpcr/*.nvpcr</code>）必须打包进 UKI</strong>；<strong>UKI 还须嵌入绑定到 initrd 引导阶段、带「initrd」策略引用的签名 PCR 策略</strong>（<strong>ukify 的 <code>--sign-initrd-pcrs</code></strong>）；<strong>未在 initrd 中定义或初始化的 NvPCR，在运行时惰性初始化会失败</strong></td></tr>
+<tr><td><strong>PCR policyrefs</strong></td><td><strong>systemd-measure 新增 <code>--policyref=</code></strong>；<strong>systemd-cryptenroll 与 systemd-repart 新增 <code>--tpm2-public-key-policyref=</code></strong>；<strong>使得「仅限 initrd 的签名策略」成为可能，无需为后续启动阶段复用同一签名</strong></td></tr>
+<tr><td><strong>加密 + verity 的 DDI</strong></td><td><strong>一个分区可组合 <code>Encrypt=</code> 与 <code>Verity=data</code></strong>；<strong>repart 先写 LUKS2 密文，再在密文上构建 dm-verity 元数据</strong>；<strong>所以 verity 是外层真实性封装，LUKS2 是内层加密层</strong>（<strong>即「被认证的机密性」</strong>）</td></tr>
+<tr><td><strong>只读 ESP</strong></td><td><strong>systemd-boot / systemd-stub 支持只读 ESP</strong></td></tr>
+<tr><td><strong>持久化 TPM EK</strong></td><td><strong>可能时从 EK 证书验证生成的 EK，然后再持久化</strong>；<strong>优先使用受支持的高区间 EK 模板，让背书层级保持受保护</strong></td></tr>
+<tr><td><strong>TPM PCR bank 选择</strong></td><td><strong>现在会考虑 SHA384 与 SHA512 PCR bank</strong></td></tr>
+<tr><td><strong>⭐ 主线二：Varlink 替代 D-Bus</strong></td><td><strong>v263 将移除 sysupdated 的 D-Bus API</strong>，<strong>客户端改为通过 Varlink 直接与 systemd-sysupdate 通话</strong>；<strong>updatectl 将按此重做</strong></td></tr>
+<tr><td><strong>本版新增的 Varlink 接口</strong></td><td><strong>systemd-cryptenroll（可通过 IPC 编程登记额外密钥）</strong>、<strong>systemd-sysinstall</strong>、<strong>journal（通过 Varlink 跟踪日志）</strong>、<strong>systemd-report（成为 Varlink 服务）</strong>、<strong>.socket 单元的 Varlink socket 标记 + <code>varlinkctl list-sockets</code></strong></td></tr>
+<tr><td><strong>systemd-report 的签名</strong></td><td><strong>generate 与 upload 可对报告做密码学签名</strong>；<strong>签名来自链接到 <code>/run/systemd/report.sign/</code> 的后端 Varlink 签名器</strong>；<strong>新增 <code>--sign=</code> 选择</strong></td></tr>
+<tr><td><strong><code>--introspect-cli</code></strong></td><td><strong>以 JSON 提供机器可读的命令元数据</strong>，<strong>由声明式的动词／选项描述生成</strong>；<strong>脚本可消费它而不必解析 <code>--help</code></strong>；⚠️ <strong>实验性，JSON schema 很可能继续变化</strong></td></tr>
+<tr><td><strong>ActivatingConcurrencyMax=</strong></td><td><strong>Slice 单元新增</strong>，<strong>限制一个切片层级里同时处于 activating 状态的单元数</strong>；<strong>后续激活排队，槽位释放时自动启动</strong></td></tr>
+<tr><td><strong>原子操作</strong></td><td><strong>manager 新增 <code>EnqueueUnitJobMany()</code> 原子入队多个任务</strong>；<strong><code>AddAndRemoveTags()</code> 原子设置与取消标签</strong>；<strong><code>hostnamectl tags</code> 接受 <code>+TAG</code>／<code>-TAG</code></strong></td></tr>
+<tr><td><strong>机器标签</strong></td><td><strong>可写成 key=value</strong>；<strong>同一 key 不能被赋予多个不同值</strong></td></tr>
+<tr><td><strong>恢复密钥登记</strong></td><td><strong>新增 <code>systemd-cryptenroll-firstboot.service</code> 提供首次启动向导</strong>；<strong>可以原子且相对安全的方式把恢复密钥写入文件</strong></td></tr>
+<tr><td><strong>rogue TPM 防护</strong></td><td><strong>针对 LUKS 登记提供防护</strong></td></tr>
+<tr><td><strong>fscrypt v2</strong></td><td><strong>systemd-homed 支持 fscrypt v2</strong>；<strong>v1 home 仍可解锁／重加密／停用，但没有原地 v1→v2 策略升级</strong></td></tr>
+<tr><td><strong>home 密码轮换</strong></td><td><strong>先添加所有替换 keyslot，再移除旧的</strong>；<strong>新槽失败则旧槽保留，避免登记失败时被锁在外面</strong></td></tr>
+<tr><td><strong>overlayfs 上可执行</strong></td><td><strong>允许在 dm-verity 保护的文件系统上执行，仍拒绝可写上层里的文件</strong>；<strong>需内核 v7.2+</strong>；<strong>更老内核上从 overlayfs 挂载执行仍被完全拒绝</strong></td></tr>
+<tr><td><strong>静态单二进制构建</strong></td><td><strong>支持静态、单二进制的服务管理器构建</strong></td></tr>
+<tr><td><strong><code>/etc/clonetab</code></strong></td><td><strong>新增 dm-clone 引导集成</strong>：<strong>条目由 <code>systemd-clonesetup-generator</code> 翻译成 <code>systemd-clonesetup@.service</code>，由 <code>clonesetup.target</code> 拉入</strong>；<strong>条目可设 <code>region-size=</code> 控制预填充粒度</strong></td></tr>
+<tr><td><strong>sysupdate 其他</strong></td><td><strong>新增完成钩子</strong>；<strong>新增 installdb</strong>；<strong>硬件建议的功能／组件</strong></td></tr>
+<tr><td><strong>confext / sysext</strong></td><td><strong>应用扩展时可重启或重载单元</strong>；<strong><code>systemd-sysext status --json=</code> 与 <code>systemd-confext status --json=</code> 的 <code>extensions</code> 字段现在总是数组</strong></td></tr>
+<tr><td><strong>FONT_SCALE=</strong></td><td><strong>vconsole 配置新增</strong>，<strong>配套 <code>vconsole.font_scale=</code> 内核命令行与 credential</strong>；<strong>值可写成因子或百分比</strong>；<strong>目前只支持 100% 与 200%，其他值夹到最近支持值</strong></td></tr>
+<tr><td><strong>主机名词表通配符</strong></td><td><strong>原有 <code>?</code> 解析为由机器 ID 哈希派生的十六进制字符</strong>；<strong>新增 <code>$</code> 从词表文件挑选一个词</strong>（<strong>同样通过哈希</strong>）；<strong>可用于自动分配易记主机名</strong></td></tr>
+<tr><td><strong>内核 coredump socket 协议</strong></td><td><strong>支持 Linux 6.17 起的该协议</strong>；<strong><code>systemd-coredumpd.service</code> 监听 <code>/run/systemd/coredumpd/kernel</code>，<code>systemd-coredump-register.service</code> 通过 <code>kernel.core_pattern</code> 注册</strong>；<strong>更老内核继续走每个 coredump 一个 <code>systemd-coredump@.service</code></strong>；⚠️ <strong>改 coredump.conf 需重载 <code>systemd-coredumpd.service</code></strong></td></tr>
+<tr><td><strong>机密计算</strong></td><td><strong>systemd-vmspawn 支持 Intel TDX CoCo</strong>；<strong>为 CoCo VM 提供系统凭据</strong></td></tr>
+<tr><td><strong>会话作为抑制剂</strong></td><td><strong><code>pam_systemd</code> 的 <code>inhibit=</code></strong></td></tr>
+<tr><td><strong>socket 扩展属性</strong></td><td><strong><code>.socket</code> 单元管理的 AF_UNIX socket 可标记扩展属性</strong>；<strong>新增 <code>XAttrEntryPoint=</code>、<code>XAttrListen=</code>、<code>XAttrAccept=</code></strong></td></tr>
+<tr><td><strong>kexec 可观测性</strong></td><td><strong>PID 1 新增 D-Bus 属性 <code>KExecCount</code>（自上次真正启动以来的 kexec 重启次数）</strong>；<strong>并暴露上一个 kexec 周期的关机时间戳</strong>（<strong>仅 LUO 可用时</strong>）；<strong><code>systemd-analyze time</code> 用它们报告 kexec／实时更新耗时</strong></td></tr>
+<tr><td><strong>DNS-SD 行为修正</strong></td><td><strong>通过 systemd-resolved D-Bus 方法注册的 DNS-SD 服务，现在会在注册客户端断开总线时自动注销</strong>（<strong>与 Avahi API 一致</strong>）；<strong>此前因 bug，客户端跟踪从未工作</strong>；<strong>一次性注册（busctl／gdbus）会在工具退出后立即撤销</strong>；<strong>要独立于客户端生命周期，请用 <code>*.dnssd</code> 文件</strong></td></tr>
+<tr><td><strong>⚠️ Type=notify-reload 收紧</strong></td><td><strong>这类服务在发送 <code>READY=1</code> 时须捕获或阻塞 <code>ReloadSignal=</code></strong>；<strong>否则以协议错误启动失败</strong>；<strong>此前允许启动，尽管后续重载可能触发信号默认动作并终止服务</strong></td></tr>
+<tr><td><strong>tmpfiles 更严格</strong></td><td><strong>对不使用参数字段的 <code>tmpfiles.d/</code> 行类型，拒绝非空参数字段</strong></td></tr>
+<tr><td><strong>移除的构建选项</strong></td><td><strong><code>-Dlibiptc=</code>（v259 弃用）、<code>-Dlibidn=</code>、<code>-Drc-local=</code>、<code>-Dsysvinit-path=</code>、<code>-Dsysvrcnd-path=</code>（自 v260 起弃用且无效）</strong></td></tr>
+<tr><td><strong>v263 移除预告 ①</strong></td><td><strong><code>/run/boot-loader-entries/</code> 及相关接口</strong>（<strong>理由：据我们所知没有任何项目使用，且实现不完整</strong>）；<strong>UAPI.1 支持保留</strong></td></tr>
+<tr><td><strong>v263 移除预告 ②</strong></td><td><strong>实验性的 <code>systemd-sysupdated</code> D-Bus API</strong>（<strong>客户端改为通过 Varlink 直接与 systemd-sysupdate 通话</strong>）</td></tr>
+<tr><td><strong>其他零散</strong></td><td><strong><code>systemd.firstboot=headless</code></strong>；<strong><code>systemd.credentials_boot_policy=</code></strong>；<strong><code>systemctl kexec --kernel-cmdline-reuse</code></strong>；<strong><code>RestartRandomizedDelaySec=</code></strong></td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://0pointer.net/blog/mastodon-stories-for-systemd-v262.html">Lennart Poettering：Mastodon Stories for systemd v262</a></li>
+<li><a href="https://raw.githubusercontent.com/systemd/systemd/v262/NEWS">systemd v262 NEWS</a>、<a href="https://github.com/systemd/systemd/releases/tag/v262">v262 release</a></li>
+<li><a href="/articles/2026-09-22_systemd-262-released/">本站：systemd 262 正式发布：内嵌兜底 unit、LUO 热更新会话，还带一只「AI 提交金丝雀」</a></li>
+<li><a href="/articles/2026-08-26_systemd-262-rc1/">本站：systemd 262-rc1 里那条被低估的改动：把「同步故障」撕开</a></li>
+<li><a href="/articles/2026-10-15_cloud-hypervisor-54-live-migration/">本站：Cloud Hypervisor 54 承诺「前两个版本可迁移」</a></li>
+<li><a href="/articles/2026-10-15_open-source-ai-contribution-policies-compared/">本站：同一周里，四个开源项目对 AI 贡献给出了四种答案</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/",
+      title: "systemd v262 \u90a3 35 \u6761\u6539\u52a8\uff0c\u771f\u6b63\u7684\u4e3b\u7ebf\u662f\u628a\u300c\u542f\u52a8\u4fe1\u4efb\u300d\u53d8\u6210\u4e00\u6761\u53ef\u4ee5\u9010\u6bb5\u7b7e\u540d\u7684\u94fe"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

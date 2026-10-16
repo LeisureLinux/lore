@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了，而他公开的是一套方法论 — FreeLAMP.com</title>
+  <meta name="description" content="Red Hat 的 Christian Schaller 在博客里记录了他用 Claude Code 为两台硬件写 Linux 驱动的过程：一台是芯片组换了、没有 Linux 支持的 Plustek 8200i 底片扫描仪，另一台是联想 ThinkPad X1 Carbon 上出图发暗的 MIPI 摄像头。真正值得注意">
+  <meta name="keywords" content="AI, LLM, Claude Code, 逆向工程, 驱动开发, hw-harness, usbmon, KVM, SANE, libcamera, MIPI, Red Hat, GNOME, Linux硬件支持, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-16">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了，而他公开的是一套方法论">
+  <meta property="og:description" content="Red Hat 的 Christian Schaller 在博客里记录了他用 Claude Code 为两台硬件写 Linux 驱动的过程：一台是芯片组换了、没有 Linux 支持的 Plustek 8200i 底片扫描仪，另一台是联想 ThinkPad X1 Carbon 上出图发暗的 MIPI 摄像头。真正值得注意">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-16">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="AI">
+  <meta property="article:tag" content="AI">
+  <meta property="article:tag" content="LLM">
+  <meta property="article:tag" content="Claude Code">
+  <meta property="article:tag" content="逆向工程">
+  <meta property="article:tag" content="驱动开发">
+  <meta property="article:tag" content="hw-harness">
+  <meta property="article:tag" content="usbmon">
+  <meta property="article:tag" content="KVM">
+  <meta property="article:tag" content="SANE">
+  <meta property="article:tag" content="libcamera">
+  <meta property="article:tag" content="MIPI">
+  <meta property="article:tag" content="Red Hat">
+  <meta property="article:tag" content="GNOME">
+  <meta property="article:tag" content="Linux硬件支持">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了，而他公开的是一套方法论">
+  <meta name="twitter:description" content="Red Hat 的 Christian Schaller 在博客里记录了他用 Claude Code 为两台硬件写 Linux 驱动的过程：一台是芯片组换了、没有 Linux 支持的 Plustek 8200i 底片扫描仪，另一台是联想 ThinkPad X1 Carbon 上出图发暗的 MIPI 摄像头。真正值得注意">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了，而他公开的是一套方法论",
+  "description": "主要来源：Phoronix：Claude Code / AI Shows Potential For Reverse-Engineering Hardware For Linux Supporthttps://www.phoronix.com/news/AI-Reverse-Engineer-Linux-HW（2026-10-15，Michael Larabel）  一手材料：Christian ",
+  "datePublished": "2026-10-16",
+  "dateModified": "2026-10-16",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "AI, LLM, Claude Code, 逆向工程, 驱动开发, hw-harness, usbmon, KVM, SANE, libcamera, MIPI, Red Hat, GNOME, Linux硬件支持, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了，而他公开的是一套方法论",
+        "item": "https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-16">2026-10-16</div>
+        <h1 class="post-title" itemprop="headline">用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了，而他公开的是一套方法论</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/AI/">AI</a><a itemprop="keywords" href="/tags/LLM/">LLM</a><a itemprop="keywords" href="/tags/Claude%20Code/">Claude Code</a><a itemprop="keywords" href="/tags/%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B/">逆向工程</a><a itemprop="keywords" href="/tags/%E9%A9%B1%E5%8A%A8%E5%BC%80%E5%8F%91/">驱动开发</a><a itemprop="keywords" href="/tags/hw-harness/">hw-harness</a><a itemprop="keywords" href="/tags/usbmon/">usbmon</a><a itemprop="keywords" href="/tags/KVM/">KVM</a><a itemprop="keywords" href="/tags/SANE/">SANE</a><a itemprop="keywords" href="/tags/libcamera/">libcamera</a><a itemprop="keywords" href="/tags/MIPI/">MIPI</a><a itemprop="keywords" href="/tags/Red%20Hat/">Red Hat</a><a itemprop="keywords" href="/tags/GNOME/">GNOME</a><a itemprop="keywords" href="/tags/Linux%E7%A1%AC%E4%BB%B6%E6%94%AF%E6%8C%81/">Linux硬件支持</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>主要来源：<a href="https://www.phoronix.com/news/AI-Reverse-Engineer-Linux-HW">Phoronix：Claude Code / AI Shows Potential For Reverse-Engineering Hardware For Linux Support</a>（2026-10-15，Michael Larabel）<br>
+<strong>一手材料</strong>：<a href="https://blogs.gnome.org/uraeus/2026/10/15/aiandreverseengineerhardware/">Christian F.K. Schaller：Using Artificial Intelligence to reverse engineer hardware</a>（<strong>2026-10-15</strong>）<br>
+本文为<strong>译文 + 解读</strong>。第一、四节的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>Red Hat 的 Christian Schaller 在博客里记录了一件具体的事</strong>：<strong>他用 Claude Code 给两台硬件写了 Linux 驱动</strong>：<strong>一台芯片组换过、没有 Linux 支持的 Plustek 8200i 底片扫描仪</strong>，<strong>以及自己笔记本上出图发暗的 MIPI 摄像头</strong>。</p>
+<p><strong>而我认为这条新闻真正值得记的不是「AI 会写驱动了」，而是他公开的那套方法</strong>：<strong>他没有让 AI 去猜硬件寄存器，而是给它搭了一个可以观察到真实行为的实验台。</strong></p>
+<p><strong>官方（他自己的博客）对这套方法的总结是</strong>：</p>
+<blockquote><strong>为没有文档的硬件写驱动一直是件苦差事。你抓总线流量，盯着十六进制转储，形成关于每个寄存器或控制传输做什么的假设。然后你一个个测试它们，通常要花几周。这些在概念上都不难，但需要极大的耐心和技巧。</strong></blockquote>>
+<blockquote><strong>那类工作很适合 AI 模型。它能读完上千行 USB 抓包，注意到某个序列在重复、只有一个字节在变，并提出那个字节是什么意思。它能写出验证这个猜测的测试，而且它不会觉得无聊。人类仍然决定要造什么、并检查它在真实硬件上能不能用，但那份苦力活大大缩短了。</strong></blockquote>
+<strong>我认为这段话准确地划出了 AI 在这件事里的位置</strong>：<strong>它接管的是「耐心的重复劳动」，而「决定造什么」和「在真机上验证」这两件事仍然在人手里。</strong>
+<h2>一、两个项目，以及那个失败的起点</h2>
+<p><strong>先说清楚他的起点，因为这段说明了 AI 不是一开始就管用。</strong></p>
+<p><strong>他买扫描仪的原因是私人的</strong>：</p>
+<blockquote><strong>「我母亲去世后，我最终得到了一大箱老胶片底片，里面有童年家庭旅行的照片等等。所以我决定买一台底片扫描仪，发现 Plustek 8200i 在 Linux 下受支持，就买了它。结果发现扫描仪里的芯片组换成了一个在 Linux 下不再受支持的。」</strong></blockquote>
+<strong>他先是自己尝试</strong>：
+<blockquote><strong>「我之前用 Claude code 为一些硬件做过 Linux 配置工具，比如我的 Dell 相机控制器应用，所以我想，也许 Claude 能帮我做出一个能用的 SANE 驱动。但我基本上卡住了，很久都没有进展，甚至基本上放弃了这个项目好几个月。」</strong></blockquote>
+<strong>而转机来自他看到别人的做法</strong>：
+<blockquote><strong>「然后我在 X 上看到 Tom Crider（也就是 Glorious Eggroll）的一篇帖子，讲他如何用 AI 工具修好了一个鼠标驱动。他基本上描述了自己如何设置，使 AI 智能体完全控制一个 Windows 实例，用来捕获修复驱动所需的数据。所以我把他的推文粘到 Claude 里，让它帮我设置一个 Windows 虚拟机，做 Tom 为我的扫描仪所做的同样的事。我认为能在 Windows 下运行扫描并同时捕获 USB 数据，这个组合起了神奇的作用，可能还与 Claude code 的改进结合在一起，产生了巨大的差别。」</strong></blockquote>
+<strong>结果是</strong>：
+<blockquote><strong>「几个小时内我完成了有史以来第一次在 Linux 下成功扫描，当然还有一些质量问题，但百分之百能认出底片上的图像。几天后我就有了一个近乎完美的驱动，包括对红外扫描的支持，正准备发布，结果发现在我从放弃到再次尝试的这段时间里，已经有人向 SANE 提交了支持这台扫描仪的代码……这种事有时候会发生。」</strong></blockquote>
+<strong>我认为「结果别人已经提交了」这个结尾值得保留，因为它是一个诚实的收尾</strong>：<strong>这类工作有时候的产出不是「第一个完成」，而是「产出被验证过了一遍」。</strong> <strong>而在这个过程中他确实做了别的东西</strong>（<strong>一个负片扫描应用，名叫 Negative Vibes</strong>）。
+<p><strong>而第二个项目是摄像头</strong>：</p>
+<blockquote><strong>「不管怎样，扫描仪这件事成功之后我想，我能不能用这个来最终修好我笔记本上 MIPI 摄像头支持的最后一些问题。所以我让 claude 复用它之前创建的测试台，尝试通过按需更新内核驱动和 libcamera 来修好笔记本上的 MIPI 摄像头。我早上开始这个工作，到那天结束时，我已经有了内核和 libcamera 两边的补丁，情况大为改善。」</strong></blockquote>
+<strong>背景是</strong>：<strong>那台笔记本是联想 ThinkPad X1 Carbon Gen 14 Aura Edition</strong>，<strong>Intel IPU7 后面是一颗索尼传感器</strong>，<strong>而出图发暗并伴有其他问题。</strong>
+<h2>二、hw-harness：这套方法到底做了什么</h2>
+<p><strong>这一节是这篇的核心。因为「用 AI 修驱动」这句话本身没有信息量，有价值的是他搭的那套东西。</strong></p>
+<p><strong>官方把 hw-harness 的用途写成了四步</strong>：</p>
+<table>
+<tr><th>步骤</th><th>做法</th></tr>
+<tr><td><strong>① 录一段参考会话</strong></td><td><strong>在 KVM 虚拟机里运行厂商的 Windows 驱动，把真实设备透传给 guest</strong></td></tr>
+<tr><td><strong>② 从虚拟机外面抓</strong></td><td><strong>在 Linux 宿主上用 usbmon 记录流量。它位于透传层之下，所以 guest 看不到它</strong></td></tr>
+<tr><td><strong>③ 在 Linux 上做同样的操作</strong></td><td><strong>用你自己的驱动重复同一操作，并以同样的方式抓下来</strong></td></tr>
+<tr><td><strong>④ 对比两条 trace</strong></td><td><strong>两者来自同一台仪器，所以可以直接比较。差异就是你的驱动 bug 清单</strong></td></tr>
+</table>
+<p><strong>而针对没有总线可以接的设备（比如内置 MIPI 摄像头），方法换成了</strong>：</p>
+<blockquote><strong>「对于没有总线可接的设备，例如内置 MIPI 摄像头，测试台改用 Windows 侧的检查。也就是说 INF 文件、注册表数据、ACPI 表和设备属性。」</strong></blockquote>
+<strong>而他对这套方法为什么合规的说明，我认为是整篇博客里最重要的一段</strong>：
+<blockquote><strong>「这个方法应该是没问题的，因为它不依赖复制任何代码，而是观察硬件做了什么，并且只从 Windows 驱动里提取配置数据，所以新驱动里的每一个常量都能追溯到某个被记录下来的东西。」</strong></blockquote>
+<strong>这句话值得慢慢读，因为它同时回答了技术问题和法律问题。</strong>
+<p><strong>技术层面</strong>：<strong>这套方法不试图理解厂商驱动的实现</strong>（<strong>那是不可得的，也是授权受限的</strong>），<strong>而是观察「硬件在做什么」。</strong> <strong>而「硬件行为」是一个可观测的外部事实</strong>，<strong>它和「厂商怎么写的代码」是两件事。</strong></p>
+<p><strong>法律层面</strong>：<strong>「每一个常量都能追溯到某个被记录下来的东西」这句话，实际上是在说这个驱动的每一个参数都有观察依据，而不是从反编译里抄来的。</strong> <strong>而这在驱动开发的语境里是很关键的区分</strong>：<strong>因为从二进制里抄常量与从总线上观察常量，得到的数字可能一样，但来源和可主张性完全不同。</strong></p>
+<p><strong>而我认为这正好解释了为什么「把真机透传进 Windows 虚拟机」这一步是不能省的。</strong> <strong>因为如果不这么做，你只能从厂商驱动的行为去猜</strong>；<strong>而做了这一步之后，你有了一个「参照实现」</strong>：<strong>它能工作这件事本身，就是关于硬件行为的一份可信文档。</strong></p>
+<h2>三、为什么这套方法让 AI 真的有用</h2>
+<p><strong>这一节我分析一下机制，因为「AI 能读上千行抓包」这句话背后有具体的道理。</strong></p>
+<p><strong>先把人类做这件事的流程拆开</strong>：</p>
+<table>
+<tr><th>步骤</th><th>人做的时候是什么样</th></tr>
+<tr><td><strong>观察</strong></td><td><strong>抓一段 USB 流量，得到成千上万行十六进制</strong></td></tr>
+<tr><td><strong>找规律</strong></td><td><strong>在噪声里找重复的序列，注意到某次操作涉及哪几个控制传输</strong></td></tr>
+<tr><td><strong>形成假设</strong></td><td><strong>猜测「这个字节是亮度」「那个寄存器是扫描模式」</strong></td></tr>
+<tr><td><strong>写测试</strong></td><td><strong>改一个值，跑一次，看结果是否符合预期</strong></td></tr>
+<tr><td><strong>迭代</strong></td><td><strong>重复上述过程，通常要几周</strong></td></tr>
+</table>
+<p><strong>而 AI 在这几个环节上的相对优势是不同的</strong>：</p>
+<table>
+<tr><th>步骤</th><th>AI 的优势</th><th>原因</th></tr>
+<tr><td><strong>观察</strong></td><td>➖ <strong>无</strong></td><td><strong>抓包本身是机械操作</strong></td></tr>
+<tr><td><strong>找规律</strong></td><td>✅ <strong>强</strong></td><td><strong>它可以在上下文里一次性读进大量结构化文本，并在其中定位「只有一个字节在变」这类模式</strong></td></tr>
+<tr><td><strong>形成假设</strong></td><td>✅ <strong>有用</strong></td><td><strong>它能基于大量既有驱动的知识提出候选解释</strong></td></tr>
+<tr><td><strong>写测试</strong></td><td>✅ <strong>强</strong></td><td><strong>把假设落成一个可执行的测试，是它擅长的</strong></td></tr>
+<tr><td><strong>迭代</strong></td><td>✅ <strong>强</strong></td><td><strong>它不会因为重复而降低注意力，这是 Schaller 特意提到的「它不会觉得无聊」</strong></td></tr>
+<tr><td><strong>在真机上验证</strong></td><td>❌ <strong>无</strong></td><td><strong>这必须由人做</strong></td></tr>
+<tr><td><strong>决定要造什么</strong></td><td>❌ <strong>无</strong></td><td><strong>目标由人定</strong></td></tr>
+</table>
+<p><strong>我认为这张表解释了为什么「AI 写驱动」这个说法既对又不对。</strong></p>
+<p><strong>对的部分</strong>：<strong>驱动逆向工程的瓶颈确实在「耐心」而不在「智力」</strong>（<strong>Schaller 的原话是「这些在概念上都不难」</strong>），<strong>而耐心恰好是 AI 不消耗的东西。</strong></p>
+<p><strong>不对的部分</strong>：<strong>如果没有那套 harness，AI 面对的就只是一堆它无法理解的信息。</strong> <strong>也就是说</strong>：<strong>让它有用不是靠「换个更强的模型」，而是靠「给它一个能观察到真实行为的实验台」。</strong></p>
+<p><strong>而我认为这一点是可以推广的</strong>：<strong>AI 在一个任务上是否有用，很大程度上取决于你能否为它构造一个「有反馈信号的环境」。</strong> <strong>在驱动这件事里，反馈信号是「两条 trace 的差异」；而在别的问题里，反馈信号可能是测试套件、可能是编译错误、可能是性能计数器。</strong> <strong>而 Schaller 真正做的事情，是为一个以前没有快速反馈的任务造出了反馈。</strong></p>
+<h2>四、我的判断</h2>
+<p><strong>第一，这条新闻的真正内容是「给 AI 造一个能观察现实的接口」，而不是「AI 会写代码」。</strong></p>
+<p><strong>如果我们把这件事的要素拆开，会发现 AI 只出现在中间几个环节</strong>：<strong>它读 trace、提假设、写测试</strong>。 <strong>而让它能读 trace 的前提是有人先搭好了「真机透传 + 宿主侧抓包」这套装置</strong>；<strong>让它能验证假设的前提是有人定义了「差异在哪里」这个问题。</strong></p>
+<p><strong>我认为这个结构和我此前反复见到的几件事是同一个形状</strong>：</p>
+<ul>
+<li><strong>Linus 那份用 AI 写的补丁</strong>：<strong>有效的关键是「人验过了」，而且他精确披露了哪部分是人做的</strong>；</li>
+<li><strong>Asterinas 的 <code>aster-code-review</code> skill</strong>：<strong>把规范拆成可引用的条目、用从自身历史挖出的基准来度量召回，本质上是给审查这件事造出了可量化的反馈</strong>；</li>
+<li><strong>AdFection 那件事里的两段式投放</strong>：<strong>它绕过了「检查内容」的防御，因为防御方检查的不是实际行为</strong>。</li>
+</ul>
+<strong>这四个例子的共同点是</strong>：<strong>AI 或者攻击者能做的事，取决于「环境提供了什么反馈」。</strong> <strong>所以当我们判断「AI 能不能干这件事」时，更该问的是「能不能为它造出反馈信号」，而不是「模型够不够强」。</strong>
+<p><strong>第二，那套方法里最精巧的地方是「从虚拟机外面抓包」。</strong></p>
+<p><strong>为什么这一步关键</strong>：<strong>如果抓包发生在 guest 里，那么 Windows 驱动就能看到它、甚至可能改变行为</strong>。 <strong>而从宿主侧的 usbmon 抓</strong>，<strong>位置在透传层之下</strong>，<strong>所以 guest 完全不知道自己在被观察。</strong></p>
+<p><strong>我认为这个细节值得单独指出，因为它体现了「观测必须不改变被观测对象」这条原则。</strong> <strong>而这条原则在很多领域都成立</strong>：<strong>在生产系统上做性能分析时，观测工具本身的开销会改变被测系统的行为</strong>；<strong>在安全分析里，被观察的恶意软件如果检测到分析环境就会改变行为。</strong></p>
+<p><strong>而 Schaller 的做法给出了一个干净的解</strong>：<strong>把被观察的东西放在一层抽象之下，然后在抽象之外观察它。</strong> <strong>这样「观察」和「被观察」在物理上分离了。</strong></p>
+<p><strong>第三个值得留意的地方是，他说这套 harness 是「从做这件事时用的脚本泛化出来的」</strong>：</p>
+<blockquote><strong>「请注意我没有以这个形式在项目里使用 hw-harness，因为那时代码基本上是定制的，所以这个项目是试图把我在做这件事时用的脚本变得更通用、更可分享。」</strong></blockquote>
+<strong>我认为这句说明值得留意，因为它承认了一件事</strong>：<strong>这套方法的价值是在一次具体的成功之后才被抽象出来的。</strong> <strong>也就是说</strong>：<strong>先解决了一个具体问题，然后才去问「哪些部分是通用的」。</strong> <strong>而这个顺序在很多工程经验里是通用的</strong>：<strong>先把它做出来，再把它做对。</strong>
+<p><strong>第三，关于「这台扫描仪的驱动后来别人也提交了」这件事，我认为它不削弱这个故事的价值。</strong></p>
+<p><strong>Schaller 自己的表述是「这种事有时候会发生」，语气很平淡</strong>。 <strong>但从可验证的角度看，这件事其实提供了一个额外的信息</strong>：<strong>他独立得出的实现与上游别人提交的实现在功能上重合</strong>（<strong>都支持这台扫描仪</strong>）。 <strong>这至少说明他通过观察硬件行为得出的结论是可复现的</strong>：<strong>而不是一套只有他自己的环境才能工作的推测。</strong></p>
+<p><strong>而他从这件事里真正留下的产物是两个</strong>：<strong>一个泛化后的 harness 和它的文档</strong>，<strong>以及一个负片扫描应用（Negative Vibes）。</strong> <strong>后者是一个具体的软件，而前者是给别人用的路径。</strong> <strong>我认为后者其实更重要</strong>，<strong>因为他在博客里明确说了</strong>：<strong>「我问了 Claude 把 harness 做通用并写文档，以便让任何想在自己硬件上尝试的人的路更容易一些。」</strong></p>
+<p><strong>第四，这一版的现实意义：它把「为冷门硬件写驱动」这件事的可行性提高了一个档次。</strong></p>
+<p><strong>需要先看清这件事以前为什么难</strong>。<strong>Linux 硬件支持长期有两个瓶颈</strong>：<strong>一个是厂商不提供开源驱动</strong>（<strong>这是政策问题</strong>），<strong>另一个是即使有人想自己写，逆向工程的工作量太大</strong>（<strong>这是成本问题</strong>）。</p>
+<p><strong>而 Schaller 这件案例针对的是第二个瓶颈</strong>。 <strong>而这里有一个值得留意的经济含义</strong>：<strong>一台已经买不到 Linux 支持的老设备，或者一个芯片组被悄悄替换的产品，以前的处理方式是「换一台能用的」。</strong> <strong>而如果逆向的成本从「几周」降到「几小时加几天」，那么「自己修好它」就变成了一个理性选项。</strong></p>
+<p><strong>而这对整个生态的影响不是线性的</strong>：<strong>因为有些设备的使用者很少</strong>（<strong>比如一台特定的底片扫描仪</strong>），<strong>而驱动开发的固定成本对少数用户来说是难以分摊的。</strong> <strong>如果那个成本降低一个数量级，能被覆盖的设备种类就会明显增加。</strong></p>
+<p><strong>第五，我需要说清这一节的边界：这件事不能被读成「AI 可以替代驱动开发者」。</strong></p>
+<p><strong>几个理由</strong>：</p>
+<ul>
+<li><strong>他有前置条件</strong>：<strong>一台能跑 KVM 和真机透传的机器、一台 Windows 环境、以及他自己此前已经具备的驱动开发知识</strong>（<strong>他能判断「第一条 trace 和第二条不一致」意味着什么</strong>）；</li>
+<li><strong>他的产出是补丁，不是上游接受</strong>。<strong>博客说的是「ready to go」和「patches ready」，也就是准备好了</strong>，<strong>而进入上游需要经过维护者审查</strong>；</li>
+<li><strong>他验证的是自己的一台设备</strong>。<strong>这正是报告里那句「人类仍然……检查它在真实硬件上能不能用」的实际含义</strong>：<strong>他检查的是他手上那台</strong>；</li>
+<li><strong>这套方法对某些设备不适用</strong>：<strong>对没有总线可接的设备（内置 MIPI 摄像头），方法换成了「读 Windows 侧的 INF、注册表、ACPI 表」，信息来源的性质不同</strong>，<strong>而报告没有给出这部分的具体效果评价。</strong></li>
+</ul>
+<strong>所以我倾向于把这件事定位成「一个降低了特定环节成本的工具」，而不是「驱动开发被自动化了」。</strong>
+<p><strong>最后一点，关于这件事的观察价值</strong>。<strong>在这批 AI 相关的新闻里，我认为这一条提供的信息和别的不太一样。</strong></p>
+<p><strong>别的几条讨论的是「AI 生成的代码该不该接受」</strong>（<strong>那四份开源 AI 政策</strong>）、<strong>或者「AI 写的补丁好不好」</strong>（<strong>Linus 那份补丁</strong>），<strong>它们关注的都在代码这一侧</strong>。</p>
+<p><strong>而这一条关注的是一件事的上游</strong>：<strong>在写代码之前，你得先知道硬件到底怎么工作。</strong> <strong>而那一步在以前完全没有捷径</strong>（<strong>Schaller 说「你抓总线流量，盯着十六进制转储，形成假设，然后一个个测试，通常要花几周」</strong>）。</p>
+<p><strong>也就是说</strong>：<strong>它介入的不是「写代码」这个环节，而是「搞清楚要写什么」这个环节。</strong> <strong>而后者在这个领域一直是真正的瓶颈</strong>：<strong>因为代码本身不难写，难的是不知道那几百个寄存器各自是什么意思。</strong></p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>事件</strong></td><td><strong>Red Hat 的 Christian Schaller 用 Claude Code 为两台硬件写了 Linux 驱动</strong></td></tr>
+<tr><td><strong>一手来源</strong></td><td><strong>他的博客：Using Artificial Intelligence to reverse engineer hardware</strong>（<strong>2026-10-15</strong>）</td></tr>
+<tr><td><strong>媒体报道</strong></td><td><strong>Phoronix（2026-10-15，Michael Larabel）</strong></td></tr>
+<tr><td><strong>项目一</strong></td><td><strong>Plustek OpticFilm 8200i 底片扫描仪的 SANE 后端</strong></td></tr>
+<tr><td><strong>它的问题</strong></td><td><strong>同名的旧型号用 GL845 且 SANE 已支持，而新款换了 Genesys GL128 控制器（USB <code>07b3:1825</code>），没有 Linux 支持</strong></td></tr>
+<tr><td><strong>它支持的能力</strong></td><td><strong>彩色、灰度、红外、彩色+红外模式</strong>；<strong>300 到 7200 dpi，每通道 8 或 16 位</strong>；<strong>从红外通道做灰尘与划痕去除</strong>；<strong>用于密集底片的曝光倍率</strong>；<strong>打包为 Fedora RPM，每次 push 自动构建</strong></td></tr>
+<tr><td><strong>项目二</strong></td><td><strong>联想 ThinkPad X1 Carbon Gen 14 Aura Edition 的 MIPI 摄像头</strong>（<strong>Intel IPU7 后面是索尼传感器</strong>）</td></tr>
+<tr><td><strong>它的问题</strong></td><td><strong>出图发暗及其他问题</strong></td></tr>
+<tr><td><strong>成果</strong></td><td><strong>一天之内拿到内核与 libcamera 两边的补丁</strong></td></tr>
+<tr><td><strong>⭐ 方法论名称</strong></td><td><strong>hw-harness</strong></td></tr>
+<tr><td><strong>⭐ 四步流程</strong></td><td><strong>① 在 KVM 虚拟机里跑厂商 Windows 驱动，真机透传给 guest</strong>；<strong>② 在 Linux 宿主上用 usbmon 抓包（位于透传层之下，guest 看不到）</strong>；<strong>③ 在 Linux 上用自家驱动做同样操作并同样抓包</strong>；<strong>④ 对比两条 trace，差异就是驱动 bug 清单</strong></td></tr>
+<tr><td><strong>无总线可接的设备</strong></td><td><strong>改用 Windows 侧检查：INF 文件、注册表数据、ACPI 表、设备属性</strong></td></tr>
+<tr><td><strong>⭐ 合规性说明</strong></td><td><strong>「不依赖复制任何代码，而是观察硬件做了什么，并且只从 Windows 驱动里提取配置数据，所以新驱动里的每一个常量都能追溯到某个被记录下来的东西。」</strong></td></tr>
+<tr><td><strong>灵感来源</strong></td><td><strong>Tom Crider（Glorious Eggroll）在 X 上关于用 AI 修鼠标驱动的帖子</strong>，<strong>他把 AI 智能体接到一个完全可控的 Windows 实例上采集数据</strong></td></tr>
+<tr><td><strong>⭐ 为什么适合 AI</strong></td><td><strong>「为没有文档的硬件写驱动一直是件苦差事……这些在概念上都不难，但需要极大的耐心和技巧。那类工作很适合 AI 模型。它能读完上千行 USB 抓包，注意到某个序列在重复、只有一个字节在变，并提出那个字节是什么意思。它能写出验证这个猜测的测试，而且它不会觉得无聊。」</strong></td></tr>
+<tr><td><strong>人的职责</strong></td><td><strong>「人类仍然决定要造什么、并检查它在真实硬件上能不能用，但那份苦力活大大缩短了。」</strong></td></tr>
+<tr><td><strong>⚠️ 一个诚实的结尾</strong></td><td><strong>他准备发布时发现，在他放弃的几个月里已经有人向 SANE 提交了支持这台扫描仪的代码</strong>；<strong>上游 SANE 的 genesys 后端也在 2026 年 9 月加入了这台扫描仪的支持</strong></td></tr>
+<tr><td><strong>附带产物</strong></td><td><strong>Negative Vibes（负片扫描应用）</strong>；<strong>泛化并文档化的 hw-harness</strong>（<strong>「从做这件事时用的脚本泛化出来的」</strong>）</td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://blogs.gnome.org/uraeus/2026/10/15/aiandreverseengineerhardware/">Christian Schaller：Using Artificial Intelligence to reverse engineer hardware</a></li>
+<li><a href="https://www.phoronix.com/news/AI-Reverse-Engineer-Linux-HW">Phoronix：Claude Code / AI Shows Potential For Reverse-Engineering Hardware For Linux Support</a></li>
+<li><a href="/articles/2026-10-12_linus-torvalds-claude-code-kernel/">本站：Linus 用 Claude Code 改内核：这份 commit message 比那个性能数字更值得读</a></li>
+<li><a href="/articles/2026-10-15_open-source-ai-contribution-policies-compared/">本站：同一周里，四个开源项目对 AI 贡献给出了四种答案</a></li>
+<li><a href="/articles/2026-10-13_asterinas-0-19-framekernel/">本站：Asterinas 0.19：用 Rust 重构内核的另一种思路，是「不减少地址空间，只减少 unsafe」</a></li>
+<li><a href="/articles/2026-10-14_mesa-torx-yolox-pytorch-npu/">本站：NPU 终于能用 PyTorch 跑了：Mesa 接下这件事，靠的是一条被 AI 加速行业忽略的捷径</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/",
+      title: "\u7528 AI \u9006\u5411\u5de5\u7a0b\u786c\u4ef6\u9a71\u52a8\uff1aRed Hat \u5de5\u7a0b\u5e08\u628a\u4e00\u53f0\u626b\u63cf\u4eea\u548c\u4e00\u4e2a\u6444\u50cf\u5934\u4fee\u597d\u4e86\uff0c\u800c\u4ed6\u516c\u5f00\u7684\u662f\u4e00\u5957\u65b9\u6cd5\u8bba"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
