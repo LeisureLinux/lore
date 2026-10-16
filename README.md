@@ -17,6 +17,11 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-16 | [Libreboot 26.10 把「反 AI 政策」列为本次发布最重要的变更，然后才是完整 UEFI 支持](https://freelamp.com/articles/2026-10-16_libreboot-2610-uefi-edk2-anti-ai-policy/) | Libreboot · coreboot · EDK2 · UEFI · Chromebook · AGENTS.md · 反AI政策 · 自由固件 · 译文 |
+| 2026-10-16 | [当补丁变得廉价，开源协作的两种新答案：一个说「关掉 PR」，一个说「Rust 更适合」](https://freelamp.com/articles/2026-10-16_remix-model-vs-agentic-rust/) | 开源治理 · remix · Nix · Rust · agentic coding · 类型系统 · 证明系统 · Verus · 译文 |
+| 2026-10-16 | [Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去](https://freelamp.com/articles/2026-10-16_windows-desktop-automation-disposable-vms/) | QA Wolf · Windows · UI Automation · Appium · WebRTC · GCE · Kubernetes · VM · 测试基础设施 · 译文 |
+| 2026-10-16 | [Timescale 把向量索引做进了 PostgreSQL 的 C 内核里](https://freelamp.com/articles/2026-10-16_pg-vectorsearch-prism-index-timescale/) | PostgreSQL · pgvector · 向量搜索 · PRISM · RaBitQ · HNSW · Timescale · 索引 · SIMD · 译文 |
+| 2026-10-16 | [三十五年后重读《Why I Wrote PGP》：它讲的不是加密，而是「一次变更由谁发起」](https://freelamp.com/articles/2026-10-16_why-i-wrote-pgp-revisited/) | PGP · Phil Zimmermann · 加密 · 隐私 · 密码战争 · Senate Bill 266 · Clipper · CALEA · 译文 |
 | 2026-10-16 | [RPKI 覆盖涨到 70%，而它没能拦住的恰恰是一次真实劫持：因为那次攻击是「RPKI 有效」的](https://freelamp.com/articles/2026-10-16_rpki-70-percent-coverage-hetzner-hijack/) | RPKI · ROA · BGP · 路由劫持 · maxLength · RFC 9319 · ASPA · Hetzner · Virtualizor · 译文 |
 | 2026-10-16 | [自托管 28 个服务的清单，与一个 €25 买断的文档工具：它们在做同一个选择](https://freelamp.com/articles/2026-10-16_self-hosting-list-and-buyout-local-tools/) | 自托管 · Jellyfin · Immich · Podman · 本地优先 · BYOK · MarkItDown · 迷你主机 · 译文 |
 | 2026-10-16 | [同一份 AdFection 报告，这篇多给了企业一份可执行清单：而清单里最有效的一条，是「别把你的广告 ID 交出去」](https://freelamp.com/articles/2026-10-16_adfection-enterprise-defense-checklist/) | AdFection · 广告标识符 · MDM · DNS拦截 · 企业安全 · Frank Dickson · 零点击 · 译文 |

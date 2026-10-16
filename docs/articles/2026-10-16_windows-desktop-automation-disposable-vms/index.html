@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去 — FreeLAMP.com</title>
+  <meta name="description" content="QA Wolf 发表了一篇讲他们如何为 Windows 桌面应用做大规模自动化测试的文章。它的核心洞察是：Windows 桌面测试之所以难，不是因为缺工具，而是因为整个测试基础设施的默认模型是 Linux 容器——而无头容器里没有登录的桌面会话，而微软的 UI Automation 只在活动的登录会话里工作。他们的解法">
+  <meta name="keywords" content="QA Wolf, Windows, 桌面自动化, UI Automation, Appium, WinAppDriver, WebdriverIO, Playwright, CDP, WebRTC, GCE, Kubernetes, 设备调度, VM, 测试基础设施, 译文">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-16">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-16_windows-desktop-automation-disposable-vms/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去">
+  <meta property="og:description" content="QA Wolf 发表了一篇讲他们如何为 Windows 桌面应用做大规模自动化测试的文章。它的核心洞察是：Windows 桌面测试之所以难，不是因为缺工具，而是因为整个测试基础设施的默认模型是 Linux 容器——而无头容器里没有登录的桌面会话，而微软的 UI Automation 只在活动的登录会话里工作。他们的解法">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-16_windows-desktop-automation-disposable-vms/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-16">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="QA Wolf">
+  <meta property="article:tag" content="QA Wolf">
+  <meta property="article:tag" content="Windows">
+  <meta property="article:tag" content="桌面自动化">
+  <meta property="article:tag" content="UI Automation">
+  <meta property="article:tag" content="Appium">
+  <meta property="article:tag" content="WinAppDriver">
+  <meta property="article:tag" content="WebdriverIO">
+  <meta property="article:tag" content="Playwright">
+  <meta property="article:tag" content="CDP">
+  <meta property="article:tag" content="WebRTC">
+  <meta property="article:tag" content="GCE">
+  <meta property="article:tag" content="Kubernetes">
+  <meta property="article:tag" content="设备调度">
+  <meta property="article:tag" content="VM">
+  <meta property="article:tag" content="测试基础设施">
+  <meta property="article:tag" content="译文">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去">
+  <meta name="twitter:description" content="QA Wolf 发表了一篇讲他们如何为 Windows 桌面应用做大规模自动化测试的文章。它的核心洞察是：Windows 桌面测试之所以难，不是因为缺工具，而是因为整个测试基础设施的默认模型是 Linux 容器——而无头容器里没有登录的桌面会话，而微软的 UI Automation 只在活动的登录会话里工作。他们的解法">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去",
+  "description": "来源：E2exe: How we solved Windows desktop automation for enterprise scalehttps://www.qawolf.com/blog/how-we-solved-windows-desktop-automation（QA Wolf，2026-10-14，作者 Jaden Lemmon）  本文为译文 + 解读。第一、五节的判断是笔者补",
+  "datePublished": "2026-10-16",
+  "dateModified": "2026-10-16",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-16_windows-desktop-automation-disposable-vms/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "QA Wolf, Windows, 桌面自动化, UI Automation, Appium, WinAppDriver, WebdriverIO, Playwright, CDP, WebRTC, GCE, Kubernetes, 设备调度, VM, 测试基础设施, 译文"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去",
+        "item": "https://freelamp.com/articles/2026-10-16_windows-desktop-automation-disposable-vms/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-16">2026-10-16</div>
+        <h1 class="post-title" itemprop="headline">Windows 桌面测试为什么难自动化：因为一个容器里没有登录会话，而人得先登进去</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/QA%20Wolf/">QA Wolf</a><a itemprop="keywords" href="/tags/Windows/">Windows</a><a itemprop="keywords" href="/tags/%E6%A1%8C%E9%9D%A2%E8%87%AA%E5%8A%A8%E5%8C%96/">桌面自动化</a><a itemprop="keywords" href="/tags/UI%20Automation/">UI Automation</a><a itemprop="keywords" href="/tags/Appium/">Appium</a><a itemprop="keywords" href="/tags/WinAppDriver/">WinAppDriver</a><a itemprop="keywords" href="/tags/WebdriverIO/">WebdriverIO</a><a itemprop="keywords" href="/tags/Playwright/">Playwright</a><a itemprop="keywords" href="/tags/CDP/">CDP</a><a itemprop="keywords" href="/tags/WebRTC/">WebRTC</a><a itemprop="keywords" href="/tags/GCE/">GCE</a><a itemprop="keywords" href="/tags/Kubernetes/">Kubernetes</a><a itemprop="keywords" href="/tags/%E8%AE%BE%E5%A4%87%E8%B0%83%E5%BA%A6/">设备调度</a><a itemprop="keywords" href="/tags/VM/">VM</a><a itemprop="keywords" href="/tags/%E6%B5%8B%E8%AF%95%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD/">测试基础设施</a><a itemprop="keywords" href="/tags/%E8%AF%91%E6%96%87/">译文</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://www.qawolf.com/blog/how-we-solved-windows-desktop-automation">E2exe: How we solved Windows desktop automation for enterprise scale</a>（<strong>QA Wolf，2026-10-14</strong>，作者 Jaden Lemmon）<br>
+本文为<strong>译文 + 解读</strong>。第一、五节的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>QA Wolf 的这篇文章回答的是一个具体问题</strong>：<strong>为什么给 Windows 桌面应用做大规模自动化测试这么难。</strong></p>
+<p><strong>而它给出的核心洞察我认为是这个</strong>：</p>
+<blockquote><strong>「我们的答案是停止把 Windows 机器当作服务器，而是像对待手机一样对待它们：一个由某个测试声明、用一次、然后丢掉 的设备。」</strong></blockquote>
+<strong>而这句话之所以成立，是因为一个具体的约束</strong>：
+<blockquote><strong>「必须有人登录。Windows UI Automation（UIA），也就是测试工具用来查找按钮和字段的那个无障碍接口，只在活动的、已登录的桌面会话里工作。一台仅仅开着的机器是不够的。」</strong></blockquote>
+<strong>我认为这条约束值得单独指出，因为它是整篇文章里所有设计决定的源头</strong>：<strong>UIA 是 Windows 无障碍体系的一部分</strong>（<strong>它本来是给屏幕阅读器这类辅助技术用的</strong>），<strong>而它的作用域是「一个已登录的交互式会话」。</strong>
+<p><strong>也就是说</strong>：<strong>无头容器这条路在 Windows 上是走不通的</strong>：<strong>不是因为容器技术不行，而是因为被测对象要求的运行环境里包含「一个人登录过」这个状态。</strong></p>
+<h2>一、那条约束链</h2>
+<p><strong>QA Wolf 把 Windows 测试的困难列成六条，而我认为这六条的排列方式很有信息量</strong>：<strong>它们不是并列的六个问题，而是一条依赖链。</strong></p>
+<table>
+<tr><th>#</th><th>约束</th><th>为什么它导致下一个问题</th></tr>
+<tr><td><strong>①</strong></td><td><strong>「每个测试都需要一个完整的 VM，因为 Windows 容器不包含运行应用的图形桌面。」</strong></td><td><strong>→ 所以无法用轻量容器，必须用完整 VM</strong></td></tr>
+<tr><td><strong>②</strong></td><td><strong>「机器启动很慢。一台冷启动的 Windows VM 要 2 到 3 分钟才能启动。一个浏览器容器只要几秒。」</strong></td><td><strong>→ 所以启动开销成为主要成本</strong></td></tr>
+<tr><td><strong>③</strong></td><td><strong>「必须有人登录。Windows UI Automation 只在活动的、已登录的桌面会话里工作。」</strong></td><td><strong>→ 所以不能只「开机」，必须「登录」</strong></td></tr>
+<tr><td><strong>④</strong></td><td><strong>「机器会记住东西。安装的文件、注册表键、用户配置文件、保存的登录状态和残留进程都会在运行之间存活。」</strong></td><td><strong>→ 所以复用机器会引入不干净的状态</strong></td></tr>
+<tr><td><strong>⑤</strong></td><td><strong>「每个应用都带来它自己的世界。安装器、管理员提示、许可依赖、首次运行对话框、登录等等。」</strong></td><td><strong>→ 所以环境准备不是一个固定流程</strong></td></tr>
+<tr><td><strong>⑥</strong></td><td><strong>「没有内置的可见性。浏览器给你 traces、日志和截图。一台远程 Windows 机器什么都不给你，除非你自己建。」</strong></td><td><strong>→ 所以可观测性必须自己造</strong></td></tr>
+</table>
+<p><strong>而它另外加了一条环境层面的观察</strong>：</p>
+<blockquote><strong>「工具链假定 Linux。Kubernetes、CI runner 和大多数测试基础设施都是围绕 Linux 容器设计的。」</strong></blockquote>
+<strong>我认为这张表的价值在于它展示了「困难」是怎么累积起来的</strong>：<strong>每一条单独看都不致命</strong>（<strong>VM 慢就等、状态脏就清理、没日志就自己加</strong>），<strong>但它们组合起来构成一个「没有便宜的解法」的局面。</strong>
+<p><strong>而在这一串里，我认为第 ③ 条是最根本的</strong>，<strong>因为它是唯一一条「无法用工程手段绕过」的</strong>：<strong>前两条是性能问题</strong>（<strong>可以用热池缓解</strong>），<strong>第四条是幂等性问题</strong>（<strong>可以用一次性机器解决</strong>），<strong>第五条是流程问题</strong>（<strong>可以预先构建镜像</strong>），<strong>第六条是可观测性问题</strong>（<strong>可以自己写 agent</strong>）。</p>
+<p><strong>但「UIA 需要一个已登录的交互式会话」是一条</strong>被测平台强加的<strong>约束</strong>：<strong>你不能通过优化让它消失，只能接受它并把成本转移到别处。</strong></p>
+<p><strong>而这正好解释了为什么那个类比是「手机」而不是「容器」</strong>：<strong>手机测试也有同样的形状</strong>：<strong>测试代码不能跑在被测设备上，每个测试需要独占一台设备。</strong> <strong>而移动测试领域早就接受了这个约束，并围绕它建起了一整套设备农场（device farm）的基础设施。</strong></p>
+<h2>二、那个类比带来的架构</h2>
+<p><strong>QA Wolf 明确说了这个类比是设计来源</strong>：</p>
+<blockquote><strong>「基本架构借用了我们的移动测试基础设施，因为移动测试有同样的约束：测试代码不能跑在它正在测试的设备上，而每个测试在运行时需要独占一台设备。」</strong></blockquote>
+<strong>而具体做法是</strong>：<strong>把 Windows 机器在 Kubernetes 里建模为一个设备</strong>，<strong>于是测试可以向他们的设备调度器请求一台带 <code>DeviceClaim</code> 的 VM，拿回连接信息，通过 WebdriverIO 和 Appium 远程控制它，然后在测试结束时释放它。</strong>
+<p><strong>而他们为了让这个模型容纳 Windows，加了两项扩展</strong>：</p>
+<table>
+<tr><th>扩展</th><th>内容</th></tr>
+<tr><td><strong>设备不必住在集群里</strong></td><td><strong>「一台 GCE VM 完全在它之外」</strong></td></tr>
+<tr><td><strong>声明可以返回桌面的连接地址</strong></td><td><strong>「包括浏览器的 CDP」</strong></td></tr>
+</table>
+<p><strong>而系统的三个部分是</strong>：</p>
+<table>
+<tr><th>组件</th><th>位置</th><th>职责</th></tr>
+<tr><td><strong>控制器</strong></td><td><strong>Kubernetes 里</strong></td><td><strong>在 Google Compute Engine（GCE）上保持一个 Windows VM 池，并把它们分发给测试</strong></td></tr>
+<tr><td><strong>runner</strong></td><td><strong>一个 Linux pod</strong></td><td><strong>运行测试代码</strong></td></tr>
+<tr><td><strong>Windows VM</strong></td><td><strong>GCE</strong></td><td><strong>运行被测应用、自动化工具、以及一个小的桌面 agent</strong></td></tr>
+</table>
+<p><strong>而 runner 与 VM 之间有三条连接</strong>：</p>
+<table>
+<tr><th>连接</th><th>协议</th><th>用途</th></tr>
+<tr><td><strong>浏览器</strong></td><td><strong>CDP（Chrome DevTools Protocol）</strong></td><td><strong>Playwright 用它控制浏览器</strong></td></tr>
+<tr><td><strong>原生应用</strong></td><td><strong>Appium（WebDriver）</strong></td><td><strong>Appium 加 WinAppDriver，通过 UI Automation 驱动应用</strong></td></tr>
+<tr><td><strong>屏幕</strong></td><td><strong>WebRTC</strong></td><td><strong>「承载屏幕，以便人们可以实时观看测试、并在事后查看录像」</strong></td></tr>
+</table>
+<p><strong>我认为第三条连接值得单独留意，因为它解决的是第六条约束（没有内置可见性）</strong>：</p>
+<blockquote><strong>「一台远程 Windows VM 默认是一个黑箱。写测试、调试失败、或审查一次运行，都需要看到测试当时看到了什么、以及它是如何发生的。」</strong></blockquote>
+<strong>而实现的细节是</strong>：
+<blockquote><strong>「每台 VM 运行一个小的、用 Go 写的桌面 agent。它用 FFmpeg 抓屏并通过 WebRTC 流式传输，并通过调用 Windows 自己的 <code>user32.dll</code> 来模拟鼠标、键盘和剪贴板输入。」</strong></blockquote>
+<strong>而这个 agent 有两个我认为很讲究的工程决定</strong>：
+<table>
+<tr><th>决定</th><th>理由</th></tr>
+<tr><td><strong>不使用 CGo</strong>（<strong>Go 与 C 代码的桥接</strong>）</td><td><strong>「所以它可以在一台 Mac 或 Linux 机器上为 Windows 交叉编译，而平台相关的部分放在 Go 的 build tags 后面。」</strong></td></tr>
+<tr><td><strong>从 Windows 读取真实屏幕尺寸</strong>，<strong>而不是信任客人配置的值</strong></td><td>（<strong>原文此处被截断，但意图清楚：避免依赖可能不准的配置数据</strong>）</td></tr>
+</table>
+<p><strong>而「Linux、Windows 和 Mac 的 agent 共享一份代码库，Linux 构建不受 Windows 代码影响」这一句，说明他们把跨平台当作 design 的一部分而不是事后处理。</strong></p>
+<h2>三、三个具体设计</h2>
+<h3>用一个「热池」吸收启动时间</h3>
+<p><strong>因为约束 ② 说冷启动要 2 到 3 分钟，所以解法是让机器提前准备好</strong>：</p>
+<blockquote><strong>「每个池保持 VM 已启动、已登录、并在等待，所以一个测试声明到的是一台已经就绪的机器，跳过 2 到 3 分钟的冷启动。池会在测试用掉机器后替换它们。」</strong></blockquote>
+<strong>而池的状态由一个 reconciler 维持</strong>：
+<blockquote><strong>「它在调度器内部，持续比较记录与 GCE 里实际运行的东西，并缩小差距。如果一个池少了三台机器，它就创建三台。」</strong></blockquote>
+<strong>而这里有一处我认为很能说明工程判断的细节</strong>：
+<blockquote><strong>「Windows VM 需要几分钟来创建和启动，所以 reconciler 让每台机器在多次短扫描中一次前进一个步骤，并把进度写到该 VM 的记录上。</strong> <strong>一次缓慢的启动永远不会阻塞调度器管理的其他任何东西。」</strong></blockquote>
+<strong>「一次缓慢的启动永远不会阻塞其他任何东西」这句话点出的是一个具体的架构选择</strong>：<strong>把「等待」变成「状态」</strong>。 <strong>而不是让一个进程同步等待启动完成</strong>（<strong>那样会占用一个 worker 并且难以扩展</strong>），<strong>而是把进度写进记录，让下一轮扫描继续推进。</strong>
+<p><strong>而这个模式的好处很直接</strong>：<strong>慢的启动不再是一种「占用」，而只是一种「未完成的状态」。</strong> <strong>而这让整个系统对「慢」这件事免疫</strong>：<strong>它只影响那台机器的可用时间，不影响其他机器的处理。</strong></p>
+<h3>一次性 VM：把「干净」从流程变成属性</h3>
+<p><strong>这是六个约束里第 ④ 条的解法，而 QA Wolf 对它有一句我认为很精炼的表述</strong>：</p>
+<blockquote><strong>「桌面测试基础设施里的核心张力是：干净的机器慢，快的机器不干净。」</strong></blockquote>
+<strong>而他们的答案是不在两者之间折衷，而是</strong>换掉「干净」的来源**：
+<blockquote><strong>「每台 VM 都是一次性的。一台 VM 在测试之后永不复用。</strong> <strong>没有测试能看到另一个测试的文件、设置或登录状态，所以一整类『单独跑通过、在套件里失败』的问题根本不会出现。」</strong></blockquote>
+<strong>我认为「一整类问题根本不会出现」这个表述比「避免了状态污染」要精确</strong>，<strong>因为它指出了一次性机器消除的不是一个 bug，而是一整类 bug 的</strong>可能性<strong>。 </strong>而「单独跑通过、在套件里失败」这个描述恰好是状态污染最典型、也最难调试的表现形式。**
+<p><strong>而他们用「更新靠消耗」来处理镜像更新</strong>：</p>
+<blockquote><strong>「更新靠消耗发生。因为 VM 是一次性的，新的机器镜像不需要任何升级流程。</strong> <strong>旧 VM 被用完并被新的替换，而处在过时镜像上的空闲 VM 会被回收，所以池会自行逐渐迁移过去。」</strong></blockquote>
+<strong>这个做法值得单独指出，因为它把一个通常很麻烦的任务变没了</strong>：<strong>在一个长期运行的 Windows 机群里，「给机器打补丁」是一件需要计划、需要窗口、且会失败的事。</strong> <strong>而如果机器本来就是一次性的，那么「升级」就不再是一个动作，而是池的自然代谢。</strong>
+<p><strong>我认为这个模式可以推广到一个判断上</strong>：<strong>当一个环境里「机器的生命周期」足够短时，「配置管理」这个问题的性质就变了</strong>：<strong>它从「如何让既有机器保持正确状态」变成了「如何构建正确的镜像」。</strong> <strong>而后者是一个构建问题，有可复现的解法。</strong></p>
+<p><strong>而他们确实把它做成了构建问题</strong>：</p>
+<blockquote><strong>「一个 PowerShell 设置脚本生成这个镜像，并把它发布到 GCE 的一个镜像族，所以它很容易复现。没有人手工维护一台黄金机器。」</strong></blockquote>
+<strong>而镜像里包含的内容说明了「让 Windows 可被自动化」需要做什么</strong>：
+<table>
+<tr><th>镜像里预置的东西</th><th>为什么需要</th></tr>
+<tr><td><strong>Appium、Appium Windows driver、微软的 WinAppDriver</strong></td><td><strong>「必须在第一个测试到达之前，在一个活动的桌面会话里安装、配置并运行」</strong></td></tr>
+<tr><td><strong>一个独立的根级会话</strong></td><td><strong>「用于 Windows 中不属于应用的部分，比如通知和操作中心」</strong></td></tr>
+<tr><td><strong>常见软件</strong></td><td><strong>「比如 Google Chrome 和 Adobe Acrobat，它们在 E2E 测试里经常被调用」</strong></td></tr>
+<tr><td><strong>镜像变体</strong></td><td><strong>「例如一个 Office 镜像会在测试看到之前就清理掉 Microsoft Word 的首次运行对话框」</strong></td></tr>
+<tr><td><strong>私有镜像</strong></td><td><strong>「当应用需要更多东西（许可的第三方软件、特定配置、或随应用一起安装的其他应用）时，我们可以从客户提供的设置脚本构建私有镜像」</strong></td></tr>
+</table>
+<p><strong>「在测试看到之前就清理掉 Word 的首次运行对话框」这一条，我认为是整份材料里最能说明「桌面测试的摩擦在哪」的例子。</strong> <strong>因为这类对话框不是 bug</strong>（<strong>它们是正常的产品行为</strong>），<strong>但它们会让自动化测试卡住</strong>：<strong>而处理方式只能是在镜像层面预先消除，而不是在测试里逐个处理。</strong></p>
+<h3>测试代码留在 Linux 上</h3>
+<p><strong>这是我认为整篇里最务实的一个决定，而它的理由很明确</strong>：</p>
+<blockquote><strong>「在 Windows 上运行测试代码意味着要为所有这一切构建和维护两份。所以测试代码不在 Windows 上运行。」</strong></blockquote>
+<strong>而它引出的一个设计是「测试作者只看到一个 API」</strong>：
+<blockquote><strong>「测试作者看到一个 API。<code>@qawolf/flows/windows</code> 入口为浏览器提供 <code>launch()</code>、为原生应用提供 <code>startApp()</code>，而一个 <code>expect</code> 会根据断言对象使用 Playwright 的 matcher 或 WebdriverIO 的。</strong> <strong>一个测试可以通过浏览器登录、切换到原生应用、检查结果，而不需要关心每一步由哪个协议承载。」</strong></blockquote>
+<strong>而示例代码是</strong>：
+<pre><code class="javascript">const app = await startApp("C:\\qawolf\\apps\\Invoicing.exe");
+await app.$("~NewInvoiceButton").click();
+await app.$("~CustomerName").setValue("Acme Corp");
+await app.$("~SaveButton").click();
+await expect(app.$("~StatusBar")).toHaveText("Invoice saved");
+</code></pre>
+<p><strong>我认为这个抽象层值得留意的地方在于它掩盖的是「协议差异」，而不是「平台差异」。</strong> <strong>也就是说</strong>：<strong>写测试的人仍然需要知道自己在操作一个原生应用</strong>（<strong><code>startApp</code> 与 <code>launch</code> 的区别</strong>），<strong>但不需要知道「这一步走的是 CDP 还是 WebDriver」。</strong></p>
+<p><strong>这是一个正确的抽象边界</strong>：<strong>把「用哪个协议」这个实现细节藏起来，但把「在测什么」这件事留明确。</strong></p>
+<h3>那个签名 URL 的设计</h3>
+<p><strong>因为 VM 是一次性的，所以每次都要把应用送到一台新机器上</strong>，<strong>而这就有一个安全问题</strong>：</p>
+<blockquote><strong>「被测应用的文件从不经过 runner。当一个测试调用 <code>startApp()</code> 时，系统签发一个短时效的签名 URL，而 VM 直接从存储下载应用，走 Private Google Access，一条留在 Google 网络内部的网络路径。</strong> <strong>只有 QA Wolf 的中央 API 服务能签这些 URL。测试代码以非特权用户运行，并通过一个受信任的父进程请求下载，所以测试内的代码无法签任意 URL。」</strong></blockquote>
+<strong>我认为这个设计值得单独说，因为它处理的是一个具体的权限问题</strong>：<strong>测试代码是不可信的</strong>（<strong>因为它可能由客户编写，也可能因为 bug 而行为异常</strong>），<strong>所以它不应该有能力获取任意文件的下载权限。</strong>
+<p><strong>而解法是分成两个进程</strong>：<strong>非特权的测试代码只能「请求」，而受信任的父进程才有「签发」的能力。</strong> <strong>这是一个标准的权限分离模式，而它在这里被用得很准确</strong>：<strong>因为「测试代码」和「基础设施代码」的可信度确实不同。</strong></p>
+<h2>四、那个「登录会话」约束的实质</h2>
+<p><strong>我想单独讨论一下第 ③ 条约束，因为它与其他几条的性质不同，而且它指向一个更普遍的问题。</strong></p>
+<p><strong>先看它的准确表述</strong>：</p>
+<blockquote><strong>「Windows UI Automation（UIA），也就是测试工具用来查找按钮和字段的那个无障碍接口，只在活动的、已登录的桌面会话里工作。一台仅仅开着的机器是不够的。」</strong></blockquote>
+<strong>而 UIA 是 Windows 的无障碍 API</strong>，<strong>它的设计目的是让辅助技术（如屏幕阅读器、放大镜、语音控制）能读取和操作 UI 元素。</strong> <strong>而自动化测试工具借用它，是因为它是「从外部访问 UI 元素树」的标准途径。</strong>
+<p><strong>而「只在活动的登录会话里工作」这个限制来自它的设计目标</strong>：<strong>无障碍技术服务的对象是「正在使用电脑的人」</strong>：<strong>而一个没有登录用户的会话里，不存在需要被辅助的对象。</strong></p>
+<p><strong>也就是说</strong>：<strong>这个限制不是疏漏，而是设计意图的直接后果。</strong> <strong>而测试工具是「借用者」，所以必须接受借用对象的边界。</strong></p>
+<p><strong>我认为这里有一个可以推广的观察</strong>：<strong>当你的工具建立在一个「为别的目的设计的接口」上时，你的能力边界由那个接口的原始目的决定。</strong></p>
+<p><strong>而这条规律在这份材料里出现了两次</strong>：<strong>UIA 是为无障碍设计的</strong>（<strong>所以要求登录会话</strong>），<strong>而 Appium/WebDriver 是为 Web 和移动设计的</strong>（<strong>所以需要为 Windows 原生应用额外适配</strong>）。</p>
+<p><strong>而这也解释了那个「像对待手机一样」的类比为什么会成立</strong>：<strong>移动测试同样是在借用为「人操作手机」设计的接口</strong>（<strong>比如 Android 的 Accessibility Service</strong>），<strong>所以它同样必须接受「一台设备被一个测试独占、且处于活跃状态」这个前提。</strong></p>
+<h2>五、我的判断</h2>
+<p><strong>第一，这篇文章的价值在于它展示了一条「约束链」是怎么推出整个架构的。</strong></p>
+<p><strong>如果只看结果</strong>（<strong>一次性 VM、热池、设备调度、WebRTC 流</strong>），<strong>这会像一堆互不相关的技术选择。</strong> <strong>但按那六条约束的顺序读下来，每一条设计都有明确的来源</strong>：</p>
+<table>
+<tr><th>约束</th><th>推出的设计</th></tr>
+<tr><td><strong>图形桌面需要完整 VM</strong></td><td><strong>不能用容器，必须用 VM 池</strong></td></tr>
+<tr><td><strong>冷启动 2 到 3 分钟</strong></td><td><strong>热池（提前启动并登录）</strong></td></tr>
+<tr><td><strong>UIA 需要登录会话</strong></td><td><strong>热池不能只「开机」，必须「已登录」</strong></td></tr>
+<tr><td><strong>机器会记住东西</strong></td><td><strong>一次性 VM（不复用）</strong></td></tr>
+<tr><td><strong>每个应用带自己的世界</strong></td><td><strong>构建时镜像 + 私有镜像变体</strong></td></tr>
+<tr><td><strong>没有内置可见性</strong></td><td><strong>自建 Go 桌面 agent + WebRTC 流</strong></td></tr>
+</table>
+<p><strong>我认为这张对应关系是这篇文章最可复用的部分</strong>，<strong>因为它演示了「从约束出发设计」而不是「从方案出发找理由」。</strong> <strong>而这在基础设施领域是一个重要的区别</strong>：<strong>因为方案会被复制，而约束往往是特定的。</strong></p>
+<p><strong>第二，那个「干净 vs 快」的张力，以及他们选择换掉问题本身，是一个值得学的判断。</strong></p>
+<p><strong>原话是</strong>：<strong>「桌面测试基础设施里的核心张力是：干净的机器慢，快的机器不干净。」</strong></p>
+<p><strong>而通常的处理方式是在两者之间找一个折衷点</strong>（<strong>比如「每 N 次测试清理一次」</strong>）。 <strong>而 QA Wolf 的做法是不在两个选项里选，而是质疑那个前提</strong>：<strong>如果「干净」可以由「机器是新的」来保证，那么「清理」这件事就不存在了。</strong></p>
+<p><strong>我认为这个动作可以概括成一句话</strong>：<strong>当一个权衡的两个选项都不好时，先检查那个权衡本身是不是必须的。</strong> <strong>而在这里，它之所以不是必须的，是因为「复用机器」这个前提本身是一个可以放弃的假设。</strong></p>
+<p><strong>而这又和第四条约束（机器会记住东西）连起来</strong>：<strong>「不复用」不是对状态污染的缓解，而是对它的消除。</strong> <strong>所以准确的说法是</strong>：<strong>他们把「清理问题」转化成了「生命周期问题」。</strong></p>
+<p><strong>第三，「更新靠消耗」这个做法，我认为是这篇文章里最有一般性的一个设计。</strong></p>
+<p><strong>它说的是一件很反直觉的事</strong>：<strong>放弃「就地升级」这个能力，反而让升级变得无需管理。</strong></p>
+<p><strong>而它的机制值得说清</strong>：<strong>在一个长期运行的机群里，升级是一个「需要计划的动作」</strong>（<strong>因为要停机、要验证、要回滚</strong>）；<strong>而如果机器的生命周期本来就短，那么升级就变成一个「构建新镜像」的问题</strong>，<strong>而旧机器会在正常代谢中被替换掉。</strong></p>
+<p><strong>也就是说</strong>：<strong>它把「运维动作」转化成了「构建动作」。</strong> <strong>而构建动作有一个运维动作没有的性质</strong>：<strong>它是可复现、可测试、可回滚的</strong>（<strong>因为镜像本身是版本化的产物</strong>）。</p>
+<p><strong>我认为这个模式可以推广到任何「有大量同质实例」的系统上</strong>：<strong>如果一个系统的实例本就是短暂的，那么配置管理的大部分问题会转变成构建问题。</strong> <strong>而这是一个把「状态管理」变成「产物管理」的转换</strong>：<strong>后者通常更容易做对。</strong></p>
+<p><strong>第四，我必须指出这份材料的性质，以及它没有回答的问题。</strong></p>
+<p><strong>这是一篇厂商博客</strong>（<strong>QA Wolf 是一家做自动化测试服务的公司</strong>），<strong>所以下面这些点需要注意</strong>：</p>
+<ul>
+<li><strong>它是从「我们已经解决了」的角度写的</strong>（<strong>标题里的 <code>E2exe</code> 就是他们产品的名字</strong>）；</li>
+<li><strong>它没有给出性能数据</strong>（<strong>比如「热池把平均等待时间从 X 降到 Y」</strong>）；</li>
+<li><strong>它没有说明成本</strong>（<strong>GCE 上的 Windows VM 按小时计费，而一个热池意味着持续付费的闲置容量</strong>）；</li>
+<li><strong>它没有讨论这个方案的规模上限</strong>（<strong>「数千次运行每月」是开头提到的客户需求，但没有给出实际的并发数字</strong>）。</li>
+</ul>
+<strong>我认为这些空白中，成本那一项最值得留意</strong>，<strong>因为它可能改变结论</strong>：<strong>「热池 + 一次性 VM」在技术上成立，但它的经济性取决于「闲置的热机成本」与「冷启动时间成本」的比较。</strong> <strong>而这个比较在不同规模下会给出不同答案</strong>：<strong>小规模时热池很浪费，大规模时它可能很划算。</strong>
+<p><strong>所以我倾向于把这篇文章读成「一份架构说明，而不是一个成本论证」。</strong> <strong>它的价值在于清楚地列出了约束和它们推出的设计</strong>，<strong>而它是否在某个具体场景里划算，需要读者用自己的数字去算。</strong></p>
+<p><strong>最后一点，关于「把 Windows 当手机」这个类比的边界。</strong> <strong>它成立的地方是</strong>：<strong>两者都要求「一台专用设备、一个活跃会话、独占使用」。</strong> <strong>它不成立的地方是</strong>：<strong>手机农场通常有物理设备</strong>（<strong>或者模拟器</strong>），<strong>而 Windows VM 是在云上按需创建的</strong>：<strong>这意味着 Windows 侧的成本结构是「按秒计费的云资源」，而手机侧是「固定资产 + 折旧」。</strong></p>
+<p><strong>而这个差别会影响到「一次性」这个决定的代价</strong>：<strong>丢掉一台用了三年的真机是有折旧成本的，而丢掉一台刚创建 10 分钟的 VM 的成本主要就是那 10 分钟。</strong> <strong>也就是说</strong>：<strong>「一次性」这个策略在云 VM 上比在物理设备上更容易成立。</strong></p>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>来源</strong></td><td><strong>QA Wolf 博客：E2exe: How we solved Windows desktop automation for enterprise scale</strong>（<strong>2026-10-14</strong>，作者 Jaden Lemmon）</td></tr>
+<tr><td>⚠️ <strong>性质</strong></td><td><strong>厂商博客</strong>（<strong>QA Wolf 是自动化测试服务公司</strong>，<strong><code>E2exe</code> 是其产品名</strong>）；<strong>未给出性能数据、成本数据、规模上限</strong></td></tr>
+<tr><td><strong>⭐ 核心洞察</strong></td><td><strong>「我们的答案是停止把 Windows 机器当作服务器，而是像对待手机一样对待它们：一个由某个测试声明、用一次、然后丢掉 的设备。」</strong></td></tr>
+<tr><td><strong>⭐ 根本约束</strong></td><td><strong>「Windows UI Automation（UIA），也就是测试工具用来查找按钮和字段的那个无障碍接口，只在活动的、已登录的桌面会话里工作。一台仅仅开着的机器是不够的。」</strong></td></tr>
+<tr><td><strong>那六条约束</strong></td><td><strong>① 每个测试需要完整 VM（Windows 容器不含图形桌面）</strong>；<strong>② 冷启动 2 到 3 分钟（浏览器容器只要几秒）</strong>；<strong>③ 必须有人登录（UIA 需要活跃登录会话）</strong>；<strong>④ 机器会记住东西（文件、注册表、用户配置、登录状态、残留进程）</strong>；<strong>⑤ 每个应用带自己的世界（安装器、管理员提示、许可依赖、首次运行对话框、登录）</strong>；<strong>⑥ 没有内置可见性（浏览器给 traces/日志/截图，远程 Windows 机器什么都不给）</strong></td></tr>
+<tr><td><strong>环境层面的观察</strong></td><td><strong>「工具链假定 Linux。Kubernetes、CI runner 和大多数测试基础设施都是围绕 Linux 容器设计的。」</strong></td></tr>
+<tr><td><strong>⭐ 类比来源</strong></td><td><strong>「基本架构借用了我们的移动测试基础设施，因为移动测试有同样的约束：测试代码不能跑在它正在测试的设备上，而每个测试在运行时需要独占一台设备。」</strong></td></tr>
+<tr><td><strong>设备模型的两项扩展</strong></td><td><strong>① 设备不必住在集群里</strong>（<strong>GCE VM 完全在它之外</strong>）；<strong>② 声明可以返回桌面的连接地址</strong>（<strong>包括浏览器的 CDP</strong>）</td></tr>
+<tr><td><strong>三个部分</strong></td><td><strong>控制器</strong>（<strong>Kubernetes 里，在 GCE 上保持 VM 池并分发</strong>）；<strong>runner</strong>（<strong>Linux pod，运行测试代码</strong>）；<strong>Windows VM</strong>（<strong>运行被测应用、自动化工具、一个小桌面 agent</strong>）</td></tr>
+<tr><td><strong>三条连接</strong></td><td><strong>CDP</strong>（<strong>Playwright 控制浏览器</strong>）；<strong>Appium</strong>（<strong>WebDriver，Appium + WinAppDriver，通过 UIA 驱动原生应用</strong>）；<strong>WebRTC</strong>（<strong>屏幕流，用于实时观看与录像</strong>）</td></tr>
+<tr><td><strong>生命周期六步</strong></td><td><strong>① runner pod 请求 Windows 设备 → ② 调度器从热池分配 VM → ③ runner 拿到 CDP/Appium/屏幕流的连接地址 → ④ 应用被投递到 VM 并启动 → ⑤ 测试运行，屏幕实时流并录制 → ⑥ 声明释放，VM 销毁，新 VM 补进池</strong></td></tr>
+<tr><td><strong>⚠️ 心跳回收</strong></td><td><strong>「被声明的 VM 在测试运行时报告活动。如果它安静了 60 秒，控制器假定测试已经消失并回收这台机器。」</strong></td></tr>
+<tr><td><strong>Kubernetes 自定义资源</strong></td><td><strong>WindowsVMTemplate</strong>（<strong>镜像、大小、配置</strong>）；<strong>WindowsVMPool</strong>（<strong>给定模板要保持多少台就绪 VM</strong>）；<strong>WindowsVM</strong>（<strong>代表一台机器</strong>）</td></tr>
+<tr><td><strong>⭐ reconciler 的做法</strong></td><td><strong>「Windows VM 需要几分钟来创建和启动，所以 reconciler 让每台机器在多次短扫描中一次前进一个步骤，并把进度写到该 VM 的记录上。一次缓慢的启动永远不会阻塞调度器管理的其他任何东西。」</strong></td></tr>
+<tr><td><strong>容量不足</strong></td><td><strong>「如果一个云区无法提供 Windows VM，池会在另一个区创建它。」</strong></td></tr>
+<tr><td><strong>⭐ 那个核心张力</strong></td><td><strong>「桌面测试基础设施里的核心张力是：干净的机器慢，快的机器不干净。」</strong></td></tr>
+<tr><td><strong>⭐ 一次性 VM</strong></td><td><strong>「一台 VM 在测试之后永不复用。没有测试能看到另一个测试的文件、设置或登录状态，所以一整类『单独跑通过、在套件里失败』的问题根本不会出现。」</strong></td></tr>
+<tr><td><strong>⭐ 更新靠消耗</strong></td><td><strong>「因为 VM 是一次性的，新的机器镜像不需要任何升级流程。旧 VM 被用完并被新的替换，而处在过时镜像上的空闲 VM 会被回收，所以池会自行逐渐迁移过去。」</strong></td></tr>
+<tr><td><strong>镜像如何构建</strong></td><td><strong>「一个 PowerShell 设置脚本生成这个镜像，并把它发布到 GCE 的一个镜像族，所以它很容易复现。没有人手工维护一台黄金机器。」</strong></td></tr>
+<tr><td><strong>镜像里预置的</strong></td><td><strong>Appium、Appium Windows driver、微软的 WinAppDriver</strong>（<strong>必须在第一个测试到达前在一个活动桌面会话里安装、配置并运行</strong>）；<strong>一个独立的根级会话</strong>（<strong>用于通知与操作中心这类不属于应用的部分</strong>）；<strong>Chrome 与 Adobe Acrobat</strong>；<strong>镜像变体</strong>（<strong>如 Office 镜像会预先清理 Word 的首次运行对话框</strong>）；<strong>可从客户提供的设置脚本构建私有镜像</strong></td></tr>
+<tr><td><strong>⭐ 测试代码留在 Linux</strong></td><td><strong>「在 Windows 上运行测试代码意味着要为所有这一切构建和维护两份。所以测试代码不在 Windows 上运行。」</strong></td></tr>
+<tr><td><strong>统一 API</strong></td><td><strong><code>@qawolf/flows/windows</code> 提供 <code>launch()</code>（浏览器）与 <code>startApp()</code>（原生应用）</strong>；<strong>一个 <code>expect</code> 按断言对象选用 Playwright 或 WebdriverIO 的 matcher</strong></td></tr>
+<tr><td><strong>⭐ 签名 URL 设计</strong></td><td><strong>「应用的文件从不经过 runner。当一个测试调用 <code>startApp()</code> 时，系统签发一个短时效的签名 URL，而 VM 直接从存储下载应用，走 Private Google Access。只有 QA Wolf 的中央 API 服务能签这些 URL。测试代码以非特权用户运行，并通过一个受信任的父进程请求下载，所以测试内的代码无法签任意 URL。」</strong></td></tr>
+<tr><td><strong>支持的文件类型</strong></td><td><strong><code>.exe</code>、<code>.msi</code>、<code>.msix</code> 安装器</strong>（<strong>包括传 MSI 属性</strong>）；<strong>测试也可以往 VM 推文件、并从 VM 拉文件</strong></td></tr>
+<tr><td><strong>⭐ 桌面 agent</strong></td><td><strong>用 Go 写</strong>；<strong>用 FFmpeg 抓屏、通过 WebRTC 流式传输</strong>；<strong>通过调用 Windows 自己的 <code>user32.dll</code> 模拟鼠标、键盘和剪贴板输入</strong></td></tr>
+<tr><td><strong>agent 的两处工程决定</strong></td><td><strong>不使用 CGo</strong>（<strong>「所以它可以在一台 Mac 或 Linux 机器上为 Windows 交叉编译，而平台相关的部分放在 Go build tags 后面」</strong>）；<strong>从 Windows 读取真实屏幕尺寸</strong>（<strong>而不是信任客户配置的值</strong>）</td></tr>
+<tr><td><strong>代码共享</strong></td><td><strong>「Linux、Windows 和 Mac 的 agent 共享一份代码库，Linux 构建不受 Windows 代码影响。」</strong></td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://www.qawolf.com/blog/how-we-solved-windows-desktop-automation">QA Wolf：E2exe: How we solved Windows desktop automation for enterprise scale</a></li>
+<li><a href="/articles/2026-10-15_cloud-hypervisor-54-live-migration/">本站：Cloud Hypervisor 54 承诺「前两个版本可迁移」</a></li>
+<li><a href="/articles/2026-10-16_cppc-boost-default-mutter-damage-tracking/">本站：两个「隐含假设」的修正：CPU boost 该不该默认开，复用缓冲区能不能只拷最新那帧</a></li>
+<li><a href="/articles/2026-10-16_self-hosting-list-and-buyout-local-tools/">本站：自托管 28 个服务的清单，与一个 €25 买断的文档工具</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-16_windows-desktop-automation-disposable-vms/",
+      title: "Windows \u684c\u9762\u6d4b\u8bd5\u4e3a\u4ec0\u4e48\u96be\u81ea\u52a8\u5316\uff1a\u56e0\u4e3a\u4e00\u4e2a\u5bb9\u5668\u91cc\u6ca1\u6709\u767b\u5f55\u4f1a\u8bdd\uff0c\u800c\u4eba\u5f97\u5148\u767b\u8fdb\u53bb"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
