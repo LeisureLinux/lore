@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-16 | [同一份 AdFection 报告，这篇多给了企业一份可执行清单：而清单里最有效的一条，是「别把你的广告 ID 交出去」](https://freelamp.com/articles/2026-10-16_adfection-enterprise-defense-checklist/) | AdFection · 广告标识符 · MDM · DNS拦截 · 企业安全 · Frank Dickson · 零点击 · 译文 |
 | 2026-10-16 | [systemd v262 那 35 条改动，真正的主线是把「启动信任」变成一条可以逐段签名的链](https://freelamp.com/articles/2026-10-16_systemd-v262-trust-chain-varlink/) | systemd · 可信启动 · TPM · NvPCR · UKI · dm-verity · Varlink · 机密计算 · 译文 |
 | 2026-10-16 | [Ubuntu 26.10 用 Sequoia 换掉 GnuPG 签名：发行版第一次把「量子威胁」写进了自己的包管理器](https://freelamp.com/articles/2026-10-16_ubuntu-26-10-stonking-stingray/) | Ubuntu · Sequoia PGP · 后量子 · APT · GNOME 51 · dbus-broker · TPM · RISC-V · 译文 |
 | 2026-10-16 | [用 AI 逆向工程硬件驱动：Red Hat 工程师把一台扫描仪和一个摄像头修好了](https://freelamp.com/articles/2026-10-16_ai-reverse-engineer-linux-hardware-drivers/) | AI · Claude Code · 逆向工程 · 驱动开发 · hw-harness · usbmon · SANE · libcamera · 译文 |
