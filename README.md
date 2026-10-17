@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-16 | [Starling 又用 Claude 写出了一个办公套件：而它和同一周那批 AI 政策，正好指向相反的方向](https://freelamp.com/articles/2026-10-16_starling-office-ai-generated-suite/) | Starling · Swift · Wayland · 办公套件 · Claude Code · Apache-2.0 · Flutter · OOXML · 开源治理 · 译文 |
 | 2026-10-16 | [MIPS 与龙芯的三十年：一家公司放弃了自己的指令集，而一家中国公司在那一年离开了它](https://freelamp.com/articles/2026-10-16_mips-loongson-loongarch-history/) | MIPS · 龙芯 · LoongArch · LoongISA · 芯联芯 · RISC-V · 自主可控 · 仲裁 · 编译生态 |
 | 2026-10-16 | [Libreboot 26.10 把「反 AI 政策」列为本次发布最重要的变更，然后才是完整 UEFI 支持](https://freelamp.com/articles/2026-10-16_libreboot-2610-uefi-edk2-anti-ai-policy/) | Libreboot · coreboot · EDK2 · UEFI · Chromebook · AGENTS.md · 反AI政策 · 自由固件 · 译文 |
 | 2026-10-16 | [当补丁变得廉价，开源协作的两种新答案：一个说「关掉 PR」，一个说「Rust 更适合」](https://freelamp.com/articles/2026-10-16_remix-model-vs-agentic-rust/) | 开源治理 · remix · Nix · Rust · agentic coding · 类型系统 · 证明系统 · Verus · 译文 |
