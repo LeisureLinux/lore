@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-17 | [GNOME 这个 AI 聊天应用最值得看的不是功能，而是它把「哪些数据会出去」写成了可核对的句子](https://freelamp.com/articles/2026-10-17_moose-0-6-gnome-ai-chat-privacy/) | Moose · GNOME · GTK4 · Rust · Ollama · 本地AI · Local-Only · keyring · 隐私设计 · 译文 |
 | 2026-10-16 | [不到两周，X.Org 又发了 17 个 CVE：而这一次全在客户端库里，威胁模型反过来了](https://freelamp.com/articles/2026-10-16_xorg-17-cves-client-libraries/) | X.Org · libX11 · libXi · libXrender · CVE · XIM · XKB · 威胁模型 · XWayland · 越界读写 · 译文 |
 | 2026-10-16 | [Starling 又用 Claude 写出了一个办公套件：而它和同一周那批 AI 政策，正好指向相反的方向](https://freelamp.com/articles/2026-10-16_starling-office-ai-generated-suite/) | Starling · Swift · Wayland · 办公套件 · Claude Code · Apache-2.0 · Flutter · OOXML · 开源治理 · 译文 |
 | 2026-10-16 | [MIPS 与龙芯的三十年：一家公司放弃了自己的指令集，而一家中国公司在那一年离开了它](https://freelamp.com/articles/2026-10-16_mips-loongson-loongarch-history/) | MIPS · 龙芯 · LoongArch · LoongISA · 芯联芯 · RISC-V · 自主可控 · 仲裁 · 编译生态 |
