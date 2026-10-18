@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-18 | [为了在手机上看歌词逐字跳，我把 349 首歌转了三遍：LRC、A2、TTML 的来历与分裂](https://freelamp.com/articles/2026-10-18_lrc-ttml-karaoke-formats/) | LRC · LRC A2 · Enhanced LRC · TTML · TTML2 · DFXP · W3C · 歌词格式 · 卡拉OK · 逐词歌词 · Gramophone · Steve · 离线播放器 · Charabia 分词 |
 | 2026-10-17 | [GNOME 这个 AI 聊天应用最值得看的不是功能，而是它把「哪些数据会出去」写成了可核对的句子](https://freelamp.com/articles/2026-10-17_moose-0-6-gnome-ai-chat-privacy/) | Moose · GNOME · GTK4 · Rust · Ollama · 本地AI · Local-Only · keyring · 隐私设计 · 译文 |
 | 2026-10-16 | [不到两周，X.Org 又发了 17 个 CVE：而这一次全在客户端库里，威胁模型反过来了](https://freelamp.com/articles/2026-10-16_xorg-17-cves-client-libraries/) | X.Org · libX11 · libXi · libXrender · CVE · XIM · XKB · 威胁模型 · XWayland · 越界读写 · 译文 |
 | 2026-10-16 | [Starling 又用 Claude 写出了一个办公套件：而它和同一周那批 AI 政策，正好指向相反的方向](https://freelamp.com/articles/2026-10-16_starling-office-ai-generated-suite/) | Starling · Swift · Wayland · 办公套件 · Claude Code · Apache-2.0 · Flutter · OOXML · 开源治理 · 译文 |
