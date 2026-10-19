@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-19 | [机器凭据轮换只是买时间：ZSP 的关键不在「换密码」，在「有没有人负责关掉它」](https://freelamp.com/articles/2026-10-19_zero-standing-privilege-machine-identities/) | 零常驻特权 · ZSP · 机器身份 · NHI · OAuth · 令牌重放 · Salesloft Drift · UNC6395 · PAM · 工作负载身份联合 · OIDC · DPoP · 评论解读 |
+| 2026-10-19 | [PwnEscape：一个 17 年的内核 bug，AI 用 3 天找到，而修复只堵了 5 个消费点](https://freelamp.com/articles/2026-10-19_pwnescape-cve-2026-99999-linux-networking-vm-escape/) | PwnEscape · CVE-2026-99999 · Linux内核 · 虚拟机逃逸 · KVM · Vercel Sandbox · 校验和卸载 · sk_buff · TOCTOU · AI辅助研究 · 解读 |
+| 2026-10-19 | [「Flatpak 是一团安全噩梦」：原文写于 2023 年，而 2026 年的两个证据它都没等到](https://freelamp.com/articles/2026-10-19_flatpak-sandbox-security-debate-flatkill-rebuttal/) | Flatpak · 沙箱安全 · flatkill · Flathub · Portals · 静态权限 · CVE-2026-34078 · 桌面Linux · 应用分发 · 解读 |
 | 2026-10-19 | [Linux 7.3 是一个「全方位纪录」：两万多个提交、三千多名开发者，而 Phoronix 特意提到了 AI 带来的代码变动](https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/) | Linux内核 · 7.3 · LWN · Phoronix · AI/LLM · 提交量 · sched_ext · failfs · 译文 |
 | 2026-10-19 | [为了省下 62 毫秒，Omarchy 用 Claude Code 重写了一个 XDG 脚本：这个数字比它看起来重要](https://freelamp.com/articles/2026-10-19_omarchy-browser-launch-xdg-optimization/) | Omarchy · Arch Linux · Hyprland · DHH · Claude Code · xdg-settings · 微优化 · 译文 |
 | 2026-10-19 | [闰秒要在 2027 年 5 月 20 日退役了：而 Linux 已经为此准备了十四年](https://freelamp.com/articles/2026-10-19_leap-second-retired-2027-linux-clocks/) | 闰秒 · BIPM · CGPM · UTC · TAI · CLOCK_TAI · NTP · chrony · smearing · 译文 |
