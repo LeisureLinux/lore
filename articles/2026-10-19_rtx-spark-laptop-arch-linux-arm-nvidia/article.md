@@ -284,5 +284,6 @@ published: true
 - [Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半](https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/)
 - [TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」](https://freelamp.com/articles/2026-10-19_tee-attestation-forgery-threat-model/)
 - [Gentoo 给 Chromium 做了「临终祷告」：而杀死这个打包的是一句「这太荒唐了」](https://freelamp.com/articles/2026-10-19_gentoo-chromium-last-rites-maintainer-burnout/)
+- [ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程](https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/)
 - [原文（一手，含构建脚本、补丁与全部原始日志）](https://josie.lol/blog/linux-rtx-spark)
 - [NVIDIA RTX Spark 官方规格页](https://www.nvidia.com/en-us/products/rtx-spark/specifications/)

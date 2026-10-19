@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本 — FreeLAMP.com</title>
+  <meta name="description" content="很多人想改笔记本的 ACPI，但不知道覆盖到底是怎么生效的。本文从 RTX Spark 那篇实测背后的仓库里，把 ACPI 覆盖的完整链条拆出来：怎么 dump 自己的表（UEFI Shell + acpiview，或从 /sys/firmware/acpi/tables 直接读）、怎么把它打成 initrd 里的 c">
+  <meta name="keywords" content="ACPI, DSDT, SSDT, 覆盖, initrd, cpio, acpidump, acpiview, iasl, ACPICA, EFI stub, 内核补丁, memblock, EFI内存描述符, AML, Method, Name, Buffer, 电源管理, 笔记本, Arch Linux ARM">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-19">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本">
+  <meta property="og:description" content="很多人想改笔记本的 ACPI，但不知道覆盖到底是怎么生效的。本文从 RTX Spark 那篇实测背后的仓库里，把 ACPI 覆盖的完整链条拆出来：怎么 dump 自己的表（UEFI Shell + acpiview，或从 /sys/firmware/acpi/tables 直接读）、怎么把它打成 initrd 里的 c">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-19">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="ACPI">
+  <meta property="article:tag" content="ACPI">
+  <meta property="article:tag" content="DSDT">
+  <meta property="article:tag" content="SSDT">
+  <meta property="article:tag" content="覆盖">
+  <meta property="article:tag" content="initrd">
+  <meta property="article:tag" content="cpio">
+  <meta property="article:tag" content="acpidump">
+  <meta property="article:tag" content="acpiview">
+  <meta property="article:tag" content="iasl">
+  <meta property="article:tag" content="ACPICA">
+  <meta property="article:tag" content="EFI stub">
+  <meta property="article:tag" content="内核补丁">
+  <meta property="article:tag" content="memblock">
+  <meta property="article:tag" content="EFI内存描述符">
+  <meta property="article:tag" content="AML">
+  <meta property="article:tag" content="Method">
+  <meta property="article:tag" content="Name">
+  <meta property="article:tag" content="Buffer">
+  <meta property="article:tag" content="电源管理">
+  <meta property="article:tag" content="笔记本">
+  <meta property="article:tag" content="Arch Linux ARM">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本">
+  <meta name="twitter:description" content="很多人想改笔记本的 ACPI，但不知道覆盖到底是怎么生效的。本文从 RTX Spark 那篇实测背后的仓库里，把 ACPI 覆盖的完整链条拆出来：怎么 dump 自己的表（UEFI Shell + acpiview，或从 /sys/firmware/acpi/tables 直接读）、怎么把它打成 initrd 里的 c">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本",
+  "description": "来源：pfeifferj/archlinuxarm-proart-p16https://github.com/pfeifferj/archlinuxarm-proart-p16（MIT 许可，386 个文件）  一手材料：本文所有流程、命令、补丁内容均逐文件阅读仓库源码得出，包括 acpi_builder.py（16 KB）、stage-acpi-dump.py、acpi-dump.nsh、pow",
+  "datePublished": "2026-10-19",
+  "dateModified": "2026-10-19",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "ACPI, DSDT, SSDT, 覆盖, initrd, cpio, acpidump, acpiview, iasl, ACPICA, EFI stub, 内核补丁, memblock, EFI内存描述符, AML, Method, Name, Buffer, 电源管理, 笔记本, Arch Linux ARM"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本",
+        "item": "https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-19">2026-10-19</div>
+        <h1 class="post-title" itemprop="headline">ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/ACPI/">ACPI</a><a itemprop="keywords" href="/tags/DSDT/">DSDT</a><a itemprop="keywords" href="/tags/SSDT/">SSDT</a><a itemprop="keywords" href="/tags/%E8%A6%86%E7%9B%96/">覆盖</a><a itemprop="keywords" href="/tags/initrd/">initrd</a><a itemprop="keywords" href="/tags/cpio/">cpio</a><a itemprop="keywords" href="/tags/acpidump/">acpidump</a><a itemprop="keywords" href="/tags/acpiview/">acpiview</a><a itemprop="keywords" href="/tags/iasl/">iasl</a><a itemprop="keywords" href="/tags/ACPICA/">ACPICA</a><a itemprop="keywords" href="/tags/EFI%20stub/">EFI stub</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8%E8%A1%A5%E4%B8%81/">内核补丁</a><a itemprop="keywords" href="/tags/memblock/">memblock</a><a itemprop="keywords" href="/tags/EFI%E5%86%85%E5%AD%98%E6%8F%8F%E8%BF%B0%E7%AC%A6/">EFI内存描述符</a><a itemprop="keywords" href="/tags/AML/">AML</a><a itemprop="keywords" href="/tags/Method/">Method</a><a itemprop="keywords" href="/tags/Name/">Name</a><a itemprop="keywords" href="/tags/Buffer/">Buffer</a><a itemprop="keywords" href="/tags/%E7%94%B5%E6%BA%90%E7%AE%A1%E7%90%86/">电源管理</a><a itemprop="keywords" href="/tags/%E7%AC%94%E8%AE%B0%E6%9C%AC/">笔记本</a><a itemprop="keywords" href="/tags/Arch%20Linux%20ARM/">Arch Linux ARM</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://github.com/pfeifferj/archlinuxarm-proart-p16">pfeifferj/archlinuxarm-proart-p16</a>（<strong>MIT 许可</strong>，386 个文件）<br>
+一手材料：本文所有流程、命令、补丁内容均<strong>逐文件阅读仓库源码</strong>得出，包括 <code>acpi_builder.py</code>（16 KB）、<code>stage-acpi-dump.py</code>、<code>acpi-dump.nsh</code>、<code>power-source.sed</code>、<code>power-splice.json</code>、<code>power-method-changes.json</code>、内核补丁 <code>0001-arm64-bound-acpi-override-allocation.patch</code> 及其 README、<code>component.yaml</code>。<br>
+配套阅读：<a href="https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/">为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁</a><br>
+本文为<strong>技术解读</strong>。第二节关于「为什么不能重编译整张表」的分析、第五节的迁移建议是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>先把最容易误解的一点说清：ACPI 覆盖不是「改固件」，是「让内核在启动时用一张你自己的表替换掉固件那张」。</strong> 作者仓库里那句注释说得很直白：</p>
+<blockquote><strong>「在 RAM 中提前应用 ACPI 归档；不要刷固件。」</strong>（Apply early ACPI archive in RAM; do not flash firmware.）</blockquote>
+<strong>而这条路径在内核里有一个专门的开关，叫 <code>CONFIG_ACPI_TABLE_UPGRADE</code>。它的机制是</strong>：<strong>内核在早期启动时，去 initrd（initramfs）里找 <code>/kernel/firmware/acpi/</code> 目录，如果那里有 <code>DSDT.aml</code>、<code>SSDT.aml</code> 等文件，就优先使用它们，而不是固件里的对应表。</strong>
+<p><strong>所以整件事的技术链条只有四步</strong>：</p>
+<ol>
+<li>1. <strong>dump</strong> 出你自己机器上的表；</li>
+<li>2. <strong>改</strong> 你想改的地方（这一步是全部难度的所在）；</li>
+<li>3. <strong>打包</strong> 成 cpio，放进 initrd；</li>
+<li>4. <strong>重启</strong>，内核会用你的表。</li>
+</ol>
+<strong>而这里面真正会让人卡住的从来不是第 1、3、4 步，是第 2 步。而这篇文章的重点就在第 2 步，以及一个作者踩到但很少人知道的内核 allocator 陷阱。</strong>
+<h2>一、第一步：dump 你自己的表，有两条路</h2>
+<p><strong>作者给了两条路，而我认为这个设计很值得学，因为它照顾了两种完全不同的处境。</strong></p>
+<h3>路线 A：UEFI Shell + acpiview（不需要 Linux 能启动）</h3>
+<p><strong>脚本本身写得很短，而它的注释解释了为什么这么做</strong>：</p>
+<pre><code class="text"># holds this Shell, as input for provenance/hardware/power-archive-builder.py.
+</code></pre>
+<p><strong>而核心只有三条命令</strong>：</p>
+<pre><code class="text">acpiview -s DSDT -d
+acpiview -s SSDT -d
+</code></pre>
+<p><strong>而脚本里有一句提示很关键，因为它是很多人踩过的坑</strong>：</p>
+<blockquote><strong>「acpiview 会写入一个已存在的 dump 文件而不截断它。」</strong>（acpiview writes into an existing dump file without truncating it.）</blockquote>
+<strong>这就是为什么脚本在 dump 前先删掉旧的 <code>*.bin</code></strong>：「<strong>在 dump 之前先删掉旧的 dump，因为 acpiview 不会截断已存在的文件。</strong>」
+<p><strong>而脚本的健壮性做得比一般教程细，因为它每步都检查 <code>%lasterror%</code></strong>：</p>
+<pre><code class="text">if x%homefilesystem% == x then
+  echo STOP: this Shell has no own-filesystem mapping.
+  exit /b 1
+endif
+%homefilesystem%
+</code></pre>
+<p><strong>而它最后还检查「到底 dump 出来没有」</strong>：</p>
+<pre><code class="text">if not exist DSDT0000.bin then
+  echo STOP: no DSDT was dumped. This Shell needs the acpiview command.
+  exit /b 1
+endif
+if not exist SSDT0000.bin then
+  echo STOP: no SSDT was dumped.
+  exit /b 1
+endif
+</code></pre>
+<p><strong>我认为这个「no DSDT was dumped」的检查值得单独表扬，因为它是「脚本化 dump」和「教程式的敲命令」的区别</strong>：<strong><code>acpiview</code> 不是所有 UEFI Shell 版本都带，而如果它缺失，脚本会静默失败，用户会拿到一个空目录而不知道为什么。</strong> <strong>加一句检查，就把一个需要经验才能诊断的失败变成了一个明确的错误信息。</strong></p>
+<p><strong>而要用这条路，还需要准备 UEFI Shell 本身。作者的 <code>stage-acpi-dump.py</code> 做了这件事，而它的做法有一处值得学</strong>：</p>
+<blockquote><strong>「把固定版本的 EDK2 Shell 复制到 <code>EFI/BOOT/BOOTAA64.EFI</code>，把 dump 脚本复制到 <code>EFI/BOOT/startup.nsh</code>。不分区、不格式化，也不碰 U 盘上的其他文件。」</strong></blockquote>
+<strong>「不分区、不格式化，也不碰 U 盘上的其他文件」（Nothing is partitioned or formatted and no other file on the stick is touched）。</strong> <strong>而它对已有文件的态度是「拒绝覆盖」</strong>：
+<pre><code class="python">if path.exists() or path.is_symlink():
+    require(path.is_file() and path.read_bytes() == data,
+            f"Refusing to replace {path}; use a stick without {name}")
+</code></pre>
+<p><strong>「拒绝替换……用一个没有这个文件的 U 盘」。</strong> <strong>我认为这个设计是对的：它把一个「可能破坏用户数据」的操作变成了一个「明确要求你换一个 U 盘」的提示。</strong> <strong>而它同时还校验了 Shell 的 SHA-256 是否匹配 <code>locks/hardware.json</code> 里 pin 的值</strong>，所以你不会拿到一个被替换过的 Shell。</p>
+<h3>路线 B：从 <code>/sys/firmware/acpi/tables</code> 直接读（需要 Linux 能启动）</h3>
+<p><strong>作者在 <code>acpi_builder.py</code> 的文档字符串里给了这条路的完整命令</strong>：</p>
+<pre><code class="bash">mkdir DIR
+for table in /sys/firmware/acpi/tables/DSDT /sys/firmware/acpi/tables/SSDT*; do
+    sudo cat "$table" | tee "DIR/${table##*/}" > /dev/null
+done
+</code></pre>
+<p><strong>而它有一个前提条件，作者写得很明确</strong>：</p>
+<blockquote><strong>「Linux 启动时没有加载 h7607a-acpi.cpio，比如在这台 P16 上跑另一个发行版的 live 系统。」</strong></blockquote>
+<strong>这个前提很重要，因为它是「鸡生蛋」问题</strong>：<strong>如果你已经加载了覆盖表，那么 <code>/sys/firmware/acpi/tables/</code> 里是</strong>覆盖后<strong>的表，你 dump 出来的就不是固件的原表了。</strong>
+<p><strong>而作者在代码里对这个坑做了一个主动检查，我认为这是整个仓库里最值得学的设计</strong>：</p>
+<pre><code class="python">def firmware(name, data, expected, override, description):
+    digest = sha(data)
+    require(digest != override,
+            f"{name} is the {description} from h7607a-acpi.cpio, not the firmware's; dump it with "
+            "the UEFI Shell kit or from a Linux booted without that archive")
+    require(digest == expected,
+            f"{name} is not the {description} of firmware {FIRMWARE} (SHA-256 {digest}); "
+            f"these overrides are only for BIOS {FIRMWARE}")
+</code></pre>
+<p><strong>这段代码做了两个检查，而第二个检查的意义超出这个项目</strong>：</p>
+<ol>
+<li>1. <strong>「你 dump 出来的东西不等于我们的覆盖表」</strong>：排除「你 dump 到了自己的覆盖」这个错误；</li>
+<li>2. <strong>「你 dump 出来的东西必须等于我们 pin 的那个固件版本」</strong>：<strong>这就是「ACPI 覆盖与固件版本强绑定」这件事的代码化。</strong></li>
+</ol>
+<strong>第二条检查为什么必要，作者的错误信息说得很清楚</strong>：
+<blockquote><strong>「这些覆盖只适用于 BIOS H7607BA.300」</strong>（these overrides are only for BIOS H7607BA.300）</blockquote>
+<strong>我认为这是本文最该被记住的一条工程原则：ACPI 覆盖不是一个「通用的修复」，它是一个「针对某个固件版本的二进制补丁」。</strong> <strong>因为 AML 是字节码，而覆盖是通过「按字节偏移替换」实现的（下一节会讲），所以固件版本一变，偏移全错，而错位的结果不是「报错」，是「一个语义完全不同的表」。</strong> <strong>而这个检查把这种无声的错误变成了一个明确的拒绝。</strong>
+<h2>二、第二步：改哪里，以及为什么不能重编译整张表</h2>
+<p><strong>这是全部难度的所在，而作者的方案有两个非常具体的技术决定。</strong></p>
+<h3>决定一：只改 6 个 Method 的名字，不重编译整张表</h3>
+<p><strong>先看目标是什么。<code>component.yaml</code> 里的两条说明</strong>：</p>
+<blockquote><strong>「在不使用全局 OSI 覆盖的情况下启用 NVDA8400 SSPM。」</strong>（Enable NVDA8400 SSPM without a global OSI override.）<br>
+<strong>「仅修复 RRA9/RRA8/WRA9/WRA8/RWEC/GBST 的缓冲区生命周期。」</strong>（Repair buffer lifetime in RRA9/RRA8/WRA9/WRA8/RWEC/GBST only.）</blockquote>
+<strong>而具体的改动内容，<code>power-source.sed</code> 写得很清楚，因为它是「字面替换脚本」</strong>：
+<pre><code class="text"># \_SB.EC0.RRA9
+3590,3604s/Local0/RSPB/g
+3590s/RSPB = Buffer/Name (RSPB, Buffer/
+3590s/{}/{})/
+</code></pre>
+<p><strong>也就是说：在 ASL 源码的第 3590 到 3604 行，把 <code>Local0</code> 全部改成 <code>RSPB</code>；然后把第 3590 行的 <code>RSPB = Buffer</code> 改成 <code>Name (RSPB, Buffer</code>，把 <code>{}</code> 改成 <code>{})</code>。</strong></p>
+<p><strong>翻成 AML 的语义，这是一个非常具体的问题</strong>：<strong>原来的代码把缓冲区存在一个</strong>局部变量<strong> <code>Local0</code> 里，而 AML 的局部变量在方法返回时就被销毁。改动之后，同一个缓冲区变成了一个</strong>命名对象<strong> <code>Name (RSPB, ...)</code>，它的生命周期跨越方法调用。</strong></p>
+<p><strong>我认为这个改法的精妙之处在于它是一个「最小侵入」的修复</strong>：<strong>它没有改变任何逻辑，只改变了那个缓冲区的存储位置。而这恰好是「缓冲区生命周期」这个 bug 的正确修法。</strong></p>
+<p><strong>而 <code>power-method-changes.json</code> 给出了每个方法的精确位置，包括</strong>：</p>
+<pre><code class="json">{
+  "method": "RRA9",
+  "path": "\\_SB.EC0.RRA9",
+  "local_replaced": "Local0",
+  "new_name": "RSPB",
+  "source_line": 3586,
+  "original_source_sha256": "810af402...",
+  "modified_source_sha256": "a9ee2c64..."
+}
+</code></pre>
+<p><strong>注意每一条都带 <code>original_source_sha256</code> 和 <code>modified_source_sha256</code></strong>，也就是说<strong>每一个方法的原文是什么、改完应该是什么，都被 pin 住了。</strong></p>
+<h3>决定二：编译后只「拼接」那 6 个方法，而不是替换整张 SSDT</h3>
+<p><strong>这是整个仓库里最有技术含量的设计，而 <code>acpi_builder.py</code> 的文档字符串解释得最清楚</strong>：</p>
+<blockquote><strong>「SSPM 只改它的 <code>_STA</code> 谓词，而六个编译后的 ASUS 方法被</strong>拼接<strong>进原始 SSDT，因为编译整张表会重写无关的 AML。」</strong></blockquote>>
+<blockquote><strong>（SSPM changes only its _STA predicate, and six compiled ASUS methods are spliced into the original SSDT, since compiling the whole table would rewrite unrelated AML.）</strong></blockquote>
+<strong>「编译整张表会重写无关的 AML」（compiling the whole table would rewrite unrelated AML）。这句话解释了很多人的困惑，值得展开。</strong>
+<p><strong>为什么重编译会「重写无关的 AML」？因为 ASL 反编译再编译不是一个无损往返。</strong> <strong>具体原因有几个</strong>：<strong>① iasl 在反汇编时会规范化某些编码（比如 package length 用最宽的编码）；② 不同的 iasl 版本对同一段 ASL 可能生成不同的字节；③ 反汇编时可能丢失一些元信息，而重新编译时会用默认值填补。</strong> <strong>结果就是：即使你的 ASL 只改了一个名字，重新编译出来的整张表也和原表到处都不一样。</strong> <strong>而这张表是要被加载进内核的，任何「无关」的差异都可能带来不可预测的后果。</strong></p>
+<p><strong>所以作者的做法是</strong>：<strong>先把改过的 ASL 编译一遍，然后从编译产物里</strong>只提取那 6 个方法的字节<strong>，再把这 6 段字节</strong>拼接<strong>回原始的 SSDT 二进制里。</strong></p>
+<p><strong>而这段代码的实现比我预想的严谨得多，我完整读了一遍，它做了四件事</strong>：</p>
+<p><strong>第一，从编译产物里按名字找方法，并要求「恰好一个匹配」</strong>：</p>
+<pre><code class="python">def compiled_method(compiled, name, digest):
+    matches = []
+    for offset in range(36, len(compiled) - 6):
+        if compiled[offset] != 0x14:      # MethodOp
+            continue
+        length, width = pkg_length(compiled, offset + 1)
+        name_start = offset + 1 + width
+        if compiled[name_start:name_start + 4] == name.encode("ascii"):
+            end = offset + 1 + length
+            require(end <= len(compiled), f"Truncated {name} method")
+            matches.append(compiled[offset:end])
+    require(len(matches) == 1, f"Expected exactly one compiled {name} method")
+    return exact(matches[0], digest, f"Compiled {name} method")
+</code></pre>
+<p><strong>第二，替换时校验原文的哈希、新长度，以及</strong>外层容器的长度<strong>也要跟着改</strong>：</p>
+<pre><code class="python">delta = sum(len(data) - (b - a) for a, b, data in patches if start <= a < b <= end)
+require(delta == row["scope_added_bytes"], "Wrong enclosing AML length adjustment")
+patches.append((offset, offset + width, encode_length(old_length + delta, width)))
+</code></pre>
+<p><strong>「Wrong enclosing AML length adjustment」。</strong> <strong>这是 AML 的一个结构特性：每个 Scope 和 Device 都有自己的 package length 字段，而里面替换了多长的字节，外面那个长度就必须跟着改。</strong> <strong>而更麻烦的是，AML 的长度字段是</strong>变长编码<strong>（1 到 4 字节，首字节的高两位指示后面还有几个字节），所以「加了几十个字节」可能会让长度字段本身的宽度变掉。</strong> <strong>作者的 <code>encode_length()</code> 专门处理了这个问题，而且它有一句检查：</strong></p>
+<pre><code class="python">require(0 <= length < (1 << (6 if width == 1 else 4 + 8 * (width - 1))),
+        "New AML package length changes its encoded width")
+</code></pre>
+<p><strong>「新的 AML package 长度改变了它的编码宽度」。</strong> <strong>如果一个替换让外层 Scope 的长度从「1 字节能表示」变成「需要 2 字节」，那么整个结构就要重新编码，而这个检查会直接拒绝，而不是产出一个畸形的表。</strong></p>
+<p><strong>第三，替换是</strong>从后往前<strong>做的，防止偏移失效</strong>：</p>
+<pre><code class="python">for start, end, data in sorted(patches, reverse=True):
+    require(36 <= start < end <= last_start, "Overlapping AML replacements")
+    modified[start:end] = data
+    last_start = start
+</code></pre>
+<p><strong>「Overlapping AML replacements」这个检查防的是「两段替换区间重叠」，而 <code>last_start</code> 这个游标保证「上一次替换的起点必须比这一次的终点更靠后」。</strong></p>
+<p><strong>第四，改完之后重算长度字段和校验和</strong>：</p>
+<pre><code class="python">struct.pack_into("<I", modified, 4, len(modified))   # 表长度
+struct.pack_into("<I", modified, 24, 2)              # OEM revision = 2
+modified[9] = 0
+modified[9] = -sum(modified) % 256                   # 校验和
+table(modified, b"SSDT", b"_ASUS_ASUSSSDT", 2)
+</code></pre>
+<p><strong><code>modified[9] = -sum(modified) % 256</code> 这一行是 ACPI 表校验和的标准算法：把第 9 字节（校验和字段）置零，求和，取和的负值模 256。</strong> <strong>而它接着用 <code>table()</code> 函数验证了一遍结果</strong>，也就是<strong>自己产出的表必须通过自己的一致性检查</strong>。</p>
+<p><strong>我认为这套做法的价值不在于「它会拼接字节」，而在于它把「字节级操作」做成了可验证的</strong>：<strong>每一个原始方法有哈希、每一个新方法有哈希、每一处长度调整有预期值、最终产物有哈希，而所有这些哈希都写在 <code>power-splice.json</code> 和 <code>power-method-changes.json</code> 里。</strong> <strong>结果是：如果固件版本不对，或者 iasl 版本不对，或者拼接逻辑有 bug，任何一处不匹配都会让构建停下来，而不是产出一个能启动但行为诡异的表。</strong></p>
+<h3>决定三：SSPM 那个改动是「改谓词」，不是「全局 OSI 覆盖」</h3>
+<p><strong><code>acpi_builder.py</code> 里这一段看得最清楚</strong>：</p>
+<pre><code class="python">def patch_dsdt(original):
+    exact(original, DSDT_INPUT, "Firmware DSDT")
+    table(original, b"DSDT", b"NVDA\0\0ANGUS   ", 4)
+    start = 0x10269
+    predicate = b"_OSI\x0dWindows 2022\0"
+    require(original[start:start + len(predicate)] == predicate, "SSPM predicate changed")
+    modified = bytearray(original)
+    modified[start:start + len(predicate)] = b"\0" + b"\xa3" * (len(predicate) - 1)
+    struct.pack_into("<I", modified, 24, 5)
+    ...
+</code></pre>
+<p><strong>这里的 <code>0xa3</code> 是 AML 的 <code>Noop</code> 操作码。所以这个改动的含义是</strong>：<strong>把 <code>_OSI("Windows 2022")</code> 这个判断「打掉」：第一个字节置零，剩下的字节全部替换成 <code>Noop</code>。</strong> <strong>而 <code>_OSI</code> 是 ACPI 里那个著名的「报告我是哪个操作系统」的机制，厂商经常用它来「只在 Windows 上启用某个功能」。</strong></p>
+<p><strong>而 <code>component.yaml</code> 那句说明点出了关键</strong>：</p>
+<blockquote><strong>「在不使用全局 OSI 覆盖的情况下启用 NVDA8400 SSPM。」</strong></blockquote>
+<strong>「不使用全局 OSI 覆盖」（without a global OSI override）。</strong>
+<p><strong>这里有一个非常实用的技术区分，我认为值得单独讲</strong>：<strong>传统的做法是给内核传 <code>acpi_osi="Windows 2022"</code> 这个启动参数，让</strong>整个系统<strong>都假装自己是 Windows 2022。而这个做法的副作用是：所有依赖 <code>_OSI</code> 判断的地方都会走 Windows 分支，包括那些你并不想改的地方。</strong> <strong>而作者的做法是</strong>只把这一处 <code>_OSI</code> 调用替换成 <code>Noop</code><strong>，于是</strong>只有这一个判断失效（也就是那一处的条件恒为假或被跳过），其他所有 <code>_OSI</code> 调用保持原样。**</p>
+<p><strong>我认为这是本文最值得推荐给普通用户的一条技巧</strong>：<strong>如果你的笔记本某个功能「只在 Windows 下启用」，先用 <code>acpi_osi</code> 试，如果它带来了别的副作用，那么「精确地把那一处 <code>_OSI</code> 调用打掉」是一个更可控的方案。</strong> <strong>当然，它的代价是你必须做完整的 dump + 改表 + 打包流程，而不是加一个启动参数。</strong></p>
+<h2>三、第三步：打成 cpio，放进 initrd</h2>
+<p><strong>这一步在代码里很短，但它的细节决定了「能不能启动」</strong>：</p>
+<pre><code class="python">def archive(dsdt, ssdt):
+    result = b"".join(member(name, b"", stat.S_IFDIR | 0o755, inode)
+                      for inode, name in enumerate(("kernel", "kernel/firmware", "kernel/firmware/acpi"), 1))
+    result += member("kernel/firmware/acpi/DSDT.aml", dsdt, stat.S_IFREG | 0o644, 4)
+    result += member("kernel/firmware/acpi/SSDT.aml", ssdt, stat.S_IFREG | 0o644, 5)
+    result += member("TRAILER!!!", b"", 0, 6)
+    result += bytes(-len(result) % 512)
+</code></pre>
+<p><strong>关键点有两个，都是内核 ACPI 子系统的硬性要求</strong>：</p>
+<p><strong>第一，路径必须是 <code>kernel/firmware/acpi/</code>。</strong> <strong>这是内核在 <code>acpi_table_upgrade()</code> 里写死的前缀，不是可以随便改的。</strong></p>
+<p><strong>第二，文件名必须是 <code>DSDT.aml</code> / <code>SSDT.aml</code>（大写、<code>.aml</code> 后缀）。</strong> <strong>因为内核是按文件名匹配的，而不是按表内容。</strong></p>
+<p><strong>而作者是</strong>手写 cpio 格式<strong>的，没有调用 <code>cpio</code> 命令</strong>：</p>
+<pre><code class="python">def member(name, data, mode, inode):
+    name = name.encode("ascii") + b"\0"
+    fields = (inode, mode, 0, 0, 2 if stat.S_ISDIR(mode) else 1,
+              0, len(data), 0, 0, 0, 0, len(name), 0)
+    entry = b"070701" + b"".join(f"{value:08x}".encode() for value in fields) + name
+    entry += bytes(-len(entry) % 4)
+    entry += data
+    return entry + bytes(-len(entry) % 4)
+</code></pre>
+<p><strong><code>070701</code> 是「new ASCII」格式的 cpio 魔数，而 <code>member()</code> 实现了它的头部结构（13 个十六进制字段）+ 名字 + 4 字节对齐 + 数据 + 4 字节对齐。</strong></p>
+<p><strong>为什么要手写而不是调 <code>cpio</code>？我认为有两个原因，而第二个更重要</strong>：</p>
+<ol>
+<li>1. <strong>避免依赖</strong>：构建过程不需要 <code>cpio</code> 命令，也不受它的版本和默认参数影响；</li>
+<li>2. <strong>可复现</strong>：手写的话，产出的字节完全由代码决定，而作者给这个归档 pin 了 SHA-256（<code>311dc5b4...</code>）。<strong>用 <code>cpio</code> 命令的话，inode 号、时间戳这些字段可能会让每次产出都不同。</strong></li>
+</ol>
+<strong>而 <code>TRAILER!!!</code> 那个条目是 cpio 格式要求的结束标记，最后那行 <code>bytes(-len(result) % 512)</code> 是把整个归档补齐到 512 字节边界。</strong> <strong>这些都是格式细节，但漏掉任何一个，内核就找不到那张表。</strong>
+<p><strong>而放进 initrd 之后，还有一件事需要说清</strong>：<strong>这个 cpio 必须被</strong>包含在 initrd 里<strong>，而不是放在 <code>/boot</code> 旁边。</strong> 作者的做法是把它作为 <code>h7607a-acpi.cpio</code> 并通过 <code>assets/hardware/acpi/</code> 路径提供，而在安装器里它会被合并进 initramfs。</p>
+<h2>四、一个很少人知道的陷阱：跨 EFI 描述符边界会被拒绝</h2>
+<p><strong>这一节我认为是整篇文章最有价值的部分，因为它是作者实际踩到的坑，而且</strong>这个坑与 ACPI 覆盖的逻辑完全无关<strong>：它是内核 allocator 的问题。</strong></p>
+<p><strong>现象描述得很具体</strong>（来自补丁的 README）：</p>
+<blockquote><strong>「H7607BA 的启动录像 <code>IMG_1427.MOV</code> 显示，一个位于 <code>0x2050a00000</code>、长度 <code>0x12144</code> 的替换 DSDT 跨过了 EFI 描述符边界 <code>0x2050a0d000</code>。内核先接受了早期的表映射，然后用『requested region covers multiple EFI memory regions』拒绝了它的永久映射。ACPICA 报告 <code>AE_NO_ACPI_TABLES</code>；结果 USB、NVMe 和 GPU 枚举都无法进行。」</strong></blockquote>
+<strong>这段描述里的因果链非常清楚，值得拆成四步</strong>：
+<ol>
+<li>1. <strong>内核把 initrd 里的覆盖表复制到一块内存</strong>（用 <code>memblock_phys_alloc_range</code>）；</li>
+<li>2. <strong>这块内存</strong>跨过了两个 EFI 内存描述符的边界<strong>（因为 memblock 会</strong>合并**相邻的可用描述符，所以它以为这是一整块连续内存）；</li>
+<li>3. <strong>早期的表解析阶段接受它</strong>（因为那时还没有建立永久映射，只是临时映射）；</li>
+<li>4. <strong>但后期的 <code>acpi_os_ioremap()</code> 拒绝它</strong>（因为它不允许一个映射跨多个 EFI 内存区域），报 <code>AE_NO_ACPI_TABLES</code>。</li>
+</ol>
+<strong>而后果是全面的</strong>：「<strong>USB、NVMe 和 GPU 枚举都无法进行。</strong>」<strong>也就是说：系统看起来在启动，但所有 PCIe 设备都找不到。</strong>
+<p><strong>而作者给的补丁解决了这个问题，它的思路是「不要让分配跨描述符」</strong>：</p>
+<blockquote><strong>「它增加了一个架构分配钩子。ARM64 在</strong>单个<strong>可用的、write-back、非 runtime 的 EFI conventional-memory 描述符内部保留完整的原生页。现有的 memblock 保留、NOMAP 处理和 ACPI 映射保护保持不变。</strong>没有合适的描述符就意味着明确的分配失败；不存在跨描述符的回退。<strong>」</strong></blockquote>
+<strong>「没有合适的描述符就意味着明确的分配失败；不存在跨描述符的回退」（No fitting descriptor means an explicit allocation failure; there is no fallback across descriptors）。</strong>
+<p><strong>而补丁的代码逻辑是</strong>：</p>
+<pre><code class="c">for_each_efi_memory_desc(md) {
+    if (md->type != EFI_CONVENTIONAL_MEMORY ||
+        !(md->attribute & EFI_MEMORY_WB) ||
+        (md->attribute & EFI_MEMORY_RUNTIME))
+        continue;
+    start = ALIGN(md->phys_addr, PAGE_SIZE);
+    end = md->phys_addr + (md->num_pages << EFI_PAGE_SHIFT);
+    end = ALIGN_DOWN(min(end, max_addr), PAGE_SIZE);
+    if (end <= start || size > end - start)
+        continue;
+    addr = memblock_phys_alloc_range(size, PAGE_SIZE, start, end);
+    if (addr) { ...; return addr; }
+}
+pr_err("No single usable EFI region can hold the ACPI table overrides\n");
+return 0;
+</code></pre>
+<p><strong>也就是说：它遍历所有 EFI 描述符，只考虑「conventional memory + write-back + 非 runtime」的那些，然后在</strong>单个描述符的范围之内<strong>分配。如果一个描述符装不下，就试下一个；如果全都装不下，就明确失败。</strong></p>
+<p><strong>而补丁还解决了另一个细节问题</strong>：</p>
+<blockquote><strong>「在每个候选被约束之前，先解析 accessible-memory 哨兵值。」</strong></blockquote>
+<pre><code class="c">if (max_addr == MEMBLOCK_ALLOC_ACCESSIBLE)
+    max_addr = memblock_get_current_limit();
+</code></pre>
+<p><strong>这是因为 <code>ACPI_TABLE_UPGRADE_MAX_PHYS</code> 可能等于 <code>MEMBLOCK_ALLOC_ACCESSIBLE</code> 这个特殊的哨兵值，而它不是一个真实的物理地址。如果不先把它解析成实际限制，那么 <code>min(end, max_addr)</code> 就会算出一个荒谬的结果。</strong></p>
+<p><strong>我认为这个补丁的形态值得单独评价，因为它展示了一个好的上游补丁应该长什么样</strong>：</p>
+<ul>
+<li><strong>用 <code>__weak</code> 默认实现保留原行为</strong>，所以不影响其他架构：</li>
+</ul>
+<pre><code class="c">phys_addr_t __init __weak
+arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
+{
+    return memblock_phys_alloc_range(size, PAGE_SIZE, 0, max_addr);
+}
+</code></pre>
+<ul>
+<li><strong>有明确的失败日志</strong>：<code>pr_err("No single usable EFI region can hold the ACPI table overrides")</code>；</li>
+<li><strong>成功时也打印细节</strong>：<code>pr_info("Table override allocation %pa (%llu bytes) within EFI region %pa-%pa")</code>；</li>
+<li><strong>并且它是</strong>针对特定上游 commit** 打的（<code>Base: NVIDIA/NV-Kernels 2234cd7f8f8a...</code>），而不是硬套在任意内核上。</li>
+</ul>
+<strong>而我在读这段代码时意识到一件事，值得对普通用户说明</strong>：<strong>这个坑不是 RTX Spark 独有的。</strong> <strong>任何在 ARM64 上使用 ACPI 表覆盖（<code>CONFIG_ACPI_TABLE_UPGRADE</code> + initrd 里的 <code>kernel/firmware/acpi/</code>）的系统，都可能遇到同样的分配跨边界问题。</strong> <strong>而它特别隐蔽，因为</strong>它取决于你的机器有多少可用内存，以及 EFI 描述符恰好在哪个地址被切开<strong>。</strong> 换句话说：<strong>同一台机器，内存容量不同、或者固件版本不同，都可能表现成「能启动」和「不能启动」两种结果，而原因与你的覆盖表内容毫无关系。</strong>
+<h2>五、这套做法哪些能迁移到你自己的笔记本</h2>
+<p><strong>这一节是我认为你（问这个问题的读者）最需要的部分，所以我把「可迁移」和「不可迁移」分开列。</strong></p>
+<h3>可以直接迁移的</h3>
+<p><strong>① dump 的方法。</strong> 两条路都通用：<strong>UEFI Shell + <code>acpiview</code>（适用于 Linux 还起不来的情况），或者从 <code>/sys/firmware/acpi/tables/</code> 直接读（适用于 Linux 能启动）。</strong> 而那个「先删旧 dump，因为 acpiview 不截断」的坑，在所有机器上都成立。</p>
+<p><strong>② initrd 覆盖的机制。</strong> <code>kernel/firmware/acpi/DSDT.aml</code> 这个路径和文件名是内核约定的，与硬件无关。<strong>你只要确认内核开了 <code>CONFIG_ACPI_TABLE_UPGRADE</code></strong>（大多数发行版默认开，可以 <code>grep ACPI_TABLE_UPGRADE /boot/config-$(uname -r)</code> 确认）。</p>
+<p><strong>③ 「只改_method 不重编译整表」的思路。</strong> 这是最重要的可迁移经验。<strong>具体做法是</strong>：用 <code>iasl -d</code> 反汇编、改 ASL、<code>iasl</code> 编译、然后<strong>只把你改过的那几个方法（或那几段字节）拼接回原表</strong>，而不是用编译产物替换整张表。<strong>如果你嫌手写拼接太麻烦，一个更简单的替代是：只替换你确认过的、长度变化可控的那几段，其余保持原样。</strong></p>
+<p><strong>④ 「<code>_OSI</code> 精确打掉」而不是全局 <code>acpi_osi</code> 的技巧。</strong> 如果你的需求是「让某个 Windows-only 的功能启用」，先试 <code>acpi_osi=</code>，如果它有副作用，再考虑精确打掉那一处 <code>_OSI</code> 调用（把它替换成 <code>Noop</code>）。</p>
+<p><strong>⑤ 版本绑定与哈希校验的做法。</strong> <strong>一定要记下你的固件版本，并给原始 dump 和最终产物都留哈希。</strong> 因为 ACLI 覆盖是<strong>二进制补丁</strong>，固件一升级就必须重做。</p>
+<h3>不能直接迁移的</h3>
+<p><strong>① 具体的改动内容。</strong> <code>RRA9</code>、<code>RRA8</code>、<code>WRA9</code>、<code>WRA8</code>、<code>RWEC</code>、<code>GBST</code> 这六个方法，是 ASUS 在这台机器上的 EC（嵌入式控制器）电池/电源方法。<strong>它们的名字和内部逻辑是 ASUS 的实现细节</strong>，你的笔记本（任何品牌）几乎不可能有同名同结构的方法。</p>
+<p><strong>② 具体的字节偏移。</strong> 所有 <code>0x10269</code>、<code>3590,3604</code> 这类偏移都是<strong>这个固件版本</strong>的产物。换一台机器、换一个固件版本，全部失效。</p>
+<p><strong>③ ARM64 的 allocator 补丁。</strong> 如果你用的是 x86_64，这个坑通常不存在（因为 <code>ACPI_TABLE_UPGRADE_MAX_PHYS</code> 和 EFI 描述符布局不同）。<strong>而如果你确实在 ARM64 上遇到 <code>AE_NO_ACPI_TABLES</code>，那么这个补丁的思路（在单个 EFI 描述符内分配）是可以参考的。</strong></p>
+<h3>我建议的最小可行路径</h3>
+<p><strong>如果你只是想「改一处 ACPI 行为」，而你的 Linux 已经能启动</strong>，那么最短路径是：</p>
+<ol>
+<li>1. <strong><code>cp -r /sys/firmware/acpi/tables /tmp/acpi-orig</code></strong>，并记下 <code>dmesg | grep -i acpi</code> 里的固件版本；</li>
+<li>2. <strong><code>iasl -d DSDT</code></strong> 反汇编，找到你要改的那一处；</li>
+<li>3. <strong>只改那一处</strong>，<code>iasl</code> 编译；</li>
+<li>4. <strong>如果长度没变</strong>（这是最省事的情况），直接把你编译出的那个方法段替换回原表，或者干脆整表替换（长度不变时风险小得多）；</li>
+<li>5. <strong>打成 <code>kernel/firmware/acpi/DSDT.aml</code> 的 cpio</strong>，加进 initrd；</li>
+<li>6. <strong>重启，用 <code>dmesg | grep -i "Table Upgrade"</code> 确认内核确实用了你的表</strong>。</li>
+</ol>
+<strong>「如果长度没变」这个条件是关键，也是我建议你优先追求的目标</strong>：<strong>因为长度一变，你就要处理外层 Scope/Device 的 package length，而那个变长编码很容易出错。</strong> <strong>而如果你能把改动做成「等长替换」（比如把一个名字换成同样长度的另一个名字，或者把一个调用换成同样长度的 <code>Noop</code>），整个流程会简单一个量级。</strong>
+<blockquote><strong>最后一个提醒，关于风险</strong>：<strong>ACPI 表是内核在设备枚举之前加载的，所以一张错的表可以让系统连看都看不到设备，甚至完全无法启动。</strong> <strong>所以务必保留一条「不加载覆盖」的启动路径</strong>（比如在 bootloader 里留一个不带那个 cpio 的条目），并且<strong>先在能启动的前提下验证，再把它固化进默认 initrd。</strong> <strong>作者仓库里那句「不要刷固件」也是同一个道理：</strong> <strong>RAM 里的表重启即失效，而刷进固件的表是不可逆的。</strong></blockquote>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>仓库</strong></td><td><strong><code>pfeifferj/archlinuxarm-proart-p16</code></strong>，MIT，386 个文件，<strong>2026-10-19 创建</strong></td></tr>
+<tr><td>⭐ <strong>覆盖的本质</strong></td><td><strong>不是改固件，是让内核在启动时用 initrd 里的表替换固件表</strong>；<strong>「在 RAM 中提前应用 ACPI 归档；不要刷固件。」</strong></td></tr>
+<tr><td><strong>内核开关</strong></td><td><strong><code>CONFIG_ACPI_TABLE_UPGRADE</code></strong>；内核去 initrd 里找 <strong><code>/kernel/firmware/acpi/</code></strong></td></tr>
+<tr><td>⭐ <strong>dump 路线 A</strong></td><td><strong>UEFI Shell + <code>acpiview -s DSDT -d</code> / <code>acpiview -s SSDT -d</code></strong>（Linux 起不来时用）</td></tr>
+<tr><td>⚠️ <strong>acpiview 的坑</strong></td><td><strong>「acpiview 会写入一个已存在的 dump 文件而不截断它」</strong> → 脚本先 <code>rm -q *.bin</code></td></tr>
+<tr><td><strong>dump 脚本的健壮性</strong></td><td>检查 <code>%homefilesystem%</code> 映射、每步检查 <code>%lasterror%</code>、<strong>最后检查 <code>DSDT0000.bin</code> 和 <code>SSDT0000.bin</code> 是否真的存在</strong></td></tr>
+<tr><td>⭐ <strong>dump 路线 B</strong></td><td>从 <strong><code>/sys/firmware/acpi/tables/DSDT /sys/firmware/acpi/tables/SSDT*</code></strong> 直接 <code>cat</code>；<strong>前提是这次启动没加载覆盖 cpio</strong></td></tr>
+<tr><td><strong>U 盘准备</strong></td><td>Shell 复制到 <strong><code>EFI/BOOT/BOOTAA64.EFI</code></strong>，脚本到 <strong><code>EFI/BOOT/startup.nsh</code></strong>；<strong>「不分区、不格式化，也不碰 U 盘上的其他文件」</strong>；校验 Shell 的 SHA-256</td></tr>
+<tr><td>⭐ <strong>固件绑定检查</strong></td><td>代码里拒绝两种输入：<strong>「你 dump 出来的是我们的覆盖表而不是固件原表」</strong>、<strong>「固件版本不是 H7607BA.300」</strong></td></tr>
+<tr><td>⭐ <strong>改了什么（SSDT）</strong></td><td><strong>只改 6 个方法：<code>RRA9</code>、<code>RRA8</code>、<code>WRA9</code>、<code>WRA8</code>、<code>RWEC</code>、<code>GBST</code></strong>；<strong>把 <code>Local0</code>/<code>Local5</code> 改成命名对象 <code>RSPB</code></strong>（局部变量 → 跨方法生命周期的命名缓冲区）</td></tr>
+<tr><td><strong>具体 sed 改动</strong></td><td><code>3590,3604s/Local0/RSPB/g</code>；<code>3590s/RSPB = Buffer/Name (RSPB, Buffer/</code>；<code>3590s/{}/{})/</code></td></tr>
+<tr><td>⭐ <strong>为什么不重编译整表</strong></td><td><strong>「编译整张表会重写无关的 AML」</strong> → 做法是<strong>只把 6 个编译后的方法拼接回原始 SSDT</strong></td></tr>
+<tr><td><strong>拼接的严谨性</strong></td><td>① 每个方法要求「恰好一个匹配」并校验哈希；② <strong>外层 Scope/Device 的 package length 要同步改</strong>；③ <strong>变长编码的宽度变化会被拒绝</strong>；④ 从后往前替换并检查重叠；⑤ 重算表长度和校验和，最后再用 <code>table()</code> 自检</td></tr>
+<tr><td><strong>SSPM 改法</strong></td><td>把 <strong><code>_OSI("Windows 2022")</code></strong> 谓词替换为 <strong><code>\0</code> + <code>Noop</code>(0xa3)</strong>；<strong>「不使用全局 OSI 覆盖」</strong></td></tr>
+<tr><td>⭐ <strong>为什么不用 <code>acpi_osi=</code></strong></td><td>全局 OSI 覆盖会让<strong>所有</strong>依赖 <code>_OSI</code> 的地方都走 Windows 分支；精确打掉只影响那一处</td></tr>
+<tr><td><strong>cpio 路径</strong></td><td><strong><code>kernel/firmware/acpi/DSDT.aml</code></strong> 和 <strong><code>kernel/firmware/acpi/SSDT.aml</code></strong>（内核写死的前缀和文件名）</td></tr>
+<tr><td><strong>手写 cpio</strong></td><td>魔数 <strong><code>070701</code></strong>（new ASCII），13 个十六进制字段 + 名字 + 4 字节对齐 + 数据；以 <strong><code>TRAILER!!!</code></strong> 结束，整体补齐 <strong>512 字节</strong></td></tr>
+<tr><td><strong>为什么要手写</strong></td><td>不依赖 <code>cpio</code> 命令，且<strong>产出可复现</strong>（作者给归档 pin 了 SHA-256 <code>311dc5b4...</code>）</td></tr>
+<tr><td>⭐ <strong>那个 allocator 陷阱</strong></td><td>替换 DSDT 在 <strong><code>0x2050a00000</code>、长度 <code>0x12144</code></strong>，<strong>跨过 EFI 描述符边界 <code>0x2050a0d000</code></strong> → 早期映射接受，<strong>后期 <code>acpi_os_ioremap()</code> 拒绝</strong>，报 <strong><code>AE_NO_ACPI_TABLES</code></strong></td></tr>
+<tr><td><strong>后果</strong></td><td><strong>「USB、NVMe 和 GPU 枚举都无法进行」</strong></td></tr>
+<tr><td><strong>根因</strong></td><td><strong>memblock 会合并相邻可用 EFI 描述符</strong>，所以分配可能跨边界</td></tr>
+<tr><td>⭐ <strong>补丁思路</strong></td><td>增加 <strong><code>arch_alloc_acpi_tables()</code></strong> 架构钩子（<code>__weak</code> 默认保留原行为）；ARM64 只在<strong>单个 conventional + write-back + 非 runtime 的 EFI 描述符内</strong>分配；<strong>「没有合适的描述符就意味着明确的分配失败；不存在跨描述符的回退」</strong></td></tr>
+<tr><td><strong>补丁细节</strong></td><td>先解析 <strong><code>MEMBLOCK_ALLOC_ACCESSIBLE</code> 哨兵值</strong>（<code>memblock_get_current_limit()</code>）；成功时 <code>pr_info</code> 打印地址/大小/区域，失败时 <code>pr_err</code></td></tr>
+<tr><td><strong>补丁基线</strong></td><td><strong><code>NVIDIA/NV-Kernels 2234cd7f8f8a9fdbceef37f82c531016aab8cf73</code></strong></td></tr>
+<tr><td>⚠️ <strong>这个坑是否通用</strong></td><td><strong>任何在 ARM64 上用 <code>CONFIG_ACPI_TABLE_UPGRADE</code> 的系统都可能遇到</strong>；是否触发取决于内存容量和 EFI 描述符的切分位置，<strong>与覆盖表内容无关</strong></td></tr>
+<tr><td><strong>可迁移 ①</strong></td><td>dump 的两条路线 + acpiview 不截断的坑</td></tr>
+<tr><td><strong>可迁移 ②</strong></td><td><code>kernel/firmware/acpi/</code> 这个内核约定路径（先确认 <code>CONFIG_ACPI_TABLE_UPGRADE</code>）</td></tr>
+<tr><td><strong>可迁移 ③</strong></td><td><strong>只改方法不重编译整表</strong>的思路</td></tr>
+<tr><td><strong>可迁移 ④</strong></td><td><strong>精确打掉一处 <code>_OSI</code></strong> 而不是全局 <code>acpi_osi=</code></td></tr>
+<tr><td><strong>可迁移 ⑤</strong></td><td>固件版本绑定 + 原始 dump 和产物的哈希</td></tr>
+<tr><td>❌ <strong>不可迁移 ①</strong></td><td><code>RRA9</code>/<code>RRA8</code>/<code>WRA9</code>/<code>WRA8</code>/<code>RWEC</code>/<code>GBST</code> 是 <strong>ASUS 这台机器的 EC 实现细节</strong></td></tr>
+<tr><td>❌ <strong>不可迁移 ②</strong></td><td>所有字节偏移（如 <code>0x10269</code>、<code>3590,3604</code>）只对<strong>这个固件版本</strong>有效</td></tr>
+<tr><td>❌ <strong>不可迁移 ③</strong></td><td>ARM64 allocator 补丁；x86_64 通常不会有这个坑</td></tr>
+<tr><td>⭐ <strong>最小可行路径</strong></td><td>dump → <code>iasl -d</code> 反汇编 → 只改一处 → <strong>争取「等长替换」</strong>（避免处理 package length 变长编码）→ 打 cpio → 重启后用 <code>dmesg \</td><td>grep "Table Upgrade"</code> 确认</td></tr>
+<tr><td>⚠️ <strong>风险提示</strong></td><td>ACPI 表在设备枚举<strong>之前</strong>加载，错的表可以让系统看不到任何设备甚至无法启动；<strong>务必保留一条不带该 cpio 的启动条目</strong>；<strong>RAM 里的表重启即失效，而刷固件不可逆</strong></td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/">为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_tplink-eap770-dma-cache-bug-kernel-exploit/">想下载一个 ISO，最后写了个内核漏洞利用程序：而他只需要往两个 sysfs 文件里写两个零</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/">Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-16_libreboot-2610-uefi-edk2-anti-ai-policy/">Libreboot 26.10 加入了 EDK2 支持，而它的反 AI 政策写进了一个机器可读的文件</a></li>
+<li><a href="https://github.com/pfeifferj/archlinuxarm-proart-p16">作者仓库（一手，含全部脚本与哈希）</a></li>
+<li><a href="https://github.com/pfeifferj/archlinuxarm-proart-p16/blob/main/01-platform/kernel/patches/provenance/hardware/backports/acpi/0001-arm64-bound-acpi-override-allocation.patch">内核 ACPI 表覆盖补丁原文</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/",
+      title: "ACPI \u8986\u76d6\u5230\u5e95\u600e\u4e48\u505a\uff1a\u4ece\u4f5c\u8005\u7684\u4ed3\u5e93\u91cc\u62c6\u51fa\u5b8c\u6574\u6d41\u7a0b\uff0c\u4ee5\u53ca\u54ea\u4e9b\u90e8\u5206\u80fd\u8fc1\u79fb\u5230\u4f60\u81ea\u5df1\u7684\u7b14\u8bb0\u672c"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
