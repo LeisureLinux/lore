@@ -1,0 +1,342 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">我的指标表有 36 列。当一个指标需要 close 和 volume 时，我终于可以说那两列被读了，而其他 34 列留在磁盘上它们该在的地方。只花了我大约 8,000 字和 9 个月。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">Marc Paul，marcpaul.io</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">一个人把股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。</span></strong><strong style="color:#27272A;"><span leaf="">而这次迁移的收益只有一个：「只读两列」。代价是九个月。</span></strong><strong style="color:#27272A;"><span leaf="">我认为这篇文章真正的价值不是「OLAP 比 OLTP 好」，而是它把「引擎选择」还原成了「访问模式的形状」。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三个保证</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">那个错误</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三层剪枝</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">两种提交</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">INNODB</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">InnoDB 的三个保证，以及它们何时变成负担</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">作者对 InnoDB 的总结只有三句话，而每一句都写成了「它对什么好，对什么坏」。</span></strong><span leaf=""> 第一：</span><strong style="color:#27272A;"><span leaf="">行把所有列存在一起</span></strong><span leaf="">。「</span><strong style="color:#27272A;"><span leaf="">为一个 symbol 取一根 bar 只碰到磁盘上的一个位置，这正是摄取想要的。一个需要两列的指标仍然要通过缓冲池取回每一列。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">这就是问题的种子：「取回每一列」在写入时是优势（一次顺序写），在分析时是劣势（读 2 列付 36 列的 I/O）。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二：索引加快读、减慢写。</span></strong><span leaf="">「</span><strong style="color:#27272A;"><span leaf="">每个索引都是它自己的一棵 B 树，而每次写入必须更新表里所有的 B 树。B 树读取极其快。任何索引的目标都是以更慢的写入为代价加快读取。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">而他把这条用在了自己的设计上</span></strong><span leaf="">：Raw 表只有一个主键，而接收它工作的表有重度索引和分区。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三：undo log 让读写并发。</span></strong><span leaf=""> 这一段的 MVCC 解释我认为是全文最清楚的：「</span><strong style="color:#27272A;"><span leaf="">当一个行被更新或删除时，旧值被存在 undo log 里。插入也会得到一个更小的 undo log……提交时，插入的 undo log 被立即清除。更新或删除的 undo log 加入一个叫 history list 的全局链表。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而那句话是理解成本的关键</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">InnoDB 标记 undo log 在每一个在提交之前或期间开始的会话都完成之后被清除。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">注意那个条件：它不阻塞读取，代价是 undo log 必须留着，直到所有旧会话结束。而这个代价在长事务或慢查询多的系统里会突然变成主要问题。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**「在一堆技术术语之后，英文翻译是 MVCC 允许插入和更新发生而不阻塞读取。」**</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而这也解释了为什么 Iceberg 那条路能省掉这一整块：它根本不需要 undo log，因为旧版本就是旧文件。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE MISTAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">他承认的那个错误，以及它为什么是必然的</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">错误的形状是</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">在不知不觉中，我用一个 OLAP 设计的基本原则设计了我的 InnoDB 数据库。`financialdata` 持有 `datetime`、`open`、`high`、`low` 和 `close`。它原本是唯一持有 `datetime` 的表。任何我想查询的技术指标都需要 join 到 `financialdata` 表，才知道那个指标的行是为哪天算的。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而他的自我评价很硬</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">那是我最糟的数据设计之一。一个我在数据库超过 100GB 之后才意识到行不通的设计。修它是残酷的。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而他自己给的诊断里有一句很精确</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">当我开始做这个数据库时，我以为我每次查询都需要这些列。当我开始做这个数据库时，我甚至不知道最重要的价格是收盘价。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这句话解释了那个错误的真正来源，而它不是「设计失误」，是「领域知识不足」：他当时的模型是「行情数据是一张大表，指标都从它派生」。而这个模型在关系上是对的（指标确实从行情派生），在物理上却是错的（分析时你不需要每次把整张行情表拖过来）。而「我不知道最重要的价格是收盘价」说明，他在建表时甚至还没确定自己的查询会长什么样。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而更精妙的一处自我嘲讽在这里</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">我把它用作我的基表，根据我正在处理的指标『挑选』我想要的列，这个想法听起来跟只查询我想要的列、忽略表里其他列，darn 地相似。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">他描述的正是他后来迁移的目的：他当时用「逻辑上挑选列」模拟了他真正需要的东西（物理上只读那些列），而两者的差距就是那 34 列的无用 I/O。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而修复方式值得看，因为它是「在 100GB 表上补一列」的教科书做法</span></strong><span leaf="">：临时表 + 五条 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">UPDATE ... INNER JOIN</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">而他的调度方式是</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">每个定时事件只跑这些更新中的一个，其余更新被注释掉。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这个细节是一个真实的运维妥协：他没法在一个存储过程里同时跑五条 UPDATE（那会锁住五张表），所以复制了五份，每次只启用一条。而这个做法在功能上是对的，在可维护性上是灾难，因为改逻辑要同步改五份，而「其余被注释掉」意味着这五份里永远有 80% 是死的。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ICEBERG</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Iceberg 的「俄罗斯套娃」：三层剪枝</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">作者用了一个很好的比喻</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">我喜欢把优化层想成那些俄罗斯嵌套娃娃，我们从最小的娃娃开始，把每个娃娃放进下一个更小的娃娃里，从数据文件开始、到 metadata.json 文件结束。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">最小的一层：Parquet。</span></strong><span leaf="">「</span><strong style="color:#27272A;"><span leaf="">每个 parquet 文件有不同的行组，以及每个行组的摘要，具体是每列的最小/最大值和 null 数量。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">第二层：Manifest。</span></strong><span leaf="">「</span><strong style="color:#27272A;"><span leaf="">它追踪每列的最小/最大值和 null 计数，还追踪每个数据文件的分区值、文件大小和位置。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">第三层：Manifest List。</span></strong><span leaf="">「</span><strong style="color:#27272A;"><span leaf="">它给我们每个 Manifest 计算出的最小/最大分区值，以及每个 Manifest 是在哪个分区版本下写的。追踪分区版本让 split planning 成为可能。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而完整的查询路径可以直接当教材用</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">执行器从最大的嵌套娃娃开始，向 Polaris 请求表指向当前元数据文件的指针。元数据文件命名当前快照。快照指向它的 manifest list，而规划器计算出我的 symbol 的 bucket，只进入这个 symbol 所属的那个 bucket。我们只检查分区范围包含我们计算出的 symbol 的那些 Manifests。在之前剪枝中存活下来的数据文件检查每个行组的统计信息，剪掉我们不需要检查的任何行组，然后我们解码仍然活着的行组的数据文件。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而我认为最值得注意的技术点是「分区可以后加」</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">使用 Iceberg 的一个奢侈之处是它把任何分区都计算并存在元数据里。这意味着如果我想给分区加一列，我在读取时付代价。数据按分区版本分组，每个版本独立剪枝，之后再把剪枝结果合并。这一步叫 split planning。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这是理解两种引擎差异的关键：在 InnoDB 里，改分区意味着物理重建整张表（作者说几天到一周）；在 Iceberg 里，改分区只是一个元数据变更，代价被推迟到读取时的 split planning。而作者对 InnoDB 那个代价的应对很实用：他知道改分区很贵，所以选了 100 个分区（远超当时需要的），用更多的文件换来「几年内不用再改」。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">COMMIT</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">两种原子提交，恰好是相反的解法</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">Iceberg 的提交路径</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">写入者构建描述新文件的新 manifests、为新快照的一个新 manifest list，以及一个把快照追加到表历史的新元数据文件。然后它请求 Polaris 把表的指针从旧元数据文件换到新的。那个交换是原子的，而它就是整个提交。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而并发写入的冲突处理是乐观并发</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">两个写入者竞争会产生两个潜在的元数据文件，而更快的那个检查表当前版本是否匹配它读到的版本，然后赢得交换。较慢的那个看到不匹配，然后检查新表版本里改变的数据文件是否和它处理的是同一批。如果不同，它把变更重新应用到新的当前快照上并再次尝试交换。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 v1 的做法恰好相反</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">我的 v1 咨询锁用相反的方式解决了同一个竞争，第二个写入者等它的轮次，而不是输掉然后重试。</span></strong><span leaf="">」</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**「等它的轮次」vs「输掉然后重试」：悲观锁的代价是等待，乐观锁的代价是重做。而选择哪一个取决于冲突频率：冲突少，乐观锁几乎零成本；冲突多，乐观锁会陷入「重做 → 又冲突 → 再重做」的活锁。**</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而读取侧，两个引擎用了完全不同的机制达到同一个效果</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">读取也不被迫等待。一个读取者持有它开始时那个快照，而不可变文件不可能在它底下改变。前面 InnoDB 的 undo log 正是为了这个保证而存在的。引擎保存旧的行的版本……而 Iceberg 跳过了保存，因为旧版本就是旧文件。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">「Iceberg 跳过了保存，因为旧版本就是旧文件」是全文解释力最强的一句，因为它把 MVCC 的两条实现路线说成了一件很朴素的事：InnoDB 要「保存旧版本」，因为它就地修改；Iceberg 不用「保存」，因为它本来就不改。「不可变」这个属性把整个 MVCC 问题消掉了。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而写入中途失败的处理也是同一个属性的推论</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">一个中途死掉的写入会留下孤立的数据文件和一个空快照。没有读取者曾经看到它，而重试是安全的，因为 MERGE 的键让它幂等。在 v1 里我用临时表、反连接，以及成功提交后的删除。</span></strong><span leaf="">」</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这篇文章真正的价值不在于「OLAP 比 OLTP 好」，而在于它把「引擎选择」还原成了「访问模式的形状」。</span></strong><span leaf=""> InnoDB 的三个保证都是为「按行、按主键、小批量读写」优化的。而分析工作的形状是「按列、大范围、只读」。</span><strong style="color:#27272A;"><span leaf="">两者不是先进与落后，是形状不匹配。而这一点在他自己的例子里有最干净的证明：他那个错误设计在逻辑上完全正确，在物理上错，而错的原因是他当时不知道自己的查询会长什么样。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，「三层剪枝」这套设计最聪明的地方，是它把一个不可解的问题拆成了三个可解的小问题。</span></strong><span leaf=""> 如果只有一层元数据，那么「在一张有几十万个文件的表里找符合条件的数据」是无解的，因为你必须读完所有元数据。</span><strong style="color:#27272A;"><span leaf="">而 Iceberg 的做法是递归地建摘要，于是每次查询只需要在每一层读极少量元数据。而这个结构的通用性值得强调，因为作者自己也指出来了：「这是大多数列式仓库和 lakehouse 背后的通用模型。学一次意味着学会其中大部分。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，那「44 个退役的 metadata.json」和「还没加 WRITE ORDERED BY」这两个细节，比任何性能数字都更有信息量。</span></strong><span leaf=""> 因为它们说明了一件事：</span><strong style="color:#27272A;"><span leaf="">lakehouse 不是「配好就快」，它是「配好了才快」。</span></strong><span leaf=""> InnoDB 的索引你建了就有用；而 Iceberg 的三层剪枝要求你做三件事：分区设计对、行组有序、定期压缩和过期。</span><strong style="color:#27272A;"><span leaf="">少任何一件，剪枝效率都会掉，而掉的时候你不会收到错误，你只会觉得「怎么变慢了」。这是「无服务器感」的代价：系统不会拒绝你的错误配置，它会安静地变慢。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">最后一点关于「8,000 字和 9 个月」这个自我评价，我认为它其实偏乐观了。因为那 9 个月里真正花时间的不是迁移，是理解。而理解的部分是可迁移的。反过来，如果他不理解就迁移，他会得到一个「能跑但和 v1 一样慢」的 v2，因为默认配置下没有 WRITE ORDERED BY、没有分区版本规划、没有定期压缩。所以这篇的真实结论应该这样表述：从 OLTP 换到 lakehouse，你换掉的不是引擎，是「引擎替你做的决定」。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**文章性质**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**个人技术复盘**（marcpaul.io，**2026-09-14**）：v1（OLTP）→ v2（OLAP）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **迁移动机**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「我选择 OLAP 栈是因为一个优化，但我必须理解 lakehouse 的一切才能利用它。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **收益**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「我的指标表有 36 列……那两列被读了，而其他 34 列留在磁盘上。只花了我大约 8,000 字和 9 个月。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**理解成本**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「我的 lakehouse 的查询优化器花了我大约一个月才理解。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **InnoDB ①**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**行把所有列存在一起**：**「一个需要两列的指标仍然要通过缓冲池取回每一列。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **InnoDB ②**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**索引加快读、减慢写**：**「每个索引都是它自己的一棵 B 树，而每次写入必须更新表里所有的 B 树。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **InnoDB ③**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**undo log 实现 MVCC**：**「在每一个在提交之前或期间开始的会话都完成之后被清除。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**MVCC 的人话**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「MVCC 允许插入和更新发生而不阻塞读取。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **他的错误设计**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`financialdata` 原本是唯一持有 `datetime` 的表**；**「在数据库超过 100GB 之后才意识到行不通。修它是残酷的。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**错误根源**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「当我开始做这个数据库时，我甚至不知道最重要的价格是收盘价。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**v1 分区决策**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`PARTITION BY HASH(StockID) PARTITIONS 100`**；**「这就是为什么我选择了一个比正常更大的哈希值 100」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**v1 改分区代价**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「给一张表分区花了几天到一周」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**v2 栈**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Iceberg + Spark + Polaris + MinIO**；**Parquet 文件**；**Polaris 是一个 Postgres 数据库加一个 API**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**v2 分区 DDL**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">`USING iceberg PARTITIONED BY (bucket(16, symbol))`；**「整个分区的事就是一句 DDL」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **分区可后改**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「如果我想给分区加一列，我在读取时付代价……这一步叫 split planning。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **三层剪枝**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**① Parquet 行组**（每列 min/max + null 数）→ **② Manifest**（+ 分区值、文件大小、位置）→ **③ Manifest List**（+ **分区版本**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **完整查询路径**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**向 Polaris 要指针 → 元数据命名快照 → 快照指向 manifest list → 算 bucket 只进那一个 → 只检查分区范围命中的 Manifests → 剪掉不需要的行组 → 解码存活行组**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**merge on read**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Manifest 追踪 **Delete Files**；**「如果表存在 Delete Files，合并在每次读取时发生。」**；用途是**流式**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**作者对 Iceberg**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「我保证我没拿赞助（暂时），但天啊 Netflix 真会写软件。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **原子提交**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「那个交换是原子的，而它就是整个提交。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **乐观并发**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**快的赢得交换；慢的检查数据文件是否相同，不同则重应用再试**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **与 v1 对照**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「我的 v1 咨询锁用相反的方式解决了同一个竞争，第二个写入者等它的轮次，而不是输掉然后重试。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **读取侧对照**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「Iceberg 跳过了保存，因为旧版本就是旧文件。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**写入中途失败**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">v1 用**临时表、反连接、提交后删除**；v2 留**孤立文件 + 空快照**，**「没有读取者曾经看到它」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **维护账单（唯一无胜负）**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">v1：**索引和分区维护**；v2：**压缩和快照过期**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **他承认没做的优化**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「我还没在 lakehouse 里用过 WRITE ORDERED BY。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **那 44 个文件**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「罕见地看到 44 个退役的 metadata.json 文件……提醒我要设置自动删除。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**通用性**</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">**「这是大多数列式仓库和 lakehouse 背后的通用模型。Snowflake、BigQuery 和 Delta Lake 跑的都是它的某种配方。」**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这次迁移的真实结论不是「OLAP 比 OLTP 好」，而是：从 OLTP 换到 lakehouse，你换掉的不是引擎，是「引擎替你做的决定」。InnoDB 替你决定了很多事，而 lakehouse 把这些决定交给你，而交给你的时候不会提醒你：配置错了不会报错，它只是安静地变慢。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· SQLite 3.54：一个「够用就好」的数据库如何回应现代需求</span><br>
+        <span leaf="">· Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</span><br>
+        <span leaf="">· pg_vectorsearch 与 Prism 索引：把向量检索搬进 Postgres 的代价与收益</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>

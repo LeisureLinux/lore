@@ -1,0 +1,313 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">我在意的是让那个大内存池也能用于 CPU 工作，而不用在工作负载之间移动预留滑块并重启。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">Josephine Pfeiffer，josie.lol</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">一台 128GB 统一内存、6144 CUDA 核心的 RTX Spark 笔记本，NVIDIA 官方只标 Windows 11。而作者本人是 Arch Linux 官方打包者，她把它跑上了 Arch Linux ARM。</span></strong><strong style="color:#27272A;"><span leaf="">代价是自己写 ACPI 覆盖、打 `hid-asus` 补丁、写音频 machine driver。</span></strong><strong style="color:#27272A;"><span leaf="">而我认为这篇实测最值得写的不是那些跑分，是它暴露出的一件事：这个移植需要补四个层次的东西，而其中三样要从设备自己的固件表里反推出来。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">统一内存改了什么</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">一个关键前提</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三组数据</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">HARDWARE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">这台机器的规格，以及「统一内存」到底改变了什么</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">NVIDIA 官方规格页给笔记本版 N1X 的数字是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">6,144 核 Blackwell RTX GPU</span></strong><span leaf=""> + </span><strong style="color:#27272A;"><span leaf="">20 核 Grace CPU</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">最高 128 GB LPDDR5X 统一内存</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">256-bit</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">1 Petaflop（FP4）</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">TDP 45-80 W</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">CUDA 能力 12.1</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">官方 OS 支持：Windows 11</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而「统一内存」这个词的含义，作者的实测给出了最清楚的解释</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">我的 Linux 运行把 116.0 GiB 同时报告为系统 RAM 和 CUDA 的总量，来自同一个物理池。Windows 把 RAM 分成专用 GPU、共享和仅 CPU 三个区域。CPU 工作负载不能使用专用 GPU 区域，而 GPU 分配不能使用仅 CPU 区域。</span></strong><span leaf="">」</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**「CPU 工作负载不能使用专用 GPU 区域，而 GPU 分配不能使用仅 CPU 区域。」**</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这句话是整篇文章最重要的技术事实，因为它是「统一内存」这个营销词的实际含义：物理上是一块内存，而 Windows 在逻辑上把它切成三块互不相通的区域。于是「128 GB」这个数字，在 Windows 上从来不是「CPU 和 GPU 都能用 128 GB」，而是「两者各自能用的部分加起来是 128 GB，但不能重叠」。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而具体对比是</span></strong><span leaf="">：Frandroid 的 Windows ProArt 用 </span><strong style="color:#27272A;"><span leaf="">91 GiB 专用预留时 CUDA 总量 109.7 GiB</span></strong><span leaf="">（含共享内存）；</span><strong style="color:#27272A;"><span leaf="">她的 Linux 是 116.0 GiB，多约 6.3 GiB</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">而她对「为什么在意」的解释更重要</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">我在意的是让那个大内存池也能用于 CPU 工作，而不用在工作负载之间移动预留滑块并重启。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这是全文最实用的一句，因为它是「统一内存」在 Linux 上唯一的、也是最关键的收益：Windows 上那个滑块是一个需要重启的静态划分，而 Linux 上没有滑块，因为内核的内存管理把整个池交给两个处理器共享。所以收益不是「多了 6.3 GiB」，是「不用为不同工作负载做静态划分」。在一个「统一内存」被当作核心卖点的硬件上，这个差别的荒谬感很强：硬件统一了，而 Windows 又用软件把它切开了。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">PREREQUISITE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一个作者没明说的前提：Blackwell 只能跑开源内核模块</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这是我要补的部分，而我认为它是整件事里最值得单独指出的技术事实。</span></strong><span leaf=""> 作者用的是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvidia-open</span><span leaf=""> 驱动 615.78.08，而她没解释为什么是这个。</span><strong style="color:#27272A;"><span leaf="">我去 NVIDIA 的官方驱动 README 里查了，答案是</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">专有版本支持 GPU 架构 Turing、Ampere、Ada 和 Hopper。Blackwell 及之后的架构只被开源内核模块支持。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这句话的意义比它看起来大，因为它意味着：这台 RTX Spark 能在 Linux 上跑起来，在驱动层面有一个结构性前提：NVIDIA 在 2022 年开始开源内核模块，而到 Blackwell 时代，专有闭源内核模块已经不再覆盖新架构了。换句话说：作者不需要和 NVIDIA 的闭源驱动搏斗，因为那个选项已经不存在了。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而这与历史形成了一个很有意味的对照。十年前，Linux 用户面对的经典问题是「NVIDIA 的闭源驱动装不上新内核」。而现在的局面是：新硬件只提供开源内核模块。这个转向的原因不是利他，而是架构：Blackwell 需要 GSP 固件、需要 HMM、需要 confidential computing，而这些东西在闭源内核模块里无法维护，因为它们需要和内核的内存管理深度集成。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 README 列出的「只在开源模块里可用的功能」恰好印证了这一点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Confidential Computing、GPUDirect Storage、HMM（异构内存管理）、GPU fault handler 的 CPU 亲和性、CUDA 分配的 DMABUF 支持</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">其中 HMM 和 DMABUF 这两项，恰好是「统一内存」在 Linux 上的技术基础：HMM 让 GPU 能直接访问 CPU 页表里的内存，DMABUF 让 CUDA 分配能被其他设备共享。所以「统一内存」在 Linux 上不是靠驱动里的一行开关，是靠这两个内核子系统。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而 Arch Linux ARM 的 aarch64 仓库里也已经有对应的包（`nvidia-open-dkms` 615.71.09），说明这条路径不是作者一个人的特例，而是有一个正在跟进的打包链。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">BENCHMARKS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三组实测数据，而作者对每一组都标了它的局限</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">CPU：7-Zip，与 Windows 几乎打平</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">测试条件是</span></strong><span leaf="">：原生 ARM64 7-Zip 26.04，固定 32 MiB 字典，每线程数跑一次预热和三次测量取中位数，插电 + 性能配置。</span><strong style="color:#27272A;"><span leaf="">单线程：压缩 6.18 MiB/s、解压 118.26 MiB/s；20 线程：压缩 141.77 MiB/s、解压 1,629.60 MiB/s。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而她立刻标了局限</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">HP 的评测没有指明它的 7-Zip 版本或字典大小，所以这些百分比比较的是两台笔记本设置。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">这句话很重要，因为它拒绝了一个更容易做出的结论（「Linux 比 Windows 快 5%」），而选择了更准确的表述。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而她还做了第二个交叉验证</span></strong><span leaf="">：ComputerBase 对同类硬件的 Windows 得分换算成 </span><strong style="color:#27272A;"><span leaf="">155.774 GIPS</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">她的三次中位数是 157.084</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">「他们的结果落在我三次运行的范围 155.759 到 157.193 GIPS 之内」</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">用一个第三方对同类硬件的测试来验证自己的测量是否落在合理区间，这得出的结论比「我比 Windows 快」更有说服力。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">推理：约 30 tokens/s，而她指出这个对比不能归因于 OS</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">她跑的是真实负载</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Qwen3.8-Flash-Next-FP4-Local</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">vLLM + B12X CUDA kernel</span></strong><span leaf="">，原生 ARM64 容器，混合量化 + FP8 KV cache。</span><strong style="color:#27272A;"><span leaf="">资源占用</span></strong><span leaf="">：加载前 110.9 GiB 可用；</span><strong style="color:#27272A;"><span leaf="">模型加载 68.2 GiB + KV cache 21.1 GiB = 近 90 GiB</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">首次请求前耗时约 16 分钟</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而她对日志任务的分析最有洞察力</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">它的答案只有 39 个 token 长，整个请求算下来是 6.8 tokens/s。大部分等待花在了处理 prompt 上，所以对这个任务来说，响应时间比 tokens/s 这个数字告诉我更多。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这句话指出了「tokens/s」这个指标的一个根本问题：当输出很短而输入很长时，tokens/s 会被 prompt 处理时间摊薄，于是它不再反映用户感知的延迟。具体到这次：6.8 tokens/s 听起来很慢，而实际体验是「6 秒给你一个正确答案」。所以正确的指标是「首 token 延迟 + 总响应时间」。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">生成速度对比：她的 Linux（FP4-Local + vLLM）30.9 tokens/s；Frandroid 的 Windows（UD-IQ4_XS + llama.cpp）29.4 和 31.4。而她的免责声明写得很清楚</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">上下文上限 32,768（她）vs 262,144（Frandroid）；prompt、量化、运行时和计时方法都不同。这比较的是两个能工作的配置；它没有隔离操作系统的效果。</span></strong><span leaf="">」</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">稳定性：十分钟 150 个请求，全部通过</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一段是全文最实用的数据，因为它回答「能不能长期用」</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">十分钟，150 个请求，每个任务 50 个，全部通过检查。中位响应时间代码审查 4.036 秒、日志 5.921 秒、提取 2.046 秒。比较每个任务第一次十次和最后十次重复，中位响应时间增长不到 1.6%。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这个数字很重要，因为它排除了「跑久了会掉速」这个对笔记本推理最常见也最合理的怀疑：十分钟、150 个请求、延迟增长 <1.6%，说明散热和功耗管理能撑住持续负载。而在一台 45 到 80 W 的笔记本上，这不是理所当然的事。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这篇文章真正的价值不在于「Linux 能跑了」，而在于它量化了「Windows 专属」这个标签的实际成本。</span></strong><span leaf=""> 那 6.3 GiB 的来源不是 Linux 更省，是 Windows 必须为 GPU 预留一块 CPU 用不了的区域。</span><strong style="color:#27272A;"><span leaf="">而这个差别的实际意义，作者一句话说清了：「不用在滑块之间移动并重启」。Windows 让你在「给 GPU 多少」和「给 CPU 多少」之间做一个需要重启的选择，而 Linux 不做这个选择。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，那个「Blackwell 只能用开源内核模块」的事实，说明这次移植的成功有一半要归功于 NVIDIA 三年前的转向，而作者没提这件事。</span></strong><span leaf=""> 这一点纠正了一个常见的误读：</span><strong style="color:#27272A;"><span leaf="">这次能跑起来，不是因为有人在 Linux 上「破解」了闭源驱动，而是因为在新硬件上闭源驱动已经不存在了。而那个转向的动因是技术性的，不是道德性的。所以一个更准确的结论是：NVIDIA 的 Linux 支持变好了，因为它别无选择，而用户是受益者。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，那三组数据的对比方法，比数据本身值得学。</span></strong><span leaf=""> 她对每一个对比都指出两边不可比的地方，然后做两件补救：</span><strong style="color:#27272A;"><span leaf="">① 用第三方对同类硬件的独立测试交叉验证自己的数字是否落在合理区间；② 用「十分钟 150 个请求、延迟增长 <1.6%」这种自己可复现的稳定性测试，来回答「能不能长期用」这个比峰值性能更实际的问题。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这是「个人实测」这个体裁能达到的高标准：我不声称我证明了因果，但我把我能控制的变量控制住了，并且把数据全部公开。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第四，关于「谁适合做这件事」，作者的身份给出了最诚实的答案。</span></strong><span leaf=""> 她是 Arch 官方打包者、把 Arch 装过 IBM 大型机、周末两天写出硬件支持包、能用 radare2 读固件。</span><strong style="color:#27272A;"><span leaf="">所以这篇的正确读法不是「你也可以做到」，而是「这件事有一个明确的门槛，而门槛在 ACPI 覆盖和驱动补丁这一层」。而她的仓库把这个门槛降下来了：现在别人不需要重新推导 ACPI 覆盖，只需要 dump 自己的表、跑她的脚本。我认为这才是这类工作的真正价值：第一个人付全价，后面的人付折价。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">最后一点，关于这台机器适不适合买</span></strong><span leaf="">：如果你的目标是「在笔记本上跑接近 100 GiB 的模型」，那数据是：能跑，约 30 tokens/s，十分钟持续负载不掉速，代价是 8% 的性能要和「不开滑块重启」做等价交换。</span><strong style="color:#27272A;"><span leaf="">而如果你的目标是「一台日常用的 Linux 笔记本」，那结论要谨慎得多：你需要接受 `IgnorePkg` 固定四个包、接受自己维护 ACPI 覆盖、接受固件从厂商驱动包里提取。而这些成本不是一次性的，它们会随着每次内核升级重新出现。作者自己就是这个移植的作者，而她写这篇的语气是「我做到了」，不是「你也该这么做」。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**作者身份**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Arch Linux 官方打包者**；把 Arch 装过 **IBM 大型机**；HF 上的 GGUF 量化**过去一个月超 160,000 次下载**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**设备**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**ASUS ProArt P16 H7607BA-SE033W**，128 GB RAM、6,144 CUDA 核心、2 TB SSD，固件 **H7607BA.300**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **官方规格**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**6,144 核 Blackwell GPU** + **20 核 Grace CPU**；**最高 128 GB LPDDR5X 统一**；**256-bit**；**1 Petaflop FP4**；**TDP 45-80 W**；**官方 OS：Windows 11**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **作者环境**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**内核 7.0.0-1022-nvidia**，**驱动 615.78.08**，**Arch Linux ARM** + 硬件支持层</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**软件栈**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**NetworkManager、PipeWire、rootless Podman + NVIDIA CDI**；**3840×2400 @ 120 Hz**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**版本固定**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`IgnorePkg` 固定内核、NVIDIA、电源管理、固件包**；普通包继续更新</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **需要自己补的四层**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**ACPI override 分配**、**framebuffer 映射**、**从设备自己的表推导 ACPI 覆盖**、**打补丁的 `hid-asus`**、**音频 machine driver**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **构建信任链**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「构建输入是 hash 固定的」**；**硬件包用 Arch Package Maintainer 密钥签名**；**「ACPI 覆盖来自笔记本本身」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **我补的关键前提**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">NVIDIA README：**「专有版本支持 Turing、Ampere、Ada 和 Hopper。Blackwell 及之后的架构只被开源内核模块支持。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**只在开源模块可用**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Confidential Computing、GPUDirect Storage、HMM、GPU fault handler 亲和性、CUDA 的 DMABUF 支持**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **统一内存的差别**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Linux：116.0 GiB 同时报告为系统 RAM 和 CUDA 总量，同一个池**；**Windows：分专用 GPU / 共享 / 仅 CPU 三区，互不相通**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**Windows 对照**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Frandroid 128 GB ProArt 达 **96 GiB**；**91 GiB 预留时 CUDA 总量 109.7 GiB**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **作者最在意的**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「让那个大内存池也能用于 CPU 工作，而不用在工作负载之间移动预留滑块并重启。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**7-Zip 条件**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**原生 ARM64 7-Zip 26.04**，**固定 32 MiB 字典**，**1 次预热 + 3 次取中位数**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**7-Zip 原始**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**1 线程：6.18 / 118.26 MiB/s**；**20 线程：141.77 / 1,629.60 MiB/s**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**7-Zip 对比**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">单线程压缩 **−1.2%**、解压 **−0.8%**；20 线程压缩 **+5.0%**、解压 **+2.7%**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **对比局限**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「HP 的评测没有指明它的 7-Zip 版本或字典大小，所以这些百分比比较的是两台笔记本设置。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**交叉验证**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">ComputerBase **155.774 GIPS**；她的中位数 **157.084**；**「落在我的范围 155.759 到 157.193 之内」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **推理配置**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Qwen3.8-Flash-Next-FP4-Local**，**vLLM + B12X kernel**，**混合量化 + FP8 KV cache**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **资源占用**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**模型 68.2 GiB + KV 21.1 GiB = 近 90 GiB**；**首次请求前约 16 分钟**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**三个任务**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">代码审查（208）：**0.316 / 4.008**；日志（9,775）：**4.532 / 5.768**；提取（87）：**0.256 / 2.035**；**全部 3/3 通过**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **指标洞察**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「它的答案只有 39 个 token 长……6.8 tokens/s。大部分等待花在处理 prompt 上，所以响应时间比 tokens/s 告诉我更多。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**生成速度**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**她（Linux，vLLM）：30.9**；**Frandroid（Windows，llama.cpp）：29.4 和 31.4**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **推理对比局限**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**上下文 32,768 vs 262,144**；prompt、量化、运行时、计时全不同；**「它没有隔离操作系统的效果。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **稳定性**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**十分钟 150 个请求全部通过**；**「中位响应时间增长不到 1.6%」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**数据完整性**</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">**全部 171 个响应都通过检查**；确定性解码；**保留每一个答案和原始事件流**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">那 6.3 GiB 的来源不是 Linux 更省，是 Windows 必须为 GPU 预留一块 CPU 用不了的区域。而这个差别的实际意义在于：Windows 让你在「给 GPU 多少」和「给 CPU 多少」之间做一个需要重启的选择，而 Linux 不做这个选择。在一个「统一内存」被当作核心卖点的硬件上，硬件统一了，而 Windows 又用软件把它切开了。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· 想下载一个 ISO，最后写了个内核漏洞利用程序：而他只需要往两个 sysfs 文件里写两个零</span><br>
+        <span leaf="">· Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</span><br>
+        <span leaf="">· TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
