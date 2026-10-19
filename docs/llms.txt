@@ -695,3 +695,35 @@ Category: 安全/运维
 Source: Alin Tomescu 博客（2026-10-11）+ TEE.fail / WireTap / BadRAM 原始论文 + Intel 官方公告 2025-10-28-001 + Intel PCK 规范
 Summary: 解读 Alin Tomescu 的 763 词 TEE 攻击清单，核心论证是「你的远程证明验签器接受任何一台处于良好状态的 Intel CPU 的 quote，而攻击者的 CPU 就是其中一台。打断一台就是打断全部」。文章拆解了这个论证的机制（每个 CPU 封装有唯一 PCK，但所有 PCK 证书都由 Intel 签发并公开可取，所以验签通过意味着「Intel 真的为一个攻击者控制的密钥签过证书」），并补上原文没写的三个事实：① 这类内存总线插入攻击成本低于 1000 美元、用二手设备即可（BadRAM 重编程 DIMM 约 10 美元）；② Intel 的官方公告明确表示 TEE.fail「并没有改变 Intel 之前对这类物理攻击的『不在范围内』声明」；③ 真正的架构变化不是新攻击，而是 TEE 从 enclave 转向机密虚拟机时「移除了完整性保证和对重放攻击的保护」，而「大多数 TEE 部署似乎没有意识到安全保证上的差别」。另指出 TEE.fail 证明密钥还能攻破 Nvidia GPU 机密计算，且「TDX 的安全性实际上依赖 SGX 来提供证明」。结论给出可操作分工：TEE 只做纵深防御，隐私给 TEE、完整性给 ZKP。
 Key topics: TEE, 可信执行环境, SGX, TDX, SEV-SNP, Nitro Enclaves, 远程证明, remote attestation, PCK, Provisioning Certification Key, PCK 固定, 证明伪造, 侧信道, 物理攻击, 内存总线插入, WireTap, TEE.fail, BadRAM, DDRop, Battering RAM, Foreshadow, SGAxe, ÆPIC Leak, Signal 通讯录 enclave, 机密计算, 机密虚拟机, CVM, 确定性加密, Nvidia GPU 机密计算, Alin Tomescu, Sanctum, ZKP, MPC, 威胁模型, footgun
+
+### 二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器
+URL: https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/
+Date: 2026-10-19
+Category: 安全/运维
+Source: Anthropic 官方研究文章（2026-10-16）+ 可运行复现代码
+Summary: NIST 椭圆曲线的「种子」自 2000 年 FIPS 186-2 起就来源不明，由 NSA 提供且无任何解释，是密码学界悬了二十五年的公开疑问。2026 年 10 月，一位 Anthropic 员工在未告知「幽默短语哈希」这条线索的情况下询问内部研究模型，Claude 在半小时内解出答案：这些种子不是任何哈希的输出，而是 1990 年代 C 库随机数生成器 lrand48 的输出，用 Unix 时间戳做种子。关键证据是十个种子里有四个的所有 20 个字的高位都是 0（巧合概率 1/5,810），这是 lrand48 只返回 48 位状态高 31 位的签名；素数域曲线用 LLL 格约简从被截断的 LCG 恢复状态，倒推 `srand48` 形式（低 16 位 = 0x330E）后解出十个时间戳全部落在 1997 年 5 月到 1998 年 4 月之间。文章还顺手解开第二个谜：1997 年 5 月生成的那六条曲线的基准点来自 FreeLIP 的随机数生成器（种子 20000、20420 等，丢弃七个输出），这是首次有任何 NIST 基准点被解释。Anthropic 明确声明这不是破解或弱点，反而降低了「被人为挑选」的可能性；另有三个未解缺口（B-163 种子、四个大素数域曲线的基准点、二元域曲线的基准点）和一处需谨慎的发现（有潜在可行候选被跳过）。悬赏 36,864 美元捐给 Internet Security Research Group（Let's Encrypt 背后组织）。
+Key topics: ECDSA, 椭圆曲线, NIST, FIPS 186-2, lrand48, srand48, 0x330E, 种子, seed, P-192, P-224, P-256, P-384, P-521, ANSI X9.62, 素数域, 二元域, LLL, 格约简, 线性同余生成器, LCG, 截断LCG, FreeLIP, NTL, Arjen Lenstra, Jerry Solinas, Bob Reiter, Koblitz, Menezes, A Riddle Wrapped in an Enigma, Dual_EC_DRBG, 后门疑云, 可验证随机性, Claude, Anthropic, Internet Security Research Group
+
+### Gentoo 给 Chromium 做了「临终祷告」：而杀死这个打包的是一句「这太荒唐了」
+URL: https://freelamp.com/articles/2026-10-19_gentoo-chromium-last-rites-maintainer-burnout/
+Date: 2026-10-19
+Category: Linux/运维
+Source: LWN.net（Joe Brockmeier，2026-10-06）+ Gentoo Bugzilla 原始对话
+Summary: Gentoo 于 2026-09-24 为 www-client/chromium 宣布「临终祷告」（last rites），即放弃维护并从仓库屏蔽该包（用户升级会被警告挡住，临终祷告期到 10-24）。表面导火索是稳定版 151.0.7922.169 落后且「包含 602 个已知漏洞」，而 LWN 还原的完整对话显示真正触发点是报障者 Roman Žilka 说「这太荒唐了」，维护者 Sam James 回「那就这样吧」。文章梳理双方立场与那组关键数字：维护者称 Chromium「轻松就是 Gentoo 里消耗维护者最多的包」，每周要花六小时以上（只算快机上的编译时间），需要至少三个人（现在只有他从 2023 年起一个人扛），技能要求横跨 C/C++/Go/JavaScript/Rust 加一堆「永远没法在别处用上」的 Google 自有工具；用户实测单次编译 15 到 16 小时，所以无法测所有 USE 标签组合。上游问题是结构性的：加了 Go 依赖、用会在新版本崩溃的实验性 Rust 特性、发布 tarball 的 CI 不可靠且「他们似乎没有注意到或在意」、不用可选功能被禁用来测试构建、官方「如何从源码构建 Linux 版」的文档链接返回 503。文章还记下那句最精辟的判断「复制 ebuild 在它失效之前都工作得很好」，以及对三种挽救方案（降级为尽力而为、用别人 overlay、砍掉 USE 灵活性）的逐个拒绝理由。
+Key topics: Gentoo, Chromium, 打包, ebuild, Portage, USE标签, last rites, 临终祷告, orphan, 维护者倦怠, Sam James, Matt Jolly, Roman Žilka, www-client/chromium, 602个CVE, -bundled-toolchain, overlay, Bentoo, Freeburn, Binhost, Flatpak, Fedora, Debian, 发布节奏, CI不可靠, 开源治理, 志愿者
+
+### 同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么
+URL: https://freelamp.com/articles/2026-10-19_innodb-vs-iceberg-olap-migration-internals/
+Date: 2026-10-19
+Category: 数据/运维
+Source: marcpau.io 技术复盘（Marc Paul，2026-09-14），含作者自建系统的完整 DDL/MERGE/存储过程
+Summary: 作者把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris + MinIO，并逐项对照两个引擎的内部机制。迁移动机只有一个优化：指标表有 36 列，而分析通常只需 2 到 3 列，他付出了「大约 8,000 字和 9 个月」的代价换到列裁剪。文章拆解 InnoDB 的三个保证（行存所有列、索引加快读减慢写、undo log 实现 MVCC）如何各自在分析场景变成负担，以及 Iceberg 的「俄罗斯套娃」三层剪枝（Parquet 行组统计 → Manifest 含分区值 → Manifest List 含分区版本，支撑 split planning）。两种原子提交恰好相反：v1 用咨询锁让第二个写入者排队，v2 用乐观指针交换让失败者重做。MVCC 的对照最干净：「InnoDB 保存旧的行的版本……而 Iceberg 跳过了保存，因为旧版本就是旧文件。」还保留了他承认的最糟设计：日期只放在主表里导致所有指标表要 join 回主表，直到数据库超过 100GB 才发现，而根源是他「当时甚至不知道最重要的价格是收盘价」。两处未修的债：44 个退役的 metadata.json（忘了配过期策略）和还没加 WRITE ORDERED BY。
+Key topics: InnoDB, Iceberg, OLTP, OLAP, lakehouse, MySQL, Spark, Polaris, MinIO, Parquet, Avro, manifest, manifest list, metadata.json, 三层剪枝, split planning, 行组, MVCC, undo log, history list, copy-on-write, merge-on-read, delete file, 快照, 乐观并发, 咨询锁, 列式存储, 分区, bucket, compaction, snapshot expiration, 数据建模, 量化分析, WRITE ORDERED BY
+
+### 想下载一个 ISO，最后写了个内核漏洞利用程序：而他只需要往两个 sysfs 文件里写两个零
+URL: https://freelamp.com/articles/2026-10-19_tplink-eap770-dma-cache-bug-kernel-exploit/
+Date: 2026-10-19
+Category: 安全/运维
+Source: deafbeef 博客技术复盘（2026-10-10），含高通驱动源码具体行号与完整利用链
+Summary: 作者的 TP-Link EAP770 v1（高通 IPQ9574，Linux 5.4.164）在 Wi-Fi 下载时损坏数据，两年里他依次排除了 rsync/SSH（Wireshark 显示零错误校验和零重传）、笔记本网卡（换卡仍复现）、线缆（有线客户端干净）、空口（坏帧的 CCMP MIC 完整）。转折点是抓到「1440 字节段里有连续 64 个字节错误而 TCP 校验和有效」，由此推出「有东西在损坏之后重算了校验和」，而 64 字节正好是缓存行，最后锁定唯一「既加速桥接又重算校验和」的东西：高通 SFE/PPE 卸载。根因在 qca-nss-dp：快速发送路径只 clean skb_headlen(skb) 字节就设 fast_recycled=1 把缓冲区放回回收链表，接收侧看到该标志就跳过 dmac_inv_range_no_dsb，而接收区是 1856 字节（29 个缓存行）从 head+192 开始，发送侧只清理了另一偏移的 2 到 3 行，脏行回写覆盖 64 字节包内容；arm64 的 __dma_inv_area 对边缘行用 dc civac（clean and invalidate）更让「invalidate」这个直觉失效。修复只需 echo 0 到两个 sysfs 文件，但 TP-Link 的 SSH 是 uid 1 无 capabilities，于是他写了 CVE-2022-0185 + 管道缓冲区伪造的利用链拿 root，约 17 小时、每次启动只有一次机会、kallsyms 被清零、各段偏移不一致。代价是 8% 下载速度。文章还记下 Opus 5.5 的护栏每两条消息切断一次会话、Cyber Verification Program 无效，以及他在其他驱动里发现同类 DMA 缓存维护问题（x86 上因硬件一致性而不复现，OpenWrt 无此 bug）。
+Key topics: TP-Link, EAP770, Qualcomm, IPQ9574, DMA, 缓存一致性, cache coherency, SFE, PPE, qca-nss-dp, edma_tx.c, edma_rx.c, skb_recycler, fast_recycled, dmac_clean_range, dmac_inv_range, dc civac, CHECKSUM_UNNECESSARY, TcpInCsumErrors, CVE-2022-0185, legacy_parse_param, modprobe_path, request_module, pipe buffer, anon_pipe_buf_ops, generic_pipe_buf_confirm, KASLR, kallsyms, arm64, x86 DMA 一致性, Wi-Fi 7, 闭源固件, amss.bin, ath12k, 设备EOL, OpenWrt

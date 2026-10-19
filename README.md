@@ -17,6 +17,10 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-19 | [二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器](https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/) | ECDSA · 椭圆曲线 · NIST · lrand48 · P-256 · 种子 · Claude · LLL算法 · FreeLIP · Jerry Solinas · 密码学 · 解读 |
+| 2026-10-19 | [Gentoo 给 Chromium 做了「临终祷告」：而杀死这个打包的是一句「这太荒唐了」](https://freelamp.com/articles/2026-10-19_gentoo-chromium-last-rites-maintainer-burnout/) | Gentoo · Chromium · 打包 · ebuild · 维护者倦怠 · LWN · Sam James · 开源治理 · 浏览器 · USE标签 · 解读 |
+| 2026-10-19 | [同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么](https://freelamp.com/articles/2026-10-19_innodb-vs-iceberg-olap-migration-internals/) | InnoDB · Iceberg · OLTP · OLAP · lakehouse · MySQL · Spark · Polaris · Parquet · MVCC · 列式存储 · 数据建模 · 解读 |
+| 2026-10-19 | [想下载一个 ISO，最后写了个内核漏洞利用程序：而他只需要往两个 sysfs 文件里写两个零](https://freelamp.com/articles/2026-10-19_tplink-eap770-dma-cache-bug-kernel-exploit/) | TP-Link · EAP770 · 高通 · IPQ9574 · DMA · 缓存一致性 · SFE · PPE · CVE-2022-0185 · modprobe_path · 内核利用 · 闭源固件 · 解读 |
 | 2026-10-19 | [TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」](https://freelamp.com/articles/2026-10-19_tee-attestation-forgery-threat-model/) | TEE · SGX · TDX · SEV-SNP · Nitro · 远程证明 · PCK · 侧信道 · 物理攻击 · TEE.fail · WireTap · BadRAM · 机密计算 · 威胁模型 · 解读 |
 | 2026-10-19 | [机器凭据轮换只是买时间：ZSP 的关键不在「换密码」，在「有没有人负责关掉它」](https://freelamp.com/articles/2026-10-19_zero-standing-privilege-machine-identities/) | 零常驻特权 · ZSP · 机器身份 · NHI · OAuth · 令牌重放 · Salesloft Drift · UNC6395 · PAM · 工作负载身份联合 · OIDC · DPoP · 评论解读 |
 | 2026-10-19 | [PwnEscape：一个 17 年的内核 bug，AI 用 3 天找到，而修复只堵了 5 个消费点](https://freelamp.com/articles/2026-10-19_pwnescape-cve-2026-99999-linux-networking-vm-escape/) | PwnEscape · CVE-2026-99999 · Linux内核 · 虚拟机逃逸 · KVM · Vercel Sandbox · 校验和卸载 · sk_buff · TOCTOU · AI辅助研究 · 解读 |

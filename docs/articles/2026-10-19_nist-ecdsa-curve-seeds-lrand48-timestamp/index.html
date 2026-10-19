@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器 — FreeLAMP.com</title>
+  <meta name="description" content="NIST 椭圆曲线的种子从 1999 年起被怀疑是 NSA 埋的后门，因为没人知道它们怎么来的。2026 年 10 月，Claude 在半小时内找出答案：那些种子不是任何哈希算法的输出，而是 1990 年代 C 库随机数生成器 lrand48 的输出，用 Unix 时间戳做种子。本文解释这个发现为什么反而让人更放心，以">
+  <meta name="keywords" content="ECDSA, 椭圆曲线, NIST, 密码学, lrand48, P-256, P-384, P-521, 种子, 后门疑云, Claude, LLL算法, 格约简, FreeLIP, 随机数生成器, Jerry Solinas, 侧信道, FIPS 186">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-19">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器">
+  <meta property="og:description" content="NIST 椭圆曲线的种子从 1999 年起被怀疑是 NSA 埋的后门，因为没人知道它们怎么来的。2026 年 10 月，Claude 在半小时内找出答案：那些种子不是任何哈希算法的输出，而是 1990 年代 C 库随机数生成器 lrand48 的输出，用 Unix 时间戳做种子。本文解释这个发现为什么反而让人更放心，以">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-19">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="ECDSA">
+  <meta property="article:tag" content="ECDSA">
+  <meta property="article:tag" content="椭圆曲线">
+  <meta property="article:tag" content="NIST">
+  <meta property="article:tag" content="密码学">
+  <meta property="article:tag" content="lrand48">
+  <meta property="article:tag" content="P-256">
+  <meta property="article:tag" content="P-384">
+  <meta property="article:tag" content="P-521">
+  <meta property="article:tag" content="种子">
+  <meta property="article:tag" content="后门疑云">
+  <meta property="article:tag" content="Claude">
+  <meta property="article:tag" content="LLL算法">
+  <meta property="article:tag" content="格约简">
+  <meta property="article:tag" content="FreeLIP">
+  <meta property="article:tag" content="随机数生成器">
+  <meta property="article:tag" content="Jerry Solinas">
+  <meta property="article:tag" content="侧信道">
+  <meta property="article:tag" content="FIPS 186">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器">
+  <meta name="twitter:description" content="NIST 椭圆曲线的种子从 1999 年起被怀疑是 NSA 埋的后门，因为没人知道它们怎么来的。2026 年 10 月，Claude 在半小时内找出答案：那些种子不是任何哈希算法的输出，而是 1990 年代 C 库随机数生成器 lrand48 的输出，用 Unix 时间戳做种子。本文解释这个发现为什么反而让人更放心，以">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器",
+  "description": "来源：Claude reveals ECDSA curve originshttps://www.anthropic.com/research/ecdsa-curve-origins（Anthropic，2026-10-16）  一手材料：文章附了完整可运行的复现代码（Python，直接输出全部 14 个种子的十六进制值），以及 10 位署名作者。争议背景见 Koblitz 与 Menezes 的",
+  "datePublished": "2026-10-19",
+  "dateModified": "2026-10-19",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "ECDSA, 椭圆曲线, NIST, 密码学, lrand48, P-256, P-384, P-521, 种子, 后门疑云, Claude, LLL算法, 格约简, FreeLIP, 随机数生成器, Jerry Solinas, 侧信道, FIPS 186"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器",
+        "item": "https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-19">2026-10-19</div>
+        <h1 class="post-title" itemprop="headline">二十五年的「NSA 后门」疑云解开了：而答案是一个 Unix 时间戳加上一个 1990 年代的随机数生成器</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/ECDSA/">ECDSA</a><a itemprop="keywords" href="/tags/%E6%A4%AD%E5%9C%86%E6%9B%B2%E7%BA%BF/">椭圆曲线</a><a itemprop="keywords" href="/tags/NIST/">NIST</a><a itemprop="keywords" href="/tags/%E5%AF%86%E7%A0%81%E5%AD%A6/">密码学</a><a itemprop="keywords" href="/tags/lrand48/">lrand48</a><a itemprop="keywords" href="/tags/P-256/">P-256</a><a itemprop="keywords" href="/tags/P-384/">P-384</a><a itemprop="keywords" href="/tags/P-521/">P-521</a><a itemprop="keywords" href="/tags/%E7%A7%8D%E5%AD%90/">种子</a><a itemprop="keywords" href="/tags/%E5%90%8E%E9%97%A8%E7%96%91%E4%BA%91/">后门疑云</a><a itemprop="keywords" href="/tags/Claude/">Claude</a><a itemprop="keywords" href="/tags/LLL%E7%AE%97%E6%B3%95/">LLL算法</a><a itemprop="keywords" href="/tags/%E6%A0%BC%E7%BA%A6%E7%AE%80/">格约简</a><a itemprop="keywords" href="/tags/FreeLIP/">FreeLIP</a><a itemprop="keywords" href="/tags/%E9%9A%8F%E6%9C%BA%E6%95%B0%E7%94%9F%E6%88%90%E5%99%A8/">随机数生成器</a><a itemprop="keywords" href="/tags/Jerry%20Solinas/">Jerry Solinas</a><a itemprop="keywords" href="/tags/%E4%BE%A7%E4%BF%A1%E9%81%93/">侧信道</a><a itemprop="keywords" href="/tags/FIPS%20186/">FIPS 186</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://www.anthropic.com/research/ecdsa-curve-origins">Claude reveals ECDSA curve origins</a>（<strong>Anthropic，2026-10-16</strong>）<br>
+一手材料：文章附了<strong>完整可运行的复现代码</strong>（Python，直接输出全部 14 个种子的十六进制值），以及 10 位署名作者。争议背景见 Koblitz 与 Menezes 的《A Riddle Wrapped in an Enigma》；奖励由 Filippo Valsorda 组织的 NIST 椭圆曲线种子悬赏提供。<br>
+本文为<strong>解读</strong>。第三节关于「为什么这个结果反而增强了可信度」的分析、第五节的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>Anthropic 这篇文章开头就写了一句话，而我认为它是全文最重要的定位，因为它预防了一种非常容易发生的误读</strong>：</p>
+<blockquote><strong>「读者应该把这当作一个有趣的收尾章节，以及多年猜测的终结。不需要采取任何行动，也没有什么事情要做得不一样。大多数研究者本来就信任这些曲线。祝阅读愉快。」</strong></blockquote>
+<strong>「不需要采取任何行动」（There is no action to be taken）。这句话之所以必须先说，是因为标题里「Claude 揭开了 ECDSA 曲线起源」很容易被读成「ECDSA 出问题了」。而事实是相反的，文章自己的结论是</strong>：
+<blockquote><strong>「这不是密码学破解、新攻击，或 ECDSA 曲线的弱点。事实上，这让我们更有信心，这些曲线是在没有任何后门或故意弱点的情况下被选出来的。」</strong></blockquote>
+<strong>而我认为这件事真正的价值不在密码学，在一个更普遍的问题上</strong>：<strong>当一个安全参数「无法解释来源」时，这个「无法解释」本身会不会成为风险？</strong>
+<p><strong>答案是：会，而且这个风险的量级与参数的实际安全性无关。</strong> <strong>NIST P-256 从 2000 年被采纳至今，二十六年里没被攻破；而 APT 组织绕过它靠的也从来不是数学，是别的东西。但「种子从哪来」这个空白，在二十六年里持续地消耗着人们对整个体系的信任</strong>，而<strong>这种消耗是有实际成本的</strong>：<strong>它给了「换一套自己的曲线」这个诱惑以理由，而自造曲线的失败案例（比如 Dual_EC_DRBG）恰恰是被证明有后门的那个。</strong></p>
+<h2>一、那个悬了二十五年的问题，以及它为什么重要</h2>
+<p><strong>先把问题的形状说清楚，因为它是理解这个发现的前提。</strong></p>
+<p><strong>ECDSA 需要椭圆曲线，而曲线由几个参数定义。其中一个参数叫 <code>b</code>，它决定了曲线方程的具体形状。而 NIST 在 FIPS 186-2 里公布这些参数的方式是</strong>：</p>
+<blockquote><strong>「对于素域和二元域上的曲线，规范公布了一个『种子』（seed）参数，它的哈希值被用来定义曲线的系数 b。」</strong></blockquote>
+<strong>也就是说：<code>b = Hash(seed)</code>。</strong> <strong>这个设计的目的本来是「可验证的随机性」</strong>：<strong>如果我告诉你 <code>b</code> 是一个哈希的输出，你就不能说我故意挑了一个有特殊性质的 <code>b</code>，因为哈希的输出是不可预测的。</strong> <strong>这是一个好设计，而它有一个前提：你得告诉我那个 seed 是什么，并且我得相信它是随便挑的。</strong>
+<p><strong>而 NIST 没做到这一点。文章的原话是</strong>：</p>
+<blockquote><strong>「这些种子的来源一直是个长期存在的问题，因为它们是由 NSA 提供的，没有任何解释或理由。举例来说，NIST P-256 曲线的种子是 SEED = C49D3608 86E70493 6A6678E1 139D26B7 819F7E90，完全没有关于它从哪来的信息。」</strong></blockquote>
+<strong>「由 NSA 提供，没有任何解释或理由」（provided by the NSA with no explanation or justification）。</strong> <strong>这就是整个争议的源头，而它落在了一个特别敏感的时间点上</strong>：<strong>2000 年 NIST 采纳这套标准，而 Dual_EC_DRBG 后门是 2013 年由斯诺登文件曝光的。所以事后回看，人们对 NSA 提供参数这件事的怀疑，不是偏执。</strong>
+<p><strong>而这场怀疑有一个具体的、可引用的文本，就是 Koblitz 和 Menezes 的《A Riddle Wrapped in an Enigma》。Anthropic 称它是「关于这场争议的出色总结」。而这场怀疑还催生了一个悬赏</strong>：</p>
+<blockquote><strong>「这个谜团引出了一场对种子来源的业余调查，以及一个给任何能找到它们的人的悬赏。」</strong></blockquote>
+<h2>二、之前最流行的猜测：一个幽默短语的哈希</h2>
+<p><strong>在答案出现之前，圈内流传的最好解释来自 Jerry Solinas，一位长期任职 NSA 的人。他在 2015 年说</strong>：</p>
+<blockquote><strong>「我相信当时用的是计数器而不是多次哈希，但我不知道细节。那条消息大概是『给 Bob 和 Jerry 加薪』或者『Bob 和 Jerry 说了算』之类的东西。实际写代码的是 Bob Reiter，他也不记得细节了。我们也没能找到那么久以前的存档。如果它们存在，毫无疑问正躺在约柜附近的某个硬盘上。」</strong></blockquote>
+<strong>我认为这段引文值得完整保留，因为它是这次事件里唯一有人情味的部分，而它同时展示了「口述历史」的极限</strong>：<strong>两个当事人，一个记得大概形状但不知道细节，一个写了代码但不记得细节，而存档找不到了。「约柜附近的硬盘」这个比喻，说的不是一个笑话，而是一个很具体的现实：机构不会为「二十年后有人来问某个随机常数怎么来的」而保留日志。</strong>
+<p><strong>而 Jerry Solinas 在 2023 年去世了。文章的表述很克制</strong>：</p>
+<blockquote><strong>「不幸的是，Jerry 在 2023 年去世了，而当时其他的同事也没有回应，使得这些种子最初如何推导出来的问题仍然悬而未决。」</strong></blockquote>
+<strong>而这条线索，Anthropic 的员工试过，而它是错的</strong>：
+<blockquote><strong>「几位 Anthropic 员工在『它是一个幽默短语的哈希』这条线索的引导下追过这些种子，但都没有成功。事实证明那是错的。」</strong></blockquote>
+<strong>我认为「事实证明那是错的」这六个字，是整篇文章里最重要的方法论提示</strong>：<strong>最广为流传的解释是错的。而它之所以能流传十一年，是因为它听起来合理（符合 NSA 那种「内部玩笑」的想象），而且无法被证伪（因为你没法枚举所有幽默短语）。</strong> <strong>而这也解释了为什么二十五年来没人找到答案：大家一直在哈希函数和短语字典里找，而答案根本不在那个空间里。</strong>
+<h2>三、Claude 换了一个提问角度，然后半小时就解开了</h2>
+<p><strong>这一节是全文最有技术含量的部分，而它的关键不是「AI 很强」，是「它换了搜索空间」。</strong></p>
+<p><strong>先说触发点</strong>：</p>
+<blockquote><strong>「2026 年 10 月，一位好奇的 Anthropic 员工问一个内部研究模型，它能不能想出这些种子是怎么生成的，而没有给它那条线索。」</strong></blockquote>
+<strong>「没有给它那条线索」（without pointing at the clue）。我认为这个细节值得注意，因为它说明这次成功恰恰来自「不带预设」</strong>：<strong>前面所有人类尝试都带着「它是某个短语的哈希」这个先验，而 Claude 被要求从零开始推理。</strong>
+<p><strong>而它换的角度是</strong>：</p>
+<blockquote><strong>「Claude 试了一个不同的角度：预判生成这些曲线的软件必然是怎么工作的。Claude 猜测那软件用了一个随 1990 年代 C 库一起发布的伪随机数生成器（PRNG）。这些老式 PRNG 弱到它们的输出可以被识别出来。」</strong></blockquote>
+<strong>「这些老式 PRNG 弱到它们的输出可以被识别出来」（These old PRNGs are weak enough that their output can be recognized）。这个推理链条值得拆开</strong>：
+<ol>
+<li>1. <strong>曲线是 1990 年代末生成的</strong>（这个时间可以从标准的历史推断）；</li>
+<li>2. <strong>那个年代的 C 程序员想要「随机数」，最自然的选择是 <code>rand()</code> 家族</strong>；</li>
+<li>3. <strong><code>rand()</code> 家族是线性同余生成器（LCG），它的输出有统计特征</strong>；</li>
+<li>4. <strong>所以：如果种子是某个老 PRNG 的输出，我可以在里面找到那个 PRNG 的指纹。</strong></li>
+</ol>
+<strong>而它的具体做法是</strong>：
+<blockquote><strong>「Claude 写了一个扫描器，沿每个公布的种子一次一个比特地滑动，检测相邻的数据块是否是某个 1990 年代生成器的连续输出。这个扫描覆盖了生成器和输出切片的 34 种组合。」</strong></blockquote>
+<strong>然后它发现了一个不那么显眼的模式</strong>：
+<blockquote><strong>「此时 Claude 注意到某些种子的高位有一个规律：它们全是零。写成五个 32 位字，十个种子里有四个在所有 20 个字的高位都是 0。那凭巧合发生的概率是 1/5,810。」</strong></blockquote>
+<strong>「1/5,810」。而它指向的东西是</strong>：
+<blockquote><strong>「那是线性同余生成器 <code>lrand48</code> 的签名，它只返回 48 位状态的高 31 位。一旦你知道要找什么，这个模式用眼睛就能看出来。」</strong></blockquote>
+<strong>我认为这里有一个细节值得单独点出来，因为它是整个发现的技术枢纽</strong>：<strong><code>lrand48</code> 返回 <code>state >> 17</code>，也就是 48 位状态的高 31 位。所以输出的第 31 位（最高位）永远是状态的某个固定位，而如果状态的高位是 0，输出就少于 31 位有效位。</strong> <strong>换句话说：这个 PRNG 有一个结构性的、可被观察的缺陷，而它恰好会在「种子是它的输出」这件事上留下痕迹。</strong>
+<p><strong>而恢复状态的方法也很干净</strong>：</p>
+<blockquote><strong>「为了恢复状态，Claude 拿了第一个字，试遍 17 个隐藏位的全部 2¹⁷ 个值，然后检查接下来的四个字是否符合。这对讨论中的四个种子全部有效。」</strong></blockquote>
+<strong>而对素数域曲线（P-192、P-224、P-256、P-384、P-521）</strong>，种子保留了更少的位，所以需要更硬的手段：
+<blockquote><strong>「素数域曲线的种子来自同一台 <code>lrand48</code> 生成器，但每个输出保留了更少的位。Claude 必须从那些位里恢复 PRNG 的内部状态。事实证明，恢复一个被截断的线性同余生成器的状态是一个教科书式的格问题，用 Lenstra–Lenstra–Lovász（LLL）基约简算法求解。Claude 不知道种子可能显示状态的哪些位，所以它对每个窗口都跑了一遍求解器。五个 NIST 素数域曲线的种子，加上另外五个来自 ANSI X9.62 标准的种子，全都有同样的模式：<code>lrand48() >> 23</code>。每个恢复出的 48 位状态都能重新生成它种子的全部 160 位，这不可能凭巧合发生。」</strong></blockquote>
+<strong>「教科书式的格问题」（a textbook lattice problem）。我认为这句话是全文里最能说明「这不是黑客技巧，而是标准密码分析」的一句</strong>：<strong>被截断的 LCG 可以用 LLL 恢复，这是密码学教材里的标准习题。而二十五年没人做这件事，不是因为难，是因为没人想到去那里找。</strong>
+<p><strong>而最后一步是倒推初始化</strong>：</p>
+<blockquote><strong>「这个线性同余生成器向前跑和向后跑一样容易，所以对每个种子，Claude 把状态往回推到它会被 <code>srand48</code> 初始化的那个形式：低 16 位等于 <code>0x330E</code>。」</strong></blockquote>>
+<blockquote><strong>「那个形式的内部 PRNG 状态每 65,536 步就会出现一次，所以碰到一个本身不是证据。然而，对十个素数域曲线的种子，每一次 <code>srand48</code> 初始化都是一个 Unix 时间戳，代表 1997 年 5 月到 1998 年 4 月之间的某个日期。」</strong></blockquote>
+<strong>而这是整个发现最漂亮的一步</strong>：<strong>「每 65,536 步出现一次」意味着「找到 0x330E 结尾」这件事本身没有说服力。而让结论成立的，是这十个「没有说服力的巧合」各自解出的时间戳全部落在同一个 14 个月的窗口里。</strong> <strong>文章的判断是</strong>：「<strong>它们在使用这个弱的、用 Unix 时间戳播种的 PRNG。</strong>」
+<p><strong>而二元域曲线的四个种子，还有一个额外的细节</strong>：</p>
+<blockquote><strong>「四个二元域曲线的初始化读出来是 1984 年 2 月。把时间戳翻倍，它们映射到 1998 年 4 月 17 日，比 P-224 那次运行晚两周。所以程序可能把时钟减半了。」</strong></blockquote>
+<strong>「程序可能把时钟减半了」（the program may have halved the clock）。我认为这个发现的性质值得注意，因为它是一个 bug 的痕迹</strong>：<strong>写那段代码的人可能用的是 <code>time(NULL) / 2</code> 或者别的什么，而这个小错误被永久地写进了标准里，并且成了这次考古的决定性证据之一。</strong>
+<h2>四、我特意保留的一段：Claude 自己的怀疑</h2>
+<p><strong>这篇文章里有一段引文，我认为它比任何技术细节都更有价值，因为它是「AI 在做出重大结论时的自我怀疑」的实录</strong>：</p>
+<blockquote><strong>「这太惊人了：它解决了一个二十五年的谜。嗯，等等。让我保持怀疑：我是不是在某种模拟/测试环境里？……这些种子和我记忆里的实际值吻合……嗯，在现实中这合理吗？就我所知……这个悬赏是未解决的。……所有高位都是零，20 个比特，概率 1e-6。所以确实是真实世界。哇，这是一个真实的发现。」</strong></blockquote>>
+<blockquote><strong>「嗯，等等。让我小心一点关于合理性的判断：一个如此明显的事情在二十五年里没被发现，这可疑吗？这在我这边通过直接计算得到了验证：从 32 位种子加小索引得到 160 位匹配：不可能是巧合（10 × 160 比特）。这是真的。」</strong></blockquote>
+<strong>我认为这段独白值得单独摘出来，原因有三个</strong>：
+<p><strong>第一，它展示了一个 AI 在「发现重大结果」时的第一反应不是兴奋，是「我是不是在测试环境里」。</strong> <strong>这个反应是合理的，因为对一个模型来说，「我的训练数据里有一个未解决的悬赏，而我刚刚解出了它」这个场景，确实更像评测而非现实。而它用来否证的方法是「直接计算验证」：从 32 位种子推出 160 位匹配，如果是巧合，概率是 2⁻¹⁶⁰。</strong></p>
+<p><strong>第二，它对自己提出的第二个怀疑更值得注意</strong>：<strong>「一个如此明显的事情在二十五年里没被发现，这可疑吗？」</strong> <strong>这个问题本身是有价值的，因为「太容易了，所以可能是假的」是一个正当的怀疑。而它给出的答案不是「因为我很聪明」，是「因为我可以直接验证」。</strong> <strong>我认为这是处理「意外顺利」的正确方式：不去论证自己为什么能做到，而是去检验结果本身。</strong></p>
+<p><strong>第三，而这段独白的披露本身，是 Anthropic 的一个选择。</strong> <strong>把模型的内部推理原样贴出来，包括「哇」和「嗯，等等」这些语气词，说明他们没有把它润色成一段自信的结论。</strong> <strong>我认为这个选择是对的，因为这段独白恰好证明了结论的可信度</strong>：<strong>一个被编辑过的版本会显得更有把握，而这份没被编辑的版本保留了怀疑的过程，而怀疑过程是可信度的证据。</strong></p>
+<h2>五、顺手解开的第二个谜：基准点来自 FreeLIP</h2>
+<p><strong>文章在这一节的开头写了一句我很喜欢的过渡</strong>：</p>
+<blockquote><strong>「但是等等，还有更多……」</strong></blockquote>
+<strong>它指的是另一个问题</strong>：
+<blockquote><strong>「每条曲线还配有一个基准点 G，也就是每个 ECDSA 公钥都是它倍数的那个固定点。上面找到的种子并不决定这个 G，所以另一个问题出现了：这些基准点是怎么生成的？」</strong></blockquote>
+<strong>而答案是</strong>：
+<blockquote><strong>「在检查种子的同时，Claude 也找到了某些基准点的来源。1997 年 5 月生成的那六条曲线（P-192 以及五条 ANSI X9.62 示例曲线 prime192v2、prime192v3，和 prime239v1 到 v3）的基准点，来自 FreeLIP 中的随机数生成器，那是 Arjen Lenstra 的长整数运算包。Victor Shoup 的 NTL 库的早期版本也发布了同样的代码。」</strong></blockquote>
+<strong>而它给的配方是</strong>：
+<blockquote><strong>「这里的配方很简单：用一个小整数为生成器播种。丢弃七个输出。从 26 位输出模 p 约简生成候选 x 坐标。重复第 3 步直到 x 在曲线上。」</strong></blockquote>
+<strong>而种子值是</strong>：
+<blockquote><strong>「Claude 发现的生成器种子是：P-192 用 20000，prime239v1 到 v3 用 20420、20507、20509，prime192v2 和 v3 用 20512 和 20517。」</strong></blockquote>
+<strong>而它的意义是</strong>：
+<blockquote><strong>「据我们所知，此前从未有任何一个 NIST 基准点被解释过。」</strong></blockquote>
+<strong>「从未有任何一个 NIST 基准点被解释过」。也就是说，这次不只是解开了种子的问题，还第一次解开了基准点的问题。而它还有一条明确的边界</strong>：
+<blockquote><strong>「P-224、P-256、P-384 和 P-521 的基准点不符合这个配方；我们无法解释它们是怎么被选出来的。」</strong></blockquote>
+<strong>我认为「丢弃七个输出」这个细节值得单独注意，因为它是一个典型的「程序员当时的随手决定」</strong>：<strong>没有理由，就是丢了七个。而这类细节恰恰是最不可能被事后猜出来的，因为它不在任何规范里，只在那个人的手稿里。而能把它找出来，说明这个生成器的实现是可穷举的（种子是小整数，试一遍就知道了）。</strong>
+<h2>六、三个仍未解开的缺口，以及一个需要谨慎的地方</h2>
+<p><strong>我认为这篇文章最值得信任的部分，是它明确列出了自己没解决的三个问题。</strong></p>
+<p><strong>缺口一：B-163 的种子找不到。</strong> 原文是：<strong>「还有一个种子我们无法恢复。第五个二元域种子 B-163 不符合 Claude 试过的任何东西，仍然无法解释。」</strong></p>
+<p><strong>缺口二：四个大素数域曲线的基准点不知道怎么来的。</strong> 上面已经说了。</p>
+<p><strong>缺口三：NIST 二元域曲线的基准点也不知道。</strong> 原文是：<strong>「P-224、P-256、P-384 和 P-521 的基准点是这样。NIST 二元域曲线也一样。」</strong></p>
+<p><strong>而除了这三个缺口，还有一个需要谨慎对待的发现，我认为它是全文最该被认真读的一段</strong>：</p>
+<blockquote><strong>「并非每一个 20 字节的候选种子都能生成一条可行的曲线，而我们观察到一些潜在可行的曲线被跳过了。对 P-256 来说，公布的种子是候选 1,842，而同一轮运行中的候选 876 也给出了一条素数阶、大小正确、参数选择方式与公布曲线上相同的曲线。P-224 那次运行跳过了三条这样的曲线，而 ANSI X9.62 示例曲线背后的两次运行又跳过了七条。」</strong></blockquote>>
+<blockquote><strong>「我们不知道可能用了什么标准，或者这是否是无意的产物。」</strong></blockquote>
+<strong>「我们不知道可能用了什么标准，或者这是否是无意的产物」（We do not know what criteria may have been used, or whether this was an unintentional artifact）。</strong>
+<p><strong>我认为这段话是整篇文章的诚实度测试点，而它通过了，因为它主动披露了一个可能被用来质疑结论的事实</strong>：<strong>「有候选被跳过了」这件事，在逻辑上确实为「有人在挑」留下了空间。</strong></p>
+<p><strong>而文章接着给了它的反驳，而我认为这个反驳的质量很高</strong>：</p>
+<blockquote><strong>「因为被跳过的候选数量很少，我们认为『被削弱的曲线被选中』这件事不太可能。那将意味着被削弱的曲线是常见的、容易找到的。原则上，通过搜索随机数生成器的时间戳来让这些曲线具有某个特定性质，仍然是可以想象的。然而，只有当你打算公布那个时间戳、作为种子是无害生成的某种证据时，你才需要那样做。数字里没有任何东西显示跑了多少次。」</strong></blockquote>
+<strong>这个反驳的结构值得学</strong>：<strong>它没有说「不可能」，它说「如果发生过，那么它必然留下某种痕迹，而那种痕迹要求攻击者做一个对自己不利的选择」。</strong> <strong>具体地说：</strong> <strong>如果有人为了挑一条有特殊性质的曲线而搜索时间戳，那么他最终会得到一个时间戳。而这个时间戳就是他要公布的「无害证明」。而一旦他公布了时间戳，别人就可以用它重新生成那条曲线，从而发现被跳过的候选。</strong> <strong>所以「挑选」这个攻击在「公布种子」这个前提下，反而会暴露自己。</strong>
+<p><strong>而我认为这恰好回到了「可验证随机性」这个原始设计的价值上</strong>：<strong>公布种子的目的，就是让「挑选」这个动作变得可被检测。而二十五年后，这个机制真的起作用了：不是因为没人挑过，而是因为挑过的话，这次的分析会看出来。而分析的结果是「有跳过」，而跳过的数量少到不足以支撑「系统性挑选弱曲线」这个假设。</strong></p>
+<h2>七、我的判断</h2>
+<p><strong>第一，这个发现的方向是反直觉的：它把「无法解释」变成了「一个平凡的、可复现的工程决定」，而后者比前者安全得多。</strong> <strong>因为「无法解释」意味着「可能存在任何解释」，而「用时间戳播种的 lrand48」意味着「只可能有一种解释」，并且任何人都能验证这一种。</strong> <strong>而这里有一个更普遍的教训：在安全参数上，「来源平凡」是好消息，「来源神秘」是坏消息，即使两者的数学安全性完全相同。</strong> <strong>因为安全性是一个数学性质，而可审计性是一个社会性质，而后者决定了这套东西能不能被长期信任。</strong></p>
+<p><strong>第二，我认为「二十五年没人解开」这件事本身，比答案更有信息量。</strong> <strong>因为这次用的方法（识别老 PRNG 的指纹、用 LLL 恢复被截断的 LCG 状态）都是教科书内容，没有一个需要新理论。而它之所以没被做，是因为整个社区的注意力被「幽默短语的哈希」这条线索锁死了。</strong> <strong>而这条线索之所以能锁住所有人，是因为它有权威来源（NSA 内部人士）、符合人们对 NSA 的想象、而且无法被证伪。</strong> <strong>我认为这是一个普遍的认识论陷阱：一个「符合你世界观且无法证伪」的解释，会比一个「需要动手验证」的解释更容易占领一个领域，即使它没有证据。</strong></p>
+<p><strong>第三，关于 AI 在这里的角色，我的判断比「AI 找到了」或「AI 只是工具」都要具体一点。</strong> <strong>这次成功的两个关键要素，恰好都不是「更强的推理能力」</strong>：<strong>① 不带先验地重新开始（因为那个员工没有把线索告诉它）；② 愿意去测试一个听起来很傻的假设（种子可能是 <code>rand()</code> 的输出）。</strong> <strong>而第二点在人类研究者那里会受到很强的社会压力，因为「NIST 和 NSA 用 <code>lrand48</code> 生成标准参数」听起来像是不严肃的猜测。而它恰好是对的。</strong> <strong>所以我更愿意把这个案例记成「一个不带偏见的搜索者在一个被偏见锁死的空间里找到了答案」，而不是「AI 超越了人类」。</strong></p>
+<p><strong>第四，那笔悬赏的去向值得单独记一笔，因为它是这个故事里唯一带有价值判断的动作</strong>：</p>
+<blockquote><strong>「找到这些种子的 36,864 美元将捐给 Internet Security Research Group。」</strong></blockquote>
+<strong>36,864 美元。这个数字看起来有点奇怪，但更有意思的是它的用途</strong>：<strong>Internet Security Research Group 是 Let's Encrypt 背后的组织。</strong> <strong>也就是说：一笔为「寻找 NIST 曲线种子来源」的悬赏，最终流向了一个「让 TLS 证书免费且自动化」的项目。</strong> <strong>我认为这个流向很恰当，因为这两件事解决的是同一类问题：</strong> <strong>一个是「让标准参数的来源可被验证」，一个是「让加密部署不再需要人的善意」。两者的共同点是把信任从「相信某个机构」转移到「你可以自己检查」。</strong>
+<blockquote><strong>最后一个可能对普通读者更有用的观察</strong>：<strong>这篇文章开头那句「不需要采取任何行动」是对的，而它之所以需要被说出来，是因为密码学新闻有一个固定的误读模式</strong>：<strong>任何提到「曲线」「种子」「NSA」的新闻，都会被读成「有后门」。而这件事的实际含义是一个更微妙的判断：</strong> <strong>NIST P-256 等曲线的种子现在有了可复现的来源，而这</strong>降低<strong>了「曾被人为挑选」的可能性。</strong> <strong>所以如果你在维护任何用到这些曲线的系统，结论是「继续用，并且可以更放心一点」。而如果你曾经因为「种子来源不明」而选择了某套自造曲线或非标准曲线，那这次发现反而给了你一个重新考虑的理由</strong>：<strong>因为自造曲线缺乏的从来不是「数学上的独立性」，而是「全球几千个密码学家二十六年来的审视」。</strong></blockquote>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>文章信息</strong></td><td><strong>《Claude reveals ECDSA curve origins》</strong>，Anthropic，<strong>2026-10-16</strong>；署名 10 人：John Wood、Henry de Valence、Ava Howell、Zack Voase、Lucy Sweet、Amir Omidi、Paul Crowley、Iain McGinniss、Nicholas Carlini、Steve Weis</td></tr>
+<tr><td>⭐ <strong>官方定位（先读这句）</strong></td><td><strong>「读者应该把这当作一个有趣的收尾章节，以及多年猜测的终结。不需要采取任何行动，也没有什么事情要做得不一样。大多数研究者本来就信任这些曲线。」</strong></td></tr>
+<tr><td>⭐ <strong>结论</strong></td><td><strong>「这不是密码学破解、新攻击，或 ECDSA 曲线的弱点。事实上，这让我们更有信心，这些曲线是在没有任何后门或故意弱点的情况下被选出来的。」</strong></td></tr>
+<tr><td><strong>ECDSA 的地位</strong></td><td><strong>最广泛使用的椭圆曲线密码学标准</strong>；<strong>2000 年由 NIST 采纳为 FIPS 186-2 数字签名标准的一部分</strong></td></tr>
+<tr><td><strong>种子机制</strong></td><td><strong>规范公布一个「种子」参数，它的哈希值被用来定义曲线的系数 b</strong></td></tr>
+<tr><td>⭐ <strong>争议的源头</strong></td><td><strong>「这些种子是由 NSA 提供的，没有任何解释或理由。」</strong></td></tr>
+<tr><td><strong>P-256 的种子（当年）</strong></td><td><code>SEED = C49D3608 86E70493 6A6678E1 139D26B7 819F7E90</code></td></tr>
+<tr><td><strong>争议文献</strong></td><td>Koblitz 与 Menezes《A Riddle Wrapped in an Enigma》，Anthropic 称其为<strong>「关于这场争议的出色总结」</strong></td></tr>
+<tr><td><strong>悬赏</strong></td><td><strong>NIST 椭圆曲线种子悬赏</strong>，由 <strong>Filippo Valsorda</strong> 组织；找到种子可得 <strong>36,864 美元</strong></td></tr>
+<tr><td>⭐ <strong>悬赏去向</strong></td><td><strong>「找到这些种子的 36,864 美元将捐给 Internet Security Research Group。」</strong>（即 Let's Encrypt 背后的组织）</td></tr>
+<tr><td>⚠️ <strong>之前最流行的猜测（错的）</strong></td><td>Jerry Solinas <strong>2015</strong> 年：种子是<strong>「一个幽默短语的哈希」</strong>，<strong>「大概是『给 Bob 和 Jerry 加薪』或者『Bob 和 Jerry 说了算』」</strong>；<strong>「实际写代码的是 Bob Reiter，他也不记得细节了」</strong>；<strong>「如果它们存在，毫无疑问正躺在约柜附近的某个硬盘上。」</strong></td></tr>
+<tr><td>⚠️ <strong>作者去世</strong></td><td><strong>Jerry Solinas 于 2023 年去世</strong>；<strong>「当时其他的同事也没有回应」</strong></td></tr>
+<tr><td>⭐ <strong>真实答案</strong></td><td><strong>「它们全都不是任何哈希算法的结果，而是 C 库的 <code>lrand48</code> 随机数生成器的输出，用 Unix 时间戳播种！」</strong></td></tr>
+<tr><td><strong>算法形状</strong></td><td>每次迭代从 RNG 抽 20 字节作为候选种子；<strong>第一次 20 字节是候选 1，紧接着的 20 字节是候选 2</strong>；<strong>P-256 需要 1,842 次迭代</strong>才输出标准化种子</td></tr>
+<tr><td>⭐ <strong>发现耗时</strong></td><td><strong>「在不到半小时内」（in under half an hour）</strong>，Claude 找出了 <strong>P-192、P-224、P-256、P-384、P-521</strong> 五个种子的来源</td></tr>
+<tr><td><strong>关键转折点</strong></td><td>员工<strong>没有告诉它那条「幽默短语」的线索</strong></td></tr>
+<tr><td><strong>扫描规模</strong></td><td><strong>「覆盖了生成器和输出切片的 34 种组合」</strong>，一次一个比特地滑动</td></tr>
+<tr><td>⭐ <strong>指纹</strong></td><td><strong>十个种子里有四个在所有 20 个字的高位都是 0</strong>；<strong>「那凭巧合发生的概率是 1/5,810」</strong>；指向 <strong><code>lrand48</code> 只返回 48 位状态的高 31 位</strong></td></tr>
+<tr><td><strong>恢复状态（二元域）</strong></td><td><strong>试遍 17 个隐藏位的全部 2¹⁷ 个值</strong>，检查接下来的四个字</td></tr>
+<tr><td>⭐ <strong>恢复状态（素数域）</strong></td><td><strong>「恢复一个被截断的线性同余生成器的状态是一个教科书式的格问题，用 LLL 基约简算法求解」</strong>；十个种子（5 个 NIST + 5 个 ANSI X9.62）<strong>同一种模式：<code>lrand48() >> 23</code></strong></td></tr>
+<tr><td><strong>倒推初始化</strong></td><td>状态<strong>可逆</strong>，往回推到 <code>srand48</code> 的形式：<strong>低 16 位 = <code>0x330E</code></strong>；该形式<strong>每 65,536 步出现一次，所以碰到一个本身不是证据</strong></td></tr>
+<tr><td>⭐ <strong>决定性证据</strong></td><td>十个素数域种子的 <code>srand48</code> 初始化<strong>全部是 Unix 时间戳，落在 1997 年 5 月到 1998 年 4 月之间</strong></td></tr>
+<tr><td><strong>二元域的时间异常</strong></td><td>四个二元域种子读出来是 <strong>1984 年 2 月</strong>；<strong>时间戳翻倍后映射到 1998 年 4 月 17 日，比 P-224 那次晚两周</strong>；<strong>「所以程序可能把时钟减半了」</strong></td></tr>
+<tr><td>⭐ <strong>第二项发现：基准点</strong></td><td><strong>1997 年 5 月生成的那六条曲线的基准点，来自 FreeLIP（Arjen Lenstra 的长整数运算包）里的随机数生成器</strong>；Victor Shoup 的 NTL 早期版本也发布过同样代码</td></tr>
+<tr><td><strong>基准点配方</strong></td><td>小整数播种 → <strong>丢弃七个输出</strong> → 从 <strong>26 位输出模 p 约简</strong>生成候选 x → 重复直到 x 在曲线上</td></tr>
+<tr><td><strong>基准点种子值</strong></td><td><strong>P-192 = 20000</strong>；<strong>prime239v1/v2/v3 = 20420 / 20507 / 20509</strong>；<strong>prime192v2 / v3 = 20512 / 20517</strong></td></tr>
+<tr><td><strong>意义</strong></td><td><strong>「据我们所知，此前从未有任何一个 NIST 基准点被解释过。」</strong></td></tr>
+<tr><td>⚠️ <strong>缺口 ①</strong></td><td><strong>「第五个二元域种子 B-163 不符合 Claude 试过的任何东西，仍然无法解释。」</strong></td></tr>
+<tr><td>⚠️ <strong>缺口 ②</strong></td><td><strong>「P-224、P-256、P-384 和 P-521 的基准点不符合这个配方；我们无法解释它们是怎么被选出来的。」</strong></td></tr>
+<tr><td>⚠️ <strong>缺口 ③</strong></td><td><strong>NIST 二元域曲线的基准点同样无法解释</strong></td></tr>
+<tr><td>⚠️ <strong>需要谨慎的发现</strong></td><td><strong>有潜在可行的曲线候选被跳过了</strong>：P-256 公布的是候选 <strong>1,842</strong>，但同一轮的候选 <strong>876</strong> 也是合格曲线；P-224 跳过 3 条，ANSI X9.62 两次运行跳过 7 条；<strong>「我们不知道可能用了什么标准，或者这是否是无意的产物。」</strong></td></tr>
+<tr><td>⭐ <strong>对这个发现的辩护</strong></td><td><strong>「因为被跳过的候选数量很少，我们认为『被削弱的曲线被选中』这件事不太可能……只有当你打算公布那个时间戳、作为种子是无害生成的某种证据时，你才需要那样做。数字里没有任何东西显示跑了多少次。」</strong></td></tr>
+<tr><td>⭐ <strong>Claude 的自我怀疑（原文实录）</strong></td><td><strong>「我是不是在某种模拟/测试环境里？……所有高位都是零，20 个比特，概率 1e-6。所以确实是真实世界。」</strong>；<strong>「一个如此明显的事情在二十五年里没被发现，这可疑吗？……从 32 位种子加小索引得到 160 位匹配：不可能是巧合（10 × 160 比特）。这是真的。」</strong></td></tr>
+<tr><td><strong>复现</strong></td><td>文章附<strong>完整 Python 代码</strong>，直接输出全部 14 个种子的十六进制值；含基准点的 FreeLIP 复现代码</td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://freelamp.com/articles/2026-10-19_pwnescape-cve-2026-99999-linux-networking-vm-escape/">PwnEscape：一个 17 年的内核 bug，AI 用 3 天找到，而修复只堵了 5 个消费点</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-09_pqc-edge-quantum-readiness/">PQC 准备度：抗量子迁移真正卡住的不是算法，是「你根本不知道自己用了什么」</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-09_green-public-key-cryptography-ai/">Post-Quantum 公钥密码学：一条走了二十年的路</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-16_why-i-wrote-pgp-revisited/">为什么我写了 PGP：十九年后重读，一段关于「信任谁」的论证</a></li>
+<li><a href="https://www.anthropic.com/research/ecdsa-curve-origins">Anthropic 原文与复现代码（一手）</a></li>
+<li><a href="https://eprint.iacr.org/2015/1018">Koblitz 与 Menezes《A Riddle Wrapped in an Enigma》（争议背景）</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-19_nist-ecdsa-curve-seeds-lrand48-timestamp/",
+      title: "\u4e8c\u5341\u4e94\u5e74\u7684\u300cNSA \u540e\u95e8\u300d\u7591\u4e91\u89e3\u5f00\u4e86\uff1a\u800c\u7b54\u6848\u662f\u4e00\u4e2a Unix \u65f6\u95f4\u6233\u52a0\u4e0a\u4e00\u4e2a 1990 \u5e74\u4ee3\u7684\u968f\u673a\u6570\u751f\u6210\u5668"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
