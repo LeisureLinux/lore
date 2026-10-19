@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-19 | [TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」](https://freelamp.com/articles/2026-10-19_tee-attestation-forgery-threat-model/) | TEE · SGX · TDX · SEV-SNP · Nitro · 远程证明 · PCK · 侧信道 · 物理攻击 · TEE.fail · WireTap · BadRAM · 机密计算 · 威胁模型 · 解读 |
 | 2026-10-19 | [机器凭据轮换只是买时间：ZSP 的关键不在「换密码」，在「有没有人负责关掉它」](https://freelamp.com/articles/2026-10-19_zero-standing-privilege-machine-identities/) | 零常驻特权 · ZSP · 机器身份 · NHI · OAuth · 令牌重放 · Salesloft Drift · UNC6395 · PAM · 工作负载身份联合 · OIDC · DPoP · 评论解读 |
 | 2026-10-19 | [PwnEscape：一个 17 年的内核 bug，AI 用 3 天找到，而修复只堵了 5 个消费点](https://freelamp.com/articles/2026-10-19_pwnescape-cve-2026-99999-linux-networking-vm-escape/) | PwnEscape · CVE-2026-99999 · Linux内核 · 虚拟机逃逸 · KVM · Vercel Sandbox · 校验和卸载 · sk_buff · TOCTOU · AI辅助研究 · 解读 |
 | 2026-10-19 | [「Flatpak 是一团安全噩梦」：原文写于 2023 年，而 2026 年的两个证据它都没等到](https://freelamp.com/articles/2026-10-19_flatpak-sandbox-security-debate-flatkill-rebuttal/) | Flatpak · 沙箱安全 · flatkill · Flathub · Portals · 静态权限 · CVE-2026-34078 · 桌面Linux · 应用分发 · 解读 |
