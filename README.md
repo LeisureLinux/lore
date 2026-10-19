@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-19 | [Linux 7.3 是一个「全方位纪录」：两万多个提交、三千多名开发者，而 Phoronix 特意提到了 AI 带来的代码变动](https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/) | Linux内核 · 7.3 · LWN · Phoronix · AI/LLM · 提交量 · sched_ext · failfs · 译文 |
+| 2026-10-19 | [为了省下 62 毫秒，Omarchy 用 Claude Code 重写了一个 XDG 脚本：这个数字比它看起来重要](https://freelamp.com/articles/2026-10-19_omarchy-browser-launch-xdg-optimization/) | Omarchy · Arch Linux · Hyprland · DHH · Claude Code · xdg-settings · 微优化 · 译文 |
+| 2026-10-19 | [闰秒要在 2027 年 5 月 20 日退役了：而 Linux 已经为此准备了十四年](https://freelamp.com/articles/2026-10-19_leap-second-retired-2027-linux-clocks/) | 闰秒 · BIPM · CGPM · UTC · TAI · CLOCK_TAI · NTP · chrony · smearing · 译文 |
 | 2026-10-18 | [从「能免费在车里唱歌」出发，我为什么会撞上三种歌词格式](https://freelamp.com/articles/2026-10-18_lrc-ttml-karaoke-formats/) | LRC · LRC A2 · Enhanced LRC · TTML · TTML2 · DFXP · W3C · 歌词格式 · 卡拉OK · 逐词歌词 · SPL · YRC · QRC · KRC · 私有格式 · 加密 · LRCLIB · Musixmatch · Gramophone · Steve · CarPlay · Android Auto · 免费软件 |
 | 2026-10-17 | [GNOME 这个 AI 聊天应用最值得看的不是功能，而是它把「哪些数据会出去」写成了可核对的句子](https://freelamp.com/articles/2026-10-17_moose-0-6-gnome-ai-chat-privacy/) | Moose · GNOME · GTK4 · Rust · Ollama · 本地AI · Local-Only · keyring · 隐私设计 · 译文 |
 | 2026-10-16 | [不到两周，X.Org 又发了 17 个 CVE：而这一次全在客户端库里，威胁模型反过来了](https://freelamp.com/articles/2026-10-16_xorg-17-cves-client-libraries/) | X.Org · libX11 · libXi · libXrender · CVE · XIM · XKB · 威胁模型 · XWayland · 越界读写 · 译文 |
