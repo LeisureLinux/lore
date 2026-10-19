@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁 — FreeLAMP.com</title>
+  <meta name="description" content="一台 128GB 统一内存、6144 CUDA 核心的 RTX Spark 笔记本，官方只支持 Windows 11。作者本人是 Arch Linux 官方打包者，她把它跑上了 Arch Linux ARM，代价是自己写 ACPI 覆盖、打 hid-asus 补丁、写音频 machine driver。本文梳理她测出的">
+  <meta name="keywords" content="RTX Spark, NVIDIA, N1X, Grace CPU, Blackwell, Arch Linux ARM, aarch64, 统一内存, CUDA, vLLM, Qwen, 7-Zip, ACPI override, hid-asus, NVIDIA开源内核模块, NPU, 本地推理, 量化">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-19">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁">
+  <meta property="og:description" content="一台 128GB 统一内存、6144 CUDA 核心的 RTX Spark 笔记本，官方只支持 Windows 11。作者本人是 Arch Linux 官方打包者，她把它跑上了 Arch Linux ARM，代价是自己写 ACPI 覆盖、打 hid-asus 补丁、写音频 machine driver。本文梳理她测出的">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-19">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="RTX Spark">
+  <meta property="article:tag" content="RTX Spark">
+  <meta property="article:tag" content="NVIDIA">
+  <meta property="article:tag" content="N1X">
+  <meta property="article:tag" content="Grace CPU">
+  <meta property="article:tag" content="Blackwell">
+  <meta property="article:tag" content="Arch Linux ARM">
+  <meta property="article:tag" content="aarch64">
+  <meta property="article:tag" content="统一内存">
+  <meta property="article:tag" content="CUDA">
+  <meta property="article:tag" content="vLLM">
+  <meta property="article:tag" content="Qwen">
+  <meta property="article:tag" content="7-Zip">
+  <meta property="article:tag" content="ACPI override">
+  <meta property="article:tag" content="hid-asus">
+  <meta property="article:tag" content="NVIDIA开源内核模块">
+  <meta property="article:tag" content="NPU">
+  <meta property="article:tag" content="本地推理">
+  <meta property="article:tag" content="量化">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁">
+  <meta name="twitter:description" content="一台 128GB 统一内存、6144 CUDA 核心的 RTX Spark 笔记本，官方只支持 Windows 11。作者本人是 Arch Linux 官方打包者，她把它跑上了 Arch Linux ARM，代价是自己写 ACPI 覆盖、打 hid-asus 补丁、写音频 machine driver。本文梳理她测出的">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁",
+  "description": "来源：putting linux on my rtx spark laptop because i don't have a microsoft accounthttps://josie.lol/blog/linux-rtx-spark（Josephine Pfeiffer，2026-10-19）  一手材料：作者是 Arch Linux 官方打包者（staff package maintaine",
+  "datePublished": "2026-10-19",
+  "dateModified": "2026-10-19",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "RTX Spark, NVIDIA, N1X, Grace CPU, Blackwell, Arch Linux ARM, aarch64, 统一内存, CUDA, vLLM, Qwen, 7-Zip, ACPI override, hid-asus, NVIDIA开源内核模块, NPU, 本地推理, 量化"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁",
+        "item": "https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-19">2026-10-19</div>
+        <h1 class="post-title" itemprop="headline">为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/RTX%20Spark/">RTX Spark</a><a itemprop="keywords" href="/tags/NVIDIA/">NVIDIA</a><a itemprop="keywords" href="/tags/N1X/">N1X</a><a itemprop="keywords" href="/tags/Grace%20CPU/">Grace CPU</a><a itemprop="keywords" href="/tags/Blackwell/">Blackwell</a><a itemprop="keywords" href="/tags/Arch%20Linux%20ARM/">Arch Linux ARM</a><a itemprop="keywords" href="/tags/aarch64/">aarch64</a><a itemprop="keywords" href="/tags/%E7%BB%9F%E4%B8%80%E5%86%85%E5%AD%98/">统一内存</a><a itemprop="keywords" href="/tags/CUDA/">CUDA</a><a itemprop="keywords" href="/tags/vLLM/">vLLM</a><a itemprop="keywords" href="/tags/Qwen/">Qwen</a><a itemprop="keywords" href="/tags/7-Zip/">7-Zip</a><a itemprop="keywords" href="/tags/ACPI%20override/">ACPI override</a><a itemprop="keywords" href="/tags/hid-asus/">hid-asus</a><a itemprop="keywords" href="/tags/NVIDIA%E5%BC%80%E6%BA%90%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97/">NVIDIA开源内核模块</a><a itemprop="keywords" href="/tags/NPU/">NPU</a><a itemprop="keywords" href="/tags/%E6%9C%AC%E5%9C%B0%E6%8E%A8%E7%90%86/">本地推理</a><a itemprop="keywords" href="/tags/%E9%87%8F%E5%8C%96/">量化</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://josie.lol/blog/linux-rtx-spark">putting linux on my rtx spark laptop because i don't have a microsoft account</a>（<strong>Josephine Pfeiffer，2026-10-19</strong>）<br>
+一手材料：作者是 <strong>Arch Linux 官方打包者</strong>（staff package maintainer），文章附<strong>完整的构建脚本与补丁仓库</strong>、<strong>hash 固定的构建输入</strong>、<strong>用她自己的 Arch Package Maintainer 密钥签名的硬件包</strong>，以及全部原始日志。设备是 <strong>ASUS ProArt P16 H7607BA-SE033W</strong>（128 GB RAM、6,144 CUDA 核心、2 TB SSD），运行固件 <strong>H7607BA.300</strong>。<br>
+本文为<strong>解读</strong>。第二节关于「开源内核模块是结构性前提」的分析、第四节的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>文章的标题给了一个听起来很日常的理由</strong>：</p>
+<blockquote><strong>「因为我没有一个 Microsoft 账号，所以把 Linux 装到了我的 RTX Spark 笔记本上」</strong></blockquote>
+<strong>而正文第一句立刻承认了这是半个玩笑</strong>：
+<blockquote><strong>「tl;dr：呜呜微软坏。Arch Linux 能用，在 7-Zip 上和 Windows 打平，并且向操作系统和 CUDA 报告同一个 116.0 GiB 内存池。」</strong></blockquote>
+<strong>我认为这篇实测最值得写的部分，不是那些跑分，是它暴露出的一件事：一台官方只支持 Windows 的 ARM 笔记本，在 Linux 上跑起来需要作者自己补四个层次的东西</strong>：
+<blockquote><strong>「NVIDIA 一直在为 Ubuntu 做内核工作，那给了我一个起点。我把那部分纳入，修好了拿到控制台所需的 ACPI override 分配和 framebuffer 映射，并从笔记本自己的表里推导出 ACPI 覆盖（谢谢 astra）。NVIDIA 驱动和 ASUS 扬声器固件来自互联网上的官方位置（请不要起诉我，电脑公司们）。键盘支持需要一个打过补丁的 <code>hid-asus</code>，而音频需要它自己的 machine driver。」</strong></blockquote>
+<strong>四个层次分别是：ACPI 覆盖、framebuffer 映射、<code>hid-asus</code> 补丁、音频 machine driver。而其中三样需要从设备自己的固件表里反推出来。</strong>
+<p><strong>而这件事的门槛，从作者的身份就能看出来：她不是「一个 Linux 用户」，她是 Arch 官方打包者，之前已经把 Arch 装到过 IBM 大型机上。</strong> 换句话说：<strong>这个移植的难度，不是「照着一篇教程做」，是「你要能自己写这些补丁」。</strong></p>
+<h2>一、这台机器的规格，以及「统一内存」到底改变了什么</h2>
+<p><strong>先把硬件说清楚，因为整篇文章的所有结论都建立在「统一内存」这个属性上。NVIDIA 官方规格页给笔记本版 N1X 的数字是</strong>：</p>
+<table>
+<tr><th>项目</th><th>笔记本 RTX Spark N1X</th></tr>
+<tr><td><strong>GPU</strong></td><td><strong>6,144 核 Blackwell RTX GPU</strong></td></tr>
+<tr><td><strong>CPU</strong></td><td><strong>20 核 NVIDIA Grace CPU</strong></td></tr>
+<tr><td><strong>内存</strong></td><td><strong>最高 128 GB LPDDR5X，统一</strong></td></tr>
+<tr><td><strong>内存位宽</strong></td><td><strong>256-bit</strong></td></tr>
+<tr><td><strong>AI 性能</strong></td><td><strong>1 Petaflop（FP4）</strong></td></tr>
+<tr><td><strong>TDP</strong></td><td><strong>45 - 80 W</strong></td></tr>
+<tr><td><strong>CUDA 能力</strong></td><td><strong>12.1</strong></td></tr>
+<tr><td>⚠️ <strong>官方 OS 支持</strong></td><td><strong>Windows 11</strong></td></tr>
+</table>
+<p><strong>而「统一内存」这个词的含义，作者的实测给出了最清楚的解释，因为它把两个操作系统的处理方式直接对比了</strong>：</p>
+<blockquote><strong>「我的 Linux 运行把 116.0 GiB 同时报告为系统 RAM 和 CUDA 的总量，来自同一个物理池。Windows 把 RAM 分成专用 GPU、共享和仅 CPU 三个区域。CPU 工作负载不能使用专用 GPU 区域，而 GPU 分配不能使用仅 CPU 区域。」</strong></blockquote>
+<strong>「CPU 工作负载不能使用专用 GPU 区域，而 GPU 分配不能使用仅 CPU 区域。」</strong>
+<p><strong>我认为这句话是整篇文章最重要的技术事实，因为它是「统一内存」这个营销词的实际含义</strong>：<strong>物理上是一块内存，而 Windows 在逻辑上把它切成三块互不相通的区域。</strong> <strong>于是「128 GB」这个数字，在 Windows 上从来不是「CPU 和 GPU 都能用 128 GB」，而是「两者各自能用的部分加起来是 128 GB，但不能重叠」。</strong></p>
+<p><strong>而作者给的具体对比是</strong>：</p>
+<blockquote><strong>「Windows 的 NVIDIA app 让你改变专用预留并重启；Frandroid 的 128 GB ProArt P16 达到了 96 GiB。CUDA 可以通过从共享 RAM 分配而超出那个数，受制于 Windows 的内存预算。」</strong></blockquote>>
+<blockquote><strong>「用 91 GiB 的专用预留，Frandroid 的 Windows 设置报告 CUDA 总量为 109.7 GiB，包含共享内存。我的 Linux 设置报告 116.0 GiB，大约多 6.3 GiB。」</strong></blockquote>
+<strong>而她对「为什么在意」的解释，比那 6.3 GiB 本身更重要</strong>：
+<blockquote><strong>「我在意的是让那个大内存池也能用于 CPU 工作，而不用在工作负载之间移动预留滑块并重启。」</strong></blockquote>
+<strong>「不用在工作负载之间移动预留滑块并重启」（without moving the reservation slider and rebooting between workloads）。</strong>
+<p><strong>我认为这是整篇文章里最实用的一句，因为它是「统一内存」在 Linux 上唯一的、也是最关键的收益</strong>：<strong>Windows 上那个滑块是一个需要重启的静态划分，而 Linux 上没有滑块，因为内核的内存管理把整个池交给两个处理器共享。</strong> <strong>所以收益不是「多了 6.3 GiB」，是「不用为不同工作负载做静态划分」。</strong></p>
+<h2>二、一个作者没明说的前提：Blackwell 只能跑开源内核模块</h2>
+<p><strong>这一节是我补的，而我认为它是整件事里最值得单独指出的技术事实，因为它改变了对「NVIDIA 对 Linux 态度」这个常见叙事的判断。</strong></p>
+<p><strong>作者用的是 <code>nvidia-open</code> 驱动 615.78.08。而她没解释为什么是这个而不是专有驱动。我去 NVIDIA 的官方驱动 README 里查了，答案是</strong>：</p>
+<blockquote><strong>「专有版本支持 GPU 架构 Turing、Ampere、Ada 和 Hopper。Blackwell 及之后的架构只被开源内核模块支持。」</strong></blockquote>
+<strong>「Blackwell 及之后的架构只被开源内核模块支持」（Blackwell and later are only supported by the open kernel modules）。</strong>
+<p><strong>我认为这句话的意义比它看起来大，因为它意味着</strong>：<strong>这台 RTX Spark 能在 Linux 上跑起来，在驱动层面有一个结构性前提：NVIDIA 在 2022 年开始开源内核模块，而到 Blackwell 时代，专有闭源内核模块已经不再覆盖新架构了。</strong> <strong>换句话说：作者不需要和 NVIDIA 的闭源驱动搏斗，因为那个选项已经不存在了。</strong></p>
+<p><strong>而这与历史形成了一个很有意味的对照。</strong> <strong>十年前，Linux 用户面对的经典问题是「NVIDIA 的闭源驱动装不上新内核」；而 <code>nouveau</code> 因为缺乏固件签名支持而无法做电源管理。</strong> <strong>而现在的局面是：新硬件</strong>只<strong>提供开源内核模块。</strong> <strong>这个转向的原因不是利他，而是架构：Blackwell 需要 GSP 固件、需要 HMM（异构内存管理）、需要 confidential computing，而这些东西在闭源内核模块里无法维护</strong>，因为<strong>它们需要和内核的内存管理深度集成，而闭源模块没法跟上内核的 API 变化。</strong></p>
+<p><strong>而 NVIDIA 的 README 列出的「只在开源模块里可用的功能」恰好印证了这一点</strong>：</p>
+<ul>
+<li><strong>NVIDIA Confidential Computing</strong></li>
+<li><strong>Magnum IO GPUDirect Storage（GDS）</strong></li>
+<li><strong>Heterogeneous Memory Management（HMM）</strong></li>
+<li><strong>CPU affinity for GPU fault handlers</strong></li>
+<li><strong>DMABUF support for CUDA allocations</strong></li>
+</ul>
+<strong>其中 HMM 和 DMABUF 这两项，恰好是「统一内存」这个功能在 Linux 上的技术基础</strong>：<strong>HMM 让 GPU 能直接访问 CPU 页表里的内存，DMABUF 让 CUDA 分配能被其他设备共享。</strong> <strong>所以「统一内存」在 Linux 上不是靠驱动里的一行开关，是靠这两个内核子系统，而它们只在开源模块里可用。</strong>
+<p><strong>而 Arch Linux ARM 的 aarch64 仓库里也已经有对应的包</strong>（<code>nvidia-open-dkms</code> 615.71.09），说明这条路径不是作者一个人的特例，而是有一个正在跟进的打包链。**</p>
+<h2>三、三组实测数据，而作者对每一组都标了它的局限</h2>
+<p><strong>我认为这篇实测最值得学的地方，是作者对每一个对比都主动说明了「这两个数不可直接相比」。这在跑分文章里很少见。</strong></p>
+<h3>CPU：7-Zip，与 Windows 几乎打平</h3>
+<p><strong>测试条件写得很清楚</strong>：</p>
+<blockquote><strong>「我在 10 月 19 日在原生 Arch Linux ARM 上跑了这套测试，内核 7.0.0-1022-nvidia，NVIDIA 驱动 615.78.08。笔记本插着电，选择了性能配置。CPU 对比用的是已公布的 Windows 结果。」</strong></blockquote>
+<blockquote><strong>「CPU 测试是原生 ARM64 7-Zip 26.04，固定 32 MiB 字典。每个线程数跑一次预热和三次测量，取中位数。」</strong></blockquote>
+<strong>单线程的原始数据是</strong>：<strong>压缩 6.18 MiB/s，解压 118.26 MiB/s</strong>；<strong>20 线程</strong>：<strong>压缩 141.77 MiB/s，解压 1,629.60 MiB/s</strong>。
+<p><strong>而对比表的结论是</strong>：</p>
+<table>
+<tr><th>7-Zip 工作负载</th><th>她的 ProArt，Linux（GIPS）</th><th>HP OmniBook，Windows（GIPS）</th><th>差异</th></tr>
+<tr><td><strong>单线程压缩</strong></td><td><strong>7.221</strong></td><td><strong>7.31</strong></td><td><strong>−1.2%</strong></td></tr>
+<tr><td><strong>单线程解压</strong></td><td><strong>10.779</strong></td><td><strong>10.87</strong></td><td><strong>−0.8%</strong></td></tr>
+<tr><td><strong>20 线程压缩</strong></td><td><strong>165.754</strong></td><td><strong>157.9</strong></td><td><strong>+5.0%</strong></td></tr>
+<tr><td><strong>20 线程解压</strong></td><td><strong>148.471</strong></td><td><strong>144.5</strong></td><td><strong>+2.7%</strong></td></tr>
+</table>
+<p><strong>而她立刻标了局限</strong>：</p>
+<blockquote><strong>「单线程基本上是平手。用全部 20 个线程，我的 Linux 设置压缩快约 5%，解压快约 3%。HP 的评测没有指明它的 7-Zip 版本或字典大小，所以这些百分比比较的是两台笔记本设置。」</strong></blockquote>
+<strong>「比较的是两台笔记本设置」（compare the two laptop setups）。</strong> <strong>这句话很重要，因为它拒绝了一个更容易做出的结论（「Linux 比 Windows 快 5%」），而选择了更准确的表述（「这两台机器有 5% 的差别，而原因没有被隔离」）。</strong>
+<p><strong>而她还做了第二个交叉验证，我认为这一段最能体现她的严谨</strong>：</p>
+<blockquote><strong>「ComputerBase 也测过一台带 20 核 N1X 的 ProArt P16。换算成 GIPS，它的 Windows 7-Zip 得分是 155.774；我三次运行的中位数总和是 157.084。他们的结果落在我三次运行的范围 155.759 到 157.193 GIPS 之内。他们的机器是 64 GB 配置，跑 7-Zip 26.00，而图表没有给出字典大小。」</strong></blockquote>
+<strong>「他们的结果落在我三次运行的范围之内」。</strong> <strong>用一个第三方对</strong>同类硬件<strong>的测试，来验证自己的测量是否落在合理区间，这是一个很扎实的做法，而它得出的结论比「我比 Windows 快」更有说服力：</strong> <strong>ARM64 上 Linux 和 Windows 的 7-Zip 性能在同一水平，而两台机器之间的差别在测量噪声能解释的范围内。</strong>
+<h3>内存：Linux 多 6.3 GiB，而这不是重点</h3>
+<p><strong>这一节的结论我在第一节已经讲了，而它的性质值得补充一句</strong>：<strong>那 6.3 GiB（116.0 vs 109.7）不是一个「Linux 更省内存」的证据，而是「Windows 的静态划分有开销」的证据。</strong> <strong>因为那个差值的来源是分区边界：Windows 必须预留一块专用 GPU 区域，而预留的部分对 CPU 不可用；Linux 不预留，所以整个池对两边都可用。</strong></p>
+<h3>推理：约 30 tokens/s，而她指出这个对比不能归因于 OS</h3>
+<p><strong>她跑的是真实负载，不是跑分</strong>：</p>
+<blockquote><strong>「我在一个原生 ARM64 容器里，用带 B12X CUDA kernel 的 vLLM 跑了 NVIDIA 的 Qwen3.8-Flash-Next-FP4-Local checkpoint，用混合量化和 FP8 KV cache。这次运行我关掉了 thinking。」</strong></blockquote>
+<strong>而资源占用很具体</strong>：
+<blockquote><strong>「在加载模型之前，Linux 报告 110.9 GiB 可用 RAM。vLLM 记录模型加载 68.2 GiB，又给 KV cache 分配了 21.1 GiB。这在笔记本上几乎分配了 90 GiB 给模型和 KV cache。」</strong></blockquote>>
+<blockquote><strong>「模型加载和编译花了约 16 分钟才到第一个请求。」</strong></blockquote>
+<strong>「几乎 90 GiB 分配给模型和 KV cache」（nearly 90 GiB allocated to the model and KV cache on a laptop）。</strong>
+<p><strong>我认为这个数字是整篇文章里最有冲击力的一个，因为它是「统一内存」的实际用途</strong>：<strong>一台笔记本，单个进程占了 90 GiB。而这件事在传统笔记本上不可能，因为显存最大也就 24 GB 左右。</strong></p>
+<p><strong>而三个任务的实测结果（都是三次取中位数，都有已知答案可核对）</strong>：</p>
+<table>
+<tr><th>任务</th><th>输入 token</th><th>首 token 中位数（秒）</th><th>完整响应中位数（秒）</th><th>检查通过</th></tr>
+<tr><td><strong>Python 代码审查</strong></td><td><strong>208</strong></td><td><strong>0.316</strong></td><td><strong>4.008</strong></td><td><strong>3/3</strong></td></tr>
+<tr><td><strong>在 128 条事件日志里找失败</strong></td><td><strong>9,775</strong></td><td><strong>4.532</strong></td><td><strong>5.768</strong></td><td><strong>3/3</strong></td></tr>
+<tr><td><strong>付款备注提取为 JSON</strong></td><td><strong>87</strong></td><td><strong>0.256</strong></td><td><strong>2.035</strong></td><td><strong>3/3</strong></td></tr>
+</table>
+<p><strong>而她对这个日志任务的分析，我认为是全篇最有洞察力的一段</strong>：</p>
+<blockquote><strong>「那个事件任务读了近 10,000 个 token，在 6 秒内返回了正确的请求、原因和下一步动作。它的答案只有 39 个 token 长，整个请求算下来是 6.8 tokens/s。大部分等待花在了处理 prompt 上，所以对这个任务来说，响应时间比 tokens/s 这个数字告诉我更多。」</strong></blockquote>
+<strong>「对这个任务来说，响应时间比 tokens/s 这个数字告诉我更多」（the response time tells me more than the tokens/s figure）。</strong>
+<p><strong>这句话值得停一下，因为它指出了「tokens/s」这个指标的一个根本问题</strong>：<strong>当输出很短而输入很长时，tokens/s 会被 prompt 处理时间摊薄，于是它不再反映用户感知的延迟。</strong> <strong>具体到这次：6.8 tokens/s 听起来很慢，而实际体验是「6 秒给你一个正确答案」。</strong> <strong>所以正确的指标是「首 token 延迟 + 总响应时间」，而 tokens/s 只在「长生成」的场景里有意义。</strong></p>
+<p><strong>而生成速度的估算，她给了公式</strong>：</p>
+<blockquote><strong>「对代码审查，我估算生成速度为 <code>(输出 tokens − 1) / (响应时间 − 首 token 时间)</code>，两个时间都以秒计。这包含流式开销。」</strong></blockquote>
+<strong>而对比 Windows 的结论是</strong>：
+<table>
+<tr><th>系统</th><th>量化和运行时</th><th>生成速度（tokens/s）</th></tr>
+<tr><td><strong>她的 ProArt P16，Linux</strong></td><td><strong>FP4-Local，vLLM B12X</strong></td><td><strong>30.9（三次中位数）</strong></td></tr>
+<tr><td><strong>Frandroid 的 ProArt P16，Windows</strong></td><td><strong>UD-IQ4_XS，llama.cpp</strong></td><td><strong>29.4 和 31.4</strong></td></tr>
+</table>
+<p><strong>而她的免责声明写得很清楚</strong>：</p>
+<blockquote><strong>「两台 ProArt 设置都在 30 tokens/s 左右。推理方面，Frandroid 用了 85 GiB 专用预留和 262,144 token 的上下文上限；我的上下文上限是 32,768 token。prompt、量化、运行时和计时方法都不同。这比较的是两个能工作的配置；它没有隔离操作系统的效果。」</strong></blockquote>
+<strong>「它没有隔离操作系统的效果」（it doesn't isolate the effect of the OS）。</strong> <strong>我认为这句免责声明是整篇实测最有价值的一句话，因为它是「我做了对比，而我不声称我证明了因果」的诚实表述。</strong> <strong>而它同时暗示了一件作者没展开的事：</strong> <strong>那个 262,144 vs 32,768 的上下文差距（8 倍），恰好来自 Windows 那块 85 GiB 专用预留。因为上下文（KV cache）要占显存，而 Linux 那边没有显式预留，但她只开了 32K。</strong> <strong>所以两台机器在</strong>同一件事<strong>上的配置是不同的，而这正是「统一内存」在两边使用方式不同的一个缩影。</strong>
+<h3>稳定性：十分钟 150 个请求，全部通过</h3>
+<p><strong>这一段我认为是全文最实用的数据，因为它是「能不能长期用」的答案</strong>：</p>
+<blockquote><strong>「然后我把它放在循环里跑这三个任务，一次一个请求，跑了十分钟。它完成了 150 个请求，每个 50 个，而每个答案都通过了检查。中位响应时间是代码审查 4.036 秒、日志 5.921 秒、提取 2.046 秒。比较每个任务的第一次十次和最后十次重复，中位响应时间增长不到 1.6%。」</strong></blockquote>>
+<blockquote><strong>「全部 171 个被测量的响应都通过了检查。这是三个 prompt 用确定性解码重复；代码审查的检查验证回归输出。我保留了每一个答案和原始事件流，并用它们核对摘要。」</strong></blockquote>
+<strong>「中位响应时间增长不到 1.6%」（median response times grew by less than 1.6%）。</strong>
+<p><strong>这个数字很重要，因为它排除了「跑久了会掉速」这个对笔记本推理最常见也最合理的怀疑</strong>：<strong>十分钟、150 个请求、延迟增长 <1.6%，说明散热和功耗管理能撑住持续负载。</strong> <strong>而这在一台 45 到 80 W 的笔记本上不是理所当然的事。</strong></p>
+<h2>四、构建这个系统的实际代价，以及一个关于「签名」的细节</h2>
+<p><strong>作者对构建过程的描述很简短，但每一条都是要花时间的活</strong>：</p>
+<blockquote><strong>「我把它打成一个可启动 U 盘，并扩展了上游 Archinstall 4.5 来安装硬件支持。仓库里有构建脚本和补丁，包括</strong>转储你自己的 ACPI 表<strong>和</strong>从 ASUS 的驱动包本地提取扬声器固件<strong>的步骤。我的跑的是固件 H7607BA.300。」</strong></blockquote>
+<strong>注意这里的两个「自己动手」</strong>：<strong>转储自己的 ACPI 表、从厂商驱动包里自己提取固件。</strong> <strong>这两件事之所以必须自己做，是因为厂商不提供 Linux 版本，而这些数据只在 Windows 驱动包里。</strong>
+<p><strong>而我认为这一段里最值得单独指出的是「签名」那句，因为它回答了一个很实际的问题：你怎么相信这个包含闭源固件的系统</strong>：</p>
+<blockquote><strong>「构建输入是 hash 固定的。我周末拼起来的硬件包是用我的 Arch Linux Package Maintainer 密钥签名的，而 ACPI 覆盖来自笔记本本身。」</strong></blockquote>
+<strong>「构建输入是 hash 固定的」（The build inputs are hash pinned）。</strong> <strong>「ACPI 覆盖来自笔记本本身」（the ACPI overrides come from the laptop itself）。</strong>
+<p><strong>这两句合起来构成了一个完整的信任链说明</strong>：</p>
+<ul>
+<li><strong>hash 固定</strong>：每个输入是什么，可以被独立验证；</li>
+<li><strong>包签名</strong>：用她自己的 Arch 官方打包者密钥签，所以你可以核对「这确实是她做的」，并且通过她的身份来评估可信度；</li>
+<li><strong>ACPI 覆盖来自设备本身</strong>：不需要你相信她从别处拿来的表，你可以自己 dump 自己机器上的。</li>
+</ul>
+<strong>我认为这个组合是开源硬件支持里一个很好的模式，因为它在「闭源固件无法审计」这个不可避免的限制下，把可验证性推到了能做到的最大程度</strong>：<strong>你不能验证 NVIDIA 的驱动和 ASUS 的固件在做什么，但你可以验证「她给你的是她签的那个东西，而且那张表来自你自己的机器」。</strong>
+<p><strong>而系统的其余部分是很常规的</strong>：</p>
+<blockquote><strong>「显示器跑 3840 × 2400 和 120 Hz，我用 NetworkManager、PipeWire，以及带 NVIDIA CDI 的 rootless Podman。」</strong></blockquote>>
+<blockquote><strong>「安装器用 <code>IgnorePkg</code> 固定内核、NVIDIA、电源管理和固件包，而普通包继续从 Arch Linux ARM 更新。」</strong></blockquote>
+<strong><code>IgnorePkg</code> 这个选择值得注意，因为它是这个移植的运维现实</strong>：<strong>硬件相关的四类包必须固定版本（因为它们之间有依赖关系），而系统其余部分可以照常滚动更新。</strong> <strong>这是一种折中：你不能享受「全都是最新」的 Arch 体验，但你也不会因为内核升级导致显卡挂掉。</strong>
+<h2>五、我的判断</h2>
+<p><strong>第一，这篇文章真正的价值不在于「Linux 能跑了」，而在于它量化了「Windows 专属」这个标签的实际成本。</strong> <strong>那 116.0 vs 109.7 GiB 的差距是 6.3 GiB，而那 6.3 GiB 的来源不是 Linux 更省，是 Windows 必须为 GPU 预留一块 CPU 用不了的区域。</strong> <strong>而这个差别的实际意义，作者一句话说清了：「不用在工作负载之间移动预留滑块并重启」。</strong> <strong>换句话说：Windows 让你在「给 GPU 多少」和「给 CPU 多少」之间做一个需要重启的选择，而 Linux 不做这个选择。</strong> <strong>在一个「统一内存」被当作核心卖点的硬件上，这个差别的荒谬感很强：</strong> <strong>硬件统一了，而 Windows 又用软件把它切开了。</strong></p>
+<p><strong>第二，那个「Blackwell 只能用开源内核模块」的事实，说明这次移植的成功有一半要归功于 NVIDIA 三年前的转向，而作者没提这件事。</strong> <strong>我认为这一点值得单独写出来，因为它纠正了一个常见的误读</strong>：<strong>这次能跑起来，不是因为有人在 Linux 上「破解」了闭源驱动，而是因为</strong>在新硬件上闭源驱动已经不存在了<strong>。</strong> <strong>而那个转向的动因是技术性的（HMM、DMABUF、confidential computing 都需要和内核深度集成），不是道德性的。</strong> <strong>所以一个更准确的结论是：</strong> <strong>NVIDIA 的 Linux 支持变好了，因为它别无选择，而用户是受益者。</strong></p>
+<p><strong>第三，那三组数据的对比方法，比数据本身值得学。</strong> <strong>她对每一个对比都做了一件事：指出两边不可比的地方。</strong> <strong>7-Zip 那条是「HP 的评测没指明版本和字典大小」，推理那条是「prompt、量化、运行时、上下文长度、计时方法都不同，所以它没有隔离 OS 的效果」。</strong> <strong>而她没有停在「不可比」上，她做了两件补救：</strong> <strong>① 用 ComputerBase 对同类硬件的独立测试来交叉验证自己的数字是否落在合理区间；② 用「十分钟 150 个请求、延迟增长 <1.6%」这种</strong>自己可复现<strong>的稳定性测试，来回答「能不能长期用」这个比峰值性能更实际的问题。</strong> <strong>我认为这是「个人实测」这个体裁能达到的高标准：</strong> <strong>我不声称我证明了因果，但我把我能控制的变量控制住了，并且把我的数据全部公开。</strong></p>
+<p><strong>第四，关于「谁适合做这件事」，作者的身份给出了最诚实的答案。</strong> <strong>她是 Arch 官方打包者、把 Arch 装过 IBM 大型机、周末两天写出硬件支持包、能用 radare2 读固件。</strong> <strong>所以这篇实测的正确读法不是「你也可以做到」，而是「这件事有一个明确的门槛，而门槛在 ACPI 覆盖和驱动补丁这一层」。</strong> <strong>而她的仓库把这个门槛降下来了：</strong> <strong>现在别人不需要重新推导 ACPI 覆盖，只需要 dump 自己的表、跑她的脚本。</strong> <strong>我认为这才是这类工作的真正价值：</strong> <strong>第一个人付全价，后面的人付折价。</strong></p>
+<blockquote><strong>最后一个判断，关于这台机器本身适不适合买</strong>：<strong>如果你的目标是「在笔记本上跑接近 100 GiB 的模型」，那这篇文章给的数据是：能跑，约 30 tokens/s，十分钟持续负载不掉速，代价是 8% 的性能要和「不开滑块重启」这件事做等价交换。而如果你的目标是「一台日常用的 Linux 笔记本」，那结论要谨慎得多：</strong> <strong>你需要接受 <code>IgnorePkg</code> 固定四个包、接受自己维护 ACPI 覆盖、接受固件从厂商驱动包里提取。</strong> <strong>而这些成本不是一次性的，它们会随着每次内核升级重新出现。</strong> <strong>作者自己就是这个移植的作者，而她写这篇文章的语气是「我做到了」，不是「你也该这么做」。而我认为这个语气的选择是对的。</strong></blockquote>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>文章</strong></td><td><strong>《putting linux on my rtx spark laptop because i don't have a microsoft account》</strong>，Josephine Pfeiffer，<strong>2026-10-19</strong></td></tr>
+<tr><td><strong>作者身份</strong></td><td><strong>Arch Linux 官方打包者</strong>（staff package maintainer）；已经把 Arch 装到过 <strong>IBM 大型机</strong>；在 Hugging Face 发布自己的 GGUF 量化，<strong>过去一个月超过 160,000 次下载</strong></td></tr>
+<tr><td><strong>设备</strong></td><td><strong>ASUS ProArt P16 H7607BA-SE033W</strong>，<strong>128 GB RAM</strong>、<strong>6,144 CUDA 核心</strong>、<strong>2 TB SSD</strong>，固件 <strong>H7607BA.300</strong></td></tr>
+<tr><td>⭐ <strong>官方规格（NVIDIA 页）</strong></td><td><strong>6,144 核 Blackwell RTX GPU</strong> + <strong>20 核 Grace CPU</strong>；<strong>最高 128 GB LPDDR5X 统一内存</strong>；<strong>256-bit</strong>；<strong>1 Petaflop FP4</strong>；<strong>TDP 45-80 W</strong>；<strong>CUDA 能力 12.1</strong>；<strong>官方 OS 支持：Windows 11</strong></td></tr>
+<tr><td>⭐ <strong>作者的环境</strong></td><td><strong>内核 7.0.0-1022-nvidia</strong>，<strong>NVIDIA 驱动 615.78.08</strong>，<strong>Arch Linux ARM</strong>（把 Arch 包移植到 ARM 的独立项目）+ 硬件支持层</td></tr>
+<tr><td><strong>显示</strong></td><td><strong>3840 × 2400 @ 120 Hz</strong></td></tr>
+<tr><td><strong>软件栈</strong></td><td><strong>NetworkManager、PipeWire、rootless Podman + NVIDIA CDI</strong></td></tr>
+<tr><td><strong>版本固定</strong></td><td><strong>安装器用 <code>IgnorePkg</code> 固定内核、NVIDIA、电源管理、固件包</strong>；普通包继续从 Arch Linux ARM 更新</td></tr>
+<tr><td>⭐ <strong>需要自己补的四层</strong></td><td><strong>① ACPI override 分配</strong>；<strong>② framebuffer 映射</strong>（拿到控制台）；<strong>③ 从笔记本自己的表推导 ACPI 覆盖</strong>；<strong>④ 打补丁的 <code>hid-asus</code>（键盘）</strong>；<strong>⑤ 音频自己的 machine driver</strong></td></tr>
+<tr><td><strong>固件来源</strong></td><td><strong>NVIDIA 驱动和 ASUS 扬声器固件来自「互联网上的官方位置」</strong>；<strong>仓库含从 ASUS 驱动包本地提取扬声器固件的步骤</strong></td></tr>
+<tr><td>⭐ <strong>构建信任链</strong></td><td><strong>「构建输入是 hash 固定的」</strong>；<strong>硬件包用她自己的 Arch Linux Package Maintainer 密钥签名</strong>；<strong>「ACPI 覆盖来自笔记本本身」</strong></td></tr>
+<tr><td>⭐ <strong>我补的关键前提</strong></td><td>NVIDIA 官方 README：<strong>「专有版本支持 GPU 架构 Turing、Ampere、Ada 和 Hopper。Blackwell 及之后的架构只被开源内核模块支持。」</strong></td></tr>
+<tr><td><strong>只在开源模块里可用的功能</strong></td><td><strong>Confidential Computing、GPUDirect Storage、HMM（异构内存管理）、GPU fault handler 的 CPU 亲和性、CUDA 分配的 DMABUF 支持</strong></td></tr>
+<tr><td><strong>Arch Linux ARM 侧现状</strong></td><td>aarch64 仓库已有 <strong><code>nvidia-open-dkms</code> 615.71.09</strong>（2026-09-11 构建）</td></tr>
+<tr><td>⭐ <strong>统一内存的实际差别</strong></td><td><strong>Linux：116.0 GiB 同时报告为系统 RAM 和 CUDA 总量，同一个物理池</strong>；<strong>Windows：分成专用 GPU / 共享 / 仅 CPU 三个区域，CPU 不能用专用区，GPU 不能用仅 CPU 区</strong></td></tr>
+<tr><td><strong>Windows 侧的对照</strong></td><td>Frandroid 的 128 GB ProArt P16 达到 <strong>96 GiB</strong> 专用预留；<strong>用 91 GiB 专用预留时 CUDA 总量 109.7 GiB</strong>（含共享内存）</td></tr>
+<tr><td>⭐ <strong>作者最在意的</strong></td><td><strong>「我在意的是让那个大内存池也能用于 CPU 工作，而不用在工作负载之间移动预留滑块并重启。」</strong></td></tr>
+<tr><td><strong>7-Zip 测试条件</strong></td><td><strong>原生 ARM64 7-Zip 26.04</strong>，<strong>固定 32 MiB 字典</strong>，每线程数 <strong>1 次预热 + 3 次测量取中位数</strong>，插电 + 性能配置</td></tr>
+<tr><td><strong>7-Zip 原始数据</strong></td><td><strong>1 线程：压缩 6.18 MiB/s、解压 118.26 MiB/s</strong>；<strong>20 线程：压缩 141.77 MiB/s、解压 1,629.60 MiB/s</strong></td></tr>
+<tr><td><strong>7-Zip 对比（GIPS）</strong></td><td>单线程压缩 <strong>7.221 vs 7.31（−1.2%）</strong>；单线程解压 <strong>10.779 vs 10.87（−0.8%）</strong>；20 线程压缩 <strong>165.754 vs 157.9（+5.0%）</strong>；20 线程解压 <strong>148.471 vs 144.5（+2.7%）</strong></td></tr>
+<tr><td>⚠️ <strong>对比局限（作者自述）</strong></td><td><strong>「HP 的评测没有指明它的 7-Zip 版本或字典大小，所以这些百分比比较的是两台笔记本设置。」</strong></td></tr>
+<tr><td><strong>交叉验证</strong></td><td>ComputerBase 的 ProArt P16 Windows 得分换算 <strong>155.774 GIPS</strong>；<strong>她的三次中位数 157.084</strong>；<strong>「他们的结果落在我三次运行的范围 155.759 到 157.193 GIPS 之内」</strong></td></tr>
+<tr><td>⭐ <strong>推理配置</strong></td><td><strong>Qwen3.8-Flash-Next-FP4-Local</strong>，<strong>vLLM + B12X CUDA kernel</strong>，原生 ARM64 容器，<strong>混合量化 + FP8 KV cache</strong>，关掉 thinking</td></tr>
+<tr><td>⭐ <strong>资源占用</strong></td><td>加载前 <strong>110.9 GiB 可用</strong>；模型加载 <strong>68.2 GiB</strong> + KV cache <strong>21.1 GiB</strong> = <strong>近 90 GiB</strong>；<strong>首次请求前耗时约 16 分钟</strong></td></tr>
+<tr><td><strong>三个任务（三次中位数）</strong></td><td>代码审查（208 输入）：<strong>首 token 0.316 s，完整 4.008 s，3/3 通过</strong>；事件日志（9,775 输入）：<strong>4.532 s / 5.768 s，3/3</strong>；付款备注提取（87 输入）：<strong>0.256 s / 2.035 s，3/3</strong></td></tr>
+<tr><td>⭐ <strong>作者的指标洞察</strong></td><td><strong>「它的答案只有 39 个 token 长，整个请求算下来是 6.8 tokens/s。大部分等待花在了处理 prompt 上，所以对这个任务来说，响应时间比 tokens/s 这个数字告诉我更多。」</strong></td></tr>
+<tr><td><strong>生成速度公式</strong></td><td><strong><code>(输出 tokens − 1) / (响应时间 − 首 token 时间)</code></strong>，含流式开销</td></tr>
+<tr><td><strong>生成速度对比</strong></td><td><strong>她（Linux，FP4-Local + vLLM B12X）：30.9 tokens/s</strong>；<strong>Frandroid（Windows，UD-IQ4_XS + llama.cpp）：29.4 和 31.4</strong></td></tr>
+<tr><td>⚠️ <strong>推理对比局限（作者自述）</strong></td><td><strong>上下文上限 32,768（她）vs 262,144（Frandroid）</strong>；prompt、量化、运行时、计时方法都不同；<strong>「这比较的是两个能工作的配置；它没有隔离操作系统的效果。」</strong></td></tr>
+<tr><td><strong>并发</strong></td><td>四个代码审查同时发：<strong>中位批次 5.314 s，合计 86.6 输出 tokens/s</strong>，三个批次 12 个答案全过</td></tr>
+<tr><td>⭐ <strong>稳定性</strong></td><td>十分钟循环，<strong>150 个请求（每个任务 50 个）全部通过</strong>；中位响应时间 <strong>代码审查 4.036 s、日志 5.921 s、提取 2.046 s</strong>；<strong>首尾十次对比延迟增长不到 1.6%</strong></td></tr>
+<tr><td><strong>数据完整性</strong></td><td><strong>全部 171 个被测量的响应都通过检查</strong>；确定性解码重复；<strong>保留每一个答案和原始事件流用于核对</strong></td></tr>
+<tr><td><strong>动机（作者的价值观）</strong></td><td><strong>「我非常支持开放权重模型。能在笔记本上本地跑东西并折腾 RL、量化和微调会很棒。」</strong>；<strong>「我对官方的 Windows 专属支持就没那么高兴了。」</strong></td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://freelamp.com/articles/2026-10-19_tplink-eap770-dma-cache-bug-kernel-exploit/">想下载一个 ISO，最后写了个内核漏洞利用程序：而他只需要往两个 sysfs 文件里写两个零</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/">Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_tee-attestation-forgery-threat-model/">TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_gentoo-chromium-last-rites-maintainer-burnout/">Gentoo 给 Chromium 做了「临终祷告」：而杀死这个打包的是一句「这太荒唐了」</a></li>
+<li><a href="https://josie.lol/blog/linux-rtx-spark">原文（一手，含构建脚本、补丁与全部原始日志）</a></li>
+<li><a href="https://www.nvidia.com/en-us/products/rtx-spark/specifications/">NVIDIA RTX Spark 官方规格页</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/",
+      title: "\u4e3a\u4e86\u8ba9\u8fd9\u53f0 128GB \u7684 RTX Spark \u7b14\u8bb0\u672c\u8dd1 Linux\uff0c\u5979\u81ea\u5df1\u5199\u4e86 ACPI \u8986\u76d6\u548c\u89e6\u63a7\u677f\u8865\u4e01"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
