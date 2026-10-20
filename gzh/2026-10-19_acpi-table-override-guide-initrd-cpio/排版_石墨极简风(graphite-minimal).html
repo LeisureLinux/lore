@@ -286,6 +286,51 @@
     <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
       <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
       <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECUREBOOT</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Secure Boot 会挡住这件事吗：会，但机制和你想的不一样</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这是一个非常容易问错的问题。我一开始也以为「开了 Secure Boot 就没法改 initrd」，而查完之后发现：Secure Boot 本身不拦这个动作，它拦的是另一层，而那一层恰好把 ACPI 表覆盖列为禁止项。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">先纠正一个可能的误解：Secure Boot 不校验你的 initrd 内容</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">很多人以为开启 Secure Boot 之后，initrd 是被签名校验的。这在主流方案里不成立。原因在于签名的对象</span></strong><span leaf="">：以 shim + GRUB 这套链路为例，</span><strong style="color:#27272A;"><span leaf="">shim 是被微软签名的、由固件验证；GRUB/kernel 由 shim 用 MOK 验证；而 initrd 没有对应的签名校验环节</span></strong><span leaf="">（除非你启用了 IMA appraisal，那是另一套机制）。</span><strong style="color:#27272A;"><span leaf="">所以在「把 cpio 塞进 initrd」这个动作上，Secure Boot 不会拦你。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">真正会拦你的是 kernel lockdown，而它由 Secure Boot 自动触发</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这是关键的一环。`kernel_lockdown(7)` man page 里有一句非常明确的表述</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">在一台支持 EFI 的 x86 或 arm64 机器上，如果系统以 EFI Secure Boot 模式启动，lockdown 会被自动启用。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">而这个自动触发的机制在早期是一个编译选项 `CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT`</span></strong><span leaf="">，LWN 当年介绍这批补丁时写得很直白：「</span><strong style="color:#27272A;"><span leaf="">启用它会导致 EFI secure boot 触发内核 lockdown。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">所以链路是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Secure Boot 开启 → 自动进入 kernel lockdown 的 integrity 级别 → `LOCKDOWN_ACPI_TABLES` 被禁止 → `acpi_table_upgrade()` 直接返回，完全不读你的 cpio。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">而 lockdown 里那一条，名字就叫「modifying ACPI tables」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">我在内核源码 `security/security.c` 里找到了 `lockdown_reasons[]` 这张表，它有 31 项，而其中一项的原文是</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LOCKDOWN_ACPI_TABLES</span><span leaf=""> 这一项，值就是「modifying ACPI tables」。</span><strong style="color:#27272A;"><span leaf="">也就是说：lockdown 拦的不是「改 initrd」这个文件操作，而是「修改 ACPI 表」这个行为本身。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而它属于哪个级别，可以从枚举顺序读出来。`include/linux/security.h` 里 `enum lockdown_reason` 的顺序是</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LOCKDOWN_NONE</span><span leaf=""> → ... → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LOCKDOWN_MSR</span><span leaf=""> → </span><strong style="color:#27272A;"><span leaf="">`LOCKDOWN_ACPI_TABLES`</span></strong><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LOCKDOWN_DEVICE_TREE</span><span leaf=""> → ... → </span><strong style="color:#27272A;"><span leaf="">`LOCKDOWN_INTEGRITY_MAX`</span></strong><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LOCKDOWN_KCORE</span><span leaf=""> → ... → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LOCKDOWN_CONFIDENTIALITY_MAX</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">`LOCKDOWN_ACPI_TABLES` 在 `INTEGRITY_MAX` </span></strong><span leaf="">之前</span><strong style="color:#27272A;"><span leaf="">，所以它属于 </span></strong><span leaf="">integrity</span><strong style="color:#27272A;"><span leaf=""> 级别。而这意味着：`lockdown=integrity`（也就是 Secure Boot 自动触发的那个级别）就足以禁掉它，不需要 confidentiality 级别。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">man page 列出的禁止项里，有四条和 ACPI 直接相关</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">ACPI 表的覆盖</span></strong><span leaf="">」、「</span><strong style="color:#27272A;"><span leaf="">ACPI 错误注入的使用</span></strong><span leaf="">」、「</span><strong style="color:#27272A;"><span leaf="">ACPI RDSP 地址的指定</span></strong><span leaf="">」、「</span><strong style="color:#27272A;"><span leaf="">ACPI 自定义方法的使用</span></strong><span leaf="">」。</span><strong style="color:#27272A;"><span leaf="">而第一条的措辞值得注意：它和 `/dev/mem`、BPF、kprobes 并列，在「被禁用或受限制」那一组里。这个级别非常明确。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">那实际会发生什么：一个静默的跳过</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">我特意强调「静默」，因为这是实际踩坑时最容易困惑的地方。回到内核那段代码</span></strong><span leaf="">：一段判断：先调 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">security_locked_down(LOCKDOWN_ACPI_TABLES)</span><span leaf="">，非零就打印一行「内核已被 lockdown，忽略表覆盖」然后返回。</span><strong style="color:#27272A;"><span leaf="">注意这个检查的位置：它在「已经找到表」之后才做，而它只输出一条 `pr_notice` 级别的日志，然后 `return`。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">所以如果你开了 Secure Boot 又塞了 cpio，实际表现是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">系统正常启动（不会报错、不会拒绝启动）；你的表完全没有被应用；`dmesg` 里只有一行 `kernel is locked down, ignoring table override`，而它在大量启动日志里非常不显眼。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**这是一个很典型的「安全机制的可用性代价」：它做对了（拒绝未授权的表修改），但它的反馈方式让「我改了但没生效」这个诊断变得困难。而如果你不知道要找这一行，你会怀疑是自己改的表有问题，而实际上根本没走到那一步。**</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">一个可执行的确认流程</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">② 内核是不是有表覆盖能力？</span></strong><span leaf=""> 去 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/boot/config-$(uname -r)</span><span leaf=""> 里查 ACPI_TABLE_UPGRADE 和 LOCKDOWN 两项。</span><strong style="color:#27272A;"><span leaf="">我本机（一份真实的第三方内核配置）的输出是</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CONFIG_ACPI_TABLE_UPGRADE=y</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CONFIG_ARCH_HAS_ACPI_TABLE_UPGRADE=y</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CONFIG_SECURITY_LOCKDOWN_LSM=y</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y</span><span leaf="">，而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CONFIG_SECURITY_LOCKDOWN_LSM_EARLY</span><span leaf=""> 未开启。</span><strong style="color:#27272A;"><span leaf="">也就是说：能力有，而默认级别是 none。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">③ Secure Boot 到底开没开？</span></strong><span leaf=""> 用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mokutil --sb-state</span><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">或者直接读 EFI 变量（不需要装工具）</span></strong><span leaf="">：读 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c</span><span leaf=""> 的最后一个字节，</span><strong style="color:#27272A;"><span leaf="">`1` 就是开着，`0` 就是关着。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">如果你必须保留 Secure Boot，还有没有别的路</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">方案一：`CONFIG_EFI_CUSTOM_SSDT_OVERLAYS`（最温和，但只能加 SSDT）。</span></strong><span leaf=""> 这是我在读源码时发现的一条很多人不知道的路径。</span><strong style="color:#27272A;"><span leaf="">它的用法是给内核传启动参数 `efivar_ssdt=<变量名>`，内核会从 EFI 变量里读一张 SSDT 并加载。而关键在于：它</span></strong><span leaf="">也会</span><strong style="color:#27272A;"><span leaf="">检查 lockdown</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">int ret = security_locked_down(LOCKDOWN_ACPI_TABLES); if (ret) return ret;</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">所以这条路在 Secure Boot 下同样被挡住。</span></strong><span leaf=""> 而它即使能用，也只是「追加一张 SSDT」，不能替换 DSDT。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">方案二：在 lockdown 生效前加载（理论可行，实践上不推荐）。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">`SECURITY_LOCKDOWN_LSM_EARLY` 这个选项的存在本身就说明了一个时间窗问题</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">但我不建议把方案建立在「抢在安全检查之前」上</span></strong><span leaf="">：第一，这个窗口在不同内核版本上行为可能变化；第二，这实质上是在绕过一项安全机制，而你本来是为了安全才开 Secure Boot 的。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">方案三：关掉 Secure Boot（最直接，也是作者的选择）。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">回到作者的场景：她是在一台要跑 Linux 的笔记本上做这件事，而她的做法是「用 Secure Boot 关闭的状态从 U 盘启动」。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">我认为这个选择在这个场景下是合理的：① 这是她自己的机器，威胁模型里没有「有人物理接触并篡改 initrd」这一项；② 她做的改动是「修复一个厂商固件的 bug」，而不是「绕过安全边界」；③ 她的替代方案代价更高。但这个选择不通用。如果你在管理一批机器，或者你的威胁模型里确实包含「物理接触」，那么在 Secure Boot 和 ACPI 覆盖之间，你必须选一个。这是内核设计上的一个明确的、有意的取舍，而不是一个可以绕过的实现细节。</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**一句话把这一节收掉：Secure Boot 不拦你改 initrd，而是通过 lockdown 拦住「修改 ACPI 表」这个行为本身；做法是静默跳过，只留一行 pr_notice。所以正确的顺序是：先看 `/sys/kernel/security/lockdown` 的级别，再决定要不要动手。**</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">08</span></p>
+      <section style="margin-top:-8px;">
         <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
         <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
       </section>
@@ -471,8 +516,52 @@
             <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">dump → `iasl -d` 反汇编 → 只改一处 → **争取「等长替换」**（避免处理 package length 变长编码）→ 打 cpio → 在 `dmesg` 里搜 Table Upgrade 确认</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **风险提示**</span></td>
-            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">ACPI 表在设备枚举**之前**加载；**务必保留一条不带该 cpio 的启动条目**；**RAM 里的表重启即失效，而刷固件不可逆**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **Secure Boot 是否拦截**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**不拦「改 initrd」，但会自动触发 lockdown；`LOCKDOWN_ACPI_TABLES` 属于 integrity 级**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **决定性原文**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`LOCKDOWN_ACPI_TABLES` 这一项，值就是「modifying ACPI tables」**（`security/security.c` 的 `lockdown_reasons[]`，共 31 项）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**自动触发依据**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">man page：**「在一台支持 EFI 的 x86 或 arm64 机器上，如果系统以 EFI Secure Boot 模式启动，lockdown 会被自动启用。」**；旧开关 **`CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT`**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **实际表现**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**系统正常启动、表完全没应用、`dmesg` 只有一行 `kernel is locked down, ignoring table override`**（`pr_notice` 级）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**检查位置**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**在「已经找到表」之后才检查 lockdown**，然后 `return`</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **十秒确认**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**三件事：读 `/sys/kernel/security/lockdown` 这个文件看当前级别、去 `/boot/config-$(uname -r)` 里查 ACPI_TABLE_UPGRADE 与 LOCKDOWN 两项、用 mokutil 查 Secure Boot 状态**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**本机实测（对照）**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`CONFIG_ACPI_TABLE_UPGRADE=y`、`FORCE_NONE=y`、`SECURITY_LOCKDOWN_LSM_EARLY` 未开**；**`/sys/kernel/security/lockdown` 显示 `[none]`**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**man page 的 ACPI 四条**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「ACPI 表的覆盖」「ACPI 错误注入的使用」「ACPI RDSP 地址的指定」「ACPI 自定义方法的使用」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **替代方案一**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`CONFIG_EFI_CUSTOM_SSDT_OVERLAYS` + `efivar_ssdt=`**：**同样检查 lockdown，所以也被挡住**；且**只能追加 SSDT，不能替换 DSDT**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**替代方案二**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**抢在 lockdown 生效前加载**：理论可行，**但不推荐**，行为随版本变化且本质是绕过安全机制</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**替代方案三**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**关掉 Secure Boot**（作者的选择）；**在 Secure Boot 与 ACPI 覆盖之间必须选一个，这是有意的设计取舍**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">⚠️ **风险提示**</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">ACPI 表在设备枚举**之前**加载；**务必保留一条不带该 cpio 的启动条目**；**RAM 里的表重启即失效，而刷固件不可逆**</span></td>
           </tr>
         </tbody>
       </table>
