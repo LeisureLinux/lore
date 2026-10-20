@@ -714,6 +714,209 @@ arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
 
 > **最后一个提醒，关于风险**：**ACPI 表是内核在设备枚举之前加载的，所以一张错的表可以让系统连看都看不到设备，甚至完全无法启动。** **所以务必保留一条「不加载覆盖」的启动路径**（比如在 bootloader 里留一个不带那个 cpio 的条目），并且**先在能启动的前提下验证，再把它固化进默认 initrd。** **作者仓库里那句「不要刷固件」也是同一个道理：** **RAM 里的表重启即失效，而刷进固件的表是不可逆的。**
 
+## 七、Secure Boot 会挡住这件事吗：会，但机制和你想的不一样
+
+**这是一个非常容易问错的问题。我一开始也以为「开了 Secure Boot 就没法改 initrd」，而查完之后发现：Secure Boot 本身不拦这个动作，它拦的是另一层，而那一层恰好把 ACPI 表覆盖列为禁止项。**
+
+### 先纠正一个可能的误解：Secure Boot 不校验你的 initrd 内容
+
+**很多人以为开启 Secure Boot 之后，initrd 是被签名校验的。这在主流方案里不成立。**
+
+**原因在于签名的对象。以 shim + GRUB 这套链路为例**：
+
+- **shim 是被微软签名的，由固件验证**；
+- **GRUB/kernel 由 shim 用 MOK（Machine Owner Key）验证**；
+- **而 initrd 没有对应的签名校验环节**（**除非你启用了 IMA appraisal，那是另一套机制**）。
+
+**所以在「把 cpio 塞进 initrd」这个动作上，Secure Boot 不会拦你。你完全可以改 initrd，也可以启动。**
+
+### 真正会拦你的是 kernel lockdown，而它由 Secure Boot 自动触发
+
+**这是关键的一环。`kernel_lockdown(7)` man page 里有一句非常明确的表述**：
+
+> **「在一台支持 EFI 的 x86 或 arm64 机器上，如果系统以 EFI Secure Boot 模式启动，lockdown 会被自动启用。」**
+>
+> **（On an EFI-enabled x86 or arm64 machine, lockdown will be automatically enabled if the system boots in EFI Secure Boot mode.）**
+
+**而这个自动触发的机制在早期是一个编译选项 `CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT`**，LWN 当年介绍这批补丁时写得很直白：
+
+> **「启用 `CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT` 会导致 EFI secure boot 触发内核 lockdown。」**
+
+**而现在这个行为已经整合进 lockdown LSM 本身，默认随 Secure Boot 生效。** **所以链路是**：
+
+```text
+Secure Boot 开启
+      ↓  （自动）
+kernel lockdown 进入 integrity 级别
+      ↓
+LOCKDOWN_ACPI_TABLES 被禁止
+      ↓
+acpi_table_upgrade() 直接返回，完全不读你的 cpio
+```
+
+### 而 lockdown 里那一条，名字就叫「modifying ACPI tables」
+
+**我在内核源码 `security/security.c` 里找到了 `lockdown_reasons[]` 这张表，它有 31 项，而其中一项的原文是**：
+
+```c
+[LOCKDOWN_ACPI_TABLES] = "modifying ACPI tables",
+```
+
+**也就是说：lockdown 拦的不是「改 initrd」这个文件操作，而是「修改 ACPI 表」这个行为本身。**
+
+**而它属于哪个级别，也是可以从枚举顺序读出来的。`include/linux/security.h` 里 `enum lockdown_reason` 的顺序是**：
+
+```text
+LOCKDOWN_NONE
+LOCKDOWN_MODULE_SIGNATURE
+...
+LOCKDOWN_MSR
+LOCKDOWN_ACPI_TABLES        ← 在这里
+LOCKDOWN_DEVICE_TREE
+...
+LOCKDOWN_INTEGRITY_MAX      ← integrity 级别的边界
+LOCKDOWN_KCORE
+...
+LOCKDOWN_CONFIDENTIALITY_MAX
+```
+
+**`LOCKDOWN_ACPI_TABLES` 在 `LOCKDOWN_INTEGRITY_MAX` **之前**，所以它属于 **integrity** 级别。而这意味着**：
+
+- **`lockdown=integrity`（也就是 Secure Boot 自动触发的那个级别）就足以禁掉它**；
+- **不需要 confidentiality 级别**。
+
+**man page 列出的 integrity 级禁止项里，有三条和 ACPI 直接相关**：
+
+> **「ACPI 表的覆盖。」（The overriding of ACPI tables.）**
+> **「ACPI 错误注入的使用。」**
+> **「ACPI RDSP 地址的指定。」**
+> **「ACPI 自定义方法的使用。」**
+
+**注意第一条的措辞：不是「限制」，是列在「被禁用或受限制」那一组的 `overriding of ACPI tables` 下面，和 `/dev/mem`、BPF、kprobes 并列。这个级别非常明确。**
+
+### 那实际会发生什么：一个静默的跳过
+
+**我特意强调「静默」，因为这是实际踩坑时最容易困惑的地方。**
+
+**回到内核那段代码（`acpi_table_upgrade()` 的实现）**：
+
+```c
+if (table_nr == 0)
+    return;
+
+if (security_locked_down(LOCKDOWN_ACPI_TABLES)) {
+    pr_notice("kernel is locked down, ignoring table override\n");
+    return;
+}
+```
+
+**注意这个检查的位置：它在「已经找到表」之后才做。** **而它只输出一条 `pr_notice` 级别的日志，然后 `return`。**
+
+**所以如果你开了 Secure Boot 又塞了 cpio，实际表现是**：
+
+- **系统正常启动**（不会报错，不会拒绝启动）；
+- **你的表完全没有被应用**；
+- **`dmesg` 里只有一行 `kernel is locked down, ignoring table override`**，而它在大量启动日志里非常不显眼。
+
+**我认为这是一个很典型的「安全机制的可用性代价」：它做对了（拒绝未授权的表修改），但它的反馈方式让「我改了但没生效」这个诊断变得困难。** **而如果你不知道要找这一行，你会怀疑是自己改的表有问题，而实际上根本没走到那一步。**
+
+### 一个可执行的确认流程
+
+**在你动手做任何覆盖之前，先花十秒确认三件事**：
+
+**① 现在是不是在 lockdown 里？**
+
+```bash
+cat /sys/kernel/security/lockdown
+```
+
+**输出形如 `[none] integrity confidentiality`，方括号括住的那个就是当前级别。我的机器上就是 `[none]`（没开 Secure Boot）。** **如果是 `[integrity]` 或 `[confidentiality]`，那么 ACPI 表覆盖已经被禁。**
+
+**② 内核是不是有表覆盖能力？**
+
+```bash
+grep -E 'ACPI_TABLE_UPGRADE|LOCKDOWN' /boot/config-$(uname -r)
+```
+
+**我本机（一份真实的 fedora 系内核配置）的输出是**：
+
+```text
+CONFIG_ACPI_TABLE_UPGRADE=y
+CONFIG_ARCH_HAS_ACPI_TABLE_UPGRADE=y
+CONFIG_SECURITY_LOCKDOWN_LSM=y
+# CONFIG_SECURITY_LOCKDOWN_LSM_EARLY is not set
+CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
+# CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set
+```
+
+**也就是说：能力有（`=y`），而默认级别是 none（`FORCE_NONE=y`）。** **而 `SECURITY_LOCKDOWN_LSM_EARLY` 未开启这一项值得注意**：**它决定 lockdown 是否在早期就生效。如果它没开，那么「早期启动阶段」的一些检查可能会晚一点才起作用。**
+
+**③ Secure Boot 到底开没开？**
+
+```bash
+mokutil --sb-state
+```
+
+**或者直接读 EFI 变量（不需要装工具）**：
+
+```bash
+od -An -t u1 -N1 /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c
+```
+
+**最后那个字节是 `1` 就是开着，`0` 就是关着。**
+
+### 如果你必须保留 Secure Boot，还有没有别的路
+
+**有三条，而它们的代价和风险依次上升。**
+
+**方案一：`CONFIG_EFI_CUSTOM_SSDT_OVERLAYS`（最温和，但只能加 SSDT）**
+
+**这是我在读源码时发现的一条很多人不知道的路径。内核里有一个开关**：
+
+```
+config EFI_CUSTOM_SSDT_OVERLAYS
+	bool "Load custom ACPI SSDT overlay from an EFI variable"
+```
+
+**它的用法是给内核传启动参数 `efivar_ssdt=<变量名>`，内核会从 EFI 变量里读一张 SSDT 并加载。** **而关键在于：它**也会**检查 lockdown。**
+
+```c
+static int __init efivar_ssdt_setup(char *str)
+{
+    int ret = security_locked_down(LOCKDOWN_ACPI_TABLES);
+    if (ret)
+        return ret;
+    ...
+}
+__setup("efivar_ssdt=", efivar_ssdt_setup);
+```
+
+**所以这条路在 Secure Boot 下同样被挡住。** **而它即使能用，也只是「追加一张 SSDT」，不能替换 DSDT。**
+
+**方案二：在 lockdown 生效前加载（理论上可行，实践上不推荐）**
+
+**`SECURITY_LOCKDOWN_LSM_EARLY` 这个选项的存在本身就说明了一个时间窗问题**：**如果 lockdown 的初始化不是 early 的，那么在某些早期代码路径上它可能还没生效。** **但我不建议把方案建立在「抢在安全检查之前」上，因为**：**第一，这个窗口在不同内核版本上行为可能变化；第二，这实质上是在绕过一项安全机制，而你本来是为了安全才开 Secure Boot 的。**
+
+**方案三：关掉 Secure Boot（最直接，也是作者的选择）**
+
+**回到作者的场景：她是在一台要跑 Linux 的笔记本上做这件事。而她的做法是**：
+
+> **「用 Secure Boot 关闭的状态从 U 盘启动这台 P16。」**（Boot the P16 from the stick with Secure Boot disabled）
+
+**我认为这个选择在这个场景下是合理的，理由有三个**：
+
+- **这是她自己的机器**，威胁模型里没有「有人物理接触并篡改 initrd」这一项；
+- **她做的改动是「修复一个厂商固件的 bug」**，而不是「绕过安全边界」；
+- **她的替代方案代价更高**（买一台新 AP、或者接受数据损坏，见另一篇）。
+
+**但这个选择不通用。** **如果你在管理一批机器，或者你的威胁模型里确实包含「物理接触」，那么**：**在 Secure Boot 和 ACPI 覆盖之间，你必须选一个。这是内核设计上的一个明确的、有意的取舍，而不是一个可以绕过的实现细节。**
+
+### 一句话把这一节收掉
+
+**Secure Boot 不拦你改 initrd，而是通过 lockdown 拦住「修改 ACPI 表」这个行为本身；做法是静默跳过，只留一行 `pr_notice`。**
+
+**所以正确的顺序是：先 `cat /sys/kernel/security/lockdown` 看级别，再决定要不要动手。** **如果那里是 `[integrity]`，那么你在 initrd 上花的所有功夫都不会生效，而原因和你的表毫无关系。**
+
 ## 关键事实速查
 
 | 项目 | 内容 |
@@ -764,6 +967,17 @@ arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
 | ❌ **不可迁移 ②** | 所有字节偏移（如 `0x10269`、`3590,3604`）只对**这个固件版本**有效 |
 | ❌ **不可迁移 ③** | ARM64 allocator 补丁；x86_64 通常不会有这个坑 |
 | ⭐ **最小可行路径** | dump → `iasl -d` 反汇编 → 只改一处 → **争取「等长替换」**（避免处理 package length 变长编码）→ 打 cpio → 重启后用 `dmesg \| grep "Table Upgrade"` 确认 |
+| ⭐ **Secure Boot 是否拦截** | **不拦「改 initrd」，但会自动触发 lockdown；`LOCKDOWN_ACPI_TABLES` 属于 **integrity** 级** |
+| ⭐ **决定性原文** | **`[LOCKDOWN_ACPI_TABLES] = "modifying ACPI tables"`**（`security/security.c` 的 `lockdown_reasons[]`，共 31 项） |
+| **自动触发依据** | **man page：`On an EFI-enabled x86 or arm64 machine, lockdown will be automatically enabled if the system boots in EFI Secure Boot mode.`**；旧开关 **`CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT`** |
+| ⚠️ **实际表现** | **系统正常启动、表完全没应用、`dmesg` 只有一行 `kernel is locked down, ignoring table override`**（`pr_notice` 级，很不起眼） |
+| **检查位置** | **在「已经找到表」之后才检查 lockdown**，然后 `return` |
+| ⭐ **十秒确认** | **`cat /sys/kernel/security/lockdown`**（方括号是当前级别）；**`grep -E 'ACPI_TABLE_UPGRADE\|LOCKDOWN' /boot/config-$(uname -r)`**；**`mokutil --sb-state`** |
+| **本机实测（对照）** | **`CONFIG_ACPI_TABLE_UPGRADE=y`、`FORCE_NONE=y`、`SECURITY_LOCKDOWN_LSM_EARLY` 未开**；**`/sys/kernel/security/lockdown` 显示 `[none]`** |
+| **man page 里 integrity 级的 ACPI 三条** | **「ACPI 表的覆盖」「ACPI 错误注入的使用」「ACPI RDSP 地址的指定」「ACPI 自定义方法的使用」** |
+| ⚠️ **替代方案一** | **`CONFIG_EFI_CUSTOM_SSDT_OVERLAYS` + `efivar_ssdt=`**：**同样检查 lockdown，所以也被挡住**；且**只能追加 SSDT，不能替换 DSDT** |
+| **替代方案二** | **抢在 lockdown 生效前加载**：理论可行（`SECURITY_LOCKDOWN_LSM_EARLY` 的存在说明有时间窗），**但不推荐**，行为随版本变化且本质是绕过安全机制 |
+| **替代方案三** | **关掉 Secure Boot**（作者的选择）；**在 Secure Boot 与 ACPI 覆盖之间必须选一个，这是有意的设计取舍** |
 | ⚠️ **风险提示** | ACPI 表在设备枚举**之前**加载，错的表可以让系统看不到任何设备甚至无法启动；**务必保留一条不带该 cpio 的启动条目**；**RAM 里的表重启即失效，而刷固件不可逆** |
 
 ## 延伸阅读
