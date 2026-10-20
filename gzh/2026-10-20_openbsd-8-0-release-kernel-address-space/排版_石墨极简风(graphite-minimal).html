@@ -1,0 +1,369 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">把 amd64 内核虚拟地址空间的大小从 4G 提升到 512G。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">OpenBSD 8.0 发布页</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">OpenBSD 8.0 在 2026 年 10 月 20 日发布了，是第 61 个版本。发布页上大部分是漏洞修复清单，而我认为最该看的是其中一行关于内存的数字。</span></strong><strong style="color:#27272A;"><span leaf="">因为它和同页另一条改动是配套的，而发布页把它们分开写、都没解释关联，所以读者很容易把前者当成无关紧要的内部整理。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">4G 天花板</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">arm64 休眠</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">DRM 与 Arc</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">安全三条</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">我的判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ADDRESS SPACE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">为什么 4G 是个天花板</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">发布页里最容易被跳过的是一行关于内存的数字</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">把 amd64 内核虚拟地址空间的大小从 4G 提升到 512G。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">而它的含义需要结合同页另一条才完整</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">amd64 上增加的核虚拟地址空间允许映射超过 4GB 的显存。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">内核虚拟地址空间（KVA）是内核自己的「寻址预算」。内核在映射物理内存、映射设备寄存器（MMIO）、映射显存时，都要从这块空间里分配。而 amd64 上这块空间原来是 4G</span></strong><span leaf="">，这意味着：</span><strong style="color:#27272A;"><span leaf="">一块 16GB 的显卡，它的显存只能被映射进来 4GB 以内的部分；而 4G 还要和内核的其他映射共享，所以实际可用的还不到 4G。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而「显存映射」为什么必须经过内核地址空间？因为 GPU 驱动需要在</span></strong><span leaf="">内核上下文</span><strong style="color:#27272A;"><span leaf="">里访问显存</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">比如做命令提交、读硬件状态、处理 GPU 页错误。这些操作不能用用户空间的指针，必须用内核虚拟地址。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**所以「4G 上限」的真实含义是：任何显存超过约 3GB 的显卡，在 OpenBSD amd64 上都只能用到其中一小部分。而这在 2026 年基本等于「现代独显都不能用」。**</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">提升到 512G 之后这个约束消失了。而同页还有一条我认为意图很清楚</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">`pmap(9)` 直接映射现在被放置在随机位置。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">直接映射是内核访问物理内存的最直接路径，而它的地址固定就意味着「内核某块内存的虚拟地址可预测」。随机化它，是给内核漏洞利用增加难度。所以这两条合起来的效果是：地址空间大了 128 倍，而其中最关键的一段位置不再固定。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而 512G 这个数字本身也有讲究：它不是一个「刚好够用」的数字。从 4G 到 512G 是 128 倍，这个幅度说明他们不是按当前需求算的，是按「下一代显卡可能要 24GB 或 32GB 显存」算的。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">ARM64 HIBERNATE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">arm64 第一次有了休眠</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">同页里还有一条只有五个词的改动，而它的份量不小</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">加入了休眠支持。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">hibernate（休眠到磁盘）在 x86 上很成熟，而在 arm64 上长期缺失。原因是它需要把整块物理内存写进 swap，然后从一个几乎全新的固件状态恢复，这涉及 ACPI 状态保存、设备重新初始化、以及最麻烦的「恢复过程中的内存完整性」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而发布页在下面几行给了这项工作真正的难度</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「在 hibernate 解包磁盘镜像时，校验拷贝到 piglet 的块的大小。」</span></strong><span leaf="">「</span><strong style="color:#27272A;"><span leaf="">在读取块时，针对整数溢出校验磁盘镜像大小。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">在 unhibernate 读取 chunktable 时，防止镜像越界读取。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">在 unhibernate 之后清理 framebuffer。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">让 nvme(4) 休眠支持分配专用队列失败变成非致命。</span></strong><span leaf="">」</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**这几条全是「恢复路径上的防御性检查」。而这是 hibernate 这类功能最容易被低估的地方：写内存到磁盘很简单，难的是「读回来的时候，如果镜像被改过或损坏了怎么办」。**</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">因为 hibernate 的镜像是一个</span></strong><span leaf="">保存在磁盘上的、包含全部内存内容的文件</span><strong style="color:#27272A;"><span leaf="">。而如果攻击者能改这个文件，那么在恢复时，内核就会把那块内存当成真的内存来用。「针对整数溢出校验镜像大小」和「防止镜像越界读取」这两条，就是在堵这个口子。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而「在 unhibernate 之后清理 framebuffer」这一条我认为最实用：因为 framebuffer 在休眠前存着屏幕内容，而恢复后如果不清，你可能会在解锁界面上看到休眠前屏幕的残留。这是一个纯粹的隐私细节，而它出现在一份内核改动清单里，说明有人真的在意。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">DRM</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">DRM 追到 Linux 6.18.53，以及 Intel Arc</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">图形栈的更新是</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">把 `drm(4)` 更新到 Linux 6.18.53。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">这个数字值得注意，因为它意味着 OpenBSD 的图形栈落后 Linux 主线大约「一个开发周期」：Linux 6.18 是一个 2026 年的版本，而 OpenBSD 8.0 在同年 10 月就追到了 6.18.53（含 stable 修正）。对 OpenBSD 来说，这是一个相当紧的跟随节奏，因为它的 DRM 是把 Linux 的整套驱动框架移植过来，而这个移植不是「复制文件」那么简单，需要适配 OpenBSD 的 bus_dma、中断模型、以及 pledge/unveil。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 Intel Arc A 系列（DG2/Alchemist）的支持，我在第一节已经讲了它和地址空间扩容的关联。另有一条 Intel 相关的修正，我认为值得单独指出，因为它是一个真实的硬件怪癖</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">绕过在部分 Alder Lake 系统上看到的 `inteldrm(4)` GuC 超时错误。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GuC 是 Intel GPU 的微控制器固件，负责调度。而「timeout」意味着驱动等它回应超时了。而这在 Alder Lake 上是一个已知的、只出现在「部分系统」上的问题，所以处理方式是 workaround（绕过）而不是修复。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这个措辞的诚实度值得注意：它没有写「修复了 GuC 超时」，而是写「绕过在部分系统上看到的超时」。这两个表述的区别是：前者暗示找到了根因，后者承认只是让它不再卡住。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECURITY</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">安全侧的改动里，有三条信号最强</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">第一条：unveil 现在管到了 man 工具链</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">「`unveil(2)` 现在限制 `man(1)`、`makewhatis(8)` 和 `man.cgi(8)` 的读写访问。」</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">`unveil` 是 OpenBSD 的「文件系统可见性」机制：一个进程可以声明「我只需要看到这几个路径」，之后它就无法访问其他任何路径，即使它被攻破。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这条改动的意义在于它的目标：`man.cgi(8)` 是 OpenBSD 官网那个在线 man 页面的 CGI。也就是说：一个对公网开放的、把用户输入（man 页名）变成文件路径的程序，现在被限制在只能访问 man 相关的几个目录。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**这是 unveil 最典型的用法：它不是「检查输入是否合法」，而是「即使检查失败，这个进程也拿不到别的东西」。而这两层的差别在于：前者依赖「检查逻辑没有漏洞」，后者不依赖。**</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">第二条：系统的更新通道被加固了</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">三条相关改动</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">加固了 `syspatch(8)` 以对抗恶意脚本。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">`fw_update(8)` 现在检查本地 `SHA256.sig` 的签名。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">在 `fw_update(8)` 中，让 `tar(1)` 跳过预期位置之外的文件。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">「跳过预期位置之外的文件」这一条我特别想指出，因为它对应的是经典的压缩包路径穿越攻击：一个 tar 包里如果有 `../../etc/passwd` 这样的路径，解压时就会写到目录外面去。而 `fw_update` 是以 root 跑的，所以这条尤其重要。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这三条放一起说明一件事：OpenBSD 对自己的「更新通道」也在做纵深防御。它没有假设「签名验证通过就万事大吉」，而是额外假设「即使包是签过名的，它解压出来的东西也不该越界」。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">第三条：OpenSSH 移除了一块预认证攻击面</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">OpenSSH 10.6 里这一条最值得说</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">把一些关键的公钥解析和验证路径从预认证攻击面中移除。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">「预认证攻击面」的含义是：在认证完成之前，服务端要处理的那些代码，是任何能连上 22 端口的人都能触发的。所以这部分代码里每一个 bug 都是「未认证远程」级别的。而「移除」这个动词意味着他们做的是</span></strong><span leaf="">减少</span><strong style="color:#27272A;"><span leaf="">而不是加固：把这些解析路径挪到认证之后去做。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">我认为这个方向比任何具体的漏洞修复都更有价值，因为它是结构性的：少一段预认证代码，就少一整类预认证漏洞。而同版本里另外两条也印证了这个方向</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">禁止在 `scp(1)` 的 `-O` 文件名里出现 NUL 字节。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">避免在通过命令行做 `ssh(1)` 下载时写入服务器控制的路径。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">第二条尤其值得注意，因为它是「scp/ssh 下载」这个场景里的一个经典不对称：你从服务器下载文件，而文件名是服务器给的。如果服务器给了一个绝对路径或 `../` 路径，而你直接用它写文件，那么服务器就决定了你本地写到哪里。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">另有三条「兼容性破坏」值得提前知道</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">OpenSSH 10.6 专门列了一节「Potentially incompatible changes」，其中两条会影响实际使用</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">对 `ssh-mldsa44-ed25519` 使用 IANA 分配的 codepoint，而不是 `@openssh.com`。</span></strong><span leaf="">」「</span><strong style="color:#27272A;"><span leaf="">让 `DisableForwarding=yes` 覆盖 `PermitTunnel=yes`。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">第二条是一个行为改变：以前你如果两个都设了，可能是 `PermitTunnel` 赢；现在 `DisableForwarding` 赢。这对「我明明关了转发，为什么还能建隧道」这类困惑是一个修复，但也可能让某些依赖旧行为的配置突然不通。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而第一条涉及一个更前瞻的东西</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">加入实验性的 `ssh(1)` 对复合后量子 `mldsa44-ed25519` 签名方案的支持。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">「实验性」这个词很重要：它意味着这个方案还不能用于生产，但它已经能被试了。而选择 ML-DSA（Dilithium）作为后量子签名算法，与 NIST 在 2024 年标准化的方向一致。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">MY TAKE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">我的判断</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这次发布最值得学的是「发布说明的写法」，而不是任何单个功能。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">OpenBSD 的发布页有一个很罕见的特点：它列出「没做成什么」和「绕过了什么」。比如「绕过在部分 Alder Lake 系统上看到的 GuC 超时」这一条，它诚实地承认这是 workaround 而不是 fix。而「loongson 因 Clang 22 不工作而退役」这一条，它直接把原因写出来，没有用「架构调整」这类模糊说法。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这种写法对用户的价值很高，因为它让读者能判断「这个改动对我意味着什么」，而不是让读者去猜「修复了若干问题」到底修了什么。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，那个 4G → 512G 的改动，是一个「前提性改动」的典型样本，而这类改动最容易被忽略。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">因为它的效果不是「多了一个功能」，而是「某个功能现在可以有了」。而发布页把「地址空间扩容」和「支持 Arc A 系列」写成两条独立的条目，中间隔着几行其他内容，所以读者很容易只看到后者，而不知道前者是它的前提。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我认为这提示了一个阅读技术发布说明的方法：当看到「支持某个新硬件」时，去找同版本里「有没有什么基础设施被改了」，因为那往往才是真正的成本所在。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，unveil 扩到 man.cgi 这件事，是一个很好的「安全机制怎么落地」的样本。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">man.cgi 是一个对公网开放的 CGI，输入是 URL 里的 man 页名，输出是一个 HTML 页面。这类程序的传统做法是「仔细过滤输入」，而 unveil 的做法是「不管输入是什么，这个进程只能读这几个目录」。我认为后者的可靠性高一档，因为它不依赖「过滤逻辑完美无缺」。而这个思路在 OpenBSD 里已经用了很多年：从 pledge 到 unveil，一直是「限制能做什么」而不是「检查输入对不对」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第四，关于「要不要升级」，我认为这次的理由比往常更充分一些，而理由不在安全侧。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">安全侧当然有大量 CVE 修复（libexpat、perl、libXfont、Xserver、nsd 各自都有），但那些在 errata 里也能拿到。这次只有 8.0 才有的东西是：amd64 上能映射超过 4GB 显存、arm64 上能休眠、RISC-V 上有了向量扩展和高级中断架构支持、以及 vmm 支持到 64 个 VCPU。而这几条里，对普通用户感知最强的是第一条和第二条。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而我对 arm64 休眠那条特别想说一句：它出现在一台 2026 年的 arm64 笔记本上才算真正有意义（发布页提到 Samsung Galaxy Book4 Edge、HONOR MagicBook Art 14 Snapdragon 这两台设备的 ufshci 能在休眠后存活）。也就是说：OpenBSD 的 arm64 支持已经细到「某台具体型号的笔记本能休眠了」。这个粒度说明它不是「能跑」，是「能用」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">最后补一条容易被忽略的退役：「退役了对 loongson 架构的支持（无法配合 Clang 22 工作）」。注意这里指的是早期 MIPS 龙芯，不是 LoongArch。而同页里 luna88k（m88k 架构）反而在改进，有五条改动。所以「小众架构」和「被退役的架构」不是同一个概念：m88k 有人维护，MIPS/loongson 没有。一个 1980 年代的架构活了下来，而一个 2000 年代被寄予厚望的架构退役了。原因不是技术先进程度，是「有没有人在维护」。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**版本**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**OpenBSD 8.0**，**2026-10-20 发布**，**第 61 个 OpenBSD 版本**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**发布歌曲 / 封面**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**《The Simps on AI》**；**Artwork by yvaneht nioj and clanker**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **最大的结构改动**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「把 amd64 内核虚拟地址空间的大小从 4G 提升到 512G。」**（**128 倍**）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **它解锁了什么**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「amd64 上增加的核虚拟地址空间允许映射超过 4GB 的显存。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **配套硬件支持**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`inteldrm(4)` 加入 Intel Arc A 系列（DG2/Alchemist）支持**；**Arc A 显存 6–16GB，在 4G 上限下跑不起来**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**内核地址空间安全化**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「`pmap(9)` 直接映射现在被放置在随机位置。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**amd64 其他**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**用 AES CPU 指令加速 swap 加密**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **arm64 首次休眠**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「加入了休眠支持。」**；**用 AES 指令加速 swap 加密**；**实现了 bounce buffers**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**arm64 休眠的防御性检查**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**校验拷贝到 piglet 的块大小**；**针对整数溢出校验镜像大小**；**防止 unhibernate 读取 chunktable 时越界**；**unhibernate 后清理 framebuffer**；**nvme 专用队列分配失败改为非致命**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**arm64 休眠真机验证**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`ufshci(4)` 能在 Samsung Galaxy Book4 Edge 和 HONOR MagicBook Art 14 Snapdragon 上熬过休眠**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**DRM**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**更新到 Linux 6.18.53**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**Intel 相关修正**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**绕过在部分 Alder Lake 系统上看到的 `inteldrm(4)` GuC 超时错误**（workaround，非 fix）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**RISC-V**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**通过 `elf_aux_info(3)` 的 AT_HWCAP/AT_HWCAP2 暴露 CPU 扩展**；**内核支持 V 向量扩展**；**支持 RISC-V Advanced Interrupt Architecture（`imsic(4)`、`aplic(4)`）**；**支持 Sstc 定时器扩展**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**sparc64**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**改用 LLVM 工具链**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **架构退役**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「退役了对 loongson 架构的支持（无法配合 Clang 22 工作）。」**（早期 MIPS 龙芯，非 LoongArch）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**对照：luna88k 在改进**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**5 条改动，含「从 m88k 88100 数据通路中移除了非特权内核内存读写漏洞」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **unveil 扩展**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`unveil(2)` 现在限制 `man(1)`、`makewhatis(8)`、`man.cgi(8)` 的读写访问**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**pledge 相关**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**修复 `vfs(9)` 里一处 pledge**；**为 `lldpd(8)` 加入 mcast pledge**；**收紧 `pledge_sockopt()` 的 level/optname 检查**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **更新通道加固**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「加固了 `syspatch(8)` 以对抗恶意脚本」**；**`fw_update(8)` 检查本地 `SHA256.sig` 签名**；**`fw_update(8)` 里 `tar(1)` 跳过预期位置之外的文件**（防路径穿越，且以 root 运行）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**OpenSSH**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**10.6**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **OpenSSH 最重要一条**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「把一些关键的公钥解析和验证路径从预认证攻击面中移除。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**OpenSSH 安全修复**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**禁用 `ssh(1)` 的 LZ77 字典编码器以规避潜在侧信道泄漏**；**修复 `ChannelTimeout` 与 `RekeyLimit` 未被应用**；**让 `authorized_keys` 的 restrict 关键字正确作用于隧道转发**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**OpenSSH 兼容性破坏**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`ssh-mldsa44-ed25519` 改用 IANA 分配的 codepoint**；**`DisableForwarding=yes` 现在覆盖 `PermitTunnel=yes`**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**OpenSSH 新增**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**实验性复合后量子 `mldsa44-ed25519` 签名方案**；**`ssh-add -P` 跳过 PIN**；**`ssh-keygen hexdump`**；**`ssh -Z user@host`**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**OpenSSH 其他修复**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**压缩载荷不得膨胀超过最大载荷长度**；**从 supercop ed25519 切到 libsodium**；**修复 `sshd(8)` 两处一字节越界读**；**避免 `ssh(1)` 客户端 realloc 后 use-after-free**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**LibreSSL**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**4.4.0**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**LibreSSL 重要修复**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**修复 `openssl(1)`、`nc(1)`、`ocspcheck(8)` 静默跳过 pledge 与 unveil**；**ML-KEM 代码里把 failure_key 清零**；**修复 MSVC ARM64 优化器在常数时间大数代码里的错误代码生成**；**`ecdh_compute_key()` 加入无穷远点检查**；**修复 `crl_cb()` 里 EXFLAG_CRITICAL 的错误处理**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**VMM**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`vmm` 支持每 guest 最多 64 个 VCPU**；**guest 增加 x2apic 模式**；**`vmd(8)` 支持 checksum offload**；**MSI/MSI-X virtio 中断**；**修复 32/64 位 ELF 加载器在畸形 ELF 下的越界读**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**libexpat**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**更新到 2.8.4**（CVE-2026-66046、CVE-2026-76641、CVE-2026-76957）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**perl 修复**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**CVE-2026-57433**（Storable 有符号整数溢出）、**CVE-2026-57432**（pack/unpack 整数溢出）、**CVE-2026-13221**（正则匹配错误）、**Socket 2.041**（CVE-2026-12087 堆越界读）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**X 相关**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**LibXfont 修 CVE-2026-56001/56002/56003**；**Xserver 修 CVE-2026-55999/56000**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**nsd**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**修 CVE-2026-12244/12245/12246/12490**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**sudo**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**1.9.17p2**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**材料说明**</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">**你给的两条链接指向同一页面**：`t.co/Zjy2TdgZbd` 的响应体就是跳到 `openbsd.org/80.html` 的 JS/Meta 跳转</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这次发布最值得学的其实是「发布说明的写法」：OpenBSD 会列出「没做成什么」和「绕过了什么」。比如 GuC 那条它明说是 workaround 而不是 fix，loongson 退役它直接写出理由。而最容易被忽略的是那行 4G → 512G，因为它不是「多了一个功能」，是「某个功能现在可以有了」。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</span><br>
+        <span leaf="">· TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」</span><br>
+        <span leaf="">· Libreboot 26.10 加入了 EDK2 支持，而它的反 AI 政策写进了一个机器可读的文件</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
