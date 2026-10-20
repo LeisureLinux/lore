@@ -48,7 +48,7 @@
     <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而这条路径在内核里有一个专门的开关，叫 `CONFIG_ACPI_TABLE_UPGRADE`。它的机制是</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">内核在早期启动时，去 initrd 里找 `/kernel/firmware/acpi/` 目录，如果那里有 `DSDT.aml`、`SSDT.aml`，就优先使用它们，而不是固件里的对应表。</span></strong></p>
     <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">所以整件事的技术链条只有四步</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">dump</span></strong><span leaf=""> 出自己的表 → </span><strong style="color:#27272A;"><span leaf="">改</span></strong><span leaf=""> 想改的地方 → </span><strong style="color:#27272A;"><span leaf="">打包</span></strong><span leaf=""> 成 cpio 放进 initrd → </span><strong style="color:#27272A;"><span leaf="">重启</span></strong><span leaf="">。而第 2 步是全部难度的所在。</span></p>
     <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
-      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而这里有两个内核写死的硬性要求，不是可以随便改的</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 路径必须是 `kernel/firmware/acpi/`</span></strong><span leaf="">（这是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">acpi_table_upgrade()</span><span leaf=""> 里写死的前缀）；</span><strong style="color:#27272A;"><span leaf="">② 文件名必须是 `DSDT.aml` / `SSDT.aml`，大写、`.aml` 后缀</span></strong><span leaf="">（内核按文件名匹配，不按表内容）。</span></p>
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而这里有两个内核写死的硬性要求，不是可以随便改的</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 路径必须是 `kernel/firmware/acpi/`</span></strong><span leaf="">（这是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">acpi_table_upgrade()</span><span leaf=""> 里写死的前缀）；</span><strong style="color:#27272A;"><span leaf="">② 惯例是 `DSDT.aml` / `SSDT.aml`。但注意：内核不按文件名匹配，它按文件头 4 字节的签名匹配。</span></strong></p>
     </section>
   </section>
 
@@ -61,6 +61,48 @@
   <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
     <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
       <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">VERSIONS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">先回答两个版本与架构问题</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">这个开关是哪个版本来的：v4.7 就有，但当时只限 x86</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">关键在于它不是「v4.8 新加的功能」，而是一条分两步的历史</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">v4.7 时 `ACPI_TABLE_UPGRADE` 已经存在，而它的依赖写的是 `depends on BLK_DEV_INITRD && X86`。注意最后那个 `X86`：那个版本的这个开关是 x86 专属的，arm64 根本选不到它。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 v4.8 时依赖被改成了架构抽象</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">`depends on BLK_DEV_INITRD && ARCH_HAS_ACPI_TABLE_UPGRADE`，也就是把硬编码的 `X86` 换成了一个架构可以自行 `select` 的符号。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这个改动是 2016 年那批提交做的，共三条</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">`5d8813271f8a`「Convert initrd table override to table upgrade mechanism」（2016-04-18）</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">`91dda51a1157`「introduce ARCH_HAS_ACPI_TABLE_UPGRADE」（2016-06-22）</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">`38b04a74c587`「ACPI: ARM64: support for ACPI_TABLE_UPGRADE」（2016-06-22）</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">而 v4.8 里两个架构都自己 select 了这个符号，我实测确认了原文：`arch/x86/Kconfig` 和 `arch/arm64/Kconfig` 都写 `select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI`。所以在今天的内核上，x86 和 arm64 都能用这个功能。而「arm64 支持 ACPI 表覆盖」的起点是 v4.8（2016 年 10 月发布）。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">那两个 .aml 文件不是 arm 专用的</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这个答案很干净：完全不是 arm 专用。x86 用同样的目录、同样的机制、同样的文件名惯例。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">一手依据是内核文档 `initrd_table_override.rst`，它的例子就是 x86 机器</span></strong><span leaf="">（用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">DefinitionBlock ("DSDT.aml", "DSDT", 2, "INTEL ", "TEMPLATE", ...)</span><span leaf="">）。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而路径 `kernel/firmware/acpi/` 在源码里是写死在 `acpi_table_upgrade()` 里的常量</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">char cpio_path[32] = "kernel/firmware/acpi/"</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">而这个常量与架构无关，因为 `acpi_table_upgrade()` 本身就在 `drivers/acpi/tables.c`，是所有用 ACPI 的架构共用的。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">一个我原来写错的地方：内核不按文件名匹配</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一点必须纠正，因为它会影响你怎么命名文件。我读了 `acpi_table_upgrade()` 的完整实现，它是这样挑文件的</span></strong><span leaf="">：读文件头 4 字节的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">signature</span><span leaf="">，然后在一个白名单数组 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">table_sigs[]</span><span leaf=""> 里查。</span><strong style="color:#27272A;"><span leaf="">所以真正决定「这张表能不能被接受」的是文件内容里的签名，不是文件名。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而白名单包含 46 个签名，都是 ACPI 规范里的表名</span></strong><span leaf="">，其中和笔记本改表最相关的是 </span><strong style="color:#27272A;"><span leaf="">DSDT、SSDT、FADT（就是 FACP）、MADT、ECDT、SRAT、SLIT、DMAR、HPET、MCFG、IORT、PPTT、NHLT</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而它还有四条硬性校验，每条都会 `pr_err` 然后跳过这个文件</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 文件至少有一个 ACPI 表头那么大（`Table smaller than ACPI header`）；② 签名在白名单里（`Unknown signature`）；③ 文件大小必须等于表头里声明的 `length`（`File length does not match table length`）；④ 校验和必须正确（`Bad table checksum`）。</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 而第 3 条有一个陷阱：你不能把一个「比表头声明的长度更长」的文件塞进去（比如从 acpiview dump 出来如果带了填充字节）。这时内核会直接拒绝，而错误信息只说「长度不匹配」，不会告诉你是填充的问题。解法是用 `acpixtract` 从 `acpidump` 的输出里提取，或者手动按 `length` 字段截断。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">另外有两条明确的「不能覆盖」</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">`ACPI_SIG_RSDP`（签名有 6 字节）和 `ACPI_SIG_FACS`（没有普通的 ACPI 表头结构）</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">还有两个限制</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">一次最多 64 张表</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">内核处于 lockdown 状态时会直接忽略覆盖</span></strong><span leaf="">，日志是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">kernel is locked down, ignoring table override</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">如果你在开了 Secure Boot 的机器上试这个功能而完全不生效，第二条是最可能的原因。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">覆盖是「替换」还是「追加」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这是另一个容易误解的地方。内核文档的原话</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「如果放在这里的表与平台表</span></strong><span leaf="">匹配</span><strong style="color:#27272A;"><span leaf="">（相同表签名、相同 OEMID、相同 OEM Table ID）且 OEM Revision </span></strong><span leaf="">更新</span><strong style="color:#27272A;"><span leaf="">，那么平台表会被这张表</span></strong><span leaf="">升级</span><strong style="color:#27272A;"><span leaf="">。如果放在这里的表与平台表</span></strong><span leaf="">不匹配</span><strong style="color:#27272A;"><span leaf="">，这张表会被</span></strong><span leaf="">追加</span><strong style="color:#27272A;"><span leaf="">。」</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**替换的条件是：签名 + OEMID + OEM Table ID 三者都相同，且你的 OEM Revision 更大。这就是为什么内核文档明确要求「提高 OEM Revision」，作者代码里也是这么做的（把 revision 从 4 改成 5、从 1 改成 2）。**</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这个区分很重要，因为它是「为什么我改了表但没生效」最常见的原因：如果你忘了提高 OEM Revision，内核会认为平台那张更新，于是你的表被忽略，而且不会有显眼的报错。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
       <section style="margin-top:-8px;">
         <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">DUMP</span></p>
         <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第一步：dump 你自己的表，有两条路</span></h3>
@@ -92,7 +134,7 @@
 
   <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
     <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
-      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
       <section style="margin-top:-8px;">
         <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE EDIT</span></p>
         <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第二步：改哪里，以及为什么不能重编译整张表</span></h3>
@@ -128,7 +170,7 @@
 
   <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
     <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
-      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
       <section style="margin-top:-8px;">
         <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE TRAP</span></p>
         <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一个很少人知道的陷阱：跨 EFI 描述符边界会被拒绝</span></h3>
@@ -158,7 +200,7 @@
 
   <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
     <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
-      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
       <section style="margin-top:-8px;">
         <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">PORTABILITY</span></p>
         <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">这套做法哪些能迁移到你的笔记本</span></h3>
@@ -196,7 +238,7 @@
 
   <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
     <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
-      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
       <section style="margin-top:-8px;">
         <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
         <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
@@ -219,128 +261,172 @@
             <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`CONFIG_ACPI_TABLE_UPGRADE`**；内核去 initrd 找 **`/kernel/firmware/acpi/`**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **dump 路线 A**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**UEFI Shell + `acpiview -s DSDT -d` / `acpiview -s SSDT -d`**（Linux 起不来时用）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **引入版本**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**v4.7 已有，但依赖是 `depends on BLK_DEV_INITRD &amp;&amp; X86`（x86 专属）**；**v4.8 改成 `ARCH_HAS_ACPI_TABLE_UPGRADE`**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **acpiview 的坑**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「acpiview 会写入一个已存在的 dump 文件而不截断它」** → 脚本先 `rm -q *.bin`</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **arm64 起点**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**v4.8（2016-10）**；关键 commit：**`5d8813271f8a`** 机制改造、**`91dda51a1157`** 引入抽象符号、**`38b04a74c587`**「ACPI: ARM64: support for ACPI_TABLE_UPGRADE」</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**dump 脚本健壮性**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">检查 `%homefilesystem%` 映射、每步检查 `%lasterror%`、**最后检查 `DSDT0000.bin` 和 `SSDT0000.bin` 是否真的存在**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**两架构都 select**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`arch/x86/Kconfig` 与 `arch/arm64/Kconfig` 都写 `select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI`**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **dump 路线 B**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">从 **`/sys/firmware/acpi/tables/DSDT` + `SSDT*`** 直接 `cat`；**前提是本次启动没加载覆盖 cpio**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **是否 arm 专用**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**不是。x86 与 arm64 共用**：`acpi_table_upgrade()` 在 **`drivers/acpi/tables.c`**，路径常量 **`char cpio_path[32]`** 与架构无关</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**U 盘准备**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Shell 复制到 **`EFI/BOOT/BOOTAA64.EFI`**，脚本到 **`EFI/BOOT/startup.nsh`**；**「不分区、不格式化，也不碰 U 盘上的其他文件」**；校验 Shell 的 SHA-256</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **我原来写错的**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**内核不按文件名匹配，而是读文件头 4 字节 `signature` 去 `table_sigs[]` 白名单查**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **固件绑定检查**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">拒绝两种输入：**「你 dump 出来的是我们的覆盖表而不是固件原表」**、**「固件版本不是 H7607BA.300」**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**白名单规模**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**46 个签名**，含 **DSDT、SSDT、FADT、MADT、ECDT、SRAT、SLIT、DMAR、HPET、MCFG、IORT、PPTT、NHLT**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **改了什么（SSDT）**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**只改 6 个方法：`RRA9`、`RRA8`、`WRA9`、`WRA8`、`RWEC`、`GBST`**；**把 `Local0`/`Local5` 改成命名对象 `RSPB`**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **四条硬性校验**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">① **至少一个 ACPI 表头大**（`Table smaller than ACPI header`）；② **签名在白名单**（`Unknown signature`）；③ **文件大小等于表头 `length`**（`File length does not match table length`）；④ **校验和正确**（`Bad table checksum`）</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**具体 sed 改动**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">`3590,3604s/Local0/RSPB/g`；`3590s/RSPB = Buffer/Name (RSPB, Buffer/`；`3590s/{}/{})/`</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **第 3 条的陷阱**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**文件比 `length` 长会被拒绝**（如带填充的 dump），错误只说「长度不匹配」；用 `acpixtract` 提取或按 `length` 截断</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **为什么不重编译整表**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「编译整张表会重写无关的 AML」** → 只把 6 个编译后的方法**拼接**回原始 SSDT</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**不能覆盖的**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`ACPI_SIG_RSDP`**（签名 6 字节）、**`ACPI_SIG_FACS`**（无普通表头）</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**拼接的严谨性**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">① 每个方法要求「恰好一个匹配」并校验哈希；② **外层 Scope/Device 的 package length 要同步改**；③ **变长编码的宽度变化会被拒绝**；④ 从后往前替换并检查重叠；⑤ 重算表长度和校验和，最后自检</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**其他限制**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**一次最多 64 张表**；**lockdown 时直接忽略**，日志 `kernel is locked down, ignoring table override`</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**SSPM 改法**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">把 **`_OSI` 对 Windows 2022 的查询** 谓词替换为 **`\0` + `Noop`(0xa3)**；**「不使用全局 OSI 覆盖」**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **替换 vs 追加**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**签名 + OEMID + OEM Table ID 三者相同且 `OEM Revision` 更大 → 替换**；**任一不同 → 追加**。**忘提高 revision 会导致你的表被忽略**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **为什么不用 `acpi_osi=`**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">全局 OSI 覆盖会让**所有**依赖 `_OSI` 的地方都走 Windows 分支；精确打掉只影响那一处</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **dump 路线 A**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**UEFI Shell + `acpiview -s DSDT -d` / `acpiview -s SSDT -d`**（Linux 起不来时用）</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**cpio 路径**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**`kernel/firmware/acpi/DSDT.aml`** 和 **`kernel/firmware/acpi/SSDT.aml`**（内核写死）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **acpiview 的坑**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「acpiview 会写入一个已存在的 dump 文件而不截断它」** → 脚本先 `rm -q *.bin`</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**手写 cpio**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">魔数 **`070701`**（new ASCII），13 个十六进制字段 + 名字 + 4 字节对齐 + 数据；以 **`TRAILER!!!`** 结束，整体补齐 **512 字节**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**dump 脚本健壮性**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">检查 `%homefilesystem%` 映射、每步检查 `%lasterror%`、**最后检查 `DSDT0000.bin` 和 `SSDT0000.bin` 是否真的存在**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**为什么要手写**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">不依赖 `cpio` 命令，且**产出可复现**（作者给归档 pin 了 SHA-256）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **dump 路线 B**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">从 **`/sys/firmware/acpi/tables/DSDT` + `SSDT*`** 直接 `cat`；**前提是本次启动没加载覆盖 cpio**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **那个 allocator 陷阱**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">替换 DSDT 在 **`0x2050a00000`、长度 `0x12144`**，**跨过 EFI 描述符边界 `0x2050a0d000`** → 早期映射接受，**后期 `acpi_os_ioremap()` 拒绝**，报 **`AE_NO_ACPI_TABLES`**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**U 盘准备**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Shell 复制到 **`EFI/BOOT/BOOTAA64.EFI`**，脚本到 **`EFI/BOOT/startup.nsh`**；**「不分区、不格式化，也不碰 U 盘上的其他文件」**；校验 Shell 的 SHA-256</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**后果**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「USB、NVMe 和 GPU 枚举都无法进行」**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **固件绑定检查**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">拒绝两种输入：**「你 dump 出来的是我们的覆盖表而不是固件原表」**、**「固件版本不是 H7607BA.300」**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**根因**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**memblock 会合并相邻可用 EFI 描述符**，所以分配可能跨边界</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **改了什么（SSDT）**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**只改 6 个方法：`RRA9`、`RRA8`、`WRA9`、`WRA8`、`RWEC`、`GBST`**；**把 `Local0`/`Local5` 改成命名对象 `RSPB`**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **补丁思路**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">增加 **`arch_alloc_acpi_tables()`** 架构钩子（`__weak` 保留原行为）；ARM64 只在**单个 conventional + write-back + 非 runtime 的 EFI 描述符内**分配；**「不存在跨描述符的回退」**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**具体 sed 改动**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">`3590,3604s/Local0/RSPB/g`；`3590s/RSPB = Buffer/Name (RSPB, Buffer/`；`3590s/{}/{})/`</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**补丁细节**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">先解析 **`MEMBLOCK_ALLOC_ACCESSIBLE` 哨兵值**；成功时 `pr_info` 打印地址/大小/区域，失败时 `pr_err`</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **为什么不重编译整表**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「编译整张表会重写无关的 AML」** → 只把 6 个编译后的方法**拼接**回原始 SSDT</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **这个坑是否通用**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**任何在 ARM64 上用 `CONFIG_ACPI_TABLE_UPGRADE` 的系统都可能遇到**；是否触发取决于内存容量和 EFI 描述符切分位置，**与覆盖表内容无关**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**拼接的严谨性**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">① 每个方法要求「恰好一个匹配」并校验哈希；② **外层 Scope/Device 的 package length 要同步改**；③ **变长编码的宽度变化会被拒绝**；④ 从后往前替换并检查重叠；⑤ 重算表长度和校验和，最后自检</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ①**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">dump 的两条路线 + acpiview 不截断的坑</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**SSPM 改法**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">把 **`_OSI` 对 Windows 2022 的查询** 谓词替换为 **`\0` + `Noop`(0xa3)**；**「不使用全局 OSI 覆盖」**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ②**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">`kernel/firmware/acpi/` 这个内核约定路径</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **为什么不用 `acpi_osi=`**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">全局 OSI 覆盖会让**所有**依赖 `_OSI` 的地方都走 Windows 分支；精确打掉只影响那一处</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ③**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**只改方法不重编译整表**的思路</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**cpio 路径**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**`kernel/firmware/acpi/DSDT.aml`** 和 **`kernel/firmware/acpi/SSDT.aml`**（内核写死）</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ④**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**精确打掉一处 `_OSI`** 而不是全局 `acpi_osi=`</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**手写 cpio**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">魔数 **`070701`**（new ASCII），13 个十六进制字段 + 名字 + 4 字节对齐 + 数据；以 **`TRAILER!!!`** 结束，整体补齐 **512 字节**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ⑤**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">固件版本绑定 + 原始 dump 和产物的哈希</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**为什么要手写**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">不依赖 `cpio` 命令，且**产出可复现**（作者给归档 pin 了 SHA-256）</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">❌ **不可迁移 ①**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">`RRA9`/`RRA8`/`WRA9`/`WRA8`/`RWEC`/`GBST` 是 **ASUS 这台机器的 EC 实现细节**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **那个 allocator 陷阱**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">替换 DSDT 在 **`0x2050a00000`、长度 `0x12144`**，**跨过 EFI 描述符边界 `0x2050a0d000`** → 早期映射接受，**后期 `acpi_os_ioremap()` 拒绝**，报 **`AE_NO_ACPI_TABLES`**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">❌ **不可迁移 ②**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">所有字节偏移（如 `0x10269`、`3590,3604`）只对**这个固件版本**有效</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**后果**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「USB、NVMe 和 GPU 枚举都无法进行」**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">❌ **不可迁移 ③**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">ARM64 allocator 补丁；x86_64 通常不会有这个坑</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**根因**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**memblock 会合并相邻可用 EFI 描述符**，所以分配可能跨边界</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **最小可行路径**</span></td>
-            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">dump → `iasl -d` 反汇编 → 只改一处 → **争取「等长替换」**（避免处理 package length 变长编码）→ 打 cpio → 在 `dmesg` 里搜 Table Upgrade 确认</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **补丁思路**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">增加 **`arch_alloc_acpi_tables()`** 架构钩子（`__weak` 保留原行为）；ARM64 只在**单个 conventional + write-back + 非 runtime 的 EFI 描述符内**分配；**「不存在跨描述符的回退」**</span></td>
           </tr>
           <tr>
-            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">⚠️ **风险提示**</span></td>
-            <td style="padding:8px 12px;color:#52525B;"><span leaf="">ACPI 表在设备枚举**之前**加载；**务必保留一条不带该 cpio 的启动条目**；**RAM 里的表重启即失效，而刷固件不可逆**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**补丁细节**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">先解析 **`MEMBLOCK_ALLOC_ACCESSIBLE` 哨兵值**；成功时 `pr_info` 打印地址/大小/区域，失败时 `pr_err`</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **这个坑是否通用**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**任何在 ARM64 上用 `CONFIG_ACPI_TABLE_UPGRADE` 的系统都可能遇到**；是否触发取决于内存容量和 EFI 描述符切分位置，**与覆盖表内容无关**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ①**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">dump 的两条路线 + acpiview 不截断的坑</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ②**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">`kernel/firmware/acpi/` 这个内核约定路径</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ③**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**只改方法不重编译整表**的思路</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ④**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**精确打掉一处 `_OSI`** 而不是全局 `acpi_osi=`</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**可迁移 ⑤**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">固件版本绑定 + 原始 dump 和产物的哈希</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">❌ **不可迁移 ①**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">`RRA9`/`RRA8`/`WRA9`/`WRA8`/`RWEC`/`GBST` 是 **ASUS 这台机器的 EC 实现细节**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">❌ **不可迁移 ②**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">所有字节偏移（如 `0x10269`、`3590,3604`）只对**这个固件版本**有效</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">❌ **不可迁移 ③**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">ARM64 allocator 补丁；x86_64 通常不会有这个坑</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **最小可行路径**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">dump → `iasl -d` 反汇编 → 只改一处 → **争取「等长替换」**（避免处理 package length 变长编码）→ 打 cpio → 在 `dmesg` 里搜 Table Upgrade 确认</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ **风险提示**</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">ACPI 表在设备枚举**之前**加载；**务必保留一条不带该 cpio 的启动条目**；**RAM 里的表重启即失效，而刷固件不可逆**</span></td>
           </tr>
         </tbody>
       </table>
