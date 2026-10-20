@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-20 | [Magento 六周内第二个满分漏洞：而真正的分水岭不在 CVSS 10.0，在「Adobe 的 priority 1 只留给正在被打的洞」](https://freelamp.com/articles/2026-10-20_magento-blockstrap-cve-2026-103849-priority-2/) | Magento · Adobe Commerce · BlockStrap · CVE-2026-103849 · StyleSmuggler · CVSS 10.0 · RCE · 模板注入 · 补丁优先级 · Mage-OS · AI辅助逆向 · 解读 |
 | 2026-10-20 | [Secure Boot 证书到期：真正的问题不是「证书过期」，而是「更新信任的钥匙，锁在被更新的那把锁里」](https://freelamp.com/articles/2026-10-20_secure-boot-certificate-expiration-2026-kek-gating/) | Secure Boot · UEFI · 证书到期 · KEK · db · dbx · PK · Windows UEFI CA 2023 · shim · BitLocker · PCR7 · CVE-2026-8863 · 解读 |
 | 2026-10-19 | [ACPI 覆盖到底怎么做：从作者的仓库里拆出完整流程，以及哪些部分能迁移到你自己的笔记本](https://freelamp.com/articles/2026-10-19_acpi-table-override-guide-initrd-cpio/) | ACPI · DSDT · SSDT · 覆盖 · initrd · cpio · acpiview · iasl · ACPICA · AML · _OSI · EFI描述符 · memblock · 笔记本 · 技术指南 |
 | 2026-10-19 | [为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁](https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/) | RTX Spark · NVIDIA · N1X · Grace CPU · Arch Linux ARM · aarch64 · 统一内存 · CUDA · vLLM · 7-Zip · ACPI override · 本地推理 · 解读 |
