@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G — FreeLAMP.com</title>
+  <meta name="description" content="OpenBSD 8.0 于 2026 年 10 月 20 日发布，是第 61 个版本。本文没有逐条罗列更新，而是挑出三条真正改变系统边界的改动：amd64 内核虚拟地址空间从 4G 提升到 512G（而这直接解锁了大于 4GB 显存显卡的映射）、arm64 首次支持休眠、以及 DRM 更新到 Linux 6.18.53">
+  <meta name="keywords" content="OpenBSD, 8.0, 内核地址空间, pmap, DRM, Linux 6.18.53, Intel Arc, OpenSSH 10.6, LibreSSL 4.4.0, pledge, unveil, vmm, vmd, RISC-V, arm64 休眠, loongson 退役, YubiKey, 发布解读">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-20">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-20_openbsd-8-0-release-kernel-address-space/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G">
+  <meta property="og:description" content="OpenBSD 8.0 于 2026 年 10 月 20 日发布，是第 61 个版本。本文没有逐条罗列更新，而是挑出三条真正改变系统边界的改动：amd64 内核虚拟地址空间从 4G 提升到 512G（而这直接解锁了大于 4GB 显存显卡的映射）、arm64 首次支持休眠、以及 DRM 更新到 Linux 6.18.53">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-20_openbsd-8-0-release-kernel-address-space/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-20">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="OpenBSD">
+  <meta property="article:tag" content="OpenBSD">
+  <meta property="article:tag" content="8.0">
+  <meta property="article:tag" content="内核地址空间">
+  <meta property="article:tag" content="pmap">
+  <meta property="article:tag" content="DRM">
+  <meta property="article:tag" content="Linux 6.18.53">
+  <meta property="article:tag" content="Intel Arc">
+  <meta property="article:tag" content="OpenSSH 10.6">
+  <meta property="article:tag" content="LibreSSL 4.4.0">
+  <meta property="article:tag" content="pledge">
+  <meta property="article:tag" content="unveil">
+  <meta property="article:tag" content="vmm">
+  <meta property="article:tag" content="vmd">
+  <meta property="article:tag" content="RISC-V">
+  <meta property="article:tag" content="arm64 休眠">
+  <meta property="article:tag" content="loongson 退役">
+  <meta property="article:tag" content="YubiKey">
+  <meta property="article:tag" content="发布解读">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G">
+  <meta name="twitter:description" content="OpenBSD 8.0 于 2026 年 10 月 20 日发布，是第 61 个版本。本文没有逐条罗列更新，而是挑出三条真正改变系统边界的改动：amd64 内核虚拟地址空间从 4G 提升到 512G（而这直接解锁了大于 4GB 显存显卡的映射）、arm64 首次支持休眠、以及 DRM 更新到 Linux 6.18.53">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G",
+  "description": "来源：OpenBSD 8.0 官方发布页https://www.openbsd.org/80.html（2026-10-20 发布，第 61 个 OpenBSD 版本）  一手材料：本文所有条目均逐项摘自官方发布页原文。版本号、signify 公钥、\"What's New\" 全文均来自该页。该页面是 OpenBSD 项目自己维护的发布说明，不是第三方转述。  本文为解读。第一节关于「为什么 4G ",
+  "datePublished": "2026-10-20",
+  "dateModified": "2026-10-20",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-20_openbsd-8-0-release-kernel-address-space/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "OpenBSD, 8.0, 内核地址空间, pmap, DRM, Linux 6.18.53, Intel Arc, OpenSSH 10.6, LibreSSL 4.4.0, pledge, unveil, vmm, vmd, RISC-V, arm64 休眠, loongson 退役, YubiKey, 发布解读"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G",
+        "item": "https://freelamp.com/articles/2026-10-20_openbsd-8-0-release-kernel-address-space/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-20">2026-10-20</div>
+        <h1 class="post-title" itemprop="headline">OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/OpenBSD/">OpenBSD</a><a itemprop="keywords" href="/tags/8.0/">8.0</a><a itemprop="keywords" href="/tags/%E5%86%85%E6%A0%B8%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4/">内核地址空间</a><a itemprop="keywords" href="/tags/pmap/">pmap</a><a itemprop="keywords" href="/tags/DRM/">DRM</a><a itemprop="keywords" href="/tags/Linux%206.18.53/">Linux 6.18.53</a><a itemprop="keywords" href="/tags/Intel%20Arc/">Intel Arc</a><a itemprop="keywords" href="/tags/OpenSSH%2010.6/">OpenSSH 10.6</a><a itemprop="keywords" href="/tags/LibreSSL%204.4.0/">LibreSSL 4.4.0</a><a itemprop="keywords" href="/tags/pledge/">pledge</a><a itemprop="keywords" href="/tags/unveil/">unveil</a><a itemprop="keywords" href="/tags/vmm/">vmm</a><a itemprop="keywords" href="/tags/vmd/">vmd</a><a itemprop="keywords" href="/tags/RISC-V/">RISC-V</a><a itemprop="keywords" href="/tags/arm64%20%E4%BC%91%E7%9C%A0/">arm64 休眠</a><a itemprop="keywords" href="/tags/loongson%20%E9%80%80%E5%BD%B9/">loongson 退役</a><a itemprop="keywords" href="/tags/YubiKey/">YubiKey</a><a itemprop="keywords" href="/tags/%E5%8F%91%E5%B8%83%E8%A7%A3%E8%AF%BB/">发布解读</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://www.openbsd.org/80.html">OpenBSD 8.0 官方发布页</a>（<strong>2026-10-20 发布</strong>，第 <strong>61</strong> 个 OpenBSD 版本）<br>
+一手材料：本文所有条目均逐项摘自官方发布页原文。版本号、signify 公钥、"What's New" 全文均来自该页。<strong>该页面是 OpenBSD 项目自己维护的发布说明，不是第三方转述。</strong><br>
+本文为<strong>解读</strong>。第一节关于「为什么 4G 是个天花板」的分析、第四节的判断是笔者补充的部分。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>发布页里最容易被跳过的是一行关于内存的数字，而我认为它是这次版本里唯一称得上「结构改变」的条目</strong>：</p>
+<blockquote><strong>「把 amd64 内核虚拟地址空间的大小从 4G 提升到 512G。」</strong></blockquote>
+<strong>（Raised the size of amd64 kernel virtual address space from 4G to 512G.）</strong>
+<p><strong>这句话只有一行，而它的含义需要结合同页另一条才完整</strong>：</p>
+<blockquote><strong>「amd64 上增加的核虚拟地址空间允许映射超过 4GB 的显存。」</strong></blockquote>
+<strong>（Increased kernel virtual address space on amd64 allows mapping more than 4GB of VRAM.）</strong>
+<p><strong>也就是说：这两条是同一件事的两面。而它解决的是一个具体的天花板问题</strong>：<strong>一台装了 8GB 或 16GB 显存显卡的 amd64 机器，在 8.0 之前跑 OpenBSD，显存最多只能用 4GB，因为内核没有足够的虚拟地址空间去映射更多。</strong></p>
+<p><strong>而这恰好解释了同页另一条为什么重要</strong>：</p>
+<blockquote><strong>「在 <code>inteldrm(4)</code> 中加入对 Intel Arc A 系列（DG2/Alchemist）显卡的支持。」</strong></blockquote>
+<strong>Arc A 系列的显存是 6GB 到 16GB。而在 4G 内核地址空间下，这些卡跑不起来。所以这两条改动是配套的：先把地址空间扩到 512G，才谈得上支持大显存的卡。</strong>
+<p><strong>我认为这个顺序揭示了 OpenBSD 这类系统改动的典型形态</strong>：<strong>一个看似枯燥的 pmap 常量调整，是某个具体硬件能不能用的前提条件。而发布页把这两条分开写、都没解释关联，所以读者很容易把前者当成无关紧要的内部整理。</strong></p>
+<h2>一、为什么 4G 是个天花板</h2>
+<p><strong>先把这一节讲清楚，因为它是理解整个版本的关键。</strong></p>
+<p><strong>内核虚拟地址空间（kernel virtual address space，简称 KVA）是内核自己的「寻址预算」。</strong> <strong>内核在映射物理内存、映射设备寄存器（MMIO）、映射显存时，都要从这块地址空间里分配。</strong></p>
+<p><strong>而 amd64 上这块空间原来是 4G。</strong> <strong>这意味着</strong>：</p>
+<ul>
+<li><strong>一块 16GB 的显卡，它的显存只能被映射进来 4GB 以内的部分</strong>；</li>
+<li><strong>而 4G 还要和内核的其他映射（直接映射、vmalloc、设备 MMIO）共享</strong>，所以实际可用的还不到 4G。</li>
+</ul>
+<strong>而「显存映射」这件事为什么必须经过内核地址空间？</strong> <strong>因为 GPU 驱动（<code>inteldrm(4)</code> 这类）需要在</strong>内核上下文<strong>里访问显存</strong>：<strong>比如做命令提交、读硬件状态、处理 GPU 页错误。这些操作不能用用户空间的指针，必须用内核虚拟地址。</strong>
+<p><strong>所以「4G 上限」的真实含义是</strong>：<strong>任何显存超过约 3GB（减去其他映射后）的显卡，在 OpenBSD amd64 上都只能用到其中一小部分。</strong> <strong>而这在 2026 年基本等于「现代独显都不能用」。</strong></p>
+<p><strong>提升到 512G 之后，这个约束消失了。</strong> <strong>而 <code>pmap(9)</code> 里的直接映射（direct map）现在被放在一个随机位置，这一条同页也写了</strong>：</p>
+<blockquote><strong>「<code>pmap(9)</code> 直接映射现在被放置在随机位置。」</strong></blockquote>
+<strong>我认为这一条值得单独说，因为它的意图很清楚</strong>：<strong>直接映射是内核访问物理内存的最直接路径，而它的地址固定就意味着「内核某块内存的虚拟地址可预测」。随机化它，是给内核漏洞利用增加难度。</strong> <strong>所以这两条改动合起来的效果是</strong>：<strong>地址空间大了 128 倍，而其中最关键的一段位置不再固定。</strong>
+<p><strong>而 512G 这个数字本身也有讲究</strong>：<strong>它不是一个「刚好够用」的数字，是一个「留出足够增长空间」的数字</strong>。<strong>从 4G 到 512G 是 128 倍，这个幅度说明他们不是按当前需求算的，是按「下一代显卡可能要 24GB 或 32GB 显存」算的。</strong></p>
+<h2>二、arm64 第一次有了休眠</h2>
+<p><strong>同页里还有一条只有五个词的改动，而它的份量不小</strong>：</p>
+<blockquote><strong>「加入了休眠支持。」（Added hibernate support.）</strong>（arm64 平台条目下）</blockquote>
+<strong>hibernate（休眠到磁盘）在 x86 上是很成熟的功能，而在 arm64 上长期缺失。</strong> <strong>原因是它需要把整块物理内存写进 swap，然后从一个几乎全新的固件状态恢复</strong>，而这涉及<strong>ACPI 状态保存、设备重新初始化、以及最麻烦的「恢复过程中的内存完整性」。</strong>
+<p><strong>而发布页在下面几行给了这项工作真正的难度，我完整摘出来</strong>：</p>
+<blockquote><strong>「在 hibernate 解包磁盘镜像时，校验拷贝到 piglet 的块的大小。」</strong><br>
+<strong>「在读取块时，针对整数溢出校验磁盘镜像大小。」</strong><br>
+<strong>「在 unhibernate 读取 chunktable 时，防止镜像越界读取。」</strong><br>
+<strong>「在 unhibernate 之后清理 framebuffer。」</strong><br>
+<strong>「让 nvme(4) 休眠支持分配专用队列失败变成非致命。」</strong></blockquote>
+<strong>这几条全是「恢复路径上的防御性检查」。</strong> <strong>我认为这是 hibernate 这类功能最容易被低估的地方</strong>：<strong>写内存到磁盘很简单，难的是「读回来的时候，如果镜像被改过或损坏了怎么办」。</strong>
+<p><strong>因为 hibernate 的镜像是一个</strong>保存在磁盘上的、包含全部内存内容的文件<strong>。而如果攻击者能改这个文件，那么在恢复时，内核就会把那块内存当成真的内存来用。</strong> <strong>「针对整数溢出校验磁盘镜像大小」和「防止镜像越界读取」这两条，就是在堵这个口子。</strong></p>
+<p><strong>而「在 unhibernate 之后清理 framebuffer」这一条，我认为最实用</strong>：<strong>因为 framebuffer 在休眠前存着屏幕内容，而恢复后如果不清，你可能会在解锁界面上看到休眠前屏幕的残留。</strong> <strong>这是一个纯粹的隐私细节，而它出现在一份内核改动清单里，说明有人真的在意。</strong></p>
+<h2>三、DRM 追到 Linux 6.18.53，以及 Intel Arc</h2>
+<p><strong>图形栈的更新是</strong>：</p>
+<blockquote><strong>「把 <code>drm(4)</code> 更新到 Linux 6.18.53。」</strong></blockquote>
+<strong>这个数字值得注意，因为它意味着 OpenBSD 的图形栈落后 Linux 主线大约「一个开发周期」</strong>：<strong>Linux 6.18 是一个 2026 年的版本，而 OpenBSD 8.0 在同年 10 月就追到了 6.18.53（含 stable 修正）。</strong> <strong>对 OpenBSD 来说，这是一个相当紧的跟随节奏</strong>，因为<strong>它的 DRM 是把 Linux 的整套驱动框架移植过来，而这个移植不是「复制文件」那么简单</strong>，需要适配 OpenBSD 的 bus_dma、中断模型、以及 pledge/unveil。
+<p><strong>而 Intel Arc A 系列（DG2/Alchemist）的支持，我在第一节已经讲了它和地址空间扩容的关联。</strong></p>
+<p><strong>另有一条 Intel 相关的修正，我认为值得单独指出，因为它是一个真实的硬件怪癖</strong>：</p>
+<blockquote><strong>「绕过在部分 Alder Lake 系统上看到的 <code>inteldrm(4)</code> GuC 超时错误。」</strong></blockquote>
+<strong>（Workaround <code>inteldrm(4)</code> GuC timeout errors seen on some Alder Lake systems.）</strong>
+<p><strong>GuC 是 Intel GPU 的微控制器固件，负责调度。而「timeout」意味着驱动等它回应超时了。</strong> <strong>而这在 Alder Lake 上是一个已知的、只出现在「部分系统」上的问题</strong>，所以<strong>处理方式是 workaround（绕过）而不是修复</strong>。<strong>我认为这个措辞的诚实度值得注意</strong>：<strong>它没有写「修复了 GuC 超时」，而是写「绕过在部分系统上看到的超时」。这两个表述的区别是：前者暗示找到了根因，后者承认只是让它不再卡住。</strong></p>
+<h2>四、安全侧的改动里，有三条我认为信号最强</h2>
+<p><strong>这一节我不逐条罗列（发布页那一节有几十条），只挑出三条能反映 OpenBSD 安全思路的。</strong></p>
+<h3>第一条：<code>unveil(2)</code> 现在管到了 man 工具链</h3>
+<blockquote><strong>「<code>unveil(2)</code> 现在限制 <code>man(1)</code>、<code>makewhatis(8)</code> 和 <code>man.cgi(8)</code> 的读写访问。」</strong></blockquote>
+<strong><code>unveil</code> 是 OpenBSD 的「文件系统可见性」机制：一个进程可以声明「我只需要看到这几个路径」，之后它就无法访问其他任何路径，即使它被攻破。</strong>
+<p><strong>而这条改动的意义在于它的目标</strong>：<strong><code>man.cgi(8)</code> 是 OpenBSD 官网那个在线 man 页面的 CGI</strong>。<strong>也就是说：一个对公网开放的、把用户输入（man 页名）变成文件路径的程序，现在被限制在只能访问 man 相关的几个目录。</strong></p>
+<p><strong>我认为这是 unveil 这个机制最典型的用法</strong>：<strong>它不是「检查输入是否合法」，而是「即使检查失败，这个进程也拿不到别的东西」。而这两层的差别在于：前者依赖「检查逻辑没有漏洞」，后者不依赖。</strong></p>
+<h3>第二条：<code>syspatch</code> 被加固了，而原因很值得玩味</h3>
+<blockquote><strong>「加固了 <code>syspatch(8)</code> 以对抗恶意脚本。」</strong></blockquote>
+<strong>（Hardened <code>syspatch(8)</code> against malicious scripts.）</strong>
+<p><strong><code>syspatch</code> 是 OpenBSD 的二进制补丁工具</strong>，<strong>它下载官方签名的补丁包并应用。</strong> <strong>而「对抗恶意脚本」这句话的意思是</strong>：<strong>它要应用的那些补丁脚本本身如果不怀好意（或者被篡改），不能让它们为所欲为。</strong></p>
+<p><strong>而同页还有两条相关的</strong>：</p>
+<blockquote><strong>「<code>fw_update(8)</code> 现在检查本地 <code>SHA256.sig</code> 的签名。」</strong><br>
+<strong>「在 <code>fw_update(8)</code> 中，让 <code>tar(1)</code> 跳过预期位置之外的文件。」</strong></blockquote>
+<strong>「跳过预期位置之外的文件」这一条我特别想指出</strong>，<strong>因为它对应的是经典的压缩包路径穿越攻击</strong>：<strong>一个 tar 包里如果有 <code>../../etc/passwd</code> 这样的路径，解压时就会写到目录外面去。</strong> <strong>而 <code>fw_update</code> 是以 root 跑的</strong>，所以这条尤其重要。
+<p><strong>我认为这三条放一起说明一件事</strong>：<strong>OpenBSD 对自己的「更新通道」也在做纵深防御。</strong> <strong>它没有假设「签名验证通过就万事大吉」，而是额外假设「即使包是签过名的，它解压出来的东西也不该越界」。</strong></p>
+<h3>第三条：OpenSSH 10.6 里那条「移除预认证攻击面」</h3>
+<p><strong>OpenSSH 10.6 的安全相关条目我看了一遍，其中这一条最值得说</strong>：</p>
+<blockquote><strong>「把一些关键的公钥解析和验证路径从预认证攻击面中移除。」</strong></blockquote>
+<strong>「预认证攻击面」（pre-auth attack surface）是我认为这次发布里最重要的一个概念。</strong> <strong>它的含义是</strong>：<strong>在认证完成之前，服务端要处理的那些代码，是任何能连上 22 端口的人都能触发的。所以这部分代码里每一个 bug 都是「未认证远程」级别的。</strong>
+<p><strong>而「移除」这个动词意味着他们做的是</strong>减少<strong>而不是加固</strong>：<strong>把这些解析路径挪到认证之后去做。</strong> <strong>我认为这个方向比任何具体的漏洞修复都更有价值，因为它是</strong>结构性的<strong>：</strong>少一段预认证代码，就少一整类预认证漏洞。**</p>
+<p><strong>而同版本里另外两条也印证了这个方向</strong>：</p>
+<blockquote><strong>「禁止 在 <code>scp(1)</code> 的 <code>-O</code> 文件名里出现 NUL 字节。」</strong><br>
+<strong>「避免在通过命令行做 <code>ssh(1)</code> 下载时写入服务器控制的路径。」</strong></blockquote>
+<strong>第二条尤其值得注意</strong>，因为<strong>它是「scp/ssh 下载」这个场景里的一个经典不对称</strong>：<strong>你从服务器下载文件，而文件名是服务器给的。如果服务器给了一个绝对路径或 <code>../</code> 路径，而你直接用它写文件，那么服务器就决定了你本地写到哪里。</strong> <strong>「避免写入服务器控制的路径」正是修这个。</strong>
+<h3>另有三条「兼容性破坏」值得提前知道</h3>
+<p><strong>OpenSSH 10.6 专门列了一节「Potentially incompatible changes」，其中两条会影响实际使用</strong>：</p>
+<blockquote><strong>「对 <code>ssh-mldsa44-ed25519</code> 使用 IANA 分配的 codepoint，而不是 <code>@openssh.com</code>。」</strong><br>
+<strong>「让 <code>sshd_config(5)</code> 的 <code>DisableForwarding=yes</code> 覆盖 <code>PermitTunnel=yes</code>。」</strong></blockquote>
+<strong>第二条是一个行为改变</strong>：<strong>以前你如果两个都设了，可能是 <code>PermitTunnel</code> 赢；现在 <code>DisableForwarding</code> 赢。</strong> <strong>这对「我明明关了转发，为什么还能建隧道」这类困惑是一个修复，但也可能让某些依赖旧行为的配置突然不通。</strong>
+<p><strong>而第一条涉及一个更前瞻的东西</strong>：</p>
+<blockquote><strong>「加入实验性的 <code>ssh(1)</code> 对复合后量子 <code>mldsa44-ed25519</code> 签名方案的支持。」</strong></blockquote>
+<strong>「实验性」（experimental）这个词很重要</strong>：<strong>它意味着这个方案还不能用于生产，但它已经能被试了。而选择 ML-DSA（Dilithium）作为后量子签名算法，与 NIST 在 2024 年标准化的方向一致。</strong>
+<h2>五、一条容易被忽略的退役：loongson 架构没了</h2>
+<p><strong>在「其他架构」一节里有一条</strong>：</p>
+<blockquote><strong>「退役了对 loongson 架构的支持（无法配合 Clang 22 工作）。」</strong></blockquote>
+<strong>（Retired support for loongson architecture (not working with Clang 22).）</strong>
+<p><strong>我认为这条值得单独拿出来，因为它是这次发布里唯一一个「功能被删除」的条目，而理由很具体：不是因为没人用，是因为工具链跟不上了。</strong></p>
+<p><strong>loongson 在这里指的是</strong>龙芯早期的 MIPS 架构（<code>mips64el</code>），而不是后来的 LoongArch<strong>。</strong> <strong>而这个退役的理由「not working with Clang 22」说明了一件事</strong>：<strong>OpenBSD 在推进编译器版本，而 loongson 的代码在新的 Clang 下编译不过了。</strong></p>
+<p><strong>而它选择的是「退役」而不是「修」</strong>，<strong>这反映了一个现实</strong>：<strong>小众架构的维护成本，在编译器快速迭代的时代会被放大。</strong> <strong>因为每一次工具链升级，所有小众架构都要跟着改，而改的人往往只有一两个。</strong></p>
+<p><strong>顺带说一句：同页里 luna88k（m88k 架构）反而</strong>在改进<strong>，有五条改动，包括「从 m88k 88100 数据通路中移除了非特权内核内存读写漏洞」。</strong> <strong>所以「小众架构」和「被退役的架构」不是同一个概念</strong>：<strong>m88k 有人维护，MIPS/loongson 没有。</strong></p>
+<p><strong>而这个对比我认为挺有意思</strong>：<strong>一个 1980 年代的架构活了下来，而一个 2000 年代被寄予厚望的架构退役了。原因不是技术先进程度，是「有没有人在维护」。</strong></p>
+<h2>六、我的判断</h2>
+<p><strong>第一，这次发布最值得学的是「发布说明的写法」，而不是任何单个功能。</strong> <strong>OpenBSD 的发布页有一个很罕见的特点：它列出「没做成什么」和「绕过了什么」。</strong> <strong>比如「绕过在部分 Alder Lake 系统上看到的 GuC 超时」这一条，它诚实地承认这是 workaround 而不是 fix。而「loongson 因 Clang 22 不工作而退役」这一条，它直接把原因写出来，没有用「架构调整」这类模糊说法。</strong> <strong>我认为这种写法对用户的价值很高</strong>，因为<strong>它让读者能判断「这个改动对我意味着什么」</strong>，<strong>而不是让读者去猜「修复了若干问题」到底修了什么。</strong></p>
+<p><strong>第二，那个 4G → 512G 的改动，是一个「前提性改动」的典型样本，而这类改动最容易被忽略。</strong> <strong>因为它的效果不是「多了一个功能」，而是「某个功能现在可以有了」。</strong> <strong>而发布页把「地址空间扩容」和「支持 Arc A 系列」写成两条独立的条目，中间隔着几行其他内容，所以读者很容易只看到后者，而不知道前者是它的前提。</strong> <strong>我认为这提示了一个阅读技术发布说明的方法</strong>：<strong>当看到「支持某个新硬件」时，去找同版本里「有没有什么基础设施被改了」，因为那往往才是真正的成本所在。</strong></p>
+<p><strong>第三，<code>unveil</code> 扩到 <code>man.cgi</code> 这件事，是一个很好的「安全机制怎么落地」的样本。</strong> <strong><code>man.cgi</code> 是一个对公网开放的 CGI，输入是 URL 里的 man 页名，输出是一个 HTML 页面。这类程序的传统做法是「仔细过滤输入」，而 unveil 的做法是「不管输入是什么，这个进程只能读这几个目录」。</strong> <strong>我认为后者的可靠性高一档，因为它不依赖「过滤逻辑完美无缺」。而这个思路在 OpenBSD 里已经用了很多年</strong>：<strong>从 <code>pledge</code> 到 <code>unveil</code>，一直是「限制能做什么」而不是「检查输入对不对」。</strong></p>
+<p><strong>第四，关于「要不要升级」，我认为这次的理由比往常更充分一些，而理由不在安全侧。</strong> <strong>安全侧当然有大量 CVE 修复（libexpat、perl、libXfont、Xserver、nsd 各自都有），但那些在 errata 里也能拿到。</strong> <strong>这次只有 8.0 才有的东西是</strong>：<strong>amd64 上能映射超过 4GB 显存、arm64 上能休眠、RISC-V 上有了向量扩展和高级中断架构支持、以及 <code>vmm</code> 支持到 64 个 VCPU。</strong> <strong>而这几条里，对普通用户感知最强的是第一条和第二条。</strong></p>
+<p><strong>而我对 arm64 休眠那条特别想说一句</strong>：<strong>它出现在一台 2026 年的 arm64 笔记本上才算真正有意义</strong>（发布页提到 Samsung Galaxy Book4 Edge、HONOR MagicBook Art 14 Snapdragon 这两台设备的 ufshci 能在休眠后存活）。<strong>也就是说：OpenBSD 的 arm64 支持已经细到「某台具体型号的笔记本能休眠了」。这个粒度说明它不是「能跑」，是「能用」。</strong></p>
+<blockquote><strong>最后一个需要说明的事</strong>：<strong>你给我的两条链接指向同一个页面</strong>。<code>t.co/Zjy2TdgZbd</code> 这个短链的响应体里就是一个 JS/Meta 跳转，目标是 <code>https://www.openbsd.org/80.html</code>：</blockquote>>
+<blockquote><pre><code class="html">> <noscript><META http-equiv="refresh" content="0;URL=https://www.openbsd.org/80.html"></noscript><br>
+<script>window.opener = null; location.replace("https:\/\/www.openbsd.org\/80.html")</script><br>
+</code></pre></blockquote>>
+<blockquote><strong>所以我按一条材料处理。这个细节没什么信息量，但顺手说明一下，免得你以为我漏读了一条。</strong></blockquote>
+<h2>关键事实速查</h2>
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td><strong>版本</strong></td><td><strong>OpenBSD 8.0</strong>，<strong>2026-10-20 发布</strong>，<strong>第 61 个 OpenBSD 版本</strong></td></tr>
+<tr><td><strong>发布歌曲 / 封面</strong></td><td><strong>《The Simps on AI》</strong>；<strong>Artwork by yvaneht nioj and clanker</strong></td></tr>
+<tr><td><strong>signify 公钥</strong></td><td><strong>base</strong>：<code>RWSMSt0erHTctUxq2JDAgQRo64ztikp8JvQeiSPte3NZ0Geou0TkTEiE</code>；<strong>fw</strong>：<code>RWRjzXzC89s1iQC9P3xgcdeN6OUoJz9t7ggTY0xBb1W8PfeOzAdwod66</code>；<strong>pkg</strong>：<code>RWRspL7ERnSFIscdEvBwVySymWNopJ+CEZHbaB3IMJIt0bUXGBuIfUqC</code>；<strong>syspatch</strong>：<code>RWQAeCccO9yAASmUJSCJEW9C5WOP/GAsa5dhMtPPmb5pehzPO7EAmqhK</code></td></tr>
+<tr><td>⭐ <strong>最大的结构改动</strong></td><td><strong>「把 amd64 内核虚拟地址空间的大小从 4G 提升到 512G。」</strong>（<strong>128 倍</strong>）</td></tr>
+<tr><td>⭐ <strong>它解锁了什么</strong></td><td><strong>「amd64 上增加的核虚拟地址空间允许映射超过 4GB 的显存。」</strong></td></tr>
+<tr><td>⭐ <strong>配套的硬件支持</strong></td><td><strong><code>inteldrm(4)</code> 加入 Intel Arc A 系列（DG2/Alchemist）支持</strong>；<strong>Arc A 的显存 6–16GB，在 4G 上限下跑不起来</strong></td></tr>
+<tr><td><strong>内核地址空间安全化</strong></td><td><strong>「<code>pmap(9)</code> 直接映射现在被放置在随机位置。」</strong></td></tr>
+<tr><td><strong>amd64 其他</strong></td><td><strong>用 AES CPU 指令加速 swap 加密</strong></td></tr>
+<tr><td>⭐ <strong>arm64 首次休眠</strong></td><td><strong>「加入了休眠支持。」</strong>；<strong>用 AES 指令加速 swap 加密</strong>；<strong>实现了 bounce buffers</strong></td></tr>
+<tr><td><strong>arm64 休眠的防御性检查</strong></td><td><strong>校验拷贝到 piglet 的块大小</strong>；<strong>针对整数溢出校验镜像大小</strong>；<strong>防止 unhibernate 读取 chunktable 时越界</strong>；<strong>unhibernate 后清理 framebuffer</strong>；<strong>nvme 专用队列分配失败改为非致命</strong></td></tr>
+<tr><td><strong>arm64 休眠的真机验证</strong></td><td><strong><code>ufshci(4)</code> 能在 Samsung Galaxy Book4 Edge 和 HONOR MagicBook Art 14 Snapdragon 上熬过休眠</strong></td></tr>
+<tr><td><strong>DRM</strong></td><td><strong>更新到 Linux 6.18.53</strong></td></tr>
+<tr><td><strong>Intel 相关修正</strong></td><td><strong>绕过在部分 Alder Lake 系统上看到的 <code>inteldrm(4)</code> GuC 超时错误</strong>（workaround，非 fix）</td></tr>
+<tr><td><strong>RISC-V</strong></td><td><strong>通过 <code>elf_aux_info(3)</code> 的 AT_HWCAP/AT_HWCAP2 把可用的 CPU 扩展暴露给用户态</strong>；<strong>内核支持 'V' 向量扩展</strong>；<strong>支持 RISC-V Advanced Interrupt Architecture（<code>imsic(4)</code>、<code>aplic(4)</code>）</strong>；<strong>支持 Sstc 定时器扩展</strong>；<strong>bounce buffers</strong></td></tr>
+<tr><td><strong>sparc64</strong></td><td><strong>改用 LLVM 工具链</strong></td></tr>
+<tr><td>⚠️ <strong>架构退役</strong></td><td><strong>「退役了对 loongson 架构的支持（无法配合 Clang 22 工作）。」</strong>（指早期 MIPS 龙芯，非 LoongArch）</td></tr>
+<tr><td><strong>对照：luna88k 反而在改进</strong></td><td><strong>5 条改动，含「从 m88k 88100 数据通路中移除了非特权内核内存读写漏洞」</strong></td></tr>
+<tr><td>⭐ <strong>pledge/unveil 扩展</strong></td><td><strong><code>unveil(2)</code> 现在限制 <code>man(1)</code>、<code>makewhatis(8)</code>、<code>man.cgi(8)</code> 的读写访问</strong></td></tr>
+<tr><td><strong>pledge 相关</strong></td><td><strong>修复 <code>vfs(9)</code> 里一处 pledge</strong>；<strong>为 <code>lldpd(8)</code> 加入 'mcast' pledge</strong>；<strong>收紧 <code>pledge_sockopt()</code> 对不同 socket 类型的 level/optname 检查</strong></td></tr>
+<tr><td>⭐ <strong>更新通道加固</strong></td><td><strong>「加固了 <code>syspatch(8)</code> 以对抗恶意脚本」</strong>；<strong><code>fw_update(8)</code> 现在检查本地 <code>SHA256.sig</code> 的签名</strong>；<strong><code>fw_update(8)</code> 里的 <code>tar(1)</code> 跳过预期位置之外的文件</strong>（防路径穿越，且它以 root 运行）</td></tr>
+<tr><td><strong>OpenSSH</strong></td><td><strong>10.6</strong></td></tr>
+<tr><td>⭐ <strong>OpenSSH 最重要的一条</strong></td><td><strong>「把一些关键的公钥解析和验证路径从预认证攻击面中移除。」</strong></td></tr>
+<tr><td><strong>OpenSSH 安全修复</strong></td><td><strong>禁用 <code>ssh(1)</code> 的 LZ77 字典编码器以规避潜在侧信道泄漏</strong>；<strong>修复 <code>ChannelTimeout</code> 与 <code>RekeyLimit</code> 未被应用</strong>；<strong>让 <code>authorized_keys</code> 的 <code>restrict</code> 关键字正确作用于隧道转发</strong></td></tr>
+<tr><td><strong>OpenSSH 兼容性破坏</strong></td><td><strong><code>ssh-mldsa44-ed25519</code> 改用 IANA 分配的 codepoint（不再是 <code>@openssh.com</code>）</strong>；<strong><code>DisableForwarding=yes</code> 现在覆盖 <code>PermitTunnel=yes</code></strong></td></tr>
+<tr><td><strong>OpenSSH 新增</strong></td><td><strong>实验性的复合后量子 <code>mldsa44-ed25519</code> 签名方案支持</strong>；<strong><code>ssh-add -P</code> 跳过 PIN 输入</strong>；<strong><code>ssh-keygen hexdump</code></strong>；<strong><code>ssh -Z user@host</code> 列出将尝试的公钥</strong></td></tr>
+<tr><td><strong>OpenSSH 其他修复</strong></td><td><strong><code>ssh(1)</code> 压缩载荷不得膨胀超过最大载荷长度</strong>；<strong>从 supercop ed25519 切到 libsodium</strong>；<strong>修复 <code>sshd(8)</code> 两处一字节越界读</strong>；<strong>避免 <code>ssh(1)</code> 客户端 realloc 后的 use-after-free</strong></td></tr>
+<tr><td><strong>LibreSSL</strong></td><td><strong>4.4.0</strong></td></tr>
+<tr><td><strong>LibreSSL 重要修复</strong></td><td><strong>修复 <code>openssl(1)</code>、<code>nc(1)</code>、<code>ocspcheck(8)</code> 在提供这些机制的宿主上静默跳过 <code>pledge(2)</code> 和 <code>unveil(2)</code></strong>；<strong>ML-KEM 代码里把 <code>failure_key</code> 清零</strong>；<strong>修复 MSVC ARM64 优化器在常数时间大数代码里生成错误代码</strong>；<strong><code>ecdh_compute_key()</code> 加入无穷远点检查</strong>；<strong>修复 <code>crl_cb()</code> 里 EXFLAG_CRITICAL 的错误处理</strong></td></tr>
+<tr><td><strong>内核态 VMM</strong></td><td><strong><code>vmm</code> 支持每 guest 最多 64 个 VCPU</strong>；<strong>guest VM 增加 x2apic 模式</strong>；<strong><code>vmd(8)</code> 支持 checksum offload</strong>；<strong>MSI/MSI-X virtio 中断</strong>；<strong>修复 32/64 位 ELF 加载器在畸形 ELF 下的越界读</strong></td></tr>
+<tr><td><strong>libexpat</strong></td><td><strong>更新到 2.8.4</strong>（CVE-2026-66046、CVE-2026-76641、CVE-2026-76957）</td></tr>
+<tr><td><strong>perl 修复</strong></td><td><strong>CVE-2026-57433</strong>（Storable 有符号整数溢出）、<strong>CVE-2026-57432</strong>（pack/unpack 整数溢出）、<strong>CVE-2026-13221</strong>（正则匹配错误）、<strong>Socket 2.041</strong>（CVE-2026-12087 堆越界读）</td></tr>
+<tr><td><strong>X 相关</strong></td><td><strong>LibXfont 修复 CVE-2026-56001/56002/56003</strong>；<strong>Xserver 修复 CVE-2026-55999/56000</strong></td></tr>
+<tr><td><strong>nsd</strong></td><td><strong>修复 CVE-2026-12244/12245/12246/12490</strong></td></tr>
+<tr><td><strong>sudo</strong></td><td><strong>1.9.17p2</strong></td></tr>
+<tr><td><strong>材料说明</strong></td><td><strong>两条链接指向同一页面</strong>：<code>t.co/Zjy2TdgZbd</code> 的响应体就是跳到 <code>openbsd.org/80.html</code> 的 JS/Meta 跳转</td></tr>
+</table>
+<h2>延伸阅读</h2>
+<ul>
+<li><a href="https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/">Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_tee-attestation-forgery-threat-model/">TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-19_rtx-spark-laptop-arch-linux-arm-nvidia/">为了让这台 128GB 的 RTX Spark 笔记本跑 Linux，她自己写了 ACPI 覆盖和触控板补丁</a></li>
+<li><a href="https://freelamp.com/articles/2026-10-16_libreboot-2610-uefi-edk2-anti-ai-policy/">Libreboot 26.10 加入了 EDK2 支持，而它的反 AI 政策写进了一个机器可读的文件</a></li>
+<li><a href="https://www.openbsd.org/80.html">OpenBSD 8.0 官方发布页（一手）</a></li>
+</ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-20_openbsd-8-0-release-kernel-address-space/",
+      title: "OpenBSD 8.0 \u53d1\u4e86\uff1a\u800c\u8fd9\u6b21\u6700\u503c\u5f97\u770b\u7684\u4e0d\u662f\u6f0f\u6d1e\u4fee\u590d\u6e05\u5355\uff0c\u662f\u5185\u6838\u865a\u62df\u5730\u5740\u7a7a\u95f4\u4ece 4G \u8df3\u5230 512G"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
