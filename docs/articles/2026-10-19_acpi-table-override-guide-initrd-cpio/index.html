@@ -318,6 +318,107 @@
 <li>4. <strong>重启</strong>，内核会用你的表。</li>
 </ol>
 <strong>而这里面真正会让人卡住的从来不是第 1、3、4 步，是第 2 步。而这篇文章的重点就在第 2 步，以及一个作者踩到但很少人知道的内核 allocator 陷阱。</strong>
+<h2>零、背景：那些 dump 出来的文件是什么，AML 又是怎么变成文件的</h2>
+<p><strong>在进入流程之前，先把「你到底在和什么东西打交道」说清楚。因为 ACPI 这一套东西的名词密度很高，而很多人第一次面对 <code>/sys/firmware/acpi/tables/</code> 里那堆 <code>DSDT</code>、<code>SSDT15</code>、<code>FACP</code>、<code>APIC</code> 时会直接迷路。</strong></p>
+<h3>固件给你的不是一个文件，是一堆「表」</h3>
+<p><strong>ACPI 的全部内容就是一组二进制表。它们由主板固件（UEFI/BIOS）在出厂时编译好，放在闪存里，操作系统启动时读出来。而它们不是「配置文件」，是</strong>可以被解释执行的字节码<strong>。</strong></p>
+<p><strong>Linux 启动时，这些表会被投影到两个地方，都是只读的：</strong></p>
+<ul>
+<li><strong><code>/sys/firmware/acpi/tables/</code></strong>：<strong>一张表一个文件，文件名就是它的签名</strong>（比如 <code>DSDT</code>、<code>SSDT1</code>）；</li>
+<li><strong><code>/sys/firmware/acpi/tables/dynamic/</code></strong>：<strong>运行时才加载的表</strong>（比如某些驱动用 <code>LoadTable</code> 操作码动态加载的 SSDT）。</li>
+</ul>
+<strong>所以「dump」这件事，字面意思就是「把内核已经读进来的这些表，原样复制出来」。</strong> <strong>而 <code>acpidump</code> 这个工具做的事更绕一层：它把表按 ACPI 的 <code>RSDP → RSDT/XSDT → 各张表</code> 的指针链全部走一遍，然后打成一个 <code>.dat</code> 文本文件（十六进制 + 元信息）。</strong>
+<h3>四类名字先分清：DSDT、SSDT、FACP、APIC</h3>
+<p><strong>表很多，但对「改笔记本 ACPI」这件事，只有四类需要先记住</strong>：</p>
+<table>
+<tr><th>名字</th><th>它是什么</th><th>你在里面会看到什么</th></tr>
+<tr><td><strong>DSDT</strong></td><td><strong>「差异化系统描述表」</strong>，每台机器<strong>只有一张</strong></td><td><strong>几乎是全部的设备树和逻辑</strong>：<code>\_SB.PCI0</code>、<code>\_SB.EC0</code>（嵌入式控制器）、<code>\_SB.BAT0</code>（电池）、电源方法、<code>_OSI</code> 判断</td></tr>
+<tr><td><strong>SSDT</strong></td><td><strong>「附加系统描述表」</strong>，可以有<strong>很多张</strong></td><td><strong>厂商把功能拆到多张表里</strong>，比如 ASUS 把电源/EC 相关方法放进一张 OEM Table ID 为 <code>ASUSSSDT</code> 的表</td></tr>
+<tr><td><strong>FACP</strong>（文件里常叫 FADT）</td><td><strong>固定 ACPI 描述表</strong>，记录<strong>硬件寄存器的地址</strong></td><td><strong><code>DSDT</code> 的物理地址、电源管理寄存器、复位寄存器、<code>ARM_BOOT_FLAGS</code></strong></td></tr>
+<tr><td><strong>APIC/MADT</strong></td><td><strong>多 APIC 描述表</strong>，描述<strong>中断控制器拓扑</strong></td><td><strong>每个 CPU 核、IOAPIC、中断源覆盖</strong></td></tr>
+</table>
+<p><strong>而「为什么改表通常改 DSDT 和 SSDT」也就清楚了</strong>：<strong>FACP 和 MADT 是「硬件事实」，改它们等于欺骗内核对硬件的认知，风险极高；而 DSDT/SSDT 是「逻辑」，改它们是在改「系统怎么理解和使用这些硬件」。</strong></p>
+<p><strong>作者改的正是 SSDT 和 DSDT</strong>：SSDT 里那 6 个 EC 方法、DSDT 里那一处 <code>_OSI</code> 判断。</p>
+<h3>每张表都有同一个 36 字节的头</h3>
+<p><strong>这是理解「为什么 AML 文件能被校验和拼接」的关键。所有 ACPI 表都以同一个 36 字节结构开头，我从内核 <code>include/acpi/actbl.h</code> 里取出原文</strong>：</p>
+<pre><code class="c">struct acpi_table_header {
+    char signature[4];        /<em> ASCII table signature，如 "DSDT" </em>/
+    u32  length;              /<em> 整张表的字节数，含这个头 </em>/
+    u8   revision;            /<em> ACPI 规范次版本号 </em>/
+    u8   checksum;            /<em> 使整张表字节和为 0 </em>/
+    char oem_id[6];           /<em> ASCII OEM 标识，如 "NVDA\0\0" </em>/
+    char oem_table_id[8];     /<em> ASCII OEM 表标识，如 "ANGUS   " </em>/
+    u32  oem_revision;        /<em> OEM 修订号 </em>/
+    char asl_compiler_id[4];  /<em> ASL 编译器厂商 ID，如 "INTL" </em>/
+    u32  asl_compiler_revision;
+};
+</code></pre>
+<p><strong>这五个字段在后面每一节都会回来找你</strong>：</p>
+<ul>
+<li><strong><code>signature</code></strong>：<strong>决定内核认不认这张表</strong>（不是文件名！）；</li>
+<li><strong><code>length</code></strong>：<strong>必须与文件实际大小一致</strong>，否则内核拒绝；</li>
+<li><strong><code>checksum</code></strong>：<strong>所有字节加起来模 256 必须为 0</strong>，所以任何改动都必须重算；</li>
+<li><strong><code>oem_id</code> + <code>oem_table_id</code> + <code>oem_revision</code></strong>：<strong>这三个决定你的表是「替换」平台表还是「追加」</strong>。</li>
+</ul>
+<strong>而「重算校验和」在代码里就是一行</strong>（作者的做法）：
+<pre><code class="python">modified[9] = 0
+modified[9] = -sum(modified) % 256
+</code></pre>
+<p><strong>先把自己的校验和字节置零，再把全部字节求和取负模 256，写回去。</strong> <strong>这就是为什么你手改一个字节也必须重算校验和，否则内核会在 <code>Bad table checksum</code> 这一步扔掉你的表。</strong></p>
+<h3>AML 是什么：它是字节码，不是文本</h3>
+<p><strong>这是整篇文章最需要建立的概念。DSDT 和 SSDT 里的内容叫 AML（ACPI Machine Language），它是</strong>二进制字节码<strong>，由 ACPI 虚拟机（内核里的 ACPICA）解释执行。</strong></p>
+<p><strong>而你在网上搜到的 <code>.dsl</code> 文件是 ASL（ACPI Source Language），是它的源码形式。</strong> <strong>两者的关系和 C 语言非常像</strong>：</p>
+<pre><code class="text">ASL 源码 (.dsl)      ← 人写、可读
+      ↓  iasl 编译
+AML 字节码 (.aml)    ← 机器读、不可读
+      ↓  ACPICA 解释执行
+</code></pre>
+<p><strong>而反方向也有一条路，也就是「反编译」</strong>：</p>
+<pre><code class="text">AML 字节码 (.aml)    ← 固件里的原始形态
+      ↓  iasl -d  反汇编
+ASL 源码 (.dsl)      ← 可读、可改
+</code></pre>
+<p><strong>所以 ACPI 表的修改流程，本质上是</strong>：<strong>从固件里拿到 <code>.aml</code> → 反汇编成 <code>.dsl</code> → 改 <code>.dsl</code> → 重新编译成 <code>.aml</code> → 替换回去。</strong></p>
+<p><strong>而这里有一个致命的事实，它是本文第三节全部复杂度的根源</strong>：<strong>「反汇编再编译」不是一个无损往返。</strong> <strong><code>.aml → .dsl → .aml</code> 这一圈走下来，即使你一个字符都没改，出来的字节也可能和原始文件不同。</strong></p>
+<h3>为什么反汇编再编译会「不一样」</h3>
+<p><strong>这有四个具体原因，而它们每一个都会在第三节变成实际麻烦</strong>：</p>
+<p><strong>① 编码不唯一。</strong> <strong>AML 的「包长度」字段是</strong>变长编码<strong>（1 到 4 字节），同一段内容可以用不同宽度编码。iasl 编译时会选一个宽度，而这个宽度不一定和你原来那张表用的一致。</strong></p>
+<p><strong>② 反汇编可能丢失结构信息。</strong> <strong>有些字节序列在 AML 里是合法的，但反汇编成 ASL 时没有对应的语法能精确表达，于是 iasl 会输出一个「语义等价但写法不同」的 ASL，重新编译就成了不同的字节。</strong></p>
+<p><strong>③ 编译器版本不同，输出不同。</strong> <strong>这就是为什么作者在代码里强制校验 <code>iasl</code> 必须是 20260408 这个具体版本，甚至区分「64 位构建」：</strong></p>
+<pre><code class="python">require(re.search(r"version 20260408\b", run_iasl(located, ["-v"], work)) is not None,
+        f"{iasl} is not ACPICA iasl 20260408; build it from {IASL_SOURCE}")
+</code></pre>
+<p><strong>④ 注释和格式全丢了。</strong> <strong><code>.aml</code> 里没有注释，所以反汇编出来的 ASL 一定和厂商写的那份不一样。</strong></p>
+<p><strong>所以作者的结论是「编译整张表会重写无关的 AML」，而他的对策不是「想办法让它无损」，而是绕过它</strong>：<strong>只从编译产物里抠出那 6 个方法的字节，然后拼接回原始 <code>.aml</code>。</strong> <strong>这样原始表里 99% 的字节根本没经过编译器。</strong></p>
+<p><strong>我认为理解这一层之后，第三节那些看起来过度的哈希校验就会变得合理</strong>：<strong>它们不是在防御「恶意的输入」，而是在防御「一个必然会发生、且无法通过肉眼发现的漂移」。</strong></p>
+<h3>dump 出来的文件长什么样</h3>
+<p><strong>最后把「你手上会拿到什么」具体化。用两条路线拿到的东西形态不同</strong>：</p>
+<p><strong>路线 B（从 <code>/sys/firmware/acpi/tables/</code> 复制）拿到的就是</strong>原始 <code>.aml</code> 字节<strong>，文件名是签名：</strong></p>
+<pre><code class="text">/tmp/acpi-orig/
+├── DSDT          ← 原始 AML 字节
+├── SSDT1
+├── SSDT2
+├── FACP
+└── APIC
+</code></pre>
+<p><strong>而作者的 <code>acpi_builder.py</code> 检查的正是这些文件头里的 <code>signature</code> 和 <code>length</code>，而不是文件名。它甚至允许你把这些文件改名成 <code>foo.bin</code>、<code>bar.bin</code>，因为判断完全靠内容：</strong></p>
+<pre><code class="python">with path.open("rb") as stream:
+    head = stream.read(24)
+if head[:4] not in found or head[:4] == b"SSDT" and head[10:24] != ASUS_SSDT:
+    continue
+</code></pre>
+<p><strong>注意这一行里的 <code>head[10:24] != ASUS_SSDT</code>：它在读</strong>第 10 到 24 字节<strong>，也就是 <code>oem_id[6] + oem_table_id[8]</code>，用来挑出「OEM ID 是 <code>_ASUS_</code>、表 ID 是 <code>ASUSSSDT</code>」的那一张。</strong> <strong>这就是为什么背景里要先记住那个 36 字节头的布局：第 10 字节开始正好是 OEM 标识。</strong></p>
+<p><strong>路线 A（UEFI <code>acpiview -d</code>）下场的文件名是 <code>DSDT0000.bin</code>、<code>SSDT0000.bin</code>、<code>SSDT0001.bin</code> 这种，带序号。</strong> <strong>而作者代码里有一个专门的错误提示，说明这两种形态的差别会造成什么误会</strong>：</p>
+<blockquote><strong>「<code>{path.name}</code> 里不正好装着一张表；删掉旧的 dump 再 dump 一次」</strong></blockquote>
+<strong>这条提示针对的正是 <code>acpiview</code> 不截断文件的坑：如果文件里残留了上一次更长的表，那么「文件大小」就会大于表头里的 <code>length</code>，而内核会以 <code>File length does not match table length</code> 拒绝它。</strong>
+<h3>一句话把背景收掉</h3>
+<p><strong>如果你只需要记住三件事</strong>：</p>
+<ol>
+<li>1. <strong>ACPI 表 = 36 字节头 + AML 字节码主体；头里的 <code>signature</code> 决定内核认不认，<code>length</code> 和 <code>checksum</code> 决定内核收不收。</strong></li>
+<li>2. <strong>AML 是字节码，<code>.dsl</code> 是它的源码形式；<code>iasl -d</code> 反汇编，<code>iasl</code> 编译。</strong></li>
+<li>3. <strong>「反汇编再编译」不是无损往返，所以专业做法是「只替换改过的字节」，而不是「重编译整张表」。</strong></li>
+</ol>
+<strong>后面所有流程都是在处理这三个事实的后果。</strong>
 <h2>一、先回答两个版本与架构问题</h2>
 <p><strong>这两个问题在查证之后都和我原本的印象不同，所以我把一手依据列出来。</strong></p>
 <h3><code>ACPI_TABLE_UPGRADE</code> 的版本历史：v4.7 就有了，但当时只限 x86</h3>
