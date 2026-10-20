@@ -318,11 +318,86 @@
 <li>4. <strong>重启</strong>，内核会用你的表。</li>
 </ol>
 <strong>而这里面真正会让人卡住的从来不是第 1、3、4 步，是第 2 步。而这篇文章的重点就在第 2 步，以及一个作者踩到但很少人知道的内核 allocator 陷阱。</strong>
-<h2>一、第一步：dump 你自己的表，有两条路</h2>
+<h2>一、先回答两个版本与架构问题</h2>
+<p><strong>这两个问题在查证之后都和我原本的印象不同，所以我把一手依据列出来。</strong></p>
+<h3><code>ACPI_TABLE_UPGRADE</code> 的版本历史：v4.7 就有了，但当时只限 x86</h3>
+<p><strong>关键在于它不是「v4.8 新加的功能」，而是一条分两步的历史</strong>：</p>
+<ul>
+<li><strong>v4.7 时 <code>ACPI_TABLE_UPGRADE</code> 已经存在</strong>，而它的依赖写的是：</li>
+</ul>
+  <pre><code class="">  depends on BLK_DEV_INITRD && X86
+  </code></pre>
+<p>  <strong>注意最后那个 <code>X86</code></strong>：<strong>那个版本的这个开关是 x86 专属的，arm64 根本选不到它。</strong></p>
+<ul>
+<li><strong>v4.8 时依赖被改成了架构抽象</strong>：</li>
+</ul>
+  <pre><code class="">  depends on BLK_DEV_INITRD && ARCH_HAS_ACPI_TABLE_UPGRADE
+  </code></pre>
+<p>  <strong>也就是把硬编码的 <code>X86</code> 换成了一个架构可以自行 <code>select</code> 的符号。</strong></p>
+<p><strong>而这个改动是 2016 年那批提交做的，共三条</strong>（commit 日期 2016-06-22，进入 v4.8）：</p>
+<table>
+<tr><th>commit</th><th>内容</th></tr>
+<tr><td><code>5d8813271f8a</code></td><td><strong>ACPI / tables: Convert initrd table override to table upgrade mechanism</strong>（2016-04-18）</td></tr>
+<tr><td><code>91dda51a1157</code></td><td><strong>ACPI / tables: introduce ARCH_HAS_ACPI_TABLE_UPGRADE</strong>（2016-06-22）</td></tr>
+<tr><td><code>38b04a74c587</code></td><td><strong>ACPI: ARM64: support for ACPI_TABLE_UPGRADE</strong>（2016-06-22）</td></tr>
+</table>
+<p><strong>而 v4.8 里两个架构都自己 <code>select</code> 了这个符号，我实测确认了原文</strong>：</p>
+<pre><code class="">	select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI
+<h1>arch/arm64/Kconfig</h1>
+	select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI
+</code></pre>
+<p><strong>所以在今天的内核上，x86 和 arm64 都能用这个功能。而「arm64 支持 ACPI 表覆盖」这件事的起点是 v4.8（2016 年 10 月发布）。</strong></p>
+<p><strong>还有一个更新的事实值得补</strong>：<strong>现代内核里还有一个 <code>ACPI_TABLE_OVERRIDE_VIA_BUILTIN_INITRD</code></strong>，用来支持「内核和 initrd 编在同一个镜像里」的场景。而 Kconfig 的 help 说得很清楚：</p>
+<blockquote><strong>「本选项提供从内建的未压缩 initrd 覆盖任意 ACPI 表的功能。」</strong></blockquote>
+<strong>而它有两个附加约束</strong>：<code>depends on ACPI_TABLE_UPGRADE</code>、<code>depends on INITRAMFS_SOURCE!="" && INITRAMFS_COMPRESSION_NONE</code>。<strong>也就是说，只有你用的是内建且未压缩的 initramfs 时才需要它。</strong>
+<h3>那两个 <code>.aml</code> 文件不是 arm 专用的，x86 用同一套</h3>
+<p><strong>这个问题的答案很干净：完全不是 arm 专用。x86 用同样的目录、同样的机制、同样的文件名惯例。</strong></p>
+<p><strong>一手依据是内核文档 <code>Documentation/admin-guide/acpi/initrd_table_override.rst</code>，它的例子就是 x86 的机器</strong>（例子里用的是 <code>DefinitionBlock ("DSDT.aml", "DSDT", 2, "INTEL ", "TEMPLATE", ...)</code>），而它给的打包命令是：</p>
+<pre><code class="bash">mkdir -p kernel/firmware/acpi
+cp dsdt.aml kernel/firmware/acpi
+find kernel | cpio -H newc --create > /boot/instrumented_initrd
+cat /boot/initrd >>/boot/instrumented_initrd
+</code></pre>
+<p><strong>而路径 <code>kernel/firmware/acpi/</code> 在源码里是写死在 <code>acpi_table_upgrade()</code> 里的常量</strong>：</p>
+<pre><code class="c">char cpio_path[32] = "kernel/firmware/acpi/";
+</code></pre>
+<p><strong>这个常量与架构无关，因为 <code>acpi_table_upgrade()</code> 本身就在 <code>drivers/acpi/tables.c</code>，是所有用 ACPI 的架构共用的。</strong></p>
+<h3>一个我原来写错的地方：内核不按文件名匹配</h3>
+<p><strong>这一点必须纠正，因为它会影响你怎么命名文件。我读了 <code>acpi_table_upgrade()</code> 的完整实现，它是这样挑文件的</strong>：</p>
+<pre><code class="c">for (sig = 0; sig < ARRAY_SIZE(table_sigs); sig++)
+    if (!memcmp(table->signature, table_sigs[sig], 4))
+        break;
+</code></pre>
+<p><strong>它读文件头 4 字节的 <code>signature</code>，然后在一个白名单数组里查。所以真正决定「这张表能不能被接受」的是</strong>文件内容里的签名<strong>，不是文件名。</strong></p>
+<p><strong>而白名单 <code>table_sigs[]</code> 包含 46 个签名，都是 ACPI 规范里的表名，其中和笔记本改表最相关的几个是</strong>：</p>
+<p><strong><code>ACPI_SIG_DSDT</code>、<code>ACPI_SIG_SSDT</code>、<code>ACPI_SIG_FADT</code>（就是 FACP）、<code>ACPI_SIG_MADT</code>、<code>ACPI_SIG_ECDT</code>、<code>ACPI_SIG_SRAT</code>、<code>ACPI_SIG_SLIT</code>、<code>ACPI_SIG_DMAR</code>、<code>ACPI_SIG_HPET</code>、<code>ACPI_SIG_MCFG</code>、<code>ACPI_SIG_IORT</code>（ARM 的中断映射表）、<code>ACPI_SIG_PPTT</code>、<code>ACPI_SIG_NHLT</code>。</strong></p>
+<p><strong>而它还有四条硬性校验，每条都会 <code>pr_err</code> 然后跳过这个文件</strong>：</p>
+<table>
+<tr><th>校验</th><th>失败信息</th></tr>
+<tr><td>文件至少有一个 ACPI 表头那么大</td><td><code>Table smaller than ACPI header</code></td></tr>
+<tr><td><strong>签名在 <code>table_sigs[]</code> 白名单里</strong></td><td><code>Unknown signature</code></td></tr>
+<tr><td><strong>文件大小必须等于表头里声明的 <code>length</code></strong></td><td><code>File length does not match table length</code></td></tr>
+<tr><td><strong>校验和必须正确</strong></td><td><code>Bad table checksum</code></td></tr>
+</table>
+<p><strong>⚠️ 而这里有一个我原本没提到的陷阱，值得单独说</strong>：<strong>「文件大小必须等于表头里声明的 length」这条检查意味着，你不能把一个「比表头声明的长度更长」的文件塞进去</strong>（比如从 <code>acpiview</code> dump 出来的文件如果带了填充字节）。<strong>如果你 dump 出来的 <code>.bin</code> 比 <code>length</code> 字段大，这条检查会直接拒绝它，而错误信息只说「长度不匹配」，不会告诉你是填充的问题。</strong> <strong>解法是：用 <code>acpixtract</code> 从 <code>acpidump</code> 的输出里提取，或者手动按 <code>length</code> 字段截断。</strong></p>
+<p><strong>另外，有两条明确的「不能覆盖」</strong>（内核文档写得很直白）：</p>
+<blockquote><strong>「iasl 认识的 ACPI 表都应该可以覆盖，除了：<code>ACPI_SIG_RSDP</code>（签名有 6 字节）、<code>ACPI_SIG_FACS</code>（没有普通的 ACPI 表头结构）。」</strong></blockquote>
+<strong>而最后两个限制也值得记</strong>：<strong>① 一次最多 64 张表</strong>（<code>NR_ACPI_INITRD_TABLES</code>）；<strong>② 内核如果处于 lockdown 状态，会直接忽略覆盖</strong>，日志是 <code>kernel is locked down, ignoring table override</code>（<code>security_locked_down(LOCKDOWN_ACPI_TABLES)</code>）。<strong>如果你在开了 Secure Boot 的机器上试这个功能而完全不生效，第二条是最可能的原因。</strong>
+<h3>覆盖是怎么生效的：「替换」还是「追加」</h3>
+<p><strong>这是另一个容易误解的地方。内核文档的原话</strong>：</p>
+<blockquote><strong>「注意：如果放在这里的表与平台表</strong>匹配<strong>（相同表签名、相同 OEMID、相同 OEM Table ID）且 OEM Revision </strong>更新<strong>，那么平台表会被这张表</strong>升级<strong>。如果放在这里的表与平台表</strong>不匹配<strong>（表签名不同，或 OEMID 不同，或 OEM Table ID 不同），这张表会被</strong>追加<strong>。」</strong></blockquote>
+<strong>所以有两种行为</strong>：
+<ul>
+<li><strong>替换（upgrade）</strong>：<strong>签名 + OEMID + OEM Table ID 三者都相同，且你的 <code>OEM Revision</code> 更大</strong>。<strong>这就是为什么内核文档明确要求「提高 OEM Revision」</strong>，作者代码里也是这么做的（把 <code>OEM revision</code> 从 4 改成 5、从 1 改成 2）。</li>
+<li><strong>追加（append）</strong>：三者有任一不同，那么这张表会被<strong>加进去</strong>而不是替换。<strong>这可以用来插入一张原本不存在的表（比如插一个自定义 SSDT），但如果你本意是替换，那么「追加」会导致两张表同时存在。</strong></li>
+</ul>
+<strong>我认为这个区分很重要，因为它是「为什么我改了表但没生效」最常见的原因</strong>：<strong>如果你忘了提高 OEM Revision，内核会认为平台的那张更新，于是你的表被忽略，而且不会有显眼的报错。</strong>
+<h2>二、第一步：dump 你自己的表，有两条路</h2>
 <p><strong>作者给了两条路，而我认为这个设计很值得学，因为它照顾了两种完全不同的处境。</strong></p>
 <h3>路线 A：UEFI Shell + acpiview（不需要 Linux 能启动）</h3>
 <p><strong>脚本本身写得很短，而它的注释解释了为什么这么做</strong>：</p>
-<pre><code class="text"># holds this Shell, as input for provenance/hardware/power-archive-builder.py.
+<pre><code class="text"># Dump this P16's firmware DSDT and SSDTs to \H7607A-ACPI on the stick that
+<h1>holds this Shell, as input for provenance/hardware/power-archive-builder.py.</h1>
 </code></pre>
 <p><strong>而核心只有三条命令</strong>：</p>
 <pre><code class="text">acpiview -s DSDT -d
@@ -385,7 +460,7 @@ done
 <strong>第二条检查为什么必要，作者的错误信息说得很清楚</strong>：
 <blockquote><strong>「这些覆盖只适用于 BIOS H7607BA.300」</strong>（these overrides are only for BIOS H7607BA.300）</blockquote>
 <strong>我认为这是本文最该被记住的一条工程原则：ACPI 覆盖不是一个「通用的修复」，它是一个「针对某个固件版本的二进制补丁」。</strong> <strong>因为 AML 是字节码，而覆盖是通过「按字节偏移替换」实现的（下一节会讲），所以固件版本一变，偏移全错，而错位的结果不是「报错」，是「一个语义完全不同的表」。</strong> <strong>而这个检查把这种无声的错误变成了一个明确的拒绝。</strong>
-<h2>二、第二步：改哪里，以及为什么不能重编译整张表</h2>
+<h2>三、第二步：改哪里，以及为什么不能重编译整张表</h2>
 <p><strong>这是全部难度的所在，而作者的方案有两个非常具体的技术决定。</strong></p>
 <h3>决定一：只改 6 个 Method 的名字，不重编译整张表</h3>
 <p><strong>先看目标是什么。<code>component.yaml</code> 里的两条说明</strong>：</p>
@@ -480,7 +555,7 @@ table(modified, b"SSDT", b"_ASUS_ASUSSSDT", 2)
 <strong>「不使用全局 OSI 覆盖」（without a global OSI override）。</strong>
 <p><strong>这里有一个非常实用的技术区分，我认为值得单独讲</strong>：<strong>传统的做法是给内核传 <code>acpi_osi="Windows 2022"</code> 这个启动参数，让</strong>整个系统<strong>都假装自己是 Windows 2022。而这个做法的副作用是：所有依赖 <code>_OSI</code> 判断的地方都会走 Windows 分支，包括那些你并不想改的地方。</strong> <strong>而作者的做法是</strong>只把这一处 <code>_OSI</code> 调用替换成 <code>Noop</code><strong>，于是</strong>只有这一个判断失效（也就是那一处的条件恒为假或被跳过），其他所有 <code>_OSI</code> 调用保持原样。**</p>
 <p><strong>我认为这是本文最值得推荐给普通用户的一条技巧</strong>：<strong>如果你的笔记本某个功能「只在 Windows 下启用」，先用 <code>acpi_osi</code> 试，如果它带来了别的副作用，那么「精确地把那一处 <code>_OSI</code> 调用打掉」是一个更可控的方案。</strong> <strong>当然，它的代价是你必须做完整的 dump + 改表 + 打包流程，而不是加一个启动参数。</strong></p>
-<h2>三、第三步：打成 cpio，放进 initrd</h2>
+<h2>四、第三步：打成 cpio，放进 initrd</h2>
 <p><strong>这一步在代码里很短，但它的细节决定了「能不能启动」</strong>：</p>
 <pre><code class="python">def archive(dsdt, ssdt):
     result = b"".join(member(name, b"", stat.S_IFDIR | 0o755, inode)
@@ -492,7 +567,7 @@ table(modified, b"SSDT", b"_ASUS_ASUSSSDT", 2)
 </code></pre>
 <p><strong>关键点有两个，都是内核 ACPI 子系统的硬性要求</strong>：</p>
 <p><strong>第一，路径必须是 <code>kernel/firmware/acpi/</code>。</strong> <strong>这是内核在 <code>acpi_table_upgrade()</code> 里写死的前缀，不是可以随便改的。</strong></p>
-<p><strong>第二，文件名必须是 <code>DSDT.aml</code> / <code>SSDT.aml</code>（大写、<code>.aml</code> 后缀）。</strong> <strong>因为内核是按文件名匹配的，而不是按表内容。</strong></p>
+<p><strong>第二，惯例是 <code>DSDT.aml</code> / <code>SSDT.aml</code>。</strong> <strong>但这里有一个重要更正：内核</strong>不<strong>按文件名匹配，它按文件里的表签名匹配。</strong><code>acpi_table_upgrade()</code> 会读每个文件头 4 字节的 <code>signature</code>，到 <code>table_sigs[]</code> 数组里查。所以文件名其实只是给你自己看的，真正起作用的是文件内容。<strong>（详见下一节。）</strong></p>
 <p><strong>而作者是</strong>手写 cpio 格式<strong>的，没有调用 <code>cpio</code> 命令</strong>：</p>
 <pre><code class="python">def member(name, data, mode, inode):
     name = name.encode("ascii") + b"\0"
@@ -511,7 +586,7 @@ table(modified, b"SSDT", b"_ASUS_ASUSSSDT", 2)
 </ol>
 <strong>而 <code>TRAILER!!!</code> 那个条目是 cpio 格式要求的结束标记，最后那行 <code>bytes(-len(result) % 512)</code> 是把整个归档补齐到 512 字节边界。</strong> <strong>这些都是格式细节，但漏掉任何一个，内核就找不到那张表。</strong>
 <p><strong>而放进 initrd 之后，还有一件事需要说清</strong>：<strong>这个 cpio 必须被</strong>包含在 initrd 里<strong>，而不是放在 <code>/boot</code> 旁边。</strong> 作者的做法是把它作为 <code>h7607a-acpi.cpio</code> 并通过 <code>assets/hardware/acpi/</code> 路径提供，而在安装器里它会被合并进 initramfs。</p>
-<h2>四、一个很少人知道的陷阱：跨 EFI 描述符边界会被拒绝</h2>
+<h2>五、一个很少人知道的陷阱：跨 EFI 描述符边界会被拒绝</h2>
 <p><strong>这一节我认为是整篇文章最有价值的部分，因为它是作者实际踩到的坑，而且</strong>这个坑与 ACPI 覆盖的逻辑完全无关<strong>：它是内核 allocator 的问题。</strong></p>
 <p><strong>现象描述得很具体</strong>（来自补丁的 README）：</p>
 <blockquote><strong>「H7607BA 的启动录像 <code>IMG_1427.MOV</code> 显示，一个位于 <code>0x2050a00000</code>、长度 <code>0x12144</code> 的替换 DSDT 跨过了 EFI 描述符边界 <code>0x2050a0d000</code>。内核先接受了早期的表映射，然后用『requested region covers multiple EFI memory regions』拒绝了它的永久映射。ACPICA 报告 <code>AE_NO_ACPI_TABLES</code>；结果 USB、NVMe 和 GPU 枚举都无法进行。」</strong></blockquote>
@@ -566,7 +641,7 @@ arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
 <li><strong>并且它是</strong>针对特定上游 commit** 打的（<code>Base: NVIDIA/NV-Kernels 2234cd7f8f8a...</code>），而不是硬套在任意内核上。</li>
 </ul>
 <strong>而我在读这段代码时意识到一件事，值得对普通用户说明</strong>：<strong>这个坑不是 RTX Spark 独有的。</strong> <strong>任何在 ARM64 上使用 ACPI 表覆盖（<code>CONFIG_ACPI_TABLE_UPGRADE</code> + initrd 里的 <code>kernel/firmware/acpi/</code>）的系统，都可能遇到同样的分配跨边界问题。</strong> <strong>而它特别隐蔽，因为</strong>它取决于你的机器有多少可用内存，以及 EFI 描述符恰好在哪个地址被切开<strong>。</strong> 换句话说：<strong>同一台机器，内存容量不同、或者固件版本不同，都可能表现成「能启动」和「不能启动」两种结果，而原因与你的覆盖表内容毫无关系。</strong>
-<h2>五、这套做法哪些能迁移到你自己的笔记本</h2>
+<h2>六、这套做法哪些能迁移到你自己的笔记本</h2>
 <p><strong>这一节是我认为你（问这个问题的读者）最需要的部分，所以我把「可迁移」和「不可迁移」分开列。</strong></p>
 <h3>可以直接迁移的</h3>
 <p><strong>① dump 的方法。</strong> 两条路都通用：<strong>UEFI Shell + <code>acpiview</code>（适用于 Linux 还起不来的情况），或者从 <code>/sys/firmware/acpi/tables/</code> 直接读（适用于 Linux 能启动）。</strong> 而那个「先删旧 dump，因为 acpiview 不截断」的坑，在所有机器上都成立。</p>
@@ -596,6 +671,18 @@ arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
 <tr><td><strong>仓库</strong></td><td><strong><code>pfeifferj/archlinuxarm-proart-p16</code></strong>，MIT，386 个文件，<strong>2026-10-19 创建</strong></td></tr>
 <tr><td>⭐ <strong>覆盖的本质</strong></td><td><strong>不是改固件，是让内核在启动时用 initrd 里的表替换固件表</strong>；<strong>「在 RAM 中提前应用 ACPI 归档；不要刷固件。」</strong></td></tr>
 <tr><td><strong>内核开关</strong></td><td><strong><code>CONFIG_ACPI_TABLE_UPGRADE</code></strong>；内核去 initrd 里找 <strong><code>/kernel/firmware/acpi/</code></strong></td></tr>
+<tr><td>⭐ <strong>引入版本</strong></td><td><strong>v4.7 已有，但依赖写的是 <code>depends on BLK_DEV_INITRD && X86</code>（x86 专属）</strong>；<strong>v4.8 改成 <code>ARCH_HAS_ACPI_TABLE_UPGRADE</code></strong></td></tr>
+<tr><td>⭐ <strong>arm64 支持起点</strong></td><td><strong>v4.8（2016-10）</strong>，commit <strong><code>38b04a74c587</code>「ACPI: ARM64: support for ACPI_TABLE_UPGRADE」</strong>；抽象符号由 <strong><code>91dda51a1157</code></strong> 引入；机制改造由 <strong><code>5d8813271f8a</code></strong> 完成</td></tr>
+<tr><td><strong>v4.8 两架构都 select</strong></td><td><strong><code>arch/x86/Kconfig</code> 和 <code>arch/arm64/Kconfig</code> 都写 <code>select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI</code></strong></td></tr>
+<tr><td>⭐ <strong>是否 arm 专用</strong></td><td><strong>不是。x86 与 arm64 共用同一套机制</strong>：<code>acpi_table_upgrade()</code> 在 <strong><code>drivers/acpi/tables.c</code></strong>，路径常量 <strong><code>char cpio_path[32] = "kernel/firmware/acpi/"</code></strong> 与架构无关</td></tr>
+<tr><td><strong>内建 initrd 场景</strong></td><td><strong><code>ACPI_TABLE_OVERRIDE_VIA_BUILTIN_INITRD</code></strong>；<strong><code>depends on INITRAMFS_SOURCE!="" && INITRAMFS_COMPRESSION_NONE</code></strong></td></tr>
+<tr><td>⚠️ <strong>我原来写错的一点</strong></td><td><strong>内核不按文件名匹配，而是读文件头 4 字节 <code>signature</code> 去 <code>table_sigs[]</code> 白名单里查</strong></td></tr>
+<tr><td><strong>白名单规模</strong></td><td><strong>46 个签名</strong>，含 <strong>DSDT、SSDT、FADT、MADT、ECDT、SRAT、SLIT、DMAR、HPET、MCFG、IORT、PPTT、NHLT</strong> 等</td></tr>
+<tr><td>⭐ <strong>四条硬性校验</strong></td><td>① <strong>文件至少有一个 ACPI 表头大</strong>（<code>Table smaller than ACPI header</code>）；② <strong>签名在白名单</strong>（<code>Unknown signature</code>）；③ <strong>文件大小必须等于表头声明的 <code>length</code></strong>（<code>File length does not match table length</code>）；④ <strong>校验和正确</strong>（<code>Bad table checksum</code>）</td></tr>
+<tr><td>⚠️ <strong>第 3 条的陷阱</strong></td><td><strong>文件比 <code>length</code> 字段长会被直接拒绝</strong>（比如带填充字节的 dump），错误信息只说「长度不匹配」；解法是用 <code>acpixtract</code> 提取或按 <code>length</code> 截断</td></tr>
+<tr><td><strong>明确不能覆盖的</strong></td><td><strong><code>ACPI_SIG_RSDP</code></strong>（签名 6 字节）、<strong><code>ACPI_SIG_FACS</code></strong>（无普通 ACPI 表头）</td></tr>
+<tr><td><strong>其他限制</strong></td><td><strong>一次最多 64 张表</strong>（<code>NR_ACPI_INITRD_TABLES</code>）；<strong>内核 lockdown 时直接忽略</strong>，日志 <code>kernel is locked down, ignoring table override</code>（<code>LOCKDOWN_ACPI_TABLES</code>）</td></tr>
+<tr><td>⭐ <strong>替换 vs 追加</strong></td><td><strong>表签名 + OEMID + OEM Table ID 三者相同且 <code>OEM Revision</code> 更大 → 替换（upgrade）</strong>；<strong>任一不同 → 追加（append）</strong>。<strong>忘了提高 OEM Revision 会导致你的表被忽略</strong></td></tr>
 <tr><td>⭐ <strong>dump 路线 A</strong></td><td><strong>UEFI Shell + <code>acpiview -s DSDT -d</code> / <code>acpiview -s SSDT -d</code></strong>（Linux 起不来时用）</td></tr>
 <tr><td>⚠️ <strong>acpiview 的坑</strong></td><td><strong>「acpiview 会写入一个已存在的 dump 文件而不截断它」</strong> → 脚本先 <code>rm -q *.bin</code></td></tr>
 <tr><td><strong>dump 脚本的健壮性</strong></td><td>检查 <code>%homefilesystem%</code> 映射、每步检查 <code>%lasterror%</code>、<strong>最后检查 <code>DSDT0000.bin</code> 和 <code>SSDT0000.bin</code> 是否真的存在</strong></td></tr>

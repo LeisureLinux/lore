@@ -35,7 +35,124 @@ published: true
 
 **而这里面真正会让人卡住的从来不是第 1、3、4 步，是第 2 步。而这篇文章的重点就在第 2 步，以及一个作者踩到但很少人知道的内核 allocator 陷阱。**
 
-## 一、第一步：dump 你自己的表，有两条路
+## 一、先回答两个版本与架构问题
+
+**这两个问题在查证之后都和我原本的印象不同，所以我把一手依据列出来。**
+
+### `ACPI_TABLE_UPGRADE` 的版本历史：v4.7 就有了，但当时只限 x86
+
+**关键在于它不是「v4.8 新加的功能」，而是一条分两步的历史**：
+
+- **v4.7 时 `ACPI_TABLE_UPGRADE` 已经存在**，而它的依赖写的是：
+
+  ```
+  depends on BLK_DEV_INITRD && X86
+  ```
+
+  **注意最后那个 `X86`**：**那个版本的这个开关是 x86 专属的，arm64 根本选不到它。**
+
+- **v4.8 时依赖被改成了架构抽象**：
+
+  ```
+  depends on BLK_DEV_INITRD && ARCH_HAS_ACPI_TABLE_UPGRADE
+  ```
+
+  **也就是把硬编码的 `X86` 换成了一个架构可以自行 `select` 的符号。**
+
+**而这个改动是 2016 年那批提交做的，共三条**（commit 日期 2016-06-22，进入 v4.8）：
+
+| commit | 内容 |
+|---|---|
+| `5d8813271f8a` | **ACPI / tables: Convert initrd table override to table upgrade mechanism**（2016-04-18） |
+| `91dda51a1157` | **ACPI / tables: introduce ARCH_HAS_ACPI_TABLE_UPGRADE**（2016-06-22） |
+| `38b04a74c587` | **ACPI: ARM64: support for ACPI_TABLE_UPGRADE**（2016-06-22） |
+
+**而 v4.8 里两个架构都自己 `select` 了这个符号，我实测确认了原文**：
+
+```
+# arch/x86/Kconfig
+	select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI
+
+# arch/arm64/Kconfig
+	select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI
+```
+
+**所以在今天的内核上，x86 和 arm64 都能用这个功能。而「arm64 支持 ACPI 表覆盖」这件事的起点是 v4.8（2016 年 10 月发布）。**
+
+**还有一个更新的事实值得补**：**现代内核里还有一个 `ACPI_TABLE_OVERRIDE_VIA_BUILTIN_INITRD`**，用来支持「内核和 initrd 编在同一个镜像里」的场景。而 Kconfig 的 help 说得很清楚：
+
+> **「本选项提供从内建的未压缩 initrd 覆盖任意 ACPI 表的功能。」**
+
+**而它有两个附加约束**：`depends on ACPI_TABLE_UPGRADE`、`depends on INITRAMFS_SOURCE!="" && INITRAMFS_COMPRESSION_NONE`。**也就是说，只有你用的是内建且未压缩的 initramfs 时才需要它。**
+
+### 那两个 `.aml` 文件不是 arm 专用的，x86 用同一套
+
+**这个问题的答案很干净：完全不是 arm 专用。x86 用同样的目录、同样的机制、同样的文件名惯例。**
+
+**一手依据是内核文档 `Documentation/admin-guide/acpi/initrd_table_override.rst`，它的例子就是 x86 的机器**（例子里用的是 `DefinitionBlock ("DSDT.aml", "DSDT", 2, "INTEL ", "TEMPLATE", ...)`），而它给的打包命令是：
+
+```bash
+mkdir -p kernel/firmware/acpi
+cp dsdt.aml kernel/firmware/acpi
+find kernel | cpio -H newc --create > /boot/instrumented_initrd
+cat /boot/initrd >>/boot/instrumented_initrd
+```
+
+**而路径 `kernel/firmware/acpi/` 在源码里是写死在 `acpi_table_upgrade()` 里的常量**：
+
+```c
+char cpio_path[32] = "kernel/firmware/acpi/";
+```
+
+**这个常量与架构无关，因为 `acpi_table_upgrade()` 本身就在 `drivers/acpi/tables.c`，是所有用 ACPI 的架构共用的。**
+
+### 一个我原来写错的地方：内核不按文件名匹配
+
+**这一点必须纠正，因为它会影响你怎么命名文件。我读了 `acpi_table_upgrade()` 的完整实现，它是这样挑文件的**：
+
+```c
+for (sig = 0; sig < ARRAY_SIZE(table_sigs); sig++)
+    if (!memcmp(table->signature, table_sigs[sig], 4))
+        break;
+```
+
+**它读文件头 4 字节的 `signature`，然后在一个白名单数组里查。所以真正决定「这张表能不能被接受」的是**文件内容里的签名**，不是文件名。**
+
+**而白名单 `table_sigs[]` 包含 46 个签名，都是 ACPI 规范里的表名，其中和笔记本改表最相关的几个是**：
+
+**`ACPI_SIG_DSDT`、`ACPI_SIG_SSDT`、`ACPI_SIG_FADT`（就是 FACP）、`ACPI_SIG_MADT`、`ACPI_SIG_ECDT`、`ACPI_SIG_SRAT`、`ACPI_SIG_SLIT`、`ACPI_SIG_DMAR`、`ACPI_SIG_HPET`、`ACPI_SIG_MCFG`、`ACPI_SIG_IORT`（ARM 的中断映射表）、`ACPI_SIG_PPTT`、`ACPI_SIG_NHLT`。**
+
+**而它还有四条硬性校验，每条都会 `pr_err` 然后跳过这个文件**：
+
+| 校验 | 失败信息 |
+|---|---|
+| 文件至少有一个 ACPI 表头那么大 | `Table smaller than ACPI header` |
+| **签名在 `table_sigs[]` 白名单里** | `Unknown signature` |
+| **文件大小必须等于表头里声明的 `length`** | `File length does not match table length` |
+| **校验和必须正确** | `Bad table checksum` |
+
+**⚠️ 而这里有一个我原本没提到的陷阱，值得单独说**：**「文件大小必须等于表头里声明的 length」这条检查意味着，你不能把一个「比表头声明的长度更长」的文件塞进去**（比如从 `acpiview` dump 出来的文件如果带了填充字节）。**如果你 dump 出来的 `.bin` 比 `length` 字段大，这条检查会直接拒绝它，而错误信息只说「长度不匹配」，不会告诉你是填充的问题。** **解法是：用 `acpixtract` 从 `acpidump` 的输出里提取，或者手动按 `length` 字段截断。**
+
+**另外，有两条明确的「不能覆盖」**（内核文档写得很直白）：
+
+> **「iasl 认识的 ACPI 表都应该可以覆盖，除了：`ACPI_SIG_RSDP`（签名有 6 字节）、`ACPI_SIG_FACS`（没有普通的 ACPI 表头结构）。」**
+
+**而最后两个限制也值得记**：**① 一次最多 64 张表**（`NR_ACPI_INITRD_TABLES`）；**② 内核如果处于 lockdown 状态，会直接忽略覆盖**，日志是 `kernel is locked down, ignoring table override`（`security_locked_down(LOCKDOWN_ACPI_TABLES)`）。**如果你在开了 Secure Boot 的机器上试这个功能而完全不生效，第二条是最可能的原因。**
+
+### 覆盖是怎么生效的：「替换」还是「追加」
+
+**这是另一个容易误解的地方。内核文档的原话**：
+
+> **「注意：如果放在这里的表与平台表**匹配**（相同表签名、相同 OEMID、相同 OEM Table ID）且 OEM Revision **更新**，那么平台表会被这张表**升级**。如果放在这里的表与平台表**不匹配**（表签名不同，或 OEMID 不同，或 OEM Table ID 不同），这张表会被**追加**。」**
+
+**所以有两种行为**：
+
+- **替换（upgrade）**：**签名 + OEMID + OEM Table ID 三者都相同，且你的 `OEM Revision` 更大**。**这就是为什么内核文档明确要求「提高 OEM Revision」**，作者代码里也是这么做的（把 `OEM revision` 从 4 改成 5、从 1 改成 2）。
+- **追加（append）**：三者有任一不同，那么这张表会被**加进去**而不是替换。**这可以用来插入一张原本不存在的表（比如插一个自定义 SSDT），但如果你本意是替换，那么「追加」会导致两张表同时存在。**
+
+**我认为这个区分很重要，因为它是「为什么我改了表但没生效」最常见的原因**：**如果你忘了提高 OEM Revision，内核会认为平台的那张更新，于是你的表被忽略，而且不会有显眼的报错。**
+
+## 二、第一步：dump 你自己的表，有两条路
 
 **作者给了两条路，而我认为这个设计很值得学，因为它照顾了两种完全不同的处境。**
 
@@ -141,7 +258,7 @@ def firmware(name, data, expected, override, description):
 
 **我认为这是本文最该被记住的一条工程原则：ACPI 覆盖不是一个「通用的修复」，它是一个「针对某个固件版本的二进制补丁」。** **因为 AML 是字节码，而覆盖是通过「按字节偏移替换」实现的（下一节会讲），所以固件版本一变，偏移全错，而错位的结果不是「报错」，是「一个语义完全不同的表」。** **而这个检查把这种无声的错误变成了一个明确的拒绝。**
 
-## 二、第二步：改哪里，以及为什么不能重编译整张表
+## 三、第二步：改哪里，以及为什么不能重编译整张表
 
 **这是全部难度的所在，而作者的方案有两个非常具体的技术决定。**
 
@@ -288,7 +405,7 @@ def patch_dsdt(original):
 
 **我认为这是本文最值得推荐给普通用户的一条技巧**：**如果你的笔记本某个功能「只在 Windows 下启用」，先用 `acpi_osi` 试，如果它带来了别的副作用，那么「精确地把那一处 `_OSI` 调用打掉」是一个更可控的方案。** **当然，它的代价是你必须做完整的 dump + 改表 + 打包流程，而不是加一个启动参数。**
 
-## 三、第三步：打成 cpio，放进 initrd
+## 四、第三步：打成 cpio，放进 initrd
 
 **这一步在代码里很短，但它的细节决定了「能不能启动」**：
 
@@ -306,7 +423,7 @@ def archive(dsdt, ssdt):
 
 **第一，路径必须是 `kernel/firmware/acpi/`。** **这是内核在 `acpi_table_upgrade()` 里写死的前缀，不是可以随便改的。**
 
-**第二，文件名必须是 `DSDT.aml` / `SSDT.aml`（大写、`.aml` 后缀）。** **因为内核是按文件名匹配的，而不是按表内容。**
+**第二，惯例是 `DSDT.aml` / `SSDT.aml`。** **但这里有一个重要更正：内核**不**按文件名匹配，它按文件里的表签名匹配。**`acpi_table_upgrade()` 会读每个文件头 4 字节的 `signature`，到 `table_sigs[]` 数组里查。所以文件名其实只是给你自己看的，真正起作用的是文件内容。**（详见下一节。）**
 
 **而作者是**手写 cpio 格式**的，没有调用 `cpio` 命令**：
 
@@ -332,7 +449,7 @@ def member(name, data, mode, inode):
 
 **而放进 initrd 之后，还有一件事需要说清**：**这个 cpio 必须被**包含在 initrd 里**，而不是放在 `/boot` 旁边。** 作者的做法是把它作为 `h7607a-acpi.cpio` 并通过 `assets/hardware/acpi/` 路径提供，而在安装器里它会被合并进 initramfs。
 
-## 四、一个很少人知道的陷阱：跨 EFI 描述符边界会被拒绝
+## 五、一个很少人知道的陷阱：跨 EFI 描述符边界会被拒绝
 
 **这一节我认为是整篇文章最有价值的部分，因为它是作者实际踩到的坑，而且**这个坑与 ACPI 覆盖的逻辑完全无关**：它是内核 allocator 的问题。**
 
@@ -406,7 +523,7 @@ arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
 
 **而我在读这段代码时意识到一件事，值得对普通用户说明**：**这个坑不是 RTX Spark 独有的。** **任何在 ARM64 上使用 ACPI 表覆盖（`CONFIG_ACPI_TABLE_UPGRADE` + initrd 里的 `kernel/firmware/acpi/`）的系统，都可能遇到同样的分配跨边界问题。** **而它特别隐蔽，因为**它取决于你的机器有多少可用内存，以及 EFI 描述符恰好在哪个地址被切开**。** 换句话说：**同一台机器，内存容量不同、或者固件版本不同，都可能表现成「能启动」和「不能启动」两种结果，而原因与你的覆盖表内容毫无关系。**
 
-## 五、这套做法哪些能迁移到你自己的笔记本
+## 六、这套做法哪些能迁移到你自己的笔记本
 
 **这一节是我认为你（问这个问题的读者）最需要的部分，所以我把「可迁移」和「不可迁移」分开列。**
 
@@ -452,6 +569,18 @@ arch_alloc_acpi_tables(phys_addr_t size, phys_addr_t max_addr)
 | **仓库** | **`pfeifferj/archlinuxarm-proart-p16`**，MIT，386 个文件，**2026-10-19 创建** |
 | ⭐ **覆盖的本质** | **不是改固件，是让内核在启动时用 initrd 里的表替换固件表**；**「在 RAM 中提前应用 ACPI 归档；不要刷固件。」** |
 | **内核开关** | **`CONFIG_ACPI_TABLE_UPGRADE`**；内核去 initrd 里找 **`/kernel/firmware/acpi/`** |
+| ⭐ **引入版本** | **v4.7 已有，但依赖写的是 `depends on BLK_DEV_INITRD && X86`（x86 专属）**；**v4.8 改成 `ARCH_HAS_ACPI_TABLE_UPGRADE`** |
+| ⭐ **arm64 支持起点** | **v4.8（2016-10）**，commit **`38b04a74c587`「ACPI: ARM64: support for ACPI_TABLE_UPGRADE」**；抽象符号由 **`91dda51a1157`** 引入；机制改造由 **`5d8813271f8a`** 完成 |
+| **v4.8 两架构都 select** | **`arch/x86/Kconfig` 和 `arch/arm64/Kconfig` 都写 `select ARCH_HAS_ACPI_TABLE_UPGRADE if ACPI`** |
+| ⭐ **是否 arm 专用** | **不是。x86 与 arm64 共用同一套机制**：`acpi_table_upgrade()` 在 **`drivers/acpi/tables.c`**，路径常量 **`char cpio_path[32] = "kernel/firmware/acpi/"`** 与架构无关 |
+| **内建 initrd 场景** | **`ACPI_TABLE_OVERRIDE_VIA_BUILTIN_INITRD`**；**`depends on INITRAMFS_SOURCE!="" && INITRAMFS_COMPRESSION_NONE`** |
+| ⚠️ **我原来写错的一点** | **内核不按文件名匹配，而是读文件头 4 字节 `signature` 去 `table_sigs[]` 白名单里查** |
+| **白名单规模** | **46 个签名**，含 **DSDT、SSDT、FADT、MADT、ECDT、SRAT、SLIT、DMAR、HPET、MCFG、IORT、PPTT、NHLT** 等 |
+| ⭐ **四条硬性校验** | ① **文件至少有一个 ACPI 表头大**（`Table smaller than ACPI header`）；② **签名在白名单**（`Unknown signature`）；③ **文件大小必须等于表头声明的 `length`**（`File length does not match table length`）；④ **校验和正确**（`Bad table checksum`） |
+| ⚠️ **第 3 条的陷阱** | **文件比 `length` 字段长会被直接拒绝**（比如带填充字节的 dump），错误信息只说「长度不匹配」；解法是用 `acpixtract` 提取或按 `length` 截断 |
+| **明确不能覆盖的** | **`ACPI_SIG_RSDP`**（签名 6 字节）、**`ACPI_SIG_FACS`**（无普通 ACPI 表头） |
+| **其他限制** | **一次最多 64 张表**（`NR_ACPI_INITRD_TABLES`）；**内核 lockdown 时直接忽略**，日志 `kernel is locked down, ignoring table override`（`LOCKDOWN_ACPI_TABLES`） |
+| ⭐ **替换 vs 追加** | **表签名 + OEMID + OEM Table ID 三者相同且 `OEM Revision` 更大 → 替换（upgrade）**；**任一不同 → 追加（append）**。**忘了提高 OEM Revision 会导致你的表被忽略** |
 | ⭐ **dump 路线 A** | **UEFI Shell + `acpiview -s DSDT -d` / `acpiview -s SSDT -d`**（Linux 起不来时用） |
 | ⚠️ **acpiview 的坑** | **「acpiview 会写入一个已存在的 dump 文件而不截断它」** → 脚本先 `rm -q *.bin` |
 | **dump 脚本的健壮性** | 检查 `%homefilesystem%` 映射、每步检查 `%lasterror%`、**最后检查 `DSDT0000.bin` 和 `SSDT0000.bin` 是否真的存在** |
