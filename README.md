@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-20 | [Omarchy 4.5-RC1 开始支持 aarch64：而这次真正的进展不是「多了一个架构」，是三个完全不同来源的 ARM 笔记本同时跑起来了](https://freelamp.com/articles/2026-10-20_omarchy-4-5-rc1-aarch64-snapdragon-n1x/) | Omarchy · Arch Linux ARM · aarch64 · Snapdragon X · NVIDIA N1X · Apple Silicon · Hyprland · 解读 |
+| 2026-10-20 | [加密 DNS 确实比 VPN 划算：但它藏住的是「你查了哪个域名」，不是「你连了哪个 IP」](https://freelamp.com/articles/2026-10-20_encrypted-dns-providers-adguard-controld/) | 加密DNS · DoH · DoT · DoQ · DNSCrypt · AdGuard DNS · Control D · Windscribe · SNI · ECH · EDNS Client Subnet · 解读 |
+| 2026-10-20 | [Omarchy 4.5-RC1 开始支持 aarch64：而这次真正的进展不是「多了一个架构」，是三个完全不同来源的 ARM 笔记本同时跑起来了](https://freelamp.com/articles/2026-10-20_omarchy-4-5-rc1-aarch64-snapdragon-n1x/) | Omarchy · Arch Linux ARM · aarch64 · Snapdragon X · NVIDIA N1X · Apple Silicon · Hyprland · Limine · 每显示器工作区 · 国际化 · 解读 |
 | 2026-10-20 | [PwnEscape 的补丁已经发了，而真正的教训是：KVM 逃逸出来的地方，不是 hypervisor，是主机内核的最低层](https://freelamp.com/articles/2026-10-20_pwnescape-kvm-escape-broader-attack-surface/) | PwnEscape · CVE-2026-99999 · KVM · VM 逃逸 · OpenShift · AWS · Januscape · Edera · 虚拟化隔离 · AI agent · 解读 |
 | 2026-10-20 | [nginx 三个 9.2 分漏洞：而真正决定你危不危险的，不是版本号，是你的配置文件里有没有那几个组合](https://freelamp.com/articles/2026-10-20_nginx-three-critical-flaws-config-dependent/) | nginx · F5 · CVE-2026-15176 · CVE-2026-97205 · CVE-2026-93479 · CVSS 9.2 · UAF · 配置审计 · ASLR · AIO · SSI · map · 应急补丁 · 解读 |
 | 2026-10-20 | [三百万张显卡的订单，英伟达只能交付 5%：而 84GB 显存的那张卡为什么成了唯一的出口](https://freelamp.com/articles/2026-10-20_rtx-pro-5500-china-orders-export-compliant/) | Nvidia · RTX Pro 5500 · 出口管制 · B300 · H200 · RTX 6000D · 字节跳动 · 阿里巴巴 · 腾讯 · 推理 · 显存 · Rubin · 供应链 · 解读 |

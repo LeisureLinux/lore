@@ -9,7 +9,7 @@ original_source: "CSO Online 分析（Lucian Constantin）+ NVD 原始记录 + �
 original_author: "Lucian Constantin（CSO Online）；Alex Zenla（Edera CTO）；Pwn.ai 研究团队"
 original_date: 2026-10-20
 original_url: "https://www.csoonline.com/article/4237999/kvm-escape-exposes-broader-attack-surface-in-linux-networking.html"
-description: "CSO 这篇对 PwnEscape（CVE-2026-99999）的报道提供了三个之前的技术报告没有的信息：AWS 明确说 EC2/Lambda/Fargate 不受影响但自建 KVM + virtio-net 的用户需要打补丁、Januscape 这个「同类但不同层」的对照案例、以及 Edera CTO Alex Zenla 那个架构论点——KVM 逃逸不是逃进一个「干净的小特权层」，而是直接落进主机内核的最低层。本文以这三条增量为主，技术机制部分只作必要回顾。"
+description: "CSO 这篇对 PwnEscape（CVE-2026-99999）的报道提供了三个之前的技术报告没有的信息：AWS 明确说 EC2/Lambda/Fargate 不受影响但自建 KVM + virtio-net 的用户需要打补丁、Januscape 这个「同类但不同层」的对照案例、以及 Edera CTO Alex Zenla 那个架构论点：KVM 逃逸不是逃进一个「干净的小特权层」，而是直接落进主机内核的最低层。本文以这三条增量为主，技术机制部分只作必要回顾。"
 published: true
 ---
 
