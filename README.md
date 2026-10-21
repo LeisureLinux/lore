@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-21 | [网络设备的底层用什么内核？国外厂商公开写 FreeBSD，而国内厂商大多只说「自研」](https://freelamp.com/articles/2026-10-21_network-appliance-underlying-os-bsd-linux-domestic/) | 网络设备 · 防火墙 · 底层内核 · FreeBSD · pfSense · OPNsense · IPSO · NetScaler · Junos · F5 TMOS · H3C Comware · 深信服 · 山石 StoneOS · 信创 |
 | 2026-10-21 | [BSD 的代码流进了哪里：你以为它是小众，但它可能就在你的游戏机、路由器和 NAS 里](https://freelamp.com/articles/2026-10-21_bsd-code-in-proprietary-products/) | BSD · FreeBSD · macOS · XNU · Junos · NetApp ONTAP · Netflix Open Connect · PlayStation Orbis · Nintendo Switch · BSD 许可证 · 闭源 |
 | 2026-10-21 | [Unix 为什么会分裂成两个阵营：而答案不在技术里，在 1956 年的一份反垄断同意令里](https://freelamp.com/articles/2026-10-21_unix-history-origins-system-v-bsd-split/) | Unix · 贝尔实验室 · AT&T · 同意令 · System V · BSD · TCP/IP · Unix 战争 · SCO · Novell · 版权诉讼 · 操作系统历史 |
 | 2026-10-21 | [商业 Unix 只剩一个还在开发：HP-UX 刚刚断线，而它死于一枚停产的 CPU](https://freelamp.com/articles/2026-10-21_commercial-unix-2026-aix-hpux-solaris-status/) | Unix · AIX · HP-UX · Solaris · illumos · OpenIndiana · Xinuos · OpenServer · UnixWare · Xenix · Itanium · 生命周期 · EOL |
