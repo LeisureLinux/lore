@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-20 | [nginx 三个 9.2 分漏洞：而真正决定你危不危险的，不是版本号，是你的配置文件里有没有那几个组合](https://freelamp.com/articles/2026-10-20_nginx-three-critical-flaws-config-dependent/) | nginx · F5 · CVE-2026-15176 · CVE-2026-97205 · CVE-2026-93479 · CVSS 9.2 · UAF · 配置审计 · ASLR · AIO · SSI · map · 应急补丁 · 解读 |
 | 2026-10-20 | [三百万张显卡的订单，英伟达只能交付 5%：而 84GB 显存的那张卡为什么成了唯一的出口](https://freelamp.com/articles/2026-10-20_rtx-pro-5500-china-orders-export-compliant/) | Nvidia · RTX Pro 5500 · 出口管制 · B300 · H200 · RTX 6000D · 字节跳动 · 阿里巴巴 · 腾讯 · 推理 · 显存 · Rubin · 供应链 · 解读 |
 | 2026-10-20 | [PHP 明天要发两个 CVSS 9.2 的漏洞补丁：而这次真正的问题不是「有多严重」，是「你根本不知道你跑的是什么版本」](https://freelamp.com/articles/2026-10-20_php-critical-security-release-oct-21-2026/) | PHP · 安全更新 · CVE-2026-109618 · CVE-2026-109619 · CVSS 9.2 · RCE · PHP Foundation · 补丁日 · 生命周期 · EOL · 提前公告 · 解读 |
 | 2026-10-20 | [OpenBSD 8.0 发了：而这次最值得看的不是漏洞修复清单，是内核虚拟地址空间从 4G 跳到 512G](https://freelamp.com/articles/2026-10-20_openbsd-8-0-release-kernel-address-space/) | OpenBSD · 内核地址空间 · pmap · DRM · Linux 6.18.53 · Intel Arc · OpenSSH 10.6 · LibreSSL 4.4.0 · pledge · unveil · arm64 休眠 · loongson 退役 · 发布解读 |
