@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-21 | [BSD 的代码流进了哪里：你以为它是小众，但它可能就在你的游戏机、路由器和 NAS 里](https://freelamp.com/articles/2026-10-21_bsd-code-in-proprietary-products/) | BSD · FreeBSD · macOS · XNU · Junos · NetApp ONTAP · Netflix Open Connect · PlayStation Orbis · Nintendo Switch · BSD 许可证 · 闭源 |
 | 2026-10-21 | [Unix 为什么会分裂成两个阵营：而答案不在技术里，在 1956 年的一份反垄断同意令里](https://freelamp.com/articles/2026-10-21_unix-history-origins-system-v-bsd-split/) | Unix · 贝尔实验室 · AT&T · 同意令 · System V · BSD · TCP/IP · Unix 战争 · SCO · Novell · 版权诉讼 · 操作系统历史 |
 | 2026-10-21 | [商业 Unix 只剩一个还在开发：HP-UX 刚刚断线，而它死于一枚停产的 CPU](https://freelamp.com/articles/2026-10-21_commercial-unix-2026-aix-hpux-solaris-status/) | Unix · AIX · HP-UX · Solaris · illumos · OpenIndiana · Xinuos · OpenServer · UnixWare · Xenix · Itanium · 生命周期 · EOL |
 | 2026-10-21 | [BSD 家族全表：四个正统、一个桌面发行版，以及「UNIX 认证」这件事的真相](https://freelamp.com/articles/2026-10-21_bsd-family-2026-freebsd-openbsd-netbsd-ghostbsd/) | BSD · FreeBSD · OpenBSD · NetBSD · DragonFly · GhostBSD · macOS · pfSense · TrueNAS · UNIX 认证 · 浪潮 K-UX · 华为 EulerOS |
