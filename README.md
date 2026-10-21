@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-21 | [Unix 为什么会分裂成两个阵营：而答案不在技术里，在 1956 年的一份反垄断同意令里](https://freelamp.com/articles/2026-10-21_unix-history-origins-system-v-bsd-split/) | Unix · 贝尔实验室 · AT&T · 同意令 · System V · BSD · TCP/IP · Unix 战争 · SCO · Novell · 版权诉讼 · 操作系统历史 |
+| 2026-10-21 | [今天还活着的 Unix 全表：HP-UX 刚刚断线，AIX 还在开发，而 macOS 换了版本号](https://freelamp.com/articles/2026-10-21_surviving-unix-family-2026-current-status/) | Unix · AIX · HP-UX · Solaris · illumos · macOS · FreeBSD · OpenBSD · NetBSD · OpenServer · Xenix · 生命周期 · EOL |
 | 2026-10-21 | [PingCAP 被窃 10.6 TB：而真正的问题不是「数据被拿走」，是「凭证就写在自家的仓库和自己的工单里」](https://freelamp.com/articles/2026-10-21_pingcap-tidb-cloud-breach-fulcrumsec/) | PingCAP · TiDB Cloud · FulcrumSec · 数据泄露 · 供应链安全 · 硬编码密钥 · 多租户隔离 · Jira 工单 · 明文 API Key · 事件响应 · 解读 |
 | 2026-10-20 | [Omarchy 4.5-RC1 开始支持 aarch64：而这次真正的进展不是「多了一个架构」，是三个完全不同来源的 ARM 笔记本同时跑起来了](https://freelamp.com/articles/2026-10-20_omarchy-4-5-rc1-aarch64-snapdragon-n1x/) | Omarchy · Arch Linux ARM · aarch64 · Snapdragon X · NVIDIA N1X · Apple Silicon · Hyprland · 解读 |
 | 2026-10-20 | [加密 DNS 确实比 VPN 划算：但它藏住的是「你查了哪个域名」，不是「你连了哪个 IP」](https://freelamp.com/articles/2026-10-20_encrypted-dns-providers-adguard-controld/) | 加密DNS · DoH · DoT · DoQ · DNSCrypt · AdGuard DNS · Control D · Windscribe · SNI · ECH · EDNS Client Subnet · 解读 |
