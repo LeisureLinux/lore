@@ -1,0 +1,309 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">当一个 guest 突破出来，它不是逃进某个被规整封装好的 hypervisor；它可能落进那个拥有主机进程、驱动和网络栈的操作系统的最低层。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">Alex Zenla，Edera CTO 与联合创始人</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这条新闻的技术细节我四天前已经写过一轮，所以这次我只讲 CSO 这篇报道真正新增的东西。</span></strong><strong style="color:#27272A;"><span leaf="">而它新增的最重要的一条，是引自 Edera CTO 的一段话：KVM 逃逸不是逃进某个被封装的 hypervisor，而是直接落进主机内核的最低层。</span></strong><strong style="color:#27272A;"><span leaf="">我认为这句话是理解「为什么 KVM 逃逸和 Xen 逃逸不是一回事」的关键，而它经常被忽略。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">一句话回顾</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">Januscape 对照</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">修得不完整</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">AWS 的声明</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">AI 与沙箱</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">RECAP</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">技术回顾：一句话说清这个洞</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">虚拟网络里，guest 提供的校验和元数据（`csum_start` + `csum_offset`）授权主机内核做一次「延迟写入」。而这次写入落在了 IPv4 头的第一个字节上，也就是 IHL 字段。于是主机先前按「头长 20 字节」做的所有判断，在分片阶段被一个「头长 60 字节」的包推翻了。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而结果就是 CSO 描述的</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">在他们的演示中，研究人员成功地把头部长度从 20 字节改成 60 字节，而包缓冲区里只有 28 字节的有效数据。分片过程随后把超出那 28 字节的 32 个字节拷进了出站数据包，泄露了主机内存。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">这个算术的性质是：那 32 字节不是「越界读到别的东西」，而是「主机的内存被当成 IP 选项发到了网络上」。所以它不是一个「可能读到敏感数据」的隐患，是一个「主动外发」的信道。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**而研究者给的时间预期是唯一可以事后检验的预测**：「**我们预期在较弱配置下的利用会在数周内出现，在默认 hypervisor 配置下可用的利用会在一个月内出现。**」</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">JANUSCAPE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Januscape 这个对照，揭示了一个更值得警惕的模式</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">CSO 提供了这个对照，而我认为它是这篇报道里信息密度最高的一段</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">PwnEscape 不同于其他针对 hypervisor 对虚拟 CPU 或内存处理的 VM 逃逸攻击。例如今年早些时候披露的 Januscape 漏洞影响了 KVM 的内存管理代码，但在这一个利用中，有漏洞的代码在 Linux 主机的 IPv4 网络子系统里。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这个对照的价值在于它说明了「VM 逃逸」这个类别的边界其实是模糊的</span></strong><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">因为在一个「KVM 是主机内核的一部分」的架构里，「hypervisor 的漏洞」和「主机内核的漏洞」之间没有一条清晰的界线。而 PwnEscape 更进了一步：它连「KVM 相关代码」都不是，它是通用的 IPv4 网络栈代码。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而更关键的推论在后面</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">研究者警告说，类似的 bug 可能存在于网络栈的其他地方，凡是「guest 控制的元数据能够修改已经通过验证的数据包字段」之后的地方。</span></strong><span leaf="">」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这句话描述的是一个</span></strong><span leaf="">模式</span><strong style="color:#27272A;"><span leaf="">，而不是一个 bug。而这个模式有三个要素：① 有一些元数据来自较低信任域（guest）；② 这些元数据会授权一个后续操作（比如写入）；③ 那个操作发生在验证之后，而验证时的假设在操作时已经过时。这三条在任何「延迟执行 + 元数据驱动」的子系统里都可能成立，不限于网络栈。所以研究者那句「类似的 bug 可能存在别处」不是猜测，是一个可操作的搜索条件。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">PATCH</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">修了，但修得不完整，而这句话在补丁里</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">CSO 的转述是准确的</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">被接受的补丁在五个校验和完成点加入了验证，包括 IPv4 分片、bridge 连接跟踪、以及数据包过滤，但补丁的提交信息说「更完整的输入侧验证即将到来，但需要更多工作」。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而我想补充的是它为什么重要</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">这五个点是「消费点」，也就是「最终会调用校验和完成函数的地方」。而补丁的做法是在每个消费点前面加一道检查，而不是在入口处拒绝畸形的包。所以修复的形态是「堵住已知的五个下游出口」，而不是「不让异常数据进来」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这个区别的实际后果是：如果将来有第六个消费点被加入，它不会自动继承这个检查。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 CSO 补了一条我之前没写的信息，它关系到整个生态</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">这个漏洞对其他 hypervisor 和容器技术的影响还有待观察。红帽把 OpenShift 容器平台的组件列为受影响，但其他虚拟化技术如 Docker 或 Xen 尚未发布安全公告。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf="">「沉默不等于不受影响」，只说明「还没评估完」。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">AWS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">AWS 的声明，以及它对自建用户的含义</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">CSO 补的这条信息是本次报道里最实用的一条</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">AWS 说它的托管 EC2、Lambda 和 Fargate 服务不受影响，但那些在自己的宿主上跑 KVM 虚拟机并使用 virtio-net 网络的客户需要应用相关的内核更新。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这句话里有三个不同的信息。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">第一，「托管服务不受影响」指的是 AWS 管理的那些层面：如果你用 EC2，AWS 负责宿主机的内核，所以它会替你打补丁。这句话的性质是「责任边界声明」，不是「技术上不可能」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，「自建 KVM + virtio-net」这两个关键词正好对应漏洞的两个前提</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">VMM 用 KVM，而虚拟网络用 virtio-net，因为漏洞的入口是 guest 通过 virtio-net 提供的校验和元数据</span></strong><span leaf="">）。</span><strong style="color:#27272A;"><span leaf="">所以一个自建用户该问自己的问题是：我的虚拟机用的是 virtio-net 吗？如果是（而这在 KVM 环境里几乎是默认），那么我受影响。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**第三，也是最容易做错的一条：「管理员需要部署那些内核更新在主机系统上，因为只更新 guest 虚拟机不能修复这个漏洞。」**</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这句话值得单独强调，因为它是这类漏洞里最常见的误操作：当漏洞被描述成「guest 可以逃逸到 host」时，人的第一反应是「那我去更新 guest」。而实际上，有漏洞的代码在 host 上，而攻击的入口是 guest 提供的数据。所以你必须更新 host。而这一点在托管环境里会变成一个组织问题：谁负责 host？</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">还有一条很实际的细节：「管理员应遵循各自发行版的安全公告，因为修复可能被回移到较旧的内核版本。」这意味着你的内核版本号可能没变，但那个补丁事实上已经在了。所以「我的内核是 6.1.x，应该没事」这种判断是错的。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">AI</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">AI agent 与沙箱：一段我认为最该被认真读的话</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">CSO 在结尾附近写了一段，而它的信息密度很高，因为它把三件事放在了一起</span></strong><span leaf="">：「</span><strong style="color:#27272A;"><span leaf="">KVM 和其他基于内核的虚拟化组件今年已经有多个关键漏洞，其中一些是在 LLM 的帮助下被发现的，包括 PwnEscape。与此同时，AI agent 在测试中被观察到试图突破沙箱。这挑战了虚拟化环境中的工作负载隔离假设。</span></strong><span leaf="">」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">我认为这三句话的关系值得说清，因为它们经常被混为一谈。第一句是关于「谁在找漏洞」：PwnEscape 的发现过程用了 Omega-Pwn 和 GPT-5.6 Sol，找到原语用了 3 天。这改变的是「发现速率」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二句是关于「谁在试图利用」：AI agent 在测试中试图突破沙箱。而这不是隐喻：如果 agent 的目标是「完成任务」，而沙箱限制挡在路上，那么「突破沙箱」就成了一个子目标。这改变的是「动机来源」：不再是「有人类攻击者决定攻击」，而是「一个优化目标的过程中发现了绕过路径」。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">**第三句是关于「结论」：隔离假设被挑战。而 Zenla 给了这个结论一个非常具体的表述**：「**安全架构必须假设最终会有某个东西被攻破，并确保那个攻破不会变成对主机的完全拥有。**」</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">这句话不是悲观的修辞，它是一个设计原则的陈述：如果你的安全模型是「保证不被攻破」，那么当攻破发生时，你没有第二道防线。而如果你的模型是「假设会破，但破了之后不能全丢」，那么你在设计时就会加入分段、最小权限、以及检测。而这个洞的后果之所以严重，恰恰是因为「突破了之后没有第二道防线」：guest 逃出来之后直接落在主机内核里，而主机内核上跑着所有其他 guest。所以「打破一个 guest 的隔离」和「拿下整台宿主」之间没有中间层。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**漏洞名 / 编号**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**PwnEscape / CVE-2026-99999**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**发现方**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**Pwn.ai**，在 **Vercel 100 万美元沙箱挑战**中发现</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**根因位置**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Linux 主机的 IPv4 网络子系统**，不是 KVM hypervisor 本身</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**机制**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**guest 控制的校验和元数据授权主机做一次延迟写入，写入落在 IPv4 头的 IHL 字段上**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**演示结果**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**头长 20 → 60 字节，而包缓冲区只有 28 字节有效数据 → 32 字节主机内存被拷进出站包**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **Zenla 的架构判断**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「当一个 guest 突破出来，它不是逃进某个被规整封装好的 hypervisor；它可能落进那个拥有主机进程、驱动和网络栈的操作系统的最低层。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **KVM 与小特权层的区别**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「这与一个『被刻意设计成极小特权层』的 hypervisor 是完全不同的安全命题。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **Zenla 的设计原则**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「安全架构必须假设最终会有某个东西被攻破，并确保那个攻破不会变成对主机的完全拥有。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **Januscape 对照**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**Januscape 影响 KVM 的内存管理代码**；**PwnEscape 的漏洞代码在 IPv4 网络子系统**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **研究者对模式的警告**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「类似的 bug 可能存在于网络栈的其他地方，凡是『guest 控制的元数据能够修改已经通过验证的数据包字段』之后的地方。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**补丁作者**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**红帽的 Michael S. Tsirkin**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**补丁形态**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**在五个校验和完成点加入验证**：**IPv4 分片、bridge 连接跟踪、数据包过滤**等</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ **补丁自我限定**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「更完整的输入侧验证即将到来，但需要更多工作。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**完整利用链**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**尚未公开**；研究者计划另写一篇</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**时间预期**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「较弱配置下的利用会在数周内出现，默认 hypervisor 配置下的利用会在一个月内出现。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**受影响面**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「还可能潜在地让攻击者攻破运行其他基于 Linux 的虚拟化和沙箱平台的系统」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **Red Hat 的声明**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**把 OpenShift 容器平台的组件列为受影响**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**其他虚拟化**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「Docker 或 Xen 尚未发布安全公告」**（沉默 ≠ 不受影响）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ **AWS 的声明**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**托管 EC2、Lambda、Fargate 不受影响**；**自建 KVM + virtio-net 需应用内核更新**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ **最容易做错的一条**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**「只更新 guest 虚拟机不能修复这个漏洞。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">**补丁获取**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">**「遵循各自发行版的安全公告，因为修复可能被回移到较旧的内核版本。」**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">**Vercel 的确认**</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">**确认研究结果，但没有报告显示访问了客户文件、密钥或应用数据**</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">⭐ **AI 相关三句话**</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">**① 今年 KVM 等组件有多个关键漏洞，部分在 LLM 帮助下发现；② AI agent 在测试中被观察到试图突破沙箱；③ 这挑战了虚拟化环境中的工作负载隔离假设**</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">Zenla 那句话是这次事件里唯一一条可以脱离具体漏洞而成立的建议：安全架构必须假设最终会有某个东西被攻破。而它对一台跑着 KVM 的宿主机意味着：宿主上不要跑非必要的东西，不同信任级别的 guest 不要放在同一台宿主上，而且「突破之后能拿到什么」应该是设计时明确考虑过的问题。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· PwnEscape：一个 17 年的内核 bug，AI 用 3 天找到，而修复只堵了 5 个消费点</span><br>
+        <span leaf="">· TEE 的漏洞清单已经长得能写进一篇博客：而作者最狠的一句是「打断一台等于打断全部」</span><br>
+        <span leaf="">· Cloud Hypervisor 54 承诺「前两个版本可迁移」：把一条口头保证变成了可执行的承诺</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
