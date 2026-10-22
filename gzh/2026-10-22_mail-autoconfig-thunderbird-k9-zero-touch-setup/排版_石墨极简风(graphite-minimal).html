@@ -1,0 +1,397 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">自动配置不是玄学，是三条标准通道的叠加：DNS 的 SRV、HTTP 的 XML、TLS 的证书。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">—— 缺任何一条，客户端就退回手动配置</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">自建邮件服务器最烦的不是搭起来，是</span><strong style="color:#27272A;"><span leaf="">每换一台设备都要手填四个字段</span></strong><span leaf="">，而且客户端「自动探测」经常猜错。实测一台 Android 手机，自动探测失败后预填了三个全错的字段：主机名丢了前缀、端口猜成 465、用户名填成完整邮箱。本文用 </span><strong style="color:#27272A;"><span leaf="">SRV 记录 + autoconfig XML + Let's Encrypt 扩域</span></strong><span leaf=""> 三件套解决问题，文末附一个真实的坑：</span><strong style="color:#27272A;"><span leaf="">fail2ban 把运维者自己封了</span></strong><span leaf="">。</span></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">探测顺序</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">SRV 记录</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">XML 关键行</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">证书覆盖面</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">nginx 配置</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">06</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">fail2ban 自封</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">DISCOVERY</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">客户端到底怎么「自动探测」</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">主流客户端（Thunderbird、K-9、iOS Mail、Outlook）按大致相同的顺序尝试：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">猜常见主机名</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">imap.&lt;domain&gt;</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mail.&lt;domain&gt;</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">smtp.&lt;domain&gt;</span><span leaf="">，配常见端口</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">查 SRV 记录</span></strong><span leaf="">（RFC 6186）：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">_imaps._tcp.&lt;domain&gt;</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">_submissions._tcp.&lt;domain&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">拉 autoconfig XML</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">https://autoconfig.&lt;domain&gt;/mail/config-v1.1.xml</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">查 Mozilla ISPDB</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">https://autoconfig.thunderbird.net/v1.1/&lt;domain&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">全失败 → 退回手动配置</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">第 1 步是绝大多数「猜错」的来源</span></strong><span leaf="">，因为它对 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">imap.&lt;domain&gt;</span><span leaf=""> 这类名字是硬编码猜测，不校验真实性。实测被预填成 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.freelamp.com</span><span leaf="">（丢了前缀）、端口 465（实际 587）、用户名带 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@</span><span leaf="">（服务器要纯用户名）。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SRV</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第一层：SRV 记录（容易，但未必够）</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">RFC 6186 定义了用 SRV 记录声明邮件服务位置。格式是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">优先级 权重 端口 目标</span><span leaf="">：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">Cloudflare 上通过 API 添加。注意 SRV </span><strong style="color:#27272A;"><span leaf="">不能开橙云代理</span></strong><span leaf="">，必须 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">proxied=false</span><span leaf="">：</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">验证时必须加 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">+tcp</span></strong><span leaf="">。</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">dig</span><span leaf=""> 的 UDP 查询在丢包时会静默返回空结果，看起来像「记录不存在」，实际上只是没收到响应。这个坑本文踩过两次。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">但 SRV 未必被读取</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">本文实测：</span><strong style="color:#27272A;"><span leaf="">K-9 Mail 24.0 在只有 SRV 记录的情况下，自动配置依然失败</span></strong><span leaf="">，界面显示「未找到配置」。加了 autoconfig XML 之后，同一个客户端立刻显示「找到配置」。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">所以 SRV 是加分项，不是充分条件。</span></strong><span leaf=""> 对 Android 上的 K-9 / Thunderbird，真正起决定作用的是 XML。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">XML</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第二层：XML 里最关键的那一行</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">客户端会按顺序拉这几个 URL：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">XML 的结构不复杂，但有一个占位符的差别会造成完全不同的结果：</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">%EMAILLOCALPART% 还是 %EMAILADDRESS%</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">%EMAILADDRESS%</span><span leaf=""> → 替换成 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">user@example.com</span><span leaf="">（完整地址）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">%EMAILLOCALPART%</span><span leaf=""> → 替换成 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">user</span><span leaf="">（只有 @ 前那段）</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">大多数教程写 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">%EMAILADDRESS%</span></strong><span leaf="">，因为多数邮件服务商用完整地址登录。但自建 Dovecot 常见配置是</span><strong style="color:#27272A;"><span leaf="">用系统用户名登录</span></strong><span leaf="">，不带域名。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">写错这一行的后果，就是手动配置时那个「用户名被预填成完整邮箱然后认证失败」的现象。本文实测的服务器正是这种情况：</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">不确定服务器要哪种？查 Dovecot 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">auth_username_format</span><span leaf="">，或直接 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">doveadm auth test &lt;user&gt;</span><span leaf=""> 试一下。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">socketType 怎么填</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">SSL</span><span leaf=""> — 隐式 TLS，连接即加密，常用 993 / 465</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">STARTTLS</span><span leaf=""> — 先明文再升级，常用 143 / 587</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">plain</span><span leaf=""> — 不加密，别用</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">TLS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第三层：证书必须覆盖 autoconfig 域名</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这一层最容易被忽略，而且</span><strong style="color:#27272A;"><span leaf="">失败时是静默的</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">客户端拉 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">https://autoconfig.example.com/...</span><span leaf=""> 时会做</span><strong style="color:#27272A;"><span leaf="">标准 TLS 证书校验</span></strong><span leaf="">。如果证书里没有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">autoconfig.example.com</span><span leaf=""> 这个 SAN，客户端直接放弃——</span><strong style="color:#27272A;"><span leaf="">不会回退到「忽略证书错误」</span></strong><span leaf="">。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">本文实测踩到的就是这个。源站证书只有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">CN=mail.example.com</span><span leaf="">，把 autoconfig 指过去之后：</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">扩域：certbot 一行命令</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">如果已经用 Let's Encrypt + DNS 验证，加域名非常轻量——</span><strong style="color:#27272A;"><span leaf="">不需要停服务、不需要 80 端口</span></strong><span leaf="">：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">验证：</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">--expand</span><span leaf=""> 是累加不是替换</span></strong><span leaf="">，保留原有域名并加入新的。续期配置会自动更新，之后 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">certbot renew</span><span leaf=""> 会带上新域名。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">DNS+NGINX</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">第五层：通配符会遮住你的 autoconfig</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">如果域名有一条通配符记录（常见于防扫描，让随机子域指向黑洞）：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">那么 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">autoconfig.example.com</span><span leaf=""> 会命中通配符解析到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">127.0.0.1</span><span leaf="">——</span><strong style="color:#27272A;"><span leaf="">客户端连的是自己本身</span></strong><span leaf="">。必须加独立记录覆盖：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">DNS 里</span><strong style="color:#27272A;"><span leaf="">精确匹配优先于通配符</span></strong><span leaf="">，所以这个覆盖是可靠的。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">nginx：把 XML 直接内联</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">不必单独放一个 XML 文件，用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">return 200</span><span leaf=""> 直接吐内容，少一个文件路径要维护：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">location =</span><span leaf="">（精确匹配）优先于前缀匹配，不会和其它 location 抢</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">add_header ... always</span><span leaf=""> 保证非 2xx 也带 CORS 头</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">80 端口也放一份</span></strong><span leaf="">，部分客户端会先试 http</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.well-known</span><span leaf=""> 路径用 302 转发，避免维护两份 XML</span></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">为什么不用 Cloudflare Worker</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">Worker 看起来更干净（不碰源站），但有两个前提：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">API Token 必须有 Workers 写权限</span></strong><span leaf="">。实测只开 DNS 权限的 Token 调用返回 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">{"message": "No access to the specified resource."}</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">源站若已有 nginx + Let's Encrypt，扩证书加 server block 反而更简单，且不引入新依赖</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">FAIL2BAN</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">踩坑：fail2ban 把自己封了</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这一段值得单独写，因为它是一个非常典型的</span><strong style="color:#27272A;"><span leaf="">「诊断方法本身制造了故障」</span></strong><span leaf="">。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">现象</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">配好 autoconfig 后想验证发信端口，用了几种传统探测手法：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">结果全部是：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">但</span><strong style="color:#27272A;"><span leaf="">同一时刻手机客户端发信是成功的</span></strong><span leaf="">，服务器日志有完整记录：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">auth=1 mail=1 rcpt=1 data=1</span><span leaf=""> 说明整条发信流程走完了。</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">根因</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">服务器的 fail2ban 有个 jail 叫 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">postfix-scanners</span><span leaf="">，规则里有一条：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">「TCP 连上但不发任何 SMTP 命令就断开」</span><span leaf="">= 判定为扫描器。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">openssl s_client</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nc -w</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/dev/tcp</span><span leaf=""> 这三种探测手法，行为</span><strong style="color:#27272A;"><span leaf="">恰好就是连上不说话就关</span></strong><span leaf="">。每试一次算一次违规，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">maxretry=3</span><span leaf=""> 之后：</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">封禁动作是 iptables 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">REJECT --reject-with icmp-port-unreachable</span><span leaf="">，映射到用户态就是 </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">errno=111 Connection refused</span></strong><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">完美闭环</span></strong><span leaf="">：探测工具被自己的行为封掉，然后把「被封」误读成「端口不通」。更讽刺的是解封后立刻又跑了一遍同样的探测，15 秒内又被封了一次。</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">三条教训</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Connection refused</span><span leaf=""> 不等于「端口关闭」</span></strong><span leaf="">。防火墙 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">REJECT</span><span leaf=""> 也会产生 refused。区分方法：看服务端有没有收到连接</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">端口探测要模拟真实协议</span></strong><span leaf="">：走完 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">220 banner</span><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">EHLO</span><span leaf=""> → </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">250-STARTTLS</span><span leaf="">，才算真的通</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">给自家网络加 fail2ban 白名单</span></strong><span leaf="">：IPv6 隐私地址会轮换，但运营商分配的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/64</span><span leaf=""> 前缀稳定，按前缀豁免</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">白名单写法：</span></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">一个方法论层面的反思</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">排查过程中给过三个结论，</span><strong style="color:#27272A;"><span leaf="">全部是错的</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">「客户端走了代理」—— 实测无 tun 设备、无 VPN 连接</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">「云厂商封了发信端口」—— 控制台防火墙显示 25/465/587 全部放行</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">「服务器自己都连不上，所以是云厂商限流」—— 服务器自己的 IP 也在 fail2ban 黑名单里</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">三个错误的共同原因是：</span><strong style="color:#27272A;"><span leaf="">把间接信号（探测工具的返回码）当成了一手证据，而没去看服务端日志</span></strong><span leaf="">。日志从头到尾都写着 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">connect</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">auth=1</span><span leaf="">，看一眼就能推翻所有猜测。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">CHECKLIST</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">部署检查清单</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">CHECKLIST</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">要点</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">SRV 记录</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">_imaps._tcp / _submissions._tcp，端口 993 / 587；不能开橙云代理</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">验证 SRV</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">必须 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">dig +tcp</span><span leaf="">，UDP 丢包会静默返回空</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">XML 路径</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">/mail/config-v1.1.xml 与 /.well-known/autoconfig/mail/config-v1.1.xml</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">用户名占位符</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">%EMAILLOCALPART%</span><span leaf="">（纯用户名）vs </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">%EMAILADDRESS%</span><span leaf="">（完整地址）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">扩证书</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">certbot certonly --expand --cert-name &lt;原证书名&gt; -d &lt;新域名&gt;</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">DNS 陷阱</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">通配符会遮住 autoconfig，需加独立 A/AAAA 覆盖</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">nginx</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">location =</span><span leaf=""> 精确匹配 + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">return 200</span><span leaf=""> 内联 XML，80/443 各一份</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">fail2ban 坑</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">commands=0/0</span><span leaf=""> 会把「连上不说话」判为扫描器，探测工具自己触发</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">真实验证</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><span leaf="">新设备只输邮箱地址，出现「找到配置」才算成功</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">DNS 通了、证书对了、curl 拿得到 XML，都不代表客户端会自动配置成功。唯一可靠的验证，是在一台没配过的设备上只输邮箱地址，看是否出现「找到配置」。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>

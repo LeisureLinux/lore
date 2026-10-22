@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig — FreeLAMP.com</title>
+  <meta name="description" content="自建邮件服务器最烦的不是搭，是每换一台设备都要手填四个服务器字段，还经常被客户端自动探测猜错。本文用 SRV 记录 + autoconfig XML + Let's Encrypt 扩域三件套，让手机客户端只输邮箱和密码就能配好。文末附一个真实的踩坑：fail2ban 把运维者自己的 IP 封了，而排查过程中给出的三个">
+  <meta name="keywords" content="邮件自动配置, autoconfig, Thunderbird, K-9 Mail, SRV 记录, Let's Encrypt, nginx, fail2ban, RFC 6186, Cloudflare, Dovecot, 邮件服务器">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-22">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig">
+  <meta property="og:description" content="自建邮件服务器最烦的不是搭，是每换一台设备都要手填四个服务器字段，还经常被客户端自动探测猜错。本文用 SRV 记录 + autoconfig XML + Let's Encrypt 扩域三件套，让手机客户端只输邮箱和密码就能配好。文末附一个真实的踩坑：fail2ban 把运维者自己的 IP 封了，而排查过程中给出的三个">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-22">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="邮件自动配置">
+  <meta property="article:tag" content="邮件自动配置">
+  <meta property="article:tag" content="autoconfig">
+  <meta property="article:tag" content="Thunderbird">
+  <meta property="article:tag" content="K-9 Mail">
+  <meta property="article:tag" content="SRV 记录">
+  <meta property="article:tag" content="Let's Encrypt">
+  <meta property="article:tag" content="nginx">
+  <meta property="article:tag" content="fail2ban">
+  <meta property="article:tag" content="RFC 6186">
+  <meta property="article:tag" content="Cloudflare">
+  <meta property="article:tag" content="Dovecot">
+  <meta property="article:tag" content="邮件服务器">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig">
+  <meta name="twitter:description" content="自建邮件服务器最烦的不是搭，是每换一台设备都要手填四个服务器字段，还经常被客户端自动探测猜错。本文用 SRV 记录 + autoconfig XML + Let's Encrypt 扩域三件套，让手机客户端只输邮箱和密码就能配好。文末附一个真实的踩坑：fail2ban 把运维者自己的 IP 封了，而排查过程中给出的三个">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig",
+  "description": "一句话结论：邮件客户端自动配置不是玄学，是三条标准通道的叠加——SRV 记录（DNS 层）、autoconfig XML（HTTP 层）、证书覆盖面（TLS 层）。缺任何一条，客户端就会退回手动配置。而判断「哪条生效了」的唯一可靠方法，是看客户端界面；端口探测工具给出的结论经常是错的（本文有血例）。  术语速查  术语  含义  ------  autoconfig  Mozilla 主导的邮件客",
+  "datePublished": "2026-10-22",
+  "dateModified": "2026-10-22",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "邮件自动配置, autoconfig, Thunderbird, K-9 Mail, SRV 记录, Let's Encrypt, nginx, fail2ban, RFC 6186, Cloudflare, Dovecot, 邮件服务器"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig",
+        "item": "https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-22">2026-10-22</div>
+        <h1 class="post-title" itemprop="headline">输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/%E9%82%AE%E4%BB%B6%E8%87%AA%E5%8A%A8%E9%85%8D%E7%BD%AE/">邮件自动配置</a><a itemprop="keywords" href="/tags/autoconfig/">autoconfig</a><a itemprop="keywords" href="/tags/Thunderbird/">Thunderbird</a><a itemprop="keywords" href="/tags/K-9%20Mail/">K-9 Mail</a><a itemprop="keywords" href="/tags/SRV%20%E8%AE%B0%E5%BD%95/">SRV 记录</a><a itemprop="keywords" href="/tags/Let%27s%20Encrypt/">Let's Encrypt</a><a itemprop="keywords" href="/tags/nginx/">nginx</a><a itemprop="keywords" href="/tags/fail2ban/">fail2ban</a><a itemprop="keywords" href="/tags/RFC%206186/">RFC 6186</a><a itemprop="keywords" href="/tags/Cloudflare/">Cloudflare</a><a itemprop="keywords" href="/tags/Dovecot/">Dovecot</a><a itemprop="keywords" href="/tags/%E9%82%AE%E4%BB%B6%E6%9C%8D%E5%8A%A1%E5%99%A8/">邮件服务器</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote><strong>一句话结论</strong>：邮件客户端自动配置不是玄学，是三条标准通道的叠加——<strong>SRV 记录（DNS 层）</strong>、<strong>autoconfig XML（HTTP 层）</strong>、<strong>证书覆盖面（TLS 层）</strong>。缺任何一条，客户端就会退回手动配置。而判断「哪条生效了」的唯一可靠方法，是看客户端界面；端口探测工具给出的结论经常是错的（本文有血例）。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>术语速查</h2>
+<table>
+<tr><th>术语</th><th>含义</th></tr>
+<tr><td><strong>autoconfig</strong></td><td>Mozilla 主导的邮件客户端配置发现协议，客户端按固定 URL 拉一份 XML</td></tr>
+<tr><td><strong>autodiscover</strong></td><td>微软同名协议，Outlook 系用</td></tr>
+<tr><td><strong>SRV 记录</strong></td><td>DNS 服务记录，能声明「某服务在某主机某端口」</td></tr>
+<tr><td><strong>RFC 6186</strong></td><td>用 SRV 记录发现邮件提交/收取服务的标准</td></tr>
+<tr><td><strong>ISPDB</strong></td><td>Mozilla 维护的配置库，<code>autoconfig.thunderbird.net</code></td></tr>
+<tr><td><strong>EMAILLOCALPART</strong></td><td>autoconfig XML 里的占位符，指 <code>@</code> 前那段（本文的关键点）</td></tr>
+<tr><td><strong>STARTTLS</strong></td><td>先明文连再升级 TLS，通常 587 端口</td></tr>
+<tr><td><strong>隐式 TLS</strong></td><td>连接即 TLS，通常 993 / 465 端口</td></tr>
+</table>
+<h2>一、问题：为什么手动配置总是出岔子</h2>
+<p>自建邮件服务器的人都有一个共同经历：<strong>每台新设备都要填四个字段</strong>——收件服务器、收件端口、发件服务器、发件端口。</p>
+<p>更要命的是客户端「自动探测」经常猜错。实测一台 Android 手机配 Thunderbird，自动探测失败后进入手动配置页，界面里被预填了这些值：</p>
+<pre><code class="">服务器   .freelamp.com        ← 丢了主机名前缀
+端口     465                  ← 猜的，实际用 587
+用户名   albertxu@freelamp.com ← 服务器要的是 albertxu，不带 @
+</code></pre>
+<p>三个字段全错。这三个错各有各的成因，正好对应本文要解决的三层问题。</p>
+<h3>客户端到底怎么「自动探测」的</h3>
+<p>主流客户端（Thunderbird、K-9、iOS Mail、Outlook）按大致相同的顺序尝试：</p>
+<ol>
+<li>1. <strong>猜常见主机名</strong>：<code>imap.<domain></code>、<code>mail.<domain></code>、<code>pop3.<domain></code>、<code>smtp.<domain></code>，配常见端口</li>
+<li>2. <strong>查 SRV 记录</strong>（RFC 6186）：<code>_imaps._tcp.<domain></code>、<code>_submissions._tcp.<domain></code></li>
+<li>3. <strong>拉 autoconfig XML</strong>：<code>https://autoconfig.<domain>/mail/config-v1.1.xml</code></li>
+<li>4. <strong>查 Mozilla ISPDB</strong>：<code>https://autoconfig.thunderbird.net/v1.1/<domain></code></li>
+<li>5. 全失败 → 退回手动配置</li>
+</ol>
+<strong>第 1 步是绝大多数「猜错」的来源</strong>，因为它对 <code>imap.<domain></code> 这类名字是硬编码猜测，不校验真实性。
+<h2>二、第一层：SRV 记录（最容易，但未必够）</h2>
+<p>RFC 6186 定义了用 SRV 记录声明邮件服务位置：</p>
+<pre><code class="dns">; 收件：IMAP over TLS
+_imaps._tcp.example.com.        IN SRV 0 1 993 mail.example.com.
+; 发件：submission（客户端提交）
+_submissions._tcp.example.com.  IN SRV 0 1 587 mail.example.com.
+; 兼容旧写法
+_submission._tcp.example.com.   IN SRV 0 1 587 mail.example.com.
+</code></pre>
+<p>参数含义：<code>优先级 权重 端口 目标</code>。</p>
+<p>Cloudflare 上通过 API 添加（SRV 记录不能用通配符代理，必须 <code>proxied=false</code>）：</p>
+<pre><code class="bash">curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" \
+  -H "Authorization: Bearer $CF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "SRV",
+    "name": "_imaps._tcp.example.com",
+    "ttl": 300,
+    "data": {
+      "service": "imaps", "proto": "tcp", "name": "@",
+      "priority": 0, "weight": 1, "port": 993,
+      "target": "mail.example.com."
+    }
+  }'
+</code></pre>
+<p>验证：</p>
+<pre><code class="bash">dig +tcp +short SRV _imaps._tcp.example.com @1.1.1.1
+</code></pre>
+<blockquote><strong>⚠️ 一个陷阱</strong>：<code>dig</code> 的 UDP 查询在丢包时会静默返回空结果，看起来像「记录不存在」。<strong>判断 SRV 是否生效请加 <code>+tcp</code></strong>，或者直接查权威 NS。</blockquote>
+<h3>但 SRV 未必被读取</h3>
+<p>本文实测：K-9 Mail 24.0 在<strong>只有 SRV 记录</strong>的情况下，自动配置<strong>依然失败</strong>，界面显示「未找到配置」。</p>
+<p>加了 autoconfig XML 之后，同一个客户端立刻显示「找到配置」。</p>
+<p><strong>结论：SRV 记录是加分项，不是充分条件。</strong> 对 Android 上的 K-9 / Thunderbird，真正起决定作用的是 autoconfig XML。</p>
+<h2>三、第二层：autoconfig XML（真正管用的那一层）</h2>
+<h3>3.1 客户端会去哪里拉</h3>
+<p>按优先级：</p>
+<pre><code class="">https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=user@domain
+https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml?emailaddress=...
+http://autoconfig.<domain>/mail/config-v1.1.xml          ← 有些客户端先试 80
+</code></pre>
+<h3>3.2 XML 长什么样</h3>
+<pre><code class="xml"><?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="example.com">
+    <domain>example.com</domain>
+    <displayName>Example Mail</displayName>
+    <displayShortName>Example</displayShortName>
+    <incomingServer type="imap">
+      <hostname>mail.example.com</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILLOCALPART%</username>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>mail.example.com</hostname>
+      <port>587</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILLOCALPART%</username>
+    </outgoingServer>
+    <documentation url="https://example.com/">
+      <descr lang="en">Example mail service</descr>
+    </documentation>
+  </emailProvider>
+</clientConfig>
+</code></pre>
+<h3>3.3 最关键的一行：<code>%EMAILLOCALPART%</code> vs <code>%EMAILADDRESS%</code></h3>
+<p>这是本文最有价值的一个细节。两个占位符：</p>
+<table>
+<tr><th>占位符</th><th>替换结果</th></tr>
+<tr><td><code>%EMAILADDRESS%</code></td><td><code>albertxu@example.com</code>（完整地址）</td></tr>
+<tr><td><code>%EMAILLOCALPART%</code></td><td><code>albertxu</code>（只有 @ 前那段）</td></tr>
+</table>
+<p><strong>大多数教程写 <code>%EMAILADDRESS%</code></strong>，因为多数邮件服务商用完整地址登录。但自建 Dovecot 常见的配置是<strong>用系统用户名登录</strong>，不带域名。</p>
+<p>本文实测的服务器就是这种情况：</p>
+<pre><code class="">用户输入：albertxu@freelamp.com
+服务器要：albertxu
+</code></pre>
+<p>写错这一行的后果，就是手动配置时那个「用户名被预填成完整邮箱」然后认证失败的现象。</p>
+<p><strong>如果你不确定服务器要哪种，看 Dovecot 的 <code>auth_username_format</code>，或者直接用 <code>doveadm auth test albertxu</code> 试。</strong></p>
+<h3>3.4 socketType 取值</h3>
+<table>
+<tr><th>值</th><th>含义</th><th>常见端口</th></tr>
+<tr><td><code>SSL</code></td><td>隐式 TLS，连接即加密</td><td>993 / 465</td></tr>
+<tr><td><code>STARTTLS</code></td><td>先明文再升级</td><td>143 / 587</td></tr>
+<tr><td><code>plain</code></td><td>不加密（别用）</td><td>—</td></tr>
+</table>
+<h2>四、第三层：证书必须覆盖 autoconfig 这个域名</h2>
+<p>这一层最容易被忽略，而且<strong>失败时是静默的</strong>。</p>
+<p>客户端拉 <code>https://autoconfig.example.com/...</code> 时，会做<strong>标准 TLS 证书校验</strong>。如果服务器证书里没有 <code>autoconfig.example.com</code> 这个 SAN，客户端直接放弃——<strong>不会回退到「忽略证书错误」</strong>。</p>
+<p>本文实测踩到的就是这个：源站证书只有 <code>CN=mail.example.com</code>，把 <code>autoconfig</code> 指过去之后：</p>
+<pre><code class="">$ curl -v https://autoconfig.example.com/mail/config-v1.1.xml
+* TLS verify error: certificate subject name does not match
+</code></pre>
+<p>而用 <code>openssl s_client</code> 看证书：</p>
+<pre><code class="">X509v3 Subject Alternative Name:
+    DNS:mail.example.com          ← 只有这一个
+</code></pre>
+<h3>扩域：certbot 一行命令</h3>
+<p>如果已经用 Let's Encrypt + DNS 验证，加一个域名非常轻量（<strong>不需要停服务、不需要 80 端口</strong>）：</p>
+<pre><code class="bash">certbot certonly --expand --cert-name mail.example.com \
+  -d mail.example.com -d autoconfig.example.com \
+  --authenticator dns-cloudflare \
+  --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
+  --dns-cloudflare-propagation-seconds 30 \
+  --non-interactive --agree-tos
+</code></pre>
+<p>验证：</p>
+<pre><code class="bash">openssl x509 -in /etc/letsencrypt/live/mail.example.com/cert.pem \
+  -noout -subject -ext subjectAltName -enddate
+</code></pre>
+<p>输出应当同时包含两个域名：</p>
+<pre><code class="">X509v3 Subject Alternative Name:
+    DNS:autoconfig.example.com, DNS:mail.example.com
+notAfter=Jan 20 12:15:21 2027 GMT
+</code></pre>
+<blockquote><strong>注意 <code>--expand</code> 是累加，不是替换。</strong> 它会保留原有域名并加入新的。续期配置也会自动更新，之后 <code>certbot renew</code> 会带上新域名。</blockquote>
+<h2>五、DNS：通配符会遮住你的 autoconfig</h2>
+<p>如果域名有一条通配符记录（用于防扫描，让随机子域都指向黑洞）：</p>
+<pre><code class="dns">*.example.com   A     127.0.0.1
+*.example.com   AAAA  ::1
+</code></pre>
+<p>那么 <code>autoconfig.example.com</code> 会命中通配符，解析到 <code>127.0.0.1</code>——<strong>客户端连的是自己本身</strong>。</p>
+<p>必须加<strong>独立记录</strong>覆盖通配符：</p>
+<pre><code class="dns">autoconfig.example.com   A      <源站 IPv4>
+autoconfig.example.com   AAAA   <源站 IPv6>
+</code></pre>
+<p>DNS 里<strong>精确匹配优先于通配符</strong>，所以这个覆盖是可靠的。</p>
+<p>验证：</p>
+<pre><code class="bash">dig +short A    autoconfig.example.com @1.1.1.1
+dig +short AAAA autoconfig.example.com @1.1.1.1
+</code></pre>
+<h2>六、nginx 配置：把 XML 直接内联</h2>
+<p>不必单独放一个 XML 文件，用 nginx 的 <code>return 200</code> 直接吐内容，少一个文件路径要维护：</p>
+<pre><code class="nginx">server {
+    server_name autoconfig.example.com;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+<p>    ssl_certificate     /etc/letsencrypt/live/mail.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mail.example.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;</p>
+<p>    location = /mail/config-v1.1.xml {
+        default_type application/xml;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cache-Control "public, max-age=3600" always;
+        return 200 '<?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="example.com">
+    <domain>example.com</domain>
+    <incomingServer type="imap">
+      <hostname>mail.example.com</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILLOCALPART%</username>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>mail.example.com</hostname>
+      <port>587</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILLOCALPART%</username>
+    </outgoingServer>
+  </emailProvider>
+</clientConfig>
+';
+    }</p>
+<p>    location = /.well-known/autoconfig/mail/config-v1.1.xml {
+        return 302 /mail/config-v1.1.xml;
+    }</p>
+<p>    location / { return 404; }
+}</p>
+<h1>80 端口也提供一份：有些客户端先试 http</h1>
+server {
+    server_name autoconfig.example.com;
+    listen 80;
+    listen [::]:80;
+<p>    location = /mail/config-v1.1.xml {
+        default_type application/xml;
+        # 同一份 XML
+        return 200 '...';
+    }</p>
+<p>    location / { return 301 https://$host$request_uri; }
+}
+</code></pre></p>
+<p>要点：</p>
+<ul>
+<li><code>location =</code>（精确匹配）优先于前缀匹配，不会和其它 location 抢</li>
+<li><code>add_header ... always</code> 保证非 2xx 也带 CORS 头</li>
+<li><strong>80 端口也放一份</strong>，因为部分客户端会先试 http 再升级</li>
+<li><code>.well-known</code> 路径用 302 转发，避免维护两份 XML</li>
+</ul>
+<h3>验证服务端确实正常</h3>
+<pre><code class="bash">curl -q -sS --max-time 15 \
+  "https://autoconfig.example.com/mail/config-v1.1.xml?emailaddress=user@example.com"
+</code></pre>
+<p><code>-q</code> 会禁用 <code>~/.curlrc</code>。如果环境里有 <code>https_proxy</code>，curl 会走代理，输出里会多一行 <code>HTTP/1.1 200 Connection Established</code>——这是正常的。</p>
+<h2>七、为什么用 nginx 而不是 Cloudflare Worker</h2>
+<p>Worker 方案看起来更干净（不用碰源站），但有两个前提：</p>
+<ol>
+<li>1. <strong>API Token 必须有 Workers 写权限</strong>。本文实测一个只开了 DNS 权限的 Token，调用 <code>PUT /accounts/{id}/workers/scripts/{name}</code> 返回 <code>{"message": "No access to the specified resource."}</code></li>
+<li>2. <strong><code>autoconfig</code> 子域不能用 Worker 路由绑定的橙云代理</strong>，否则 SRV 类的记录冲突</li>
+</ol>
+如果源站已经有 nginx + Let's Encrypt，扩证书 + 加 server block 反而更简单，而且不引入新依赖。
+<h2>八、最终验证：只看客户端界面</h2>
+<p>这是本文最想强调的一点。</p>
+<p><strong>DNS 通了、证书对了、curl 拿得到 XML，都不代表客户端会自动配置成功。</strong> 唯一可靠的验证是在一台没配过的设备上输入邮箱地址，看是否出现「找到配置」。</p>
+<p>本文实测对比：</p>
+<table>
+<tr><th>配置方式</th><th>客户端表现</th></tr>
+<tr><td>仅 SRV 记录</td><td>「未找到配置」，进手动配置页</td></tr>
+<tr><td>加了 autoconfig XML</td><td><strong>「找到配置」</strong>，用户名自动推断正确，并识别到 <code>Sent</code> / <code>Junk</code> / <code>Trash</code> 文件夹</td></tr>
+</table>
+<p>第二行的差别不只是「少填四个字段」——客户端还自动发现了发件箱文件夹，而这个在手动配置时经常被漏掉。</p>
+<h2>九、踩坑附录：fail2ban 把自己封了</h2>
+<p>这一段值得单独写，因为它是一个非常典型的「诊断方法本身制造了故障」。</p>
+<h3>现象</h3>
+<p>配好 autoconfig 后，想验证发信端口是否可用，用了几种传统探测手法：</p>
+<pre><code class="bash">openssl s_client -connect mail.example.com:587
+nc -w 5 mail.example.com 587 < /dev/null
+echo > /dev/tcp/mail.example.com/587
+</code></pre>
+<p>结果全部是：</p>
+<pre><code class="">connect:errno=111        # Connection refused
+</code></pre>
+<p>但<strong>同一时刻，手机上的邮件客户端发信是成功的</strong>——服务器日志里有完整记录：</p>
+<pre><code class="">postfix/submission/smtpd: connect from unknown[<客户端 IP>]
+  sasl_method=PLAIN, sasl_username=<user>
+  disconnect ... ehlo=2 starttls=1 auth=1 mail=1 rcpt=1 data=1 quit=1
+</code></pre>
+<p><code>auth=1 mail=1 rcpt=1 data=1</code> 说明整条发信流程走完了。</p>
+<h3>根因</h3>
+<p>服务器的 fail2ban 有一个 jail 叫 <code>postfix-scanners</code>，filter 规则是：</p>
+<pre><code class="">failregex = ...
+            ^...disconnect from ...\[<HOST>\] commands=0/0$
+</code></pre>
+<p><strong>「TCP 连上，但不发任何 SMTP 命令就断开」= 判定为扫描器。</strong></p>
+<p>而 <code>openssl s_client</code>、<code>nc -w</code>、<code>/dev/tcp</code> 这三种探测手法，行为<strong>恰好就是连上不说话就关</strong>。每试一次算一次违规，<code>maxretry=3</code> 之后：</p>
+<pre><code class="">fail2ban: [postfix-scanners] Found <IP>
+fail2ban: [postfix-scanners] Ban   <IP>
+</code></pre>
+<p>封禁动作是 iptables 的 <code>REJECT --reject-with icmp-port-unreachable</code>——<code>icmp-port-unreachable</code> 映射到用户态就是 <strong><code>errno=111 Connection refused</code></strong>。</p>
+<p>于是形成了一个完美的自我欺骗闭环：<strong>探测工具被自己的行为封掉，然后把「被封」误读成「端口不通」。</strong></p>
+<p>更讽刺的是：解封之后立刻又跑了一遍同样的探测，<strong>又被封了一次</strong>。</p>
+<pre><code class="">21:06:33  Unban  <PC IP>
+21:06:48  Found  <PC IP>     ← 解封后 15 秒
+21:06:52  Ban    <PC IP>
+</code></pre>
+<h3>教训</h3>
+<p><strong>第一，<code>Connection refused</code> 和「端口关闭」不是同一件事。</strong> 防火墙 <code>REJECT</code> 也会产生 refused。区分方法是看服务端有没有收到连接——如果服务端日志显示「连上了」，那 refused 一定来自中间环节。</p>
+<p><strong>第二，端口探测要模拟真实协议</strong>。正确的探测方式：</p>
+<pre><code class="bash">python3 - <<'PY'
+import socket
+s = socket.create_connection((host, 587), timeout=8)
+f = s.makefile('rwb', 0)
+print(f.readline().decode())          # 220 banner
+f.write(b"EHLO probe.local\r\n")
+while True:
+    line = f.readline().decode()
+    if not line or line[3:4] == ' ': break
+    print(line)
+f.write(b"QUIT\r\n")
+s.close()
+PY
+</code></pre>
+<p>能看到 <code>220 ... ESMTP</code> 和 <code>250-STARTTLS</code> 才算真的通。</p>
+<p><strong>第三，给自家网络加 fail2ban 白名单</strong>。IPv6 隐私地址会轮换，但运营商分配的 <code>/64</code> 前缀稳定，按前缀豁免即可：</p>
+<pre><code class="ini"># /etc/fail2ban/jail.local
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1
+           <你的 IPv6 /64 前缀>
+           192.168.0.0/16
+           <服务器自己的公网 IP>
+</code></pre>
+<p>验证各 jail 都继承了：</p>
+<pre><code class="bash">fail2ban-client get postfix-scanners ignoreip
+</code></pre>
+<p><strong>第四，<code>commands=0/0</code> 这条规则本身偏激进。</strong> 它对正常客户端也会误伤——TLS 握手失败、网络抖动导致的中断都会命中。考虑把 <code>maxretry</code> 提到 5，或缩短 <code>findtime</code>。</p>
+<h3>一个方法论层面的反思</h3>
+<p>排查过程中我给过三个结论，全部是错的：</p>
+<ol>
+<li>1. 「客户端走了代理」——实测无 tun 设备、无 VPN 连接</li>
+<li>2. 「云厂商封了发信端口」——控制台防火墙显示 25/465/587 全部放行</li>
+<li>3. 「服务器自己都连不上，所以是云厂商限流」——服务器自己的 IP 也在 fail2ban 黑名单里</li>
+</ol>
+三个错误的共同原因是：<strong>把一个间接信号（探测工具的返回码）当成了一手证据，而没有去看服务端日志</strong>。服务端日志从头到尾都写着 <code>connect</code> 和 <code>auth=1</code>，只要看一眼就能推翻所有猜测。
+<h2>十、检查清单</h2>
+<p>部署 autoconfig 时按这个顺序排查：</p>
+<table>
+<tr><th>步骤</th><th>命令</th><th>通过标准</th></tr>
+<tr><td>1. DNS 覆盖通配符</td><td><code>dig +short A autoconfig.<domain></code></td><td>返回真实 IP，不是 <code>127.0.0.1</code></td></tr>
+<tr><td>2. 证书含 SAN</td><td><code>openssl x509 -ext subjectAltName</code></td><td>包含 <code>autoconfig.<domain></code></td></tr>
+<tr><td>3. nginx 能吐 XML</td><td><code>curl -q -sS https://autoconfig.<domain>/mail/config-v1.1.xml</code></td><td>HTTP 200，XML 完整</td></tr>
+<tr><td>4. HTTP 80 也可用</td><td><code>curl -q -sS http://autoconfig.<domain>/mail/config-v1.1.xml</code></td><td>HTTP 200</td></tr>
+<tr><td>5. <code>%EMAILLOCALPART%</code> 正确</td><td>看 Dovecot <code>auth_username_format</code></td><td>与实际登录名一致</td></tr>
+<tr><td>6. <strong>客户端真实测试</strong></td><td>新设备只输邮箱地址</td><td>出现「找到配置」</td></tr>
+</table>
+<p>前五步全是间接验证。<strong>第六步才是结论。</strong></p>
+<p>---</p>
+<p><strong>本文所有域名、IP、用户名为脱敏后的占位值。</strong> 配置方法本身可直接套用到任何自建邮件域。</p>
+<p>---</p>
+<p><em>本文同步发布于微信公众号「LeisureLinux」与 B站「LeisureLinux」（视频版）。</em>
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/",
+      title: "\u8f93\u5165\u90ae\u7bb1\u548c\u5bc6\u7801\uff0c\u670d\u52a1\u5668\u81ea\u5df1\u627e\u4e0a\u6765\uff1a\u7ed9\u81ea\u5efa\u90ae\u4ef6\u57df\u505a\u4e00\u5957 autoconfig"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
