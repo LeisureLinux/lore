@@ -31,9 +31,9 @@ published: true
 更要命的是客户端「自动探测」经常猜错。实测一台 Android 手机配 Thunderbird，自动探测失败后进入手动配置页，界面里被预填了这些值：
 
 ```
-服务器   .freelamp.com        ← 丢了主机名前缀
+服务器   .example.com         ← 丢了主机名前缀
 端口     465                  ← 猜的，实际用 587
-用户名   albertxu@freelamp.com ← 服务器要的是 albertxu，不带 @
+用户名   user@example.com     ← 服务器要的是 user，不带 @
 ```
 
 三个字段全错。这三个错各有各的成因，正好对应本文要解决的三层问题。
@@ -148,21 +148,21 @@ http://autoconfig.<domain>/mail/config-v1.1.xml          ← 有些客户端先�
 
 | 占位符 | 替换结果 |
 |---|---|
-| `%EMAILADDRESS%` | `albertxu@example.com`（完整地址） |
-| `%EMAILLOCALPART%` | `albertxu`（只有 @ 前那段） |
+| `%EMAILADDRESS%` | `user@example.com`（完整地址） |
+| `%EMAILLOCALPART%` | `user`（只有 @ 前那段） |
 
 **大多数教程写 `%EMAILADDRESS%`**，因为多数邮件服务商用完整地址登录。但自建 Dovecot 常见的配置是**用系统用户名登录**，不带域名。
 
 本文实测的服务器就是这种情况：
 
 ```
-用户输入：albertxu@freelamp.com
-服务器要：albertxu
+用户输入：user@example.com
+服务器要：user
 ```
 
 写错这一行的后果，就是手动配置时那个「用户名被预填成完整邮箱」然后认证失败的现象。
 
-**如果你不确定服务器要哪种，看 Dovecot 的 `auth_username_format`，或者直接用 `doveadm auth test albertxu` 试。**
+**如果你不确定服务器要哪种，看 Dovecot 的 `auth_username_format`，或者直接用 `doveadm auth test <user>` 试。**
 
 ### 3.4 socketType 取值
 
