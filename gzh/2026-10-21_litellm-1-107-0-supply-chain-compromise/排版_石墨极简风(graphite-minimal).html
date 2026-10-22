@@ -1,0 +1,638 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">It generated a lot of code, much of it hideous.</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">LiteLLM 官方事件报告</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">2026 年 10 月 21 日，LiteLLM 的发布管道被攻破。</span></strong><strong style="color:#27272A;"><span leaf="">官方流水线构建、签名并发布了一个带凭证窃取器和后门的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">v1.107.0</span><span leaf="">，在 PyPI 上活了 1 小时 43 分钟，在 Docker Hub 上活了 2 小时 33 分钟。</span></strong><strong style="color:#27272A;"><span leaf="">而攻击者没有攻破 LiteLLM 的代码，也没有攻破 PyPI。</span></strong><strong style="color:#27272A;"><span leaf="">他攻破的是「发布流程」，然后让官方流水线亲手把带毒的包签了名发了出去。</span></strong><strong style="color:#27272A;"><span leaf="">更反直觉的是攻击链的起点：一批被日志记录下来的 GitHub CLI OAuth token，而 token 泄露的原因之一是 Claude Code 会把用户的 token 嵌进响应体。</span></strong><strong style="color:#27272A;"><span leaf="">换句话说，一个专门用来代理和记录 LLM 调用的网关，把攻击者用来攻破它自己发布流程的凭证给记了下来。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">事件全貌</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">载荷怎么进包</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">.pth 的杀伤力</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">攻击链</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三月前科</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">06</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">补救与判断</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE TIMELINE</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">事件全貌：官方流水线亲手签发了带毒的包</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">LiteLLM 官方报告给了逐秒的时间线，而这是整份报告里信息量最大的部分。</span></strong><strong style="color:#27272A;"><span leaf="">因为它精确地显示了「每个防线在什么时候失效」。</span></strong><strong style="color:#27272A;"><span leaf="">所有时间均为 2026 年 10 月 21 日 UTC</span></strong><span leaf="">。</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">10:08:29</span></strong><span leaf="">｜GitHub 分支保护</span><strong style="color:#27272A;"><span leaf="">正确地拒绝</span></strong><span leaf="">了对私有发布工作流的一次未授权修改</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">10:08:34</span></strong><span leaf="">｜</span><strong style="color:#27272A;"><span leaf="">一个与特权开发者账号关联的凭证被用来覆盖这些保护</span></strong><span leaf="">，并应用了工作流提交</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">10:46:39｜被修改的工作流启动 staging 运行，</span><strong style="color:#27272A;"><span leaf="">使用攻击者控制的源仓库 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Berri-AI/litellm</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">11:08:09｜staging 运行成功完成，11:08:53 生产发布流程开始</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">11:11:18</span></strong><span leaf="">｜</span><strong style="color:#27272A;"><span leaf="">与第二个开发者账号关联的凭证被用来满足生产审批门</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">11:39:51 到 11:40:13</span></strong><span leaf="">｜</span><strong style="color:#27272A;"><span leaf="">七个恶意 wheel 被上传到 PyPI</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">11:46:56｜容器发布任务运行，</span><strong style="color:#27272A;"><span leaf="">发布的 Docker 镜像包含攻击者控制的恶意内容</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⚠️ </span><strong style="color:#27272A;"><span leaf="">11:53:49</span></strong><span leaf="">｜</span><strong style="color:#27272A;"><span leaf="">第三枚凭证被用来删除生产和 staging 的工作流记录，销毁证据</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">12:09:38 到 12:24:52｜未授权的工作流修订被移除，发布流程恢复</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">13:23</span></strong><span leaf="">｜PyPI 移除了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm==1.107.0</span><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">14:20</span></strong><span leaf="">｜Docker Hub 全部受影响 tag 被移除或重指</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 这张表里有三个时刻是整件事的枢纽</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 10:08:29 与 10:08:34 之间那 5 秒</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">分支保护先正确地拒绝了未授权修改，然后一个特权凭证覆盖了它。防线是对的，但钥匙丢了。</span></strong><strong style="color:#27272A;"><span leaf="">② 11:11:18</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">攻击者不是绕过审批门，而是「满足」它。</span></strong><strong style="color:#27272A;"><span leaf="">也就是说，审批门从「一个人的批准」变成了「一个被盗账号的批准」，门还在，只是不再由人控制。</span></strong><strong style="color:#27272A;"><span leaf="">③ 11:53:49</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">攻击者在销毁证据。</span></strong><strong style="color:#27272A;"><span leaf="">而这也意味着调查拿不到完整的 workflow 日志，官方报告里所有「谁在什么时候做了什么」的结论，都是在不完整的日志下重建出来的。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">曝光窗口</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">PyPI</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm==1.107.0</span><span leaf="">（全部 7 个 wheel），</span><strong style="color:#27272A;"><span leaf="">11:39:51 到 13:23</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">约 1 小时 43 分</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">Docker Hub</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">v1.107.0</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">latest</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">main-latest</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">main-stable</span><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">11:46:56 到 14:20</span></strong><span leaf="">，</span><strong style="color:#27272A;"><span leaf="">约 2 小时 33 分</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">GHCR</span></strong><span leaf="">：同样 4 个 tag，</span><strong style="color:#27272A;"><span leaf="">11:46:56 到 13:51</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">latest</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">main-stable</span><span leaf=""> 是这里最危险的两个 tag</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">它们的语义是「最新」和「稳定版」，所以任何执行 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">docker pull litellm/litellm</span><span leaf=""> 的人都会中招，而不需要任何人指定 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1.107.0</span><span leaf=""> 这个版本号。一个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">docker compose pull</span><span leaf=""> 就够了。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而官方报告里有一条容易被跳过的限定</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「GitHub 上官方的 v1.107.0 源码 tag 不包含这些恶意文件。被污染的产物是从一个攻击者控制的仓库构建的。」</span></strong><strong style="color:#27272A;"><span leaf="">SafeDep 独立验证了这一点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「BerriAI/litellm 的任何公开 commit 都不包含 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">data = "cook"</span><span leaf=""> 或 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook/</span><span leaf=""> 目录。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 但「官方 GitHub 源码是干净的」这句话在实践中几乎没有安慰作用。</span></strong><strong style="color:#27272A;"><span leaf="">因为没有人会从 GitHub 源码构建 LiteLLM 之后再用，人们装的是 PyPI 上的 wheel 和容器镜像。</span></strong><strong style="color:#27272A;"><span leaf="">而恰恰是「官方渠道」被攻破了。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">一个官方报告没提、但你必须自己查的细节</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">企业客户的私有 registry 未受影响</span></strong><span leaf="">，官方给出的理由很有意思：</span><strong style="color:#27272A;"><span leaf="">「目前存在一个面向企业客户的私有 LiteLLM registry，我们正在其中分发一个修复了某个漏洞的禁发版本，该漏洞的披露日期定在 10 月 27 日。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 我不打算替他们回答、但必须指出的问题</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">如果攻击者已经通过 token 拿到了内部部署的访问权，他们拿到的是不是也包括那个 embargoed 版本的代码？</span></strong><strong style="color:#27272A;"><span leaf="">如果那个 embargoed 修复的是一个 RCE，而攻击者手上有到内部部署的路径……</span></strong><strong style="color:#27272A;"><span leaf="">官方报告没有说，我也没有证据，所以这只是一个必须被问出口的问题。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE IMPLANT</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">恶意载荷是怎么放进包里的：一行 TOML 配置</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">SafeDep 的发现是：整个植入只需要一行 TOML 配置。</span></strong><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm-1.107.0.tar.gz</span><span leaf="">（sdist）里的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pyproject.toml</span><span leaf="">，maturin 构建段多了一行</span></strong><span leaf="">：</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pyproject.toml</span><span leaf="">（litellm-1.107.0.tar.gz）</span></strong><span leaf="">　</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[tool.maturin]</span><span leaf="">　</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">python-source = "."</span><span leaf="">　⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">data = "cook"</span><span leaf="">　← 注入的那一行</span></strong><span leaf="">　</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">python-packages = [ "litellm_cli" ]</span><span leaf="">（上游本来就有）</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">data = "cook"</span><span leaf=""> 这个设置的作用是：把一个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook/</span><span leaf=""> 目录复制进 wheel 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">purelib/</span><span leaf=""> 里。</span></strong><strong style="color:#27272A;"><span leaf="">而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pip install</span><span leaf=""> 会把 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">purelib</span><span leaf=""> 里的东西安装到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">site-packages</span><span leaf="">。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「The sdist leaves out the </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook/</span><span leaf=""> folder, so this line is the only visible change.」</span></strong><strong style="color:#27272A;"><span leaf="">「sdist 里省掉了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook/</span><span leaf=""> 目录，所以这一行是唯一可见的改动。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这意味着：如果你下载 sdist 来看代码，你会看到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pyproject.toml</span><span leaf=""> 有一行奇怪的配置，但找不到对应的目录。</span></strong><strong style="color:#27272A;"><span leaf="">这个「目录缺失」本身就是一个可检测的信号。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">wheel 的 RECORD 里写得清清楚楚</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.pth</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">12 字节</span></strong><span leaf="">）→ 内容是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">import cook</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.py</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">22,252 字节</span></strong><span leaf="">）→ </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">exec(zlib.decompress(b64decode(...)))</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize.py</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">25,509 字节</span></strong><span leaf="">）→ loader / backdoor + 内嵌的窃密器</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE .PTH MECHANISM</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">为什么 12 个字节的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 文件能毁掉一台机器</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一节我认为是全文最值得科普的部分，因为这个机制很多人知道但没想清楚它的爆炸半径。</span></strong><strong style="color:#27272A;"><span leaf="">Python 启动时，会扫描 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">site-packages</span><span leaf=""> 里所有的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 文件，并执行其中以 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">import</span><span leaf=""> 开头的每一行。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「Both run when any Python process starts on the host, even one that never imports litellm.」</span></strong><strong style="color:#27272A;"><span leaf="">「两者都在宿主机上任何 Python 进程启动时运行，即使那个进程从不 import litellm。」</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 请体会这句话的重量</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">你的 Flask 应用会触发；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pip install</span><span leaf=""> 任何东西会触发；你的 IDE 语言服务器会触发；CI 里的每一个 job 会触发；Jupyter 内核会触发。</span></strong><strong style="color:#27272A;"><span leaf="">「你装了 LiteLLM」和「你的机器上有 Python」这两件事，在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 的作用下是同一件事。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">窃密器收走了什么</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">SafeDep 解码了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.py</span><span leaf="">（它把约 61 KB 的 Python 包在一层 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">exec(zlib.decompress(base64.b64decode(...)))</span><span leaf=""> 里），解出来的配置是</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">PC_URL</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">PC_TOKEN</span><span leaf="">、RSA-4096 公钥、一次性标记路径，以及 17 个采集模块。</span><strong style="color:#27272A;"></strong></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">db_litellm</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">读 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">DATABASE_URL</span><span leaf="">，dump </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LiteLLM_CredentialsTable</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">LiteLLM_ProxyModelTable</span><span leaf=""> 两张表</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ai_devtools</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">Claude Code、Claude Desktop、Cursor、Copilot、Codex 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">auth.json</span><span leaf="">、Gemini CLI、Zed、Hugging Face token 等</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">env_vars</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">通过 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/proc/&lt;pid&gt;/environ</span><span leaf=""> 读其他进程的环境变量</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">browser_pw</span></strong><span leaf="">：Chromium 保存的密码（Windows 上用 DPAPI 解密）、Firefox 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">logins.json</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">key4.db</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cloud_creds</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">~/.aws/credentials</span><span leaf="">、Azure token、gcloud 凭证、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">~/.kube/config</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">~/.docker/config.json</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">gh hosts.yml</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cicd_secrets</span></strong><span leaf="">：GitLab runner 配置、Jenkins 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">master.key</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.vault-token</span><span leaf="">、Terraform 凭证</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">container_creds</span></strong><span leaf="">：Kubernetes service account token</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ssh_keys</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">shell_hist</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">dev_secrets</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">gpg_keys</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tls_privkey</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">browser_hist</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sysinfo</span></strong><span leaf=""> 等</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 三个值得单独停一下的目标</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">db_litellm</span><span leaf=""> 直接 dump 代理的供应商密钥表。</span></strong><strong style="color:#27272A;"><span leaf="">这解释了为什么 LiteLLM 特别危险：LiteLLM 的核心价值就是集中持有所有 LLM 供应商的 API key。所以攻击者不需要去偷云厂商的凭证，他直接偷「保管凭证的那张表」。</span></strong><strong style="color:#27272A;"><span leaf="">② </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ai_devtools</span><span leaf=""> 的目标是全部主流 AI 编程工具的登录态，在 2026 年这是一个特别有针对性的清单。</span></strong><strong style="color:#27272A;"><span leaf="">③ </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">env_vars</span><span leaf=""> 读的是同机上其他用户进程的环境变量，不只是自己的。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">后门：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 之外的持久化</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「sitecustomize.py starts a background daemon. Every hour, the daemon reads a server address from a GitHub file, runs the stealer again, and downloads and runs code from that server.」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">SafeDep 找到了那个 GitHub 文件</span></strong><span leaf="">：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">raw.githubusercontent.com/letters9813/pythonclient-test/main/domain.txt</span><strong style="color:#27272A;"><span leaf="">（账号已删除）</span></strong><span leaf="">，二阶段代码在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">hxxp://&lt;domain&gt;/codepy</span><span leaf="">。</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 这个设计值得单独说，因为它体现了攻击者的成熟度</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">C2 地址不硬编码在载荷里，而是放在一个 GitHub 仓库的文件里。</span></strong><strong style="color:#27272A;"><span leaf="">这样攻击者可以在被抓之后立刻改仓库里的文件把 C2 换到别处，而不需要重新发一个包。</span></strong><strong style="color:#27272A;"><span leaf="">这是标准的「域名前置 + 可变 C2」设计。</span></strong><strong style="color:#27272A;"><span leaf="">而那个守护进程的特征是：父 PID 为 1、拥有自己的 session、工作目录为 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/</span><span leaf="">，终端关了它也不死。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE ATTACK CHAIN</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">攻击链：四个环节，每一环都合法通过了它该通过的检查</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">正常的发布流程（官方原版）</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">LiteLLM 官方报告把正常流程写成了五步，而这套流程的设计意图很清楚</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">切一个 release-candidate 分支和 tag</span></strong><span leaf="">（每周五凌晨 3 点，之后不再改动）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">验证发布候选</span></strong><span leaf="">：跑集成测试（公开用 CircleCI，私下用 Buildkite）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">创建产物</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">在私有仓库里运行的 workflow，基于「已验证的那个 SHA」创建产物</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">部署到测试环境</span></strong><span leaf="">：对产出的产物跑第二轮测试</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">发布产物</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">使用 Trusted GitHub Publishers 的 workflow，发布只能由一个「锁定在办公室里某台特定笔记本电脑上」的账号执行</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 请注意第 5 步的两个设计要点</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">① 用 Trusted GitHub Publishers 意味着 workflow 不持有 PyPI / Docker Hub 的长期密钥。</span></strong><strong style="color:#27272A;"><span leaf="">② 「发布时不会重新构建 Docker 镜像」意味着构建和发布是分离的，所以攻击者如果只控制了「发布」这一步，他拿不到自己塞进构建过程的恶意文件，除非他连构建一起换了。</span></strong><strong style="color:#27272A;"><span leaf="">这两点合起来，本应是一个相当坚固的设计。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">它是怎么被绕过的</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「On Monday, we temporarily expanded release permissions to allow two internal engineers to publish daily bugfix backports for customers.」</span></strong><strong style="color:#27272A;"><span leaf="">「周一，我们临时扩大了发布权限，以允许两名内部工程师为客户发布每日 bugfix 回移版本。」</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「The attacker tried to merge a change to allow the releaser to be pointed at a different source repository, but was unable to due to our protections.」</span></strong><strong style="color:#27272A;"><span leaf="">「One of the tokens held by the attacker belonged to one of our two GitHub organization owners. The attacker used this to disable branch protections and force push the change.」</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 这里有一个非常值得琢磨的细节</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">攻击者的第一招（改 workflow 指向别的源仓库）被挡住了。然后他换了第二招：用一枚组织所有者的 token 直接关掉分支保护、强制推送，跳过了「走 PR 审批」这条路。</span></strong><strong style="color:#27272A;"><span leaf="">这说明当时那个防护是有效的，只是钥匙被复制了。</span></strong><strong style="color:#27272A;"><span leaf="">而更要命的是第五步那句「发布只能由一个锁定在办公室里某台特定笔记本电脑上的账号执行」：攻击者并没有破解这个限制，他用第二枚开发者的 token 去满足生产审批门，而审批门本身通过了。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">凭证是从哪来的</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「we have observed specific situations in which Claude Code will embed a user's GitHub CLI OAuth token into a response body, and in situations where response bodies are logged, these tokens may appear in LiteLLM logs.」</span></strong><strong style="color:#27272A;"><span leaf="">「我们观察到特定情况下 Claude Code 会把用户的 GitHub CLI OAuth token 嵌入到响应体里，而在响应体被记录的情况下，这些 token 可能出现在 LiteLLM 的日志中。」</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「We identified an unexpected, innocuously named user account in our internal LiteLLM deployment, which was exposed to the public internet.」</span></strong><strong style="color:#27272A;"><span leaf="">「We have not yet confirmed how the attacker gained access to our internal deployment, but currently suspect it was through a recently patched vulnerability.」</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 我必须把这两句话拆开，因为它们包含不同强度的陈述</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「暴露在公网的内部部署里有一个不起眼的意外账号」是已确认的事实；「攻击者从日志里取得 token」是官方用 believe 表述的推断；「通过最近修补的漏洞进入」是官方用 suspect 表述的明确未确认项。</span></strong><strong style="color:#27272A;"><span leaf="">所以攻击者进入内部部署的具体方式，到本文写作时（官方最后更新 2026-10-21 20:30 UTC）都还没确认。</span></strong><strong style="color:#27272A;"><span leaf="">而这是整条攻击链上唯一一个未知的环节，也恰恰是最重要的一环，因为它决定了你该检查什么。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">THE PREVIOUS INCIDENT</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">这不是第一次：三月的前科，以及「加固反而让它更值钱」</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这一节是我认为整篇文章最有价值的地方。</span></strong><strong style="color:#27272A;"><span leaf="">官方报告的第一段就写着</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">「在三月那次事件之后，我们对我们的 CI 发布管道做了实质性的加固。我们把发布移到私有仓库，设定了一套严格的工作流来通过 Trusted GitHub Publishers 创建产物，让 docker 发布 tag 变得不可变，并且对 docker 镜像做签名。」</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 请注意这个清单：私有仓库、Trusted GitHub Publishers、不可变 tag、镜像签名，这四项都是 2026 年的最佳实践。</span></strong><strong style="color:#27272A;"><span leaf="">而 October 的攻击，正是利用了这套加固。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">两次事件的对照</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">恶意文件名</span></strong><span leaf="">：三月是 </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm_init.pth</span></strong><span leaf="">，十月是 </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.pth</span><span leaf="">。⭐ 两次用的是同一种 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 技巧</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">攻击路径</span></strong><span leaf="">：三月是</span><strong style="color:#27272A;"><span leaf="">直接上传到 PyPI，绕过发布流程</span></strong><span leaf="">；十月是</span><strong style="color:#27272A;"><span leaf="">接管发布流程，产出「官方签名」的包</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">异常信号</span></strong><span leaf="">：三月是</span><strong style="color:#27272A;"><span leaf="">GitHub 上没有对应 tag，且版本号高于所有现有版本，专为命中 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">&gt;=</span><span leaf=""> 约束</span></strong><span leaf="">；十月是</span><strong style="color:#27272A;"><span leaf="">官方 tag 干净，产物来自仿冒仓库</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">C2</span></strong><span leaf="">：三月是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">models.litellm.cloud/</span><span leaf="">；十月是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">www.litellm[.]dev/healthcheck</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">持久化</span></strong><span leaf="">：三月是 </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">~/.config/sysmon/sysmon.py</span><span leaf=""> + systemd 服务</span></strong><span leaf="">；十月是</span><strong style="color:#27272A;"><span leaf="">分离守护进程 + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/tmp/remote_code_loader.lock</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">横向移动</span></strong><span leaf="">：三月是</span><strong style="color:#27272A;"><span leaf="">在每个节点建特权 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">alpine:latest</span><span leaf=""> pod</span></strong><span leaf="">；十月是</span><strong style="color:#27272A;"><span leaf="">读 K8s service account token</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">受害者</span></strong><span leaf="">：三月有 </span><strong style="color:#27272A;"><span leaf="">Mercor 被攻击</span></strong><span leaf="">（TechCrunch 2026-03-31）；十月</span><strong style="color:#27272A;"><span leaf="">调查中</span></strong></p>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐ 而我认为这一节真正的结论是：加固让它更值钱了</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">三月：发布管道是一个「攻击者可以绕过」的管道。绕过它得到的东西看起来可疑。</span></strong><strong style="color:#27272A;"><span leaf="">十月：发布管道是一个「攻击者可以接管」的管道。接管它得到的东西看起来完全合法。</span></strong><strong style="color:#27272A;"><span leaf="">也就是说：加固不但没有让攻击更难，它让攻击的产出更有价值。</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这不是说加固错了。</span></strong><strong style="color:#27272A;"><span leaf="">私有仓库、Trusted GitHub Publishers、不可变 tag、镜像签名，每一项都是对的，而且它们确实挡住了三月的攻击路径（直接往 PyPI 上传）。</span></strong><strong style="color:#27272A;"><span leaf="">问题在于，加固改变的是「攻击需要做什么」，而不是「攻击能造成多大伤害」。</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">⭐「如果你把「发布管道可信」当作一条防线，那么这条防线的强度等于「攻击者拿到发布凭证的难度」，而不是「你的产物被验证的强度」。因为当攻击者拿到凭证之后，你的所有签名机制都会变成给他的攻击背书。」</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">三月那次的 fork bomb：一个必然会发生的 bug</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「The fork bomb was caused by line 1: </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">subprocess.Popen([sys.executable, "-c", ...])</span><span leaf=""> — this child Python process also has the .pth in its site-packages, so it triggers the .pth again, which spawns another child, infinitely.」</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 请注意这里揭示的一个反直觉机制</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">恶意载荷自己把自己搞崩了。原因是它 fork 出来的子进程同样会加载 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf="">，于是又执行一遍自己。</span></strong><strong style="color:#27272A;"><span leaf="">这是一个必然会发生的 bug，而不是攻击者的策略。</span></strong><strong style="color:#27272A;"><span leaf="">它实际上是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 机制威力的一次意外演示：这个文件是「自传播」的，只要有任何代码去执行一个 Python 子进程，就会无限繁殖。</span></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">REMEDIATION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">官方补救说明，以及我认为它漏掉的三件事</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">官方说明的顺序是（由检测到本次事件并提供建议的 LidorMachluf 提供的）</span></strong><span leaf="">：</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">不要从 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pip install</span><span leaf=""> 开始。</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">任何 Python 启动都会再次运行 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.pth</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize.py</span><span leaf="">，而这包括运行 pip</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">从 shell 里删除 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.pth</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.py</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize.py</span><span leaf=""> 以及每个受影响 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">site-packages</span><span leaf=""> 里的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">__pycache__/*.pyc</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">杀掉那个分离的 Python 守护进程（它持有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/tmp/remote_code_loader.lock</span><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">重装并钉到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm==1.106.2</span><span leaf="">。</span><strong style="color:#27272A;"><span leaf="">从零重建镜像和 venv 更好</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">「如果 1.107.0 曾经在有出网能力的主机上装过，假设外传已经成功。如果标记文件存在，外传被确认。如果它不存在，那什么都不能证明：容器和 tmp 清理会把它移除。」</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">轮换</span></strong><span leaf="">：实例/任务 IAM 角色、代理数据库里每个供应商 key 加 master key 和 virtual key、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">DATABASE_URL</span><span leaf=""> 密码、主机上任何进程环境里的任何 secret</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">查 CloudTrail</span></strong><span leaf="">：安装时间附近的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">GetCallerIdentity</span><span leaf="">，以及该角色凭证在基础设施之外的使用</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 我认为第 1 步和第 5 步是这份说明里最有价值的两条。</span></strong><strong style="color:#27272A;"><span leaf="">第 5 步那句「如果标记文件不存在，那什么都不能证明」，是官方主动否掉了「用标记文件判断自己是否中招」这个看起来很自然的方法。</span></strong><strong style="color:#27272A;"><span leaf="">因为标记文件在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/tmp</span><span leaf=""> 里，容器重启和 tmp 清理都会抹掉它。</span></strong><strong style="color:#27272A;"><span leaf="">这体现了一种罕见的诚实：明确告诉你「我们提供的这个检测手段会给出假阴性」。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⚠️ 但我认为这份说明漏了三件事</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">① 没有提「换密钥」和「确认密钥没被用」之间的时间差。</span></strong><strong style="color:#27272A;"><span leaf="">轮换完成之前的那段时间窗口，攻击者手里的旧密钥仍然有效。</span></strong><strong style="color:#27272A;"><span leaf="">从 11:39（PyPI 上传）到你完成轮换，中间隔了多久，你的旧密钥就暴露了多久。这个时间差是你自己算的，不是别人替你算的。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">② 没有给「怎么确认清理干净了」的可执行验证。</span></strong><strong style="color:#27272A;"><span leaf="">官方说「删除这些文件」，但没给验证命令。而一个可执行的验证其实很容易写。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">③ ⚠️ 最重要的是：没有提醒你「</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 的机制本身不只对这一个包有效」。</span></strong><strong style="color:#27272A;"><span leaf="">任何其他通过 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 做事的包都会在 Python 启动时执行代码，而这一次你只是在清理一个已知的文件。</span></strong><strong style="color:#27272A;"><span leaf="">所以第 2 步的完整形式应该是「审计 site-packages 里所有的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize.py</span><span leaf="">」，而不是「删除这三个文件」。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">我建议的补充验证</span></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">全盘找出所有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 与 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize.py</span></strong><span leaf="">（不只是那三个）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">检查 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize</span><span leaf=""> 是不是被覆盖了</span></strong><span leaf="">（和 pip 装的原始版本比对）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">检查有没有残留的分离守护进程</span></strong><span leaf="">（父 PID 为 1 的 python）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">检查锁文件和标记文件</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">注意：不存在不等于干净</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">检查外传痕迹</span></strong><span leaf="">（在日志里搜 C2 域名和那个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X-Token</span><span leaf=""> 头）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">检查容器镜像 digest</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">如果本地镜像的 digest 是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sha256:1bbcb1443bc9...</span><span leaf="">，删掉它重新 pull</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⚠️ 第 6 条我认为是容器用户最容易漏的</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">如果你用的是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">docker pull litellm/litellm</span><span leaf=""> 装的，那 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">latest</span><span leaf=""> tag 在那 2 小时 33 分里指向的是被污染的镜像。</span></strong><strong style="color:#27272A;"><span leaf="">而清理主机上的 Python 环境不处理已经被拉下来的镜像。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">我的判断</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第一，这次事件最重要的启示不是「供应链攻击很危险」，而是「加固可以改变攻击的形态，但不改变攻击的收益」。</span></strong><strong style="color:#27272A;"><span leaf="">三月到十月，LiteLLM 把发布管道从「可绕过」变成「可接管」，而攻击者的产出从「一个可疑的包」升级成「一个带官方签名的包」。</span></strong><strong style="color:#27272A;"><span leaf="">如果我是做供应链防护的，这一条会让我重新审视自己所有的「验证」机制：它们验证的对象是「这个产物来自我的仓库」，还是在验证「这个产物在发布那一刻确实来自我的仓库」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第二，那个「Claude Code 把 GitHub CLI token 嵌进响应体」的发现，是我认为最应该被广泛传播的一条。</span></strong><strong style="color:#27272A;"><span leaf="">它不是 LiteLLM 特有的问题，它是「AI 编程工具 + 日志记录型网关」这个组合的通病。</span></strong><strong style="color:#27272A;"><span leaf="">而更微妙的是：LiteLLM 的核心功能是「集中持有并代理所有供应商密钥」，所以它既是攻击者的目标（直接 dump 那张密钥表），又是攻击者获取发布管道凭证的渠道（从日志里捞 token）。</span></strong><strong style="color:#27272A;"><span leaf="">一个系统在一次事件里同时扮演这两个角色，这不是偶然。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第三，官方报告里那句「我们还没有确认攻击者是怎么进内部部署的」，是整份报告里最该被反复引用的一句。</span></strong><strong style="color:#27272A;"><span leaf="">因为它划定了证据的边界。</span></strong><strong style="color:#27272A;"><span leaf="">而这条未确认的部分，恰恰直接决定了你该做什么检查：如果是漏洞，那要查的是那个部署的暴露面；如果是凭证复用，那要查的是所有复用同一套凭证的部署。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">第四，两个技术细节对读者的实际价值最高，而它们都不是关于「攻击」而是关于「机制」</span></strong><span leaf="">：</span><strong style="color:#27272A;"><span leaf="">其一是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 文件的爆炸半径（「你装了 LiteLLM」和「你的机器上有 Python」是同一件事）；其二是「不要从 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pip install</span><span leaf=""> 开始」这条指令，它在语义上完全反直觉（被黑了 → 赶紧重装 → 重装触发木马）。</span></strong><strong style="color:#27272A;"><span leaf="">如果这份说明只被读一句话，应该是这一句。</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">受影响版本</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm==1.107.0</span><span leaf="">（PyPI，全部 7 个 wheel：Linux / macOS / Windows）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">PyPI 窗口</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">11:39:51 到 13:23 UTC（约 1 小时 43 分）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">Docker Hub 窗口</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">11:46:56 到 14:20 UTC（约 2 小时 33 分）</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">GHCR 11:46:56 到 13:51</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">被污染的镜像索引</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sha256:1bbcb1443bc962e45f5aad53fe3d2c30600e0379715fb6c664cdd3ac126c339e</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">干净的版本</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1.106.2</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1.107.0rc1</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1.107.0rc2</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">配套的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm-proxy-extras==0.4.110</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm-enterprise==0.1.78</span><span leaf=""> 也干净</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">企业私有 registry</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">✅ </span><strong style="color:#27272A;"><span leaf="">未受影响</span></strong><span leaf="">（</span><strong style="color:#27272A;"><span leaf="">分发的是 embargoed 版本，修复一个披露日定在 10-27 的漏洞</span></strong><span leaf="">）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">报告作者</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">Krrish Dholakia（CEO）、Ishaan Jaffer（CTO）、Oliver Jensen（安全总监）、Nate Armstrong（Rust 负责人）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">最后更新</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">2026-10-21 20:30 UTC</span></strong><span leaf="">；官方承诺 22:30 UTC 再更新一次</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">我核对的现状</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">PyPI 上 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm==1.107.0</span><span leaf=""> 已 404；当前最新版是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">1.106.2</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">注入点</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pyproject.toml</span><span leaf=""> 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[tool.maturin]</span><span leaf=""> 段多了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">data = "cook"</span><span leaf=""> 一行</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">为什么看不见</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">「sdist 里省掉了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook/</span><span leaf=""> 目录，所以这一行是唯一可见的改动」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">植入的三个文件</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.pth</span><span leaf="">（12 字节，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">import cook</span><span leaf="">）、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook.py</span><span leaf="">（22,252 字节）、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sitecustomize.py</span><span leaf="">（25,509 字节）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">GitHub 官方 tag</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">✅ </span><strong style="color:#27272A;"><span leaf="">干净</span></strong><span leaf="">（「任何公开 commit 都不包含 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">data = "cook"</span><span leaf=""> 或 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cook/</span><span leaf=""> 目录」）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 机制</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">Python 启动时执行 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">site-packages</span><span leaf=""> 里所有 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 中以 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">import</span><span leaf=""> 开头的行</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">爆炸半径</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">「在宿主机上任何 Python 进程启动时运行，即使那个进程从不 import litellm」</span></strong><span leaf="">（pip、IDE、CI job、notebook 都算）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">外传方式</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">AES-256-CBC 加密 JSON → RSA-OAEP 加密密钥 → tar.gz → POST 到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">www.litellm[.]dev/healthcheck</span><span leaf="">，请求头 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X-Token: XWiA8gZNa7NcX2XRoAEb</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">标记文件</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">/tmp/.pc_once_72129118c59f5636c0bb</span><span leaf="">；环境变量 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">PRIVCOLLECT_ACTIVE=1</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">后门 C2 来源</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">raw.githubusercontent.com/letters9813/pythonclient-test/main/domain.txt</span><span leaf="">（账号已删除）；二阶段代码在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">hxxp://&lt;domain&gt;/codepy</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⚠️ </span><strong style="color:#27272A;"><span leaf="">入口</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">一个暴露在公网的内部 LiteLLM 部署，其中有一个「名字不起眼的意外用户账号」</span></strong><span leaf="">；</span><strong style="color:#27272A;"><span leaf="">官方明确说「尚未确认」进入方式，「怀疑是一个最近修补的漏洞」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">凭证获取</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">「Claude Code 会在特定情况下把用户的 GitHub CLI OAuth token 嵌入响应体，而在响应体被记录时，这些 token 可能出现在 LiteLLM 的日志中」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">使用的凭证</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">三组开发者 GitHub CLI 凭证；其中一枚属于两个 GitHub 组织所有者之一</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">仿冒仓库</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Berri-AI/litellm</span><span leaf="">（真实的是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">BerriAI/litellm</span><span leaf="">）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">反取证</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">11:53:49 用第三枚凭证删除了生产和 staging 的工作流记录，限制了可用日志</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⚠️ </span><strong style="color:#27272A;"><span leaf="">官方硬化的结果</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">加固让发布管道从「可绕过」变成「可接管」，攻击者的产出从「可疑的包」变成「带官方签名的包」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">补救第一步</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">不要从 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pip install</span><span leaf=""> 开始</span></strong><span leaf="">（任何 Python 启动都会再次触发，包括运行 pip）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">补救第五步</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">「如果标记文件不存在，那什么都不能证明：容器和 tmp 清理会把它移除」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">补救第六步</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">轮换：IAM 角色、每个供应商 key 加 master/virtual key、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">DATABASE_URL</span><span leaf=""> 密码、任何进程环境里的任何 secret</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><strong style="color:#27272A;"><span leaf="">三月前科</span></strong></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">同样的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">.pth</span><span leaf=""> 手法</span></strong><span leaf="">（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">litellm_init.pth</span><span leaf="">）、</span><strong style="color:#27272A;"><span leaf="">直接上传 PyPI</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">版本号高于所有现有版本专命中 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">&gt;=</span><span leaf=""> 约束</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">C2 是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">models.litellm.cloud/</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">持久化在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">~/.config/sysmon/sysmon.py</span><span leaf=""> + systemd</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">在每个节点建特权 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">alpine:latest</span><span leaf=""> pod</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">Mercor 被攻击</span></strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这次事件最该被记住的不是「供应链攻击很危险」，而是「加固可以改变攻击的形态，但不改变攻击的收益」。三月到十月，LiteLLM 把发布管道从「可绕过」变成「可接管」，而攻击者的产出从「一个可疑的包」升级成「一个带官方签名的包」。这两件事看起来是坏消息，但更准确的说法是：它们暴露了安全通告的一个共同盲区。我们习惯用「受影响版本」和「CVSS 分数」来描述一次事件的边界，而这次的边界根本不是版本，也根本没有分数。真正决定你损失大小的，是攻击者通过那个组件能触达什么：你的浏览器密码、你的云凭证、你的 K8s token、你所有 LLM 供应商的 API key。而这些，和「你装的那个包有没有漏洞」毫无关系。所以我一直觉得，一个只有补丁项目的安全体系，在供应链攻击面前是空转的。而如果这份官方说明只被读一句话，应该是那一句：不要从 pip install 开始。因为人在知道「我被黑了」之后的第一反应就是「赶紧重装」，而重装的第一步，恰恰是那个木马会被再次触发的地方。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· 一年 48,185 个漏洞，而「全打补丁」是最糟的策略：LiteLLM 事件把答案摆在了桌面上</span><br>
+        <span leaf="">· PHP 明天要发两个 CVSS 9.2 的漏洞补丁：而这次真正的问题不是「有多严重」，是「你根本不知道你跑的是什么版本」</span><br>
+        <span leaf="">· 机器凭据轮换只是买时间：ZSP 的关键不在「换密码」，在「有没有人负责关掉它」</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>

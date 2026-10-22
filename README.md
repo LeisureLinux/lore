@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-21 | [一个 LLM 网关的发布管道被攻破：攻击者用官方签名发出了一个专门偷你密钥的包](https://freelamp.com/articles/2026-10-21_litellm-1-107-0-supply-chain-compromise/) | LiteLLM · 供应链攻击 · PyPI · Docker · .pth · 凭证窃取 · 后门 · Trusted GitHub Publishers · GitHub CLI OAuth · Claude Code · 轮换凭证 · IoC |
+| 2026-10-21 | [内核编译时间砍掉 36%：而这 21 个补丁的第一作者承认，AI 写的代码「大部分很难看」](https://freelamp.com/articles/2026-10-21_linux-7-4-kbuild-build-speedup-ai-assisted/) | Linux · Linux 7.4 · Kbuild · 内核编译 · 构建速度 · Lorenzo Stoakes · Arm · kallsyms · modpost · objtool · mksysmap · pigz · Rust · 增量构建 · Assisted-by |
+| 2026-10-21 | [一年 48,185 个漏洞，而「全打补丁」是最糟的策略：LiteLLM 事件把答案摆在了桌面上](https://freelamp.com/articles/2026-10-21_patch-apocalypse-48k-cves-risk-prioritization/) | 补丁管理 · 漏洞管理 · CVSS · 风险优先级 · 供应链安全 · LiteLLM · php2shell · CVE · 利用窗口 · 资产清单 · KEV · 依赖清单 |
 | 2026-10-21 | [补丁还没发布，攻击就已经开始了：一个在 PHP 里躺了二十年的缺陷，让你写的 Hello World 也能被一击拿下](https://freelamp.com/articles/2026-10-21_php2shell-cve-2026-109618-109619-root-cause-distro-patching/) | PHP · php2shell · CVE-2026-109618 · CVE-2026-109619 · longjmp · OOM · CWE-416 · UAF · mod_php · PHP-FPM · Wiz · Debian · Ubuntu · Red Hat · RHSA · DSA · USN · memory_limit · 缓解措施 |
 | 2026-10-21 | [网络设备的底层用什么内核？国外厂商公开写 FreeBSD，而国内厂商大多只说「自研」](https://freelamp.com/articles/2026-10-21_network-appliance-underlying-os-bsd-linux-domestic/) | 网络设备 · 防火墙 · 底层内核 · FreeBSD · pfSense · OPNsense · IPSO · NetScaler · Junos · F5 TMOS · H3C Comware · 深信服 · 山石 StoneOS · 信创 |
 | 2026-10-21 | [BSD 的代码流进了哪里：你以为它是小众，但它可能就在你的游戏机、路由器和 NAS 里](https://freelamp.com/articles/2026-10-21_bsd-code-in-proprietary-products/) | BSD · FreeBSD · macOS · XNU · Junos · NetApp ONTAP · Netflix Open Connect · PlayStation Orbis · Nintendo Switch · BSD 许可证 · 闭源 |
