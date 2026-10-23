@@ -14,21 +14,11 @@ W, H = 1200, 675
 BG = (10, 13, 18); FG = (240, 244, 250); MUTED = (150, 160, 172)
 
 CFG = [
-    dict(slug="2026-10-21_litellm-1-107-0-supply-chain-compromise", accent=(255, 92, 92),
-         l1="官方签名的包", l2="偷走了你所有密钥",
-         sub="一个 LLM 网关的发布管道被攻破，PyPI 上活了 1 小时 43 分",
-         bar="一行 TOML 的后门 · 17 类凭证被扫 · 三月被攻破过的同一个项目",
-         tag="CVSS 没有分数 · 已在被利用"),
-    dict(slug="2026-10-21_linux-7-4-kbuild-build-speedup-ai-assisted", accent=(120, 200, 140),
-         l1="内核编译快了 36%", l2="而作者说 AI 代码很难看",
-         sub="21 个补丁把构建里卡住单线程的部分全部并行化",
-         bar="增量构建 -70% · no-op 构建 -95% · 9 个架构验证符号表",
-         tag="Linux 7.4 · Kbuild"),
-    dict(slug="2026-10-21_patch-apocalypse-48k-cves-risk-prioritization", accent=(150, 140, 250),
-         l1="48,185 个 CVE", l2="全打补丁是最糟的策略",
-         sub="而供应链攻击这件事，根本不在漏洞管理的循环里",
-         bar="风险优先级 · 可达性盘点 · 依赖清单比资产清单更缺",
-         tag="漏洞管理战略"),
+    dict(slug="2026-10-21_truenas-2026-proxmox-plugin-27rc1-veeam-ready", accent=(80, 190, 220),
+         l1="备份服务器", l2="这个盒子可以消失了",
+         sub="TrueNAS 一次更新三件事，而它们指向同一个方向",
+         bar="Proxmox 插件 · 27 RC.1 · Veeam All-In-One 认证",
+         tag="存储平台在吞掉周边"),
 ]
 
 for c in CFG:
