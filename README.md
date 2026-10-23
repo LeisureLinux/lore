@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-23 | [webroot 是空的，也能拿下 shell：把 php2shell 的 RCE 压缩到「零文件」需要三次踩坑](https://freelamp.com/articles/2026-10-23_php2shell-cve-2026-109619-empty-webroot-lab/) | PHP · php2shell · CVE-2026-109619 · session · 反序列化 · upload_progress · php_serialize · 序列化器不一致 · UAF · RCE · mod_php · Apache · Debian · 靶场复现 · __destruct · PrivateTmp · 加固 |
 | 2026-10-22 | [输入邮箱和密码，服务器自己找上来：给自建邮件域做一套 autoconfig](https://freelamp.com/articles/2026-10-22_mail-autoconfig-thunderbird-k9-zero-touch-setup/) | 邮件自动配置 · autoconfig · SRV 记录 · Thunderbird · K-9 Mail · Let's Encrypt · nginx · fail2ban · RFC 6186 · Cloudflare · Dovecot · 邮件服务器 |
 | 2026-10-21 | [一个 LLM 网关的发布管道被攻破：攻击者用官方签名发出了一个专门偷你密钥的包](https://freelamp.com/articles/2026-10-21_litellm-1-107-0-supply-chain-compromise/) | LiteLLM · 供应链攻击 · PyPI · Docker · .pth · 凭证窃取 · 后门 · Trusted GitHub Publishers · GitHub CLI OAuth · Claude Code · 轮换凭证 · IoC |
 | 2026-10-21 | [内核编译时间砍掉 36%：而这 21 个补丁的第一作者承认，AI 写的代码「大部分很难看」](https://freelamp.com/articles/2026-10-21_linux-7-4-kbuild-build-speedup-ai-assisted/) | Linux · Linux 7.4 · Kbuild · 内核编译 · 构建速度 · Lorenzo Stoakes · Arm · kallsyms · modpost · objtool · mksysmap · pigz · Rust · 增量构建 · Assisted-by |
