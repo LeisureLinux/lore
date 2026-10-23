@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址 — FreeLAMP.com</title>
+  <meta name="description" content="CVE-2026-109618 的官方描述只有一句「OOM 让 longjmp 跳过初始化」。但它到底能做什么？我在 Debian 13 的官方 php8.4 包上把它拆成了两条纯 HTTP 请求：第一个请求在内存里留下一个悬垂的会话 id，第二个请求伪造这个 id 的长度字段，把 4096 字节、再到 64KB 的内">
+  <meta name="keywords" content="PHP, php2shell, CVE-2026-109618, ASLR, OOM, longjmp, Zend, HashTable, session, upload_progress, zend_string, 堆布局, mod_php, Debian, 漏洞复现">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-23">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-23_php2shell-109618-pure-http-aslr-bypass/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址">
+  <meta property="og:description" content="CVE-2026-109618 的官方描述只有一句「OOM 让 longjmp 跳过初始化」。但它到底能做什么？我在 Debian 13 的官方 php8.4 包上把它拆成了两条纯 HTTP 请求：第一个请求在内存里留下一个悬垂的会话 id，第二个请求伪造这个 id 的长度字段，把 4096 字节、再到 64KB 的内">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-23_php2shell-109618-pure-http-aslr-bypass/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-23">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="PHP">
+  <meta property="article:tag" content="PHP">
+  <meta property="article:tag" content="php2shell">
+  <meta property="article:tag" content="CVE-2026-109618">
+  <meta property="article:tag" content="ASLR">
+  <meta property="article:tag" content="OOM">
+  <meta property="article:tag" content="longjmp">
+  <meta property="article:tag" content="Zend">
+  <meta property="article:tag" content="HashTable">
+  <meta property="article:tag" content="session">
+  <meta property="article:tag" content="upload_progress">
+  <meta property="article:tag" content="zend_string">
+  <meta property="article:tag" content="堆布局">
+  <meta property="article:tag" content="mod_php">
+  <meta property="article:tag" content="Debian">
+  <meta property="article:tag" content="漏洞复现">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址">
+  <meta name="twitter:description" content="CVE-2026-109618 的官方描述只有一句「OOM 让 longjmp 跳过初始化」。但它到底能做什么？我在 Debian 13 的官方 php8.4 包上把它拆成了两条纯 HTTP 请求：第一个请求在内存里留下一个悬垂的会话 id，第二个请求伪造这个 id 的长度字段，把 4096 字节、再到 64KB 的内">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址",
+  "description": "这是 php2shell 两个 CVE 里被讨论得最少、但性质最严重的那一个的复现记录。  上一篇讲的是 CVE-2026-109619：靠 session 序列化器不一致，让一个会话变量的名字变成被反序列化的对象。那一条需要应用里存在一个 __destruct 有用的类。  这一篇讲 CVE-2026-109619 的兄弟：CVE-2026-109618。它的官方描述只有一句「PHP 用 lon",
+  "datePublished": "2026-10-23",
+  "dateModified": "2026-10-23",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-23_php2shell-109618-pure-http-aslr-bypass/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "PHP, php2shell, CVE-2026-109618, ASLR, OOM, longjmp, Zend, HashTable, session, upload_progress, zend_string, 堆布局, mod_php, Debian, 漏洞复现"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址",
+        "item": "https://freelamp.com/articles/2026-10-23_php2shell-109618-pure-http-aslr-bypass/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-23">2026-10-23</div>
+        <h1 class="post-title" itemprop="headline">不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/PHP/">PHP</a><a itemprop="keywords" href="/tags/php2shell/">php2shell</a><a itemprop="keywords" href="/tags/CVE-2026-109618/">CVE-2026-109618</a><a itemprop="keywords" href="/tags/ASLR/">ASLR</a><a itemprop="keywords" href="/tags/OOM/">OOM</a><a itemprop="keywords" href="/tags/longjmp/">longjmp</a><a itemprop="keywords" href="/tags/Zend/">Zend</a><a itemprop="keywords" href="/tags/HashTable/">HashTable</a><a itemprop="keywords" href="/tags/session/">session</a><a itemprop="keywords" href="/tags/upload_progress/">upload_progress</a><a itemprop="keywords" href="/tags/zend_string/">zend_string</a><a itemprop="keywords" href="/tags/%E5%A0%86%E5%B8%83%E5%B1%80/">堆布局</a><a itemprop="keywords" href="/tags/mod_php/">mod_php</a><a itemprop="keywords" href="/tags/Debian/">Debian</a><a itemprop="keywords" href="/tags/%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0/">漏洞复现</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>这是 php2shell 两个 CVE 里被讨论得最少、但性质最严重的那一个的复现记录。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+>
+<blockquote>上一篇讲的是 <code>CVE-2026-109619</code>：靠 session 序列化器不一致，让一个会话变量的<strong>名字</strong>变成被反序列化的对象。那一条需要应用里存在一个 <code>__destruct</code> 有用的类。</blockquote>>
+<blockquote>这一篇讲 <code>CVE-2026-109619</code> 的兄弟：<code>CVE-2026-109618</code>。它的官方描述只有一句「PHP 用 <code>longjmp()</code> 处理内存耗尽，导致请求状态在结构还没填完时就被发布出去」。听起来像一个崩溃 bug。实际上它是一条<strong>纯 HTTP 的地址泄漏链</strong> —— 攻击者能让目标把堆地址和 PHP 模块基址编码进一个 <code>Set-Cookie</code> 响应头。</blockquote>
+<h2>先说结论</h2>
+<p>两个请求，不写任何文件：</p>
+<pre><code class="">① POST /   →  在内存里留下一个悬垂的会话 id（send_cookie 也被留下来）
+② POST /   →  伪造那个 id 的长度字段，让 PHP 把 4096 字节内存 URL 编码进 Set-Cookie
+</code></pre>
+<p>结果：</p>
+<pre><code class="">Set-Cookie: PHPSESSID=LAAAA...%9B%CA0%3E%DF3hY%A...
+                     ↑ 伪造的 len        ↑ 越界读到的堆数据
+</code></pre>
+<p>把长度从 <code>0x1000</code> 加到 <code>0x10000</code>，读出来的 64KB 里就包含了 PHP 模块的
+<code>pDestructor</code> 指针 —— 那个值减去它在模块内的固定偏移，就是 <strong>libphp 的加载基址</strong>。</p>
+<p>在 Debian 13 的官方 <code>php8.4 8.4.26</code> 包上，这一步 <strong>5 次全部首轮成功</strong>，泄漏出来的
+基址和 <code>/proc/<worker>/maps</code> 逐字节一致。</p>
+<p><strong>本文的大部分内容会是我走错的路。</strong> 因为这条链真正的难点不在漏洞本身，
+而在三处 PHP 内部行为和两个我自己造的测量错误。</p>
+<p>---</p>
+<h2>一、漏洞：桶被"数成活的"之后，OOM 了</h2>
+<p><code>Zend/zend_hash.c</code> 里加一个哈希表桶的代码，顺序是这样的：</p>
+<pre><code class="c">add_to_hash:
+    idx = ht->nNumUsed++;          /<em> ① 桶先被计为"活的" </em>/
+    ht->nNumOfElements++;
+    p = ht->arData + idx;
+    p->key = key = zend_string_init(str, len, ...);  /<em> ② 这里 OOM </em>/
+    p->h = ZSTR_H(key) = h;                          /<em> ③ longjmp 跳过以下全部 </em>/
+    ZVAL_COPY_VALUE(&p->val, pData);
+</code></pre>
+<p>第 ② 步是给键分配内存。如果这一步撞上 <code>memory_limit</code>，PHP 会 <code>longjmp</code>
+直接跳出当前上下文。于是第 ③ 步之后的所有赋值都没发生 —— 但 <code>nNumUsed</code>
+已经加过了。</p>
+<p>**结果：哈希表里有一个被算作"活的"桶，它的 <code>key</code>、<code>h</code>、<code>val</code> 全是那块回收
+堆槽里的垃圾。** 请求关闭阶段去销毁这张表时，就会把垃圾当指针用。</p>
+<h3>一个必须记住的判别信号</h3>
+<p>失败的那次分配，大小必须是 <code>len + 24</code> 向上取整到页。</p>
+<p>比如字段名 1MB，那么 <code>tried to allocate</code> 应该是 <strong>1052672</strong>
+（1048576 + 24 → 向上取整到 4096 的倍数）。</p>
+<p>如果你看到的是 <code>tried to allocate 40960</code> 或 <code>20480</code>，那不是这个 bug ——
+那是 <code>ZEND_HASH_IF_FULL_DO_RESIZE</code>（桶数组扩容），它发生在第 ① 步<strong>之前</strong>，
+此时表完全一致，什么都不会坏。</p>
+<p>我在这上面耗了很久：一直在让 OOM 落在扩容上，然后奇怪为什么"漏洞不触发"。</p>
+<p>---</p>
+<h2>二、8.2 和 8.4 之间，有一个让整条链不可能的差异</h2>
+<p>这条链的第一环需要 <code>PS(send_cookie)</code> 在请求结束后<strong>仍然保持 1</strong>。</p>
+<p><code>php_session_reset_id()</code> 里有这么一段：</p>
+<pre><code class="c">/<em> 8.2.32 —— 无条件清零 </em>/
+if (PS(use_cookies) && PS(send_cookie)) {
+    php_session_send_cookie();
+    PS(send_cookie) = 0;
+}
+<p>/<em> 8.4.26 —— 失败才保留 </em>/
+if (PS(use_cookies) && PS(send_cookie)) {
+    zend_result cookies_sent = php_session_send_cookie();
+    if (UNEXPECTED(cookies_sent == FAILURE)) {
+        return FAILURE;          /<em> ← send_cookie 保持 1 </em>/
+    }
+    PS(send_cookie) = 0;
+}
+</code></pre></p>
+<p>在 8.2 上，无论你怎么摆布 <code>headers_sent</code>、怎么调 <code>memory_limit</code>，
+<code>send_cookie</code> 都会被清零。<strong>这不是参数问题，是代码结构问题。</strong></p>
+<p>我一开始在 8.2.32 上折腾了很久，一直以为是某个配置不对，直到把这个函数
+两个分支的源码并排看才明白：这条路在那个版本上根本不存在。</p>
+<p>---</p>
+<h2>三、最容易被漏掉的一行配置：<code>output_buffering</code></h2>
+<p>上面说 <code>send_cookie</code> 只有 <code>php_session_send_cookie()</code> <strong>失败</strong>时才保留。
+而这个函数只有一个失败分支：</p>
+<pre><code class="c">static zend_result php_session_send_cookie(void) {
+    if (SG(headers_sent)) { ...; return FAILURE; }
+    ...
+}
+</code></pre>
+<p>所以需要 <code>headers_sent</code> 为真。</p>
+<p>我用了标准套路：发 1001 个表单字段，让 PHP 报
+<code>Input variables exceeded 1000</code> 的警告，并在 <code>display_errors=On</code> 下把警告写进响应。</p>
+<p>警告确实出现在响应体里了。<strong>但 <code>headers_sent</code> 仍然是 0。</strong></p>
+<p>原因是这个警告走的是 <code>php_printf</code> → <code>php_output_write</code> ——
+它只写进<strong>输出缓冲区</strong>，并不会发送响应头。</p>
+<p>在 php.ini 里加上两行之后，一切立刻变了：</p>
+<pre><code class="ini">output_buffering = Off
+implicit_flush   = On
+</code></pre>
+<p>响应里出现了两条警告：</p>
+<pre><code class="">Warning: PHP Request Startup: Input variables exceeded 1000
+Warning: Session cookie cannot be sent after headers have already been sent
+</code></pre>
+<p>第二条正是我们要的 —— 它说明 <code>send_cookie</code> 真的失败了，值被保留下来了。</p>
+<pre><code class="bash">$ sudo bash verify/read_psid.sh
+true 0x7f...a7000 0x7f...a00000 0xa7000
+↑    ↑            ↑               ↑
+send_cookie=1    悬垂的 id       chunk 基址    它在 chunk 里的偏移
+</code></pre>
+<h3>这个配置的副作用会咬人</h3>
+<p><code>output_buffering=Off</code> 是全局设置。它会让<strong>所有</strong>请求在很早的阶段就置位
+<code>headers_sent</code>，于是任何应用里的 <code>session_start()</code> 都会报
+<code>Session cannot be started after headers have already been sent</code>。</p>
+<p>这一条在我把两个 CVE 拼到一起时造成了很大麻烦（细节见另一篇文章）。
+当时的解法是给需要读会话的那个目录单独把缓冲打开：</p>
+<pre><code class="apache"><Directory .../serialized>
+    php_value output_buffering 4096
+    php_value implicit_flush 0
+</Directory>
+</code></pre>
+<p>---</p>
+<h2>四、第一个请求：怎么在内存里留下一个悬垂指针</h2>
+<p><code>PS(id)</code> 是会话 id 的 <code>zend_string</code>。正常情况下请求结束会释放它。
+但如果 OOM 的 <code>longjmp</code> 跳过了请求清理，它就变成悬垂指针。</p>
+<p>请求 A 的形状：</p>
+<table>
+<tr><th>部件</th><th>作用</th></tr>
+<tr><td>1001 个普通字段</td><td>触发 <code>max_input_vars</code> 警告 → <code>headers_sent=1</code></td></tr>
+<tr><td><code>PHPSESSID</code> 值 = 单字节 <code>\x00</code></td><td>让 <code>!ZSTR_VAL(PS(id))[0]</code> 成立 → 走"新建 id"分支 → <code>send_cookie=1</code></td></tr>
+<tr><td><code>PHP_SESSION_UPLOAD_PROGRESS</code></td><td>启用上传进度机制</td></tr>
+<tr><td>一个文件部件</td><td><code>MULTIPART_EVENT_FILE_START</code> 才会创建进度数据</td></tr>
+<tr><td>末尾一个大字段</td><td>制造 OOM → <code>longjmp</code> 跳过 shutdown → <code>PS(id)</code> 悬垂</td></tr>
+</table>
+<p>注意那个单字节 <code>\x00</code> —— 这是让 PHP 认为"没有 id，需要新建"的关键。
+<code>send_cookie</code> 因此被置 1，然后因为 <code>headers_sent</code> 发不出去，于是被留下来。</p>
+<p>---</p>
+<h2>五、第二个请求：伪造长度，让 PHP 帮你把内存编码出来</h2>
+<p>B 请求要做的只有一件事：**让悬垂的 <code>PS(id)</code> 那块内存落到一个我们能控制的
+分配上，并让它的长度字段变成一个很大的值。**</p>
+<p><code>zend_string</code> 的结构：</p>
+<pre><code class="c">struct _zend_string {
+    zend_refcounted_h gc;   /<em> +0x00 </em>/
+    zend_ulong        h;    /<em> +0x08 </em>/
+    size_t            len;  /<em> +0x10  ← 这个字段就是 ZSTR_LEN() </em>/
+    char              val[];/<em> +0x18 </em>/
+};
+</code></pre>
+<p>而 <code>php_session_send_cookie()</code> 里是：</p>
+<pre><code class="c">e_id = php_url_encode(ZSTR_VAL(PS(id)), ZSTR_LEN(PS(id)));
+</code></pre>
+<p>所以只要 <code>PS(id)</code> 指向一块<strong>我们写过内容的内存</strong>，<code>+0x10</code> 处就是任意的
+长度，<code>+0x18</code> 往后就是任意的读取起点。</p>
+<h3>铺页 + 精确重占</h3>
+<p>具体做法（这套技巧不是我发明的，是从公开实现里学来的）：</p>
+<ul>
+<li>发 841 个 48 字符的值。<code>zend_string_alloc(48)</code> = 24+48+1 = 73 字节，</li>
+</ul>  落在 80 字节的 bin 里。这些值把 80B bin 的页铺开。
+<ul>
+<li>最后一个值写 <strong>79 字节</strong>。它的 raw buffer 是 <code>emalloc(80)</code>，同样落在</li>
+</ul>  80B bin —— 于是它接住那个悬垂槽。
+<ul>
+<li>在这个 raw buffer 的 <code>+0x10</code> 写伪造的长度。</li>
+</ul>
+结果：
+<pre><code class="">Set-Cookie: PHPSESSID=LAAAA...%9B%CA0%3E%DF3hY%A...
+</code></pre>
+<p>（<code>L</code> 是数据起点放的标记，一串 <code>A</code> 是填充，后面是越界读到的堆内容。）</p>
+<p>把这 4096 字节 URL 解码，里面能数出近百个候选指针；按 2MB 对齐取众数，
+就是 Zend MM 的 <strong>chunk 基址</strong>。</p>
+<p>---</p>
+<h2>六、第二个请求（续）：为什么长度必须跨过 64KB</h2>
+<p>这一步我卡了最久。</p>
+<p>要泄漏 libphp 基址，需要读到一个函数指针 —— 哈希表的 <code>pDestructor</code>
+（值是 <code>zval_ptr_dtor</code>）。</p>
+<p>我把长度设成 <code>0x1000</code>，结果读回来的全是同一页里的字符串。改成 <code>0x10000</code>
+（64KB）之后立刻成功。</p>
+<p>原因是 <strong>Zend MM 按 bin 分页</strong>：</p>
+<ul>
+<li>80 字节的 bin 有自己的页，只放 80 字节的块</li>
+<li>56 字节的 bin 有自己的页，只放 <code>HashTable</code> 本体</li>
+</ul>
+<code>PS(id)</code> 在 80B 页，而 <code>pDestructor</code> 所在的 <code>HashTable</code> 在 56B 页。
+<strong>页不同，只有长度足够大才能跨过去。</strong>
+<h3>还有一个小陷阱：原地替换</h3>
+<p><code>zend_hash_update</code> 对已经存在的键是<strong>原地替换</strong>，不会释放旧块。
+所以第一次尝试时，那个槽一直被活着的新值占着，我们的 raw buffer 拿不到。</p>
+<p>公开实现里的解法是发三段同名值：</p>
+<pre><code class="">D0 占住目标槽
+... 一堆填充 ...
+D1 同名 → 原地替换，复用 D0 的块
+D2 再同名 → 强制换块，D0/D1 那块才真正被释放
+forge 接住刚释放的槽
+</code></pre>
+<h3>怎么从 64KB 里认出 libphp 基址</h3>
+<p>不用猜。<code>zval_ptr_dtor</code> 在这个构建里位于模块内偏移 <code>0x426130</code>。
+所以扫这 64KB：凡是满足</p>
+<pre><code class="">(v - 0x426130) & 0x1fffff == 0
+</code></pre>
+<p>的 8 字节值，其 <code>v</code> 就是 <code>libphp + 0x426130</code>。命中 58 次，取众数。</p>
+<p>结果和 <code>/proc/<worker>/maps</code> 里 <code>libphp8.4.so</code> 的起始地址<strong>逐字节相同</strong>。</p>
+<blockquote>模块内的偏移必须按实际构建重新取。发行版包和自编译版的偏移完全不同 ——<br>
+同一个版本号 8.4.26，Debian 包的 <code>zif_system</code> 是 <code>0x24d710</code>，<br>
+自己编译的是 <code>0x43a870</code>。用 Debian 的 <code>-dbgsym</code> 包取：</blockquote>>
+<blockquote><pre><code class="bash">> BID=$(readelf -n /usr/lib/apache2/modules/libphp8.4.so | awk '/Build ID/{print $3}')<br>
+nm -C --defined-only /usr/lib/debug/.build-id/${BID:0:2}/${BID:2}.debug \<br>
+   | grep -wE 'zif_system|zval_ptr_dtor'<br>
+</code></pre></blockquote>
+---
+<h2>七、两个我自己造的测量错误</h2>
+<p>这两个坑都不是 PHP 的问题，但各浪费了我一整轮排查。</p>
+<h3>7.1 gdb 的指针运算</h3>
+<pre><code class="gdb">(gdb) x/8gx ps_globals.id - 0x10
+</code></pre>
+<p>看起来是在往前看 16 个字节。实际上 <code>ps_globals.id</code> 的类型是
+<code>zend_string *</code>，gdb 会按 <code>sizeof(zend_string)</code> 缩放 —— 于是它跳到的是
+<code>-0x180</code>。dump 出来的内存完全错位。</p>
+<p>正确写法是先强转成字节指针：</p>
+<pre><code class="gdb">(gdb) x/8gx (char*)ps_globals.id - 0x10
+</code></pre>
+<p>因为这一条，我把哈希表的结构偏移算错了整整一轮，得出过一堆互相矛盾的结论。</p>
+<h3>7.2 选错进程</h3>
+<pre><code class="bash">pgrep -u www-data apache2
+</code></pre>
+<p><code>www-data</code> 用户下<strong>不止</strong> PHP 的 worker。Apache 的磁盘缓存清理进程
+<code>htcacheclean</code> 也属于这个用户，<strong>而且它也加载了 libphp</strong>。</p>
+<p>于是 gdb 附上去了，符号也对，读出来全是垃圾。</p>
+<p>正确的过滤方式：</p>
+<pre><code class="bash">for p in $(pgrep -u www-data apache2); do
+    sudo grep -q libphp8.4.so /proc/$p/maps 2>/dev/null && echo $p
+done
+</code></pre>
+<p>---</p>
+<h2>八、这条链能做什么，不能做什么</h2>
+<p><strong>能做的</strong>：纯 HTTP 泄漏堆基址和模块基址。这是 ASLR 绕过的核心，
+也是任何后续代码执行的前置条件。</p>
+<p><strong>不能做的（至少在这个构建上我没做到）</strong>：直接接上代码执行。</p>
+<p>公开资料里描述过第三条链：伪造一个 <code>HashTable</code>，把 <code>pDestructor</code>
+换成 <code>zif_system</code>，从 <code>php_session_track_init()</code> 里触发。</p>
+<p>我没打通，而且找到了原因：</p>
+<pre><code class="c">static void php_session_track_init(void) {
+    zend_delete_global_variable(var_name);
+    if (!Z_ISUNDEF(PS(http_session_vars))) {
+        zval_ptr_dtor(&PS(http_session_vars));   /<em> refcount 2 → 1，不析构 </em>/
+    }
+    array_init(&session_vars);
+    ZVAL_NEW_REF(&PS(http_session_vars), &session_vars);
+    ...
+}
+</code></pre>
+<p><code>$_SESSION</code> 这个全局变量还持有那个 reference，所以 <code>zval_ptr_dtor</code>
+只把引用计数从 2 降到 1，<strong>块根本不会被释放</strong>。伪造的 reference 没有落点。</p>
+<p>我试过不同长度的伪 reference（48/52/55 字节）配合不同数量（1/4/16/64），
+那块内存的引用计数一直是 5，从没被覆盖过。</p>
+<p>公开实现的底层笔记里也有同样的记录：那条路径通常表现为文件句柄被踩坏，
+"不是可控的 <code>pDestructor</code>"。</p>
+<p>所以这篇的交付是"纯 HTTP 的地址泄漏"，这本身是完整可复现的；
+把泄漏接到执行上，我用的是另一个 CVE 的原语（另一篇里讲）。</p>
+<p>---</p>
+<h2>九、复现</h2>
+<p>靶机是 Debian，PHP 用<strong>发行版官方包</strong>而不是自己编译 —— 因为真实目标就是这样。</p>
+<p>关键在于：仓库里的候选版通常<strong>已经修好</strong>了（8.4.27），要从官方 pool 取旧的
+（8.4.26），然后<strong>锁住版本</strong>：</p>
+<pre><code class="bash">apt-mark hold php8.4-common php8.4-cli libapache2-mod-php8.4 \
+              php8.4-opcache php8.4-readline
+</code></pre>
+<p>不锁的话，任何一次 <code>apt-get -f install</code> 都会把它悄悄升回去，复现就"突然失效"。</p>
+<p>⚠️ 顺带一提：<code>opcache</code> 和 <code>readline</code> 也必须一起降级。只降 <code>mod_php</code> 的话，
+新版的 <code>opcache.so</code> 在旧版引擎里会报 <code>undefined symbol</code>，Apache 直接起不来。</p>
+<p>攻击侧：</p>
+<pre><code class="bash">python3 cve-2026-109618/exploit/run_all.py --target <target-ip> --port 8080
+</code></pre>
+<pre><code class="">[1] attempt 1: read=4096   chunk=0x7f011b600000
+[2] attempt 1: read=65536  libphp=0x7f572ac00000
+<p>CHUNK_BASE  = 0x7f011b600000
+LIBPHP_BASE = 0x7f572ac00000
+zif_system  = 0x7f572ae4d710
+</code></pre></p>
+<p>完整靶机、攻击脚本和一个白盒校验工具（自动按 build-id 找 dbgsym）
+都放在 <code>github.com/LeisureLinux/php2shell</code>，同一个仓库里还有另一个 CVE。</p>
+<p>---</p>
+<h2>十、怎么修</h2>
+<table>
+<tr><th>措施</th><th>说明</th></tr>
+<tr><td><strong>升级 PHP</strong></td><td>8.2.35 / 8.3.36 / 8.4.27 / 8.5.12。8.1 及更早已 EOL，不会修</td></tr>
+<tr><td><strong><code>memory_limit = -1</code></strong></td><td>官方推荐的第一条，也是最容易被忽略的一条</td></tr>
+</table>
+<p>第二条值得多说一句。<strong>把内存限制关掉，看起来像"放弃防御"。</strong></p>
+<p>它的逻辑是：没有每请求的内存上限，攻击者就失去了那个可预测的失败点 ——
+而这条链完全建立在"能在指定位置制造一次 OOM"上。</p>
+<p>⚠️ 但<strong>不要</strong>用 <code>RLIMIT_AS</code> / <code>RLIMIT_DATA</code> 当替代方案。那会让 <code>mmap()</code>
+在到达限制时失败，正好触发有漏洞的 <code>longjmp</code> 路径 —— 等于自己把开关打开了。</p>
+<p>最后一条，也是网上最容易误传的一条：</p>
+<p><strong><code>session.upload_progress.enabled = Off</code> 对 109618 毫无作用。</strong>
+那是 109619 的缓解措施。两个漏洞根因完全不同，缓解措施不能互相套用。
+官方公告里特意写了这一点，而它是最常被读错的一句。</p>
+<p>---</p>
+<h2>附：踩坑速查</h2>
+<table>
+<tr><th>现象</th><th>根因</th></tr>
+<tr><td><code>send_cookie</code> 一直是 false</td><td><code>output_buffering</code> 没关，startup 警告不置位 <code>headers_sent</code></td></tr>
+<tr><td>gdb 读出的结构全错位</td><td><code>ps_globals.id - 0x10</code> 按 26 字节元素缩放；要写 <code>(char*)… - 0x10</code></td></tr>
+<tr><td>gdb 附上了但全是垃圾</td><td><code>htcacheclean</code> 也是 <code>www-data</code>，也加载 libphp；要查 maps 过滤</td></tr>
+<tr><td>越界读只读到同页字符串</td><td>Zend MM 按 bin 分页，长度要 ≥64KB 才跨得过去</td></tr>
+<tr><td>伪造的 <code>len</code> 不生效</td><td><code>zend_hash_update</code> 原地替换不释放旧块，要用三段同名值</td></tr>
+<tr><td>OOM 了但漏洞不触发</td><td>落在 <code>ZEND_HASH_IF_FULL_DO_RESIZE</code> 上，不是 key 分配</td></tr>
+<tr><td>复现隔天失效</td><td><code>apt-get -f install</code> 把包升回修复版，要 <code>apt-mark hold</code></td></tr>
+<tr><td>只降 <code>mod_php</code> 后 Apache 起不来</td><td><code>opcache</code> / <code>readline</code> 也必须同版本</td></tr>
+</table>
+
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-23_php2shell-109618-pure-http-aslr-bypass/",
+      title: "\u4e0d\u5199\u4e00\u4e2a\u6587\u4ef6\uff0c\u53ea\u53d1\u4e24\u4e2a\u8bf7\u6c42\uff1a\u4ece\u4e00\u4e2a OOM \u91cc\u8bfb\u51fa PHP \u7684\u5806\u5730\u5740\u548c\u6a21\u5757\u57fa\u5740"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
