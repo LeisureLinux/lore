@@ -17,6 +17,9 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-27 | [HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上](https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/) | HackiOS · XNU · iOS · Darwin · 开源内核 · 逆向工程 · 安卓 · QEMU · UEFI · APFS · Metal · Mesa · freedreno · 安全研究 · CVE-2022-22706 · Mali |
+| 2026-10-27 | [OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器](https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/) | OpenBSD · Wine · 移植 · x86_64 · gsbase · SWAPGS · Spectre · CVE-2019-1125 · TLS · TEB · ntdll · vkd3d · clang-pe · 安全设计 · 侧信道 |
+| 2026-10-27 | [NVIDIA OpenShell：给 AI agent 造一个「默认不给权限」的运行时，而它最狠的一招是形式化验证](https://freelamp.com/articles/2026-10-27_nvidia-openshell-agent-runtime/) | OpenShell · NVIDIA · AIagent · 沙箱 · 策略 · 形式化验证 · SMT · Landlock · seccomp · 凭证 · Provider · Gateway · Kubernetes |
 | 2026-10-27 | [丹麦的 Collabora 试点静默收场：38 个人、6 个月、没有一个正式评估](https://freelamp.com/articles/2026-10-27_denmark-collabora-office-pilot-failed/) | Collabora · LibreOffice · ODF · OOXML · 文档格式 · 数字主权 · 丹麦政府 · cBrain · F2 · 修订标记 · 字体 · 迁移 · 政府采购 |
 | 2026-10-27 | [PHP 基金会承认：一个漏洞拖了两年，是「结构性失败」；而这次的披露泄露，才是真正的组织问题](https://freelamp.com/articles/2026-10-27_php-foundation-security-process-leak-embargo/) | PHP · PHPFoundation · php-src · CVE-2026-109618 · CVE-2026-109619 · php2shell · 安全流程 · 协调披露 · embargo · AI安全 · AlphaOmega · OpenAI · DaybreakRed |
 | 2026-10-27 | [FreeDNS 二十五年：一个域名爱好，如何变成七百万人离不开的公共设施](https://freelamp.com/articles/2026-10-27_freedns-25-years-shared-domain-registry/) | FreeDNS · afraid.org · 动态DNS · DDNS · 共享域名 · 免费服务 · 商业模式 · FreeBSD · DDoS · DNS · 自托管 · 隐私 · IPv6 |

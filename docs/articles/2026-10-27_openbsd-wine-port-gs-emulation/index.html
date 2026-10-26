@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器 — FreeLAMP.com</title>
+  <meta name="description" content="OpenBSD 的 ports 在 2011 年删掉 Wine 之后，2026 年 10 月 19 日把它重新 import 回来了，10 月 22 日已更新到 Wine 11.20。真正的门槛不是 Wine 本身，而是 OpenBSD 出于 SWAPGS 侧信道防护拒绝在用户态设置 %gs base —— 而 Win">
+  <meta name="keywords" content="OpenBSD, Wine, 移植, x86_64, gsbase, SWAPGS, Spectre, CVE-2019-1125, seccomp, TLS, TEB, ntdll, vkd3d, clang-pe, 安全设计, 侧信道">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-27">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器">
+  <meta property="og:description" content="OpenBSD 的 ports 在 2011 年删掉 Wine 之后，2026 年 10 月 19 日把它重新 import 回来了，10 月 22 日已更新到 Wine 11.20。真正的门槛不是 Wine 本身，而是 OpenBSD 出于 SWAPGS 侧信道防护拒绝在用户态设置 %gs base —— 而 Win">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-27">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="OpenBSD">
+  <meta property="article:tag" content="OpenBSD">
+  <meta property="article:tag" content="Wine">
+  <meta property="article:tag" content="移植">
+  <meta property="article:tag" content="x86_64">
+  <meta property="article:tag" content="gsbase">
+  <meta property="article:tag" content="SWAPGS">
+  <meta property="article:tag" content="Spectre">
+  <meta property="article:tag" content="CVE-2019-1125">
+  <meta property="article:tag" content="seccomp">
+  <meta property="article:tag" content="TLS">
+  <meta property="article:tag" content="TEB">
+  <meta property="article:tag" content="ntdll">
+  <meta property="article:tag" content="vkd3d">
+  <meta property="article:tag" content="clang-pe">
+  <meta property="article:tag" content="安全设计">
+  <meta property="article:tag" content="侧信道">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器">
+  <meta name="twitter:description" content="OpenBSD 的 ports 在 2011 年删掉 Wine 之后，2026 年 10 月 19 日把它重新 import 回来了，10 月 22 日已更新到 Wine 11.20。真正的门槛不是 Wine 本身，而是 OpenBSD 出于 SWAPGS 侧信道防护拒绝在用户态设置 %gs base —— 而 Win">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器",
+  "description": "来源：openbsd/ports 仓库 emulators/winehttps://github.com/openbsd/ports/tree/master/emulators/wine 的实际提交与 44 个 patch 原文（实测拉取）、openbsd-ports 邮件列表原始讨论https://marc.info/?l=openbsd-ports&m=179236125692175（Thom",
+  "datePublished": "2026-10-27",
+  "dateModified": "2026-10-27",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "OpenBSD, Wine, 移植, x86_64, gsbase, SWAPGS, Spectre, CVE-2019-1125, seccomp, TLS, TEB, ntdll, vkd3d, clang-pe, 安全设计, 侧信道"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器",
+        "item": "https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-27">2026-10-27</div>
+        <h1 class="post-title" itemprop="headline">OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/OpenBSD/">OpenBSD</a><a itemprop="keywords" href="/tags/Wine/">Wine</a><a itemprop="keywords" href="/tags/%E7%A7%BB%E6%A4%8D/">移植</a><a itemprop="keywords" href="/tags/x86_64/">x86_64</a><a itemprop="keywords" href="/tags/gsbase/">gsbase</a><a itemprop="keywords" href="/tags/SWAPGS/">SWAPGS</a><a itemprop="keywords" href="/tags/Spectre/">Spectre</a><a itemprop="keywords" href="/tags/CVE-2019-1125/">CVE-2019-1125</a><a itemprop="keywords" href="/tags/seccomp/">seccomp</a><a itemprop="keywords" href="/tags/TLS/">TLS</a><a itemprop="keywords" href="/tags/TEB/">TEB</a><a itemprop="keywords" href="/tags/ntdll/">ntdll</a><a itemprop="keywords" href="/tags/vkd3d/">vkd3d</a><a itemprop="keywords" href="/tags/clang-pe/">clang-pe</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%85%A8%E8%AE%BE%E8%AE%A1/">安全设计</a><a itemprop="keywords" href="/tags/%E4%BE%A7%E4%BF%A1%E9%81%93/">侧信道</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<strong><a href="https://github.com/openbsd/ports/tree/master/emulators/wine">openbsd/ports 仓库 emulators/wine</a></strong> 的实际提交与 44 个 patch 原文（实测拉取）、<strong><a href="https://marc.info/?l=openbsd-ports&m=179236125692175">openbsd-ports 邮件列表原始讨论</a></strong>（Thomas Frohwein，2026-10-18）、<a href="https://marc.info/?l=openbsd-ports&m=179236426893591&w=2">回复</a>（Bryan Steele）、<a href="https://marc.info/?l=openbsd-ports&m=179240622622831&w=2">回复</a>（Martijn van Duren）、<a href="https://marc.info/?l=openbsd-ports&m=179240650723110&w=2">回复</a>（Stuart Henderson）、<a href="https://marc.info/?l=openbsd-tech&m=179067466617674&w=2">openbsd-tech 的 %gs 提问</a> 与 <a href="https://marc.info/?l=openbsd-tech&m=179069358537094&w=2">回复</a><br>
+⚠️ <strong>实测的 ports 提交序列</strong>（<code>path=emulators/wine</code>）：<strong>2026-10-19 <code>e441aff3</code> re-import emulators/wine</strong> → <code>fd10d99c</code> resolve merge conflicts → 10-20 <code>6a68fef3</code> → 10-22 <code>b38148f0</code> use clang headers from llvm distfile → <code>6086ce08</code> update distinfo → <strong><code>4a90c8df</code> update to wine 11.20</strong> → 10-25 <code>71cac71b</code> hidden dep on linux/input.h → 10-26 <code>fef9ec33</code> disable linux/input.h header in autoconf。<strong>再往前一次提交是 2011-07-06 <code>70ca2b7e</code> "Remove the wine port."</strong><br>
+本文为<strong>解读</strong>。所有 patch 代码与提交记录为实测一手材料。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>OpenBSD 的 Wine 移植，最难的部分不是 Wine，是 OpenBSD 有一条「用户态不许设 <code>%gs</code> base」的安全政策 —— 而 Windows x64 代码把 <code>%gs:0x30</code> 当作访问线程块（TEB）的标准手段。</strong></p>
+<p><strong>Andrii Yukhymchak 的解法，是写了一个手写的 x86-64 指令解码器，在运行时把 <code>%gs:</code> 前缀的访存指令逐条翻译成 OpenBSD 的 <code>%fs:</code> 等价形式 —— 必要时就地改写指令，不够长就跳到一段自己生成的 stub，再不够就用 SIGSEGV 陷阱兜底。</strong></p>
+<p><strong>而我认为这整件事最有价值的地方，不在于「Wine 能在 OpenBSD 上跑了」，在于它把一个抽象的安全决策，翻译成了一个具体的工程约束 —— 并且没有通过削弱安全决策来解决它。</strong></p>
+<h2>二、起点：一个被搁置了 15 年的问题</h2>
+<h3>2.1 邮件列表里的那个提问</h3>
+<p><strong>2026 年 9 月 29 日，Neth Iafin（也就是 Andrii Yukhymchak 自己的化名）在 openbsd-tech 上问：</strong></p>
+<blockquote><strong>「我想知道为什么 OpenBSD 在用户态没有设置 <code>%gs</code> 的能力？这是为了避免 swapgs 漏洞吗？还是别的原因？」</strong></blockquote>>
+<blockquote><strong>「我理解支持 wine 在 OpenBSD 的优先级大概是低于 0，但我好奇 <code>%gs</code> 被锁给内核的理由。」</strong></blockquote>>
+<blockquote><strong>「我假设设置 <code>%gs</code> 作为 syscall 回来的可能性是零？」</strong></blockquote>
+<strong>一个半小时后，Story 回复：</strong>
+<blockquote><strong>「让进程设置自己的 GS.base 会暴露经典的 SWAPGS 推测性侧信道那一类 bug（CVE-2019-1125 之类）。把 GS 保持在内核的独占控制下，去掉了这个攻击面，也让进入/退出路径保持简单。」</strong></blockquote>>
+<blockquote><strong>「我不是专家，我还在读 man page，但我知道没有计划为此加 syscall。」</strong></blockquote>
+<strong>⭐ 注意两件事：</strong>
+<ol>
+<li>1. <strong>这条回复的定性非常准。</strong> <strong>CVE-2019-1125 是 Linux 上非常著名的 SWAPGS 缓解副作用 —— 在 64 位系统上用 <code>swapgs</code> 恢复 GS 寄存器时，如果攻击者能控制 <code>mov %gs</code> 后的指令字节，会造成推测执行窗口。</strong> <strong>OpenBSD 是 FreeBSD 血统，而 FreeBSD 从来就没提供用户态设 GS base 的接口 —— 所以这条是继承来的。</strong></li>
+</ol>
+<ol>
+<li>2. <strong>⭐ Story 在 18 分钟后自己发了一条更正：</strong></li>
+</ol>
+   > <strong>「更正：我在猜测原因，我不知道开发者的意图。」</strong>
+   > <strong>「我跳进来太早了。」</strong>
+<p><strong>—— 这两封邮件合起来，恰好是这个故事最好的开场：一条「安全决策」的公开解释，和它随后被作者自己标注为「猜测」的诚实。</strong></p>
+<h3>2.2 而 Thomas Frohwein 的第一句话就是「今年最令人惊讶的移植提案」</h3>
+<p><strong>2026 年 10 月 18 日 22:08 UTC，Thomas Frohwein 在 openbsd-ports 发出提案：</strong></p>
+<blockquote><strong>「在可能是今年最令人惊讶的移植提案里，我自豪地呈现一个新的 wine 移植提案。</strong></blockquote>>
+<blockquote><strong>这是集体努力的结果，源于在 %gs/gsbase 这个问题上的一些推动（见讨论串）。</strong></blockquote>>
+<blockquote><strong>大门是随着 Andrii 针对 %gs 问题的软件方案打开的 —— 他向我解释为：『不能设 gsbase，所以我们在命令上模拟 %gs 前缀』。</strong></blockquote>>
+<blockquote><strong>总的来说重活是 Andrii 和 Fabien 干的 —— 致谢。</strong></blockquote>>
+<blockquote><strong>结果是对 wine 的兴趣出现了一股浪潮，和 5-10 年前不一样，因为很多 Windows 软件已经转向 64 位了。」</strong></blockquote>
+<strong>⭐ 注意这个措辞：「</strong>在命令上模拟 %gs 前缀<strong>」—— 这就是全部魔法的十一个字的摘要。</strong>
+<h2>三、⭐ 问题的实质：为什么 x64 Windows 离不开 <code>%gs:0x30</code></h2>
+<p><strong>要理解这个移植，必须先理解 <code>%gs</code> 在 Windows x64 里到底干什么。</strong></p>
+<p><strong>从 Andrii 的 patch 注释里能直接读到答案（<code>patch-dlls_ntdll_unix_gs_openbsd_c</code>，974 行新增代码）：</strong></p>
+<pre><code class="">(1) In place - this is NtCurrentTeb() call. It always compiles into
+    mov %gs:0x30, %r for this to work, since we have ref to teb in our
+    teb_tls_offset, we can just replace few values in the command itself
+    for example
+ 65 48 8b 04 25 30 00 00 00          mov %gs:0x30, %rax
+ 64 48 8b 04 25 xx xx xx xx          mov %fs:teb_tls_offset, %rax
+                        --- where teb_tls_offset is negative
+</code></pre>
+<p><strong>⭐ 翻译一下：</strong></p>
+<ul>
+<li><strong>Windows x64 的线程块指针（TEB）固定存放在 <code>GS:0x30</code></strong>；</li>
+<li><strong><code>NtCurrentTeb()</code> 在任何编译器下都编译成 <code>mov %gs:0x30, %rax</code></strong>；</li>
+<li><strong>而 Wine 的 POSIX 后端要访问同样语义的东西，只能走 <code>%fs:</code> —— 因为 OpenBSD 的 TLS 机制在 <code>%fs</code> 上。</strong></li>
+</ul>
+<strong>所以问题的本质是：</strong> <strong>Wine 的 ntdll 需要把「<code>%gs:0x30</code>」这个语义，翻译成「<code>%fs:teb_tls_offset</code>」（一个负偏移，位于 OpenBSD 的 threadblock 之下）。</strong>
+<p><strong>而这不是「加一个偏移量」就能解决的 —— 因为 <code>%gs</code> 和 <code>%fs</code> 是两个不同的段寄存器，编码在指令前缀里（<code>0x65</code> vs <code>0x64</code>）。</strong></p>
+<p><strong>⭐ 更加要命的是：编译器并不只生成一条 <code>mov %gs:0x30,%rax</code>。</strong> <strong>它是生成一大类。</strong> <strong>Andrii 的 patch 里有一整个 <code>get_gs_opcode_info()</code> 函数在做 opcode 表 —— 覆盖 <code>add/or/adc/sbb/and/sub/xor/cmp</code> 带寄存器、group1 的立即数形式、<code>mov</code> 的各种宽度、<code>movzx/movsx</code>、<code>cmovcc</code> 全家桶……</strong></p>
+<h2>四、⭐⭐ Andrii 的三级回退策略</h2>
+<p><strong>这是整个移植的技术核心，而它的设计逻辑非常清晰。</strong></p>
+<p><strong>patch 顶部的注释原文：</strong></p>
+<pre><code class="">Whenever we have a page fault, we need to see if the fault was caused by %gs
+being pinned to 0 in OpenBSD. For this we parse the command assuming %gs was 0
+(fault was at "zero-page"), find if it is really %gs command and then rewrite
+it without %gs. Sometimes another thread will already rewrite gs to fs/jmp and
+we just need a retry.
+<p>Following approaches are implemented:
+(1) In place - this is NtCurrentTeb() call. ...
+(2) Generic Stub
+    for this to work, the instruction has to be 5 bytes or longer. If it is,
+    and we find a spot to park a stub in rel32 we can replace it with a jmp rel32
+    command to a stub that rewrites the command without %gs.
+    This can be done with ANY command that is 5 bytes or longer. If command is
+    less than 5 bytes, we don't have enough space to replace it. I will have to
+    be handled by case 3, but commands like that are rare. This replacement is
+    stable but we have to specifically handle case when thread is being stopped
+    inside of the stub.</p>
+<p>(3) SIGSEGV on every trap over that instruction
+    Same as 2 but there was not enough space to replace it with a JMP REL
+    (5 bytes). We pay signal round trip every time but at least it works.
+    The stub is basically the same but we are replacing a "replaced instruction"
+    with a hash table that points that for this SIGSEGV on this instruction we
+    jump to that Stub.
+</code></pre></p>
+<p><strong>⭐ 三个策略的取舍逻辑非常清楚：</strong></p>
+<table>
+<tr><th>策略</th><th>条件</th><th>代价</th><th>稳定性</th></tr>
+<tr><td><strong>① 原位改写</strong></td><td>指令是已知的 <code>NtCurrentTeb()</code> 形式</td><td><strong>零开销</strong></td><td>最好</td></tr>
+<tr><td><strong>② rel32 跳 stub</strong></td><td>指令 <strong>≥ 5 字节</strong></td><td>一次跳转</td><td>好（但要处理「线程停在 stub 里」的边界情况）</td></tr>
+<tr><td><strong>③ SIGSEGV 陷阱</strong></td><td>指令 <strong>< 5 字节</strong>（放不下 jmp rel32）</td><td><strong>每次都付一次信号往返</strong></td><td>最差，但「至少它能用」</td></tr>
+</table>
+<p><strong>⭐ 而触发机制的巧妙之处在于：它不是主动扫描代码，而是「等它出错」。</strong></p>
+<p><strong>在 OpenBSD 上 <code>%gs</code> 被钉在 0，所以任何 <code>%gs:xxx</code> 访存都会去访问「零页」→ 触发 SIGSEGV → 信号处理器拿到出错时的 PC → 反汇编那几条字节 → 判断「这真的是一条 <code>%gs</code> 指令吗」→ 是的话就改写掉。</strong></p>
+<p><strong>⭐ 这是一个「懒的、零扫描成本」的方案 —— 而它的代价就是策略 ③ 那种「每次付一次信号往返」。</strong></p>
+<h2>五、⭐⭐ stub 的生成：手写的机器码</h2>
+<p><strong>这是整个方案里最硬核的部分 —— 因为它要在运行时</strong>生成<strong>机器码。</strong></p>
+<p><strong>patch 里的 stub 格式注释：</strong></p>
+<pre><code class="">The form of the stub for 64-bit addressing is
+ mov %S,%fs:slot+8           save the scratch register S
+ mov %fs:slot, %S            S = TEB
+ lea 0(%base, %S, 1), %S     S = TEB + base , if base register
+ <the instruction>           [S + index*scale + disp32] instead of %gs:...
+ mov %fs:slot+8, %S          restore S
+ jmp *0(%rip)                back to next instruction
+ .quad site + len
+<p>Slot is our offset (negative) below OpenBSD's threadblock.
+Slot contains TEB at <em>slot, and scratch register at </em>slot+8
+32-bit addressing uses a second scratch register at *slot+16.
+%S scratch register is any register that is not used in the instruction.
+There are up to 3 registers that can be used in the instruction, so we
+always have a one of 7 (not you %rsp) registers free.
+</code></pre></p>
+<p><strong>⭐ 逐句读这个 stub：</strong></p>
+<ol>
+<li>1. <strong><code>mov %S, %fs:slot+8</code></strong> —— 把一个「临时寄存器」S 的值存到 TLS slot 里（因为 stub 要用 S 改写地址，但得先保存原值）；</li>
+<li>2. <strong><code>mov %fs:slot, %S</code></strong> —— 取出 TEB 指针到 S；</li>
+<li>3. <strong><code>lea 0(%base, %S, 1), %S</code></strong> —— 加上基址（对应原指令里的 base 寄存器或 disp32）；</li>
+<li>4. <strong><code><the instruction></code></strong> —— <strong>原样插入那条原始指令，只是现在它的内存操作数是 <code>[S + index*scale + disp32]</code>，而不是 <code>%gs:...</code></strong>；</li>
+<li>5. <strong><code>mov %fs:slot+8, %S</code></strong> —— 恢复 S；</li>
+<li>6. <strong><code>jmp *0(%rip)</code> + <code>.quad site + len</code></strong> —— <strong>跳回原指令的下一条</strong>。</li>
+</ol>
+<strong>⭐ 而「7 个可用临时寄存器」这个细节非常关键：</strong>
+<blockquote><strong>「%S 临时寄存器是指任何未被该指令使用的寄存器。一条指令最多能用 3 个寄存器，所以我们总能从 7 个（不含 <code>%rsp</code>）里挑出一个空闲的。」</strong></blockquote>
+<strong>—— x86-64 有 16 个通用寄存器，扣掉 <code>%rsp</code> 和指令自身占用的，最多 3 个，剩下至少 7 个可用。</strong> <strong>这保证了「找一个不冲突的临时寄存器」永远做得到。</strong>
+<p><strong>⭐ 而且 32 位寻址模式还多了一个 scratch 槽（<code>slot+16</code>）</strong> —— patch 里对应 <code>two_scratch</code> 标志。</p>
+<h3>5.1 TLS slot 放在 loader 里（而不是 ntdll）</h3>
+<p><strong>这是另一个很见功力的细节，来自 <code>patch-loader_main_c</code>：</strong></p>
+<blockquote><strong>「给 loader 加一个 32 字节的 TLS slot。它位于 <code>%fs</code> 线程指针正下方，保存 TEB 指针以及用于 <code>%gs</code> 修补的两个 scratch 槽。</strong></blockquote>>
+<blockquote><strong>这个 slot 必须放在 loader 里，因为 ld.so 拒绝 <code>dlopen()</code> 的库（比如 ntdll.so）使用静态 TLS。」</strong>"</blockquote>
+<strong>⭐ 翻译：</strong> <strong>静态 TLS（TLS model 里的 initial-exec / local-exec）只有可执行文件本体能用，动态加载的共享库不行。</strong> <strong>而 ntdll 是 <code>dlopen</code> 进来的。</strong> <strong>所以那个必须被所有线程共享的 TEB 指针槽，只能放在 loader 里 —— 而 Wine 的 loader 是 <code>wine/loader</code> 那个静态可执行文件。</strong>
+<p><strong>⭐ 这个约束的连锁反应很大：TLS slot 的位置必须是「OpenBSD threadblock 下方的一个固定负偏移」，而且必须所有线程一致 —— 所以 patch 里才有 <code>teb_tls_offset</code> 这个全局变量，在 <code>gs_init_process()</code> 里通过 <code>dlsym(RTLD_DEFAULT, "__wine_teb_tls_offset")</code> 拿到。</strong></p>
+<h3>5.2 还有一个「伪装」机制</h3>
+<p><strong>patch 里还有一条我认为很有意思的设计：</strong></p>
+<blockquote><strong>「另一个值得注意的方法是 <code>gs_leave_stub</code>，它允许我们在 SIGSEGV 和 SIGUSR1 上离开 stub，所以在外面它永远看起来我们不在 stub 里。这有助于调试、信号处理和一般的合理性检查。」</strong></blockquote>
+<strong>⭐ 翻译：</strong> <strong>stub 里的执行状态会让调试器和信号处理器困惑（栈上的返回地址不对、看起来像在 Wine 内部某处）。</strong> <strong>所以他加了一个「退出 stub」的机制 —— 让执行流在特定信号下看起来已经回到正常代码路径。</strong>
+<p><strong>这是一个纯工程上的「让系统看起来正常」的设计 —— 而它的存在本身说明了问题的复杂度：你在一个完全陌生的 ABI 上模拟另一个 OS 的内存模型。</strong></p>
+<h3>5.3 ⚠️ 一个值得注意的细节：指令列表由 LLM 生成</h3>
+<p><strong>patch 注释里有一段必须引用：</strong></p>
+<blockquote><strong>「大部分代码基于 64 位规范构建，以及开源（Copyleft 且免费）编译器为 Windows 生成 TEB 块访问的指令列表。这段代码是根据 LLM 生成的指令解码图</strong>手工<strong>编写的。指令列表由 LLM 提供，并</strong>用规范人工核对<strong>过。支持 0x67 前缀（32 位寻址模式），但 moffs 指令除外。其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong></blockquote>
+<strong>⭐ 我认为这段注释的写法非常值得学习 —— 它同时说清了三件事：</strong>
+<ol>
+<li>1. <strong>用了 LLM</strong>（不藏着）；</li>
+<li>2. <strong>「根据 LLM 生成的解码图手工编写」</strong> —— 不是直接用 LLM 的输出；</li>
+<li>3. <strong>「用规范人工核对过」</strong> —— 有人对着 Intel/AMD 的架构手册逐条核过。</li>
+</ol>
+<strong>—— 而且它还诚实地划出了边界：「支持 0x67 前缀，但 moffs 指令除外。其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong>
+<p><strong>这最后半句是安全审计里最该有的一句话：「我没找到反例」和「我证明了没有反例」是两回事。</strong></p>
+<p><strong>⭐ 而这里有一个非常有意思的上下文：Hacker News 上讨论这个移植时，有评论者说：</strong>
+<blockquote><strong>「我也尊重 Wine 和 OpenBSD 以及他们「不在 repo/ports 里放任何 LLM 代码」的规则。」</strong></blockquote>
+<strong>（OpenBSD 的 <code>README</code>/端口惯例里有明确要求，ports 里不放 AI 生成的代码。）</strong></p>
+<p><strong>⭐ 而 Andrii 的处理方式，恰好给出了这条规则下一个可行的范式：</strong> <strong>LLM 参与「资料整理与初稿」，但最终产物是</strong>手工编写<strong>的、</strong>人工核对过<strong>的、且</strong>明确标注了覆盖边界<strong>的代码 —— 而且它没有进 ports 树，而是先以「移植提案」的形式在邮件列表里公开征求意见。</strong></p>
+<p><strong>（最终 44 个 patch 里，<code>gs_openbsd.c</code> 的版权头明确写着 <code>Copyright (C) 2026 Andrii Yukhymchak</code>，是 LGPL-2.1+ 的原创代码。）</strong></p>
+<h2>六、⭐ 44 个 patch：不只是 <code>%gs</code></h2>
+<p><strong>实测 <code>emulators/wine/patches/</code> 目录，共 44 个 patch。分类看：</strong></p>
+<table>
+<tr><th>类别</th><th>文件</th><th>说明</th></tr>
+<tr><td><strong><code>%gs</code> 核心</strong></td><td><code>patch-dlls_ntdll_unix_gs_openbsd_c</code>（<strong>44844 字节</strong>，新增 974 行）、<code>..._gs_openbsd_h</code></td><td>指令解码器 + stub 生成器</td></tr>
+<tr><td><strong>信号处理</strong></td><td><code>patch-dlls_ntdll_unix_sig_openbsd_c</code>、<code>..._sig_openbsd_h</code>、<code>patch-server_sig_openbsd_c</code>、<code>..._sig_openbsd_h</code>、<code>patch-dlls_ntdll_unix_signal_x86_64_c</code>（16597 字节）</td><td>见第七节</td></tr>
+<tr><td><strong>进程/线程模型</strong></td><td><code>patch-server_process_c/h</code>、<code>patch-server_thread_c</code>、<code>patch-server_ptrace_c</code>、<code>patch-dlls_ntdll_unix_process_c</code>、<code>..._unix_thread_c</code></td><td></td></tr>
+<tr><td><strong>Unix 环境</strong></td><td><code>patch-dlls_ntdll_unix_env_c</code>、<code>..._unix_file_c</code>、<code>..._unix_server_c</code>、<code>..._unix_system_c</code>、<code>..._unix_virtual_c</code>、<code>..._unix_unix_private_h</code></td><td></td></tr>
+<tr><td><strong>API 差异</strong></td><td><code>patch-dlls_dnsapi_<em></code>、<code>patch-dlls_iphlpapi_</em></code>、<code>patch-dlls_nsiproxy_*</code>、<code>patch-dlls_msvcrt_handler4_c</code>、<code>patch-dlls_crypt32_unixlib_c</code>、<code>patch-dlls_dxgi_output_c</code>、<code>patch-include_wine_server_protocol_h</code></td><td></td></tr>
+<tr><td><strong>X11 / 图形</strong></td><td><code>patch-dlls_winex11_drv_keyboard_c</code>、<code>..._drv_x11drv_main_c</code>、<code>patch-dlls_winebus_sys_bus_sdl_c</code></td><td></td></tr>
+<tr><td><strong>音频</strong></td><td><code>patch-dlls_winepulse_drv_pulse_c</code></td><td></td></tr>
+<tr><td><strong>其他</strong></td><td><code>patch-loader_main_c</code>、<code>patch-server_Makefile_in</code>、<code>patch-server_fd_c</code>、<code>patch-server_sock_c</code>、<code>patch-server_unicode_c</code>、<code>patch-server_protocol_def</code>、<code>patch-tools_tools_h</code>、<code>patch-libs_vkd3d_libs_vkd3d_utils_c</code>、<code>patch-dlls_wpcap_Makefile_in</code>、<code>patch-patch-configure_ac</code></td><td></td></tr>
+</table>
+<h3>6.1 Makefile 里那些 <code>--without-</code> 每一个都是一条「OpenBSD 没有这个」的注脚</h3>
+<p><strong>实测的 <code>emulators/wine/Makefile</code>（4754 字节）：</strong></p>
+<pre><code class="makefile">ONLY_FOR_ARCHS =	amd64
+COMMENT =		compatibility layer to run Windows applications
+DISTNAME =		wine-11.20
+REVISION =		1
+MAINTAINER =		Thomas Frohwein <thfr@openbsd.org>, \
+			Andrii Yukhymchak <NethIafin-obsd@proton.me>
+CONFIGURE_ARGS =	--enable-archs=x86_64 --with-mingw
+</code></pre>
+<p><strong>⭐ 注意 <code>ONLY_FOR_ARCHS = amd64</code> —— 这个 port 只在 amd64 上存在。</strong> <strong>而 Mail 列表里 Bryan Steele 的测试确认也正是「port builds on amd64 (tested on Intel 11th Gen w/ IBT)」。</strong></p>
+<p><strong>而那一长串 <code>--without-</code>，每一个后面都有注释解释为什么：</strong></p>
+<pre><code class="makefile"># krb5: Kerberos authentication also needs adaptation to security/heimdal.
+<h1>USB: devel/libusb1 lacks hotplug support. wineusb aborts initialization.</h1>
+<h1>V4L2: libv4l2 is found, but linux/videodev2.h is missing.</h1>
+<h1>Wayland: untested</h1>
+CONFIGURE_ARGS+=	--without-gssapi --without-krb5 --without-usb \
+			--without-v4l2 --without-wayland
+</code></pre>
+<p><strong>⭐ 我认为这五条注释本身就是一份「Windows 世界 → Unix 世界」的对照表：</strong></p>
+<table>
+<tr><th>Windows 需要</th><th>OpenBSD 的情况</th></tr>
+<tr><td><strong>Kerberos（SSP + krb5）</strong></td><td>需要适配 OpenBSD 的 <strong>Heimdal</strong> 而非 MIT Kerberos</td></tr>
+<tr><td><strong>USB 热插拔</strong></td><td><code>devel/libusb1</code> 缺少 hotplug 支持，wineusb 会 abort 初始化</td></tr>
+<tr><td><strong>V4L2 视频设备</strong></td><td>libv4l2 存在，但缺 <code>linux/videodev2.h</code></td></tr>
+<tr><td><strong>Wayland</strong></td><td><strong>untested</strong>（尚未测试）</td></tr>
+<tr><td><strong>ALSA / CoreAudio / OSS / udev / hwloc / OpenCL</strong></td><td>全部 <code>--without</code></td></tr>
+</table>
+<p><strong>—— 注意 Wayland 那条：OpenBSD 的 Wayland 支持本身还不完善，所以 Wine 只能走 X11。</strong></p>
+<h3>6.2 Linux 特有的头文件依赖：两次提交解决一个依赖</h3>
+<p><strong>实测提交序列里有两个连续的、看起来很小但很有代表性的提交：</strong></p>
+<ul>
+<li><strong>2026-10-25 <code>71cac71b</code></strong>：<code>hidden dep on linux/input.h; found by naddy@</code></li>
+<li><strong>2026-10-26 <code>fef9ec33</code></strong>：<code>Better: disable linux/input.h header in autoconf. Similar to how it is ...</code></li>
+</ul>
+<strong>对应 Makefile 里这一行：</strong>
+<pre><code class="makefile"># prevent linux/input.h detection: evdev keycodes don't match OpenBSD XFree86.
+CONFIGURE_ENV+=		ac_cv_header_linux_input_h=no
+</code></pre>
+<p><strong>⭐ 这个注释是整个移植里信息量最大的一句：</strong></p>
+<p><strong>「阻止 <code>linux/input.h</code> 的探测：evdev 的键码与 OpenBSD 的 XFree86 不匹配。」</strong></p>
+<p><strong>—— 也就是说：</strong> <strong>Wine 的输入层抽象建立在 </strong>Linux evdev<strong> 的键码编号之上，而 OpenBSD 的 XFree86 用的是另一套键码编号。</strong> <strong>所以这个「伪装成 Linux 有这个头文件」的开关，不只是让 configure 过，而是</strong>必须在 configure 阶段就掐掉<strong>，否则会编译出键码错乱的输入处理。</strong></p>
+<p><strong>⭐ 而这两天的两连提交，说明这个依赖是在 port 已经在树里之后才被发现的 —— 由 naddy@ 报出。</strong> <strong>这正是 OpenBSD ports 流程的一个特点：port 先合并，问题在 CI 与用户测试中暴露，再补提交。</strong></p>
+<h3>6.3 libpcap 的 <code>.pc</code> 文件名差异</h3>
+<pre><code class="makefile"># Wine requests libpcap.pc; the OpenBSD port instead provides libepcap.pc
+<h1>and installs its headers/libraries outside the default search paths.</h1>
+CONFIGURE_ENV+=		INOTIFY_LIBS="-L${LOCALBASE}/lib/inotify -Wl,-rpath,${LOCALBASE}/lib/inotify -linotify" \
+			PCAP_CFLAGS="-I${LOCALBASE}/include/libpcap" \
+			PCAP_LIBS="-L${LOCALBASE}/lib/libpcap -Wl,-rpath,${LOCALBASE}/lib/libpcap -lpcap"
+</code></pre>
+<p><strong>⭐ 而 <code>inotify</code> 那条更典型：OpenBSD 的 inotify 是独立 port（<code>lib/inotify</code>），装在非标准路径下，所以要手工给 <code>-L</code> 和 <code>-rpath</code>。</strong></p>
+<h2>七、⭐ 第二个硬骨头：跨进程线程信号</h2>
+<p><strong>这是除了 <code>%gs</code> 之外的另一个大工程，而它的成因非常 OpenBSD。</strong></p>
+<p><strong><code>patch-dlls_ntdll_unix_sig_openbsd.c</code> 的注释原文：</strong></p>
+<blockquote><strong>「从 wineserver 发给客户端线程的信号总是要跨越进程边界。</strong></blockquote>>
+<blockquote><strong>在 OpenBSD 上你不能从另一个进程给一个线程发信号。<code>thrkill()</code> 只在同一进程内有效。</strong></blockquote>>
+<blockquote><strong>绕过它的办法是：用 SIGUSR2 把整个进程杀掉，然后内核把它投递给一个活跃线程。那个线程用 <code>thrkill()</code> 把每个排队的信号发给它的目标线程。</strong></blockquote>>
+<blockquote><strong>Chromium/Electron 主动使用这个机制来做采样 profiler 和 hang watcher。」</strong></blockquote>
+<strong>⭐ 翻译一下这个「绕法」：</strong>
+<ol>
+<li>1. <strong>wineserver 想给客户端的某个线程发信号</strong>（Wine 的架构里，wineserver 是「会话管理器」，客户端进程通过它受控）；</li>
+<li>2. <strong>正常做法是 <code>tkill(tid, tid, sig)</code> 或 <code>thrkill()</code>；</strong></li>
+<li>3. <strong>⭐ 但 OpenBSD 的 <code>thrkill()</code> 只允许同进程内调用（这是 OpenBSD 特有的安全收紧 —— 防止跨进程操纵线程）；</strong></li>
+<li>4. <strong>所以改成：给整个进程发 <code>SIGUSR2</code> → 内核把它投递给某个「活跃线程」 → 那个线程醒来，用 <code>thrkill()</code>（现在同进程了）把排队的信号转发给真正的目标线程。</strong></li>
+</ol>
+<strong>⭐ 而最后那句「Chromium/Electron 主动使用这个机制来做采样 profiler 和 hang watcher」非常关键 —— 因为它意味着这条路径</strong>不是 Wine 特有的<strong>，而是一个通用的、会被大量现代应用用到的机制。</strong>
+<p><strong>—— 换句话说：如果没有这个 patch，Wine 里的 Chromium/Electron 应用（VS Code、Slack、各种 Electron 桌面应用）的采样器和 hang watcher 都会失效。</strong></p>
+<p><strong>而 <code>patch-server_ptrace_c</code> 里还配套改了一处：</strong></p>
+<pre><code class="c"> void finish_process_tracing( struct process *process )
+ {
++#ifdef __OpenBSD__
++    finish_process_signal_targets( process );
++#endif
+ }
+</code></pre>
+<p><strong>—— 进程追踪结束时，必须把排队的信号目标清掉，否则会残留。</strong></p>
+<p><strong>⭐ 官方明确要求双向同步：</strong></p>
+<blockquote><strong>「这里的任何改动都必须同步反映到 server 的 <code>sig_openbsd</code>。」</strong></blockquote>
+<strong>（<code>server/sig_openbsd.c</code> 也在 44 个 patch 里。）</strong>
+<h2>八、⭐ 移植的实际效果：能跑什么，不能跑什么</h2>
+<p><strong>Thomas Frohwein 的原始提案给了一张表，我把它完整转述并加上解读：</strong></p>
+<h3>8.1 能跑的</h3>
+<table>
+<tr><th>项目</th><th>细节</th></tr>
+<tr><td><strong>锁屏、滑动解锁、主页（两页图标）、原版 iOS 16 壁纸</strong></td><td>—</td></tr>
+<tr><td><strong>系统手势</strong>：上滑（主页 / 应用切换）、边缘滑动（返回）、控制中心</td><td></td></tr>
+<tr><td><strong>应用</strong>：设置、时钟、日历、照片、备忘录、Safari 等；小组件（天气、日历）</td><td></td></tr>
+<tr><td><strong>触摸</strong>：Goodix GT9916，多点触控，触摸唤醒；真实电源键与音量键</td><td></td></tr>
+<tr><td><strong>8 个 CPU 核心</strong>（<code>cpus=8</code>），大核 2.4 GHz，<strong>约 20 秒到锁屏</strong></td><td></td></tr>
+<tr><td><strong>Adreno 642L GPU 通过 Mesa/freedreno</strong>（<code>gpu=1</code>，OpenGL ES for CoreAnimation）</td><td></td></tr>
+<tr><td><strong>Wi-Fi</strong>（WCN6750，ath11k）：从设置里连接、Wi-Fi 下 Safari，<strong>55–90 Mbit/s</strong></td><td></td></tr>
+<tr><td><strong>声音</strong>（扬声器、主麦克风）、相机（前/后、预览、对焦、HEIC 照片）</td><td></td></tr>
+<tr><td><strong>数据在重启后保留</strong>（<code>var_store=1 ufs_write=1</code>）；iOS 根卷在手机 flash 上</td><td></td></tr>
+<tr><td><strong>Sileo + Procursus</strong>（dpkg、apt）、tweaks、SSH</td><td></td></tr>
+</table>
+<h3>8.2 不能跑的</h3>
+<table>
+<tr><th>项目</th><th>细节</th></tr>
+<tr><td><strong>蜂窝网络、蓝牙</strong></td><td></td></tr>
+<tr><td><strong>在我们内核下充电</strong>（手机只放电）</td><td></td></tr>
+<tr><td><strong>应用的 Metal</strong>（进行中：456 个系统 shader 里 <strong>293 个</strong>已在 Adreno 上跑通）</td><td></td></tr>
+<tr><td><strong>App Store 内容与 Apple ID 登录</strong>（<strong>无 Secure Enclave</strong>；FairPlay daemon 退出）</td><td></td></tr>
+<tr><td><strong>视频与 Live Photo 录制</strong></td><td></td></tr>
+</table>
+<h3>8.3 ⭐ 最重要的两条限制</h3>
+<p><strong>① 「WoW64 doesn't work, so 32bit Windows software is still a no-op.」</strong></p>
+<p><strong>⭐ 这是整个移植</strong>最大<strong>的功能缺口 —— 而它的原因恰好又回到了 <code>%gs</code>：</strong></p>
+<p><strong>因为 WoW64 是「在 64 位 Windows 里跑 32 位 x86 代码」，而 32 位 x86 代码用的是完全不同的 TLS 访问模型（<code>%fs:0x30</code> 而非 <code>%gs:0x30</code>）。</strong> <strong>也就是说，32 位路径需要另一套模拟实现，而 Andrii 的这套是为 64 位设计的。</strong></p>
+<p><strong>② 「The builtin-tests are disabled for now.」</strong></p>
+<blockquote><strong>「启用它们相当麻烦，因为它们需要访问 X server，而且多个测试仍然会挂起 —— 尽管在用不少游戏做的真实生活测试中并没有观察到这一点。这仍在处理中。」</strong></blockquote>
+<strong>⭐ 我认为这条值得单独说：</strong> <strong>Wine 自带的测试套件被关掉了，理由是「需要 X server」且「多个测试仍然会挂起」。</strong>
+<p><strong>—— 也就是说，这个 port 目前是「靠人的手工验证」支撑的，没有自动化回归测试。</strong> <strong>而 Bryan Steele 的回复里那句「虽然有些粗糙的地方，但没有什么是不能在树内清理的」，正是从「测试关着」这个状态下得出的。</strong></p>
+<p><strong>⭐ 而 Stuart Henderson 的回复把真正的问题指向了维护成本：</strong></p>
+<blockquote><strong>「我很担心这一点。真的需要一些关于如何生成它们的信息，最好是一个能从 llvm/clang 源码 tarball 自动运行、并作为 emulators/wine 构建一部分的方法，这样 wine 就不会挡住每次 lang/clang 更新。</strong>'</blockquote>>
+<blockquote><strong>「如果不能自动，至少要有一个能从 make target 运行的东西。」</strong></blockquote>>
+<blockquote><strong>「（如果不是构建时自动的，那 BUILD_DEPENDS 就得锁到精确版本……）」</strong></blockquote>>
+<blockquote><strong>「这些大的补丁集有可能被合入上游吗？」</strong></blockquote>>
+<blockquote><strong>「有些 <code>#ifdef __OpenBSD__</code> 补丁看起来可以用对特定事物的检查（至少 xattrs 是，我不确定还有没有别的）来代替对 OpenBSD/非 OpenBSD 的条件判断。」</strong></blockquote>
+<strong>⭐ 这三条评论，每一条都指向 ports 生态的真实痛点：</strong>
+<ol>
+<li>1. <strong>⭐ 「wine 会不会挡住每次 lang/clang 更新」</strong> —— <strong>这是 ports 最经典的「port 拖累整个树」问题。</strong> <strong>因为 clang 的 PE 头文件（<code>clang/lib/Headers/*.h</code>）是 Windows 目标代码编译必需的，而 LLVM 每次升级都会动它们。</strong></li>
+</ol>
+<ol>
+<li>2. <strong>⭐ 那个 clang-pe 头文件问题的解法很巧妙</strong> —— 实测 Makefile：</li>
+</ol>
+   <pre><code class="makefile">   CLANG_PE_RESOURCE =	${WRKDIR}/clang-pe
+   LLVM_PREFIX =		${LOCALBASE}/llvm${MODCLANG_VERSION}
+   CLANG_RESOURCE =	${LLVM_PREFIX}/lib/clang/${MODCLANG_VERSION}
+   pre-configure:
+   	${INSTALL_DATA_DIR} ${CLANG_PE_RESOURCE}/include
+   	cp ${WRKDIR}/devel/llvm/<em>/</em>/clang/lib/Headers/*.h \
+   		${CLANG_PE_RESOURCE}/include/
+   	cp -R ${CLANG_RESOURCE}/include/. ${CLANG_PE_RESOURCE}/include/
+   </code></pre>
+<p>   <strong>⭐ 结合 Thomas Frohwein 邮件里贴的那句注释：</strong>
+   > <strong>「# keep this in sync with MODCLANG_VERSION」</strong>
+   > <strong>「# source for updates/new releases: https://thfr.gothub.org/wine-clang-pe-headers」</strong></p>
+<p>   <strong>—— 也就是说：</strong> <strong>Andrii/Thomas 在自己的 got hub 上维护了一份从 LLVM 提取出来的 clang PE 头文件（实测当前 tag 是 <code>22.1.8</code>，来自 <code>llvm 22.1.8</code>），并且在 Makefile 里用 <code>:patch</code> target 从 LLVM distfile 里自动提取（提交 <code>b38148f0</code> 干的就是这件事）。</strong></p>
+<p>   <strong>⭐ 这是一个「既自动又可手工」的折中：</strong> <strong>自动提取保证能跟上 LLVM 版本，外部仓库保证在提取失败时有个可用的兜底。</strong></p>
+<ol>
+<li>3. <strong>⭐ 「这些大的补丁集有可能被合入上游吗？」</strong> —— <strong>这是最要紧的一条。</strong> <strong>44 个 patch 里，<code>gs_openbsd.c</code> 那两个（44844 + 2244 字节）是最有上游价值的 —— 因为它们解决的是「Unix-like OS 上跑 Windows x64 代码」这个</strong>通用<strong>问题，不只是 OpenBSD 的问题。</strong></li>
+</ol>
+<strong>而 Thomas 在后续提交里做了一件很 OpenBSD 的事：</strong>
+<p><strong>2026-10-20 <code>6a68fef3</code>：<code>add OpenBSD to #ifdefs for parse_mount_entries</code></strong></p>
+<p><strong>—— 把 OpenBSD 加进上游代码里的 <code>#ifdef</code> 列表。</strong> <strong>⭐ 这是「向上游靠拢」的实际动作：让上游代码知道有 OpenBSD 这个平台存在，而不是把 OpenBSD 特有的逻辑全塞进 patch 里。</strong></p>
+<h2>九、⭐⭐ 十四年的距离</h2>
+<p><strong>这一节我想单独讲，因为它是我在实测提交历史里发现的最有冲击力的一个事实。</strong></p>
+<p><strong><code>path=emulators/wine</code> 的完整提交历史（实测）：</strong></p>
+<pre><code class="">2026-10-26 fef9ec33 Better: disable linux/input.h header in autoconf...
+2026-10-25 71cac71b hidden dep on linux/input.h; found by naddy@
+2026-10-22 4a90c8df update to wine 11.20. Tested by Andrii and me.
+2026-10-22 6086ce08 update distinfo
+2026-10-22 b38148f0 use clang headers from llvm distfile, extracted via a :patch target
+2026-10-20 6a68fef3 add OpenBSD to #ifdefs for parse_mount_entries
+2026-10-19 fd10d99c resolve merge conflicts by re-reading previously removed files
+2026-10-19 e441aff3 re-import emulators/wine
+─────────────────────── 15 年前 ───────────────────────
+2011-07-06 70ca2b7e Remove the wine port.
+2011-05-01 8be917e7 Use proper AUTOCONF_VERSION, from Brad.
+2010-11-15 a14bf26c new depends
+2010-10-24 ff07e285 Remove USE_X11.
+2010-10-23 ec8f9886 revision/lib_depends
+2010-10-19 ae27646c this port is unfinished, add a comment to make it even more obvious
+</code></pre>
+<p><strong>⭐ 注意 2010-10-19 那一条提交信息：</strong></p>
+<blockquote><strong><code>this port is unfinished, add a comment to make it even more obvious</code></strong></blockquote>>
+<blockquote>（<strong>这个 port 还没完成，加一条注释让它更明显</strong>。）</blockquote>
+<strong>—— 也就是说：上一次尝试（2010）不是被「技术不行」否掉的，而是被「做不完」否掉的 —— 作者自己加了个注释让所有人都知道这是个半成品，然后在半年后（2011-07）把它删了。</strong>
+<p><strong>⭐ 而 2026 年这一次，它被「re-import」了。</strong></p>
+<p><strong>Thomas 在邮件里用了「re-import」这个词，而实测提交 <code>fd10d99c</code> 的说明是「resolve merge conflicts by re-reading previously removed files」</strong> —— <strong>⭐ 这说明这次不是从零开始，而是把 2010 年那个半成品 port 的文件重新拉回来，然后在上面继续。</strong></p>
+<p><strong>—— 换句话说：十五年前那位作者留下的骨架，被两个人接力完成了。</strong></p>
+<p><strong>⭐ 而我认为这件事对 OpenBSD 社区的意义，比「Wine 能跑了」更大：</strong></p>
+<p><strong>2010 年那次失败的原因是「做不完」—— 一个人、业余时间、面对一个巨大的代码库。</strong> <strong>而 2026 年这次成功的原因是：一个人写出了那个「最难的部分」（<code>%gs</code> 模拟），另一个人把它接进 ports 体系并处理掉所有工程细节（构建系统、依赖、CI、上游配合）。</strong></p>
+<p><strong>—— 这是「个人技术突破」与「集体工程能力」叠加的典型案例，而 15 年的时间差，正好是这两者之间的差距。</strong></p>
+<h2>十、⭐⭐ 我认为这个故事最值得学的东西</h2>
+<h3>10.1 「安全决策」不是「不能逾越的墙」，而是「一个需要翻译的约束」</h3>
+<p><strong>⭐ 这是我认为整件事的核心洞察。</strong></p>
+<p><strong>OpenBSD 的 <code>%gs</code> 政策是对的 —— 它消除了一整类推测性侧信道攻击面。</strong> <strong>而通常的做法是「所以这个 port 做不了」。</strong></p>
+<p><strong>但 Andrii 做的是：把这条安全决策的</strong>语义<strong>提取出来，然后在不违反它的前提下重新实现它需要的功能。</strong></p>
+<p><strong>—— 具体来说：</strong> <strong>OpenBSD 说不许用户态设 GS base，那么 Windows 的「TEB 在 GS:0x30」这个语义就必须在</strong>已经固定<strong>的 GS 下模拟出来。</strong> <strong>既然 GS 永远是 0，那访问 <code>%gs:0x30</code> 就是访问零页 → 必然触发页错误 → 而页错误处理器是一个完美的「我在这里」的信号源。</strong></p>
+<p><strong>⭐ 换句话说：</strong> <strong>「GS 恒为 0」这个安全约束，非但没有阻止移植，反而提供了一个可靠的陷阱信号，让「运行时指令重写」成为可能。</strong></p>
+<p><strong>这是我在这个故事里看到的最漂亮的一次「把约束变成机会」。</strong></p>
+<h3>10.2 三级回退是一种「成本可预测」的工程方法</h3>
+<p><strong>⭐ Andrii 的三级策略（改写 / stub / SIGSEGV）本质上是一套「按指令形态选择最便宜实现」的机制：</strong></p>
+<ul>
+<li><strong>最常见的形态</strong>（<code>NtCurrentTeb()</code>）→ <strong>零成本改写</strong>；</li>
+<li><strong>绝大多数 5 字节以上的指令</strong> → <strong>一次跳转</strong>；</li>
+<li><strong>极少数短指令</strong> → <strong>付一次信号往返</strong>。</li>
+</ul>
+<strong>—— 这不是「先做个能跑的版本」，而是一个从一开始就</strong>按成本分档<strong>的设计。</strong> <strong>这在移植工作里特别重要，因为它让你知道「最坏情况有多坏」。</strong>
+<h3>10.3 ⭐ 而「报告覆盖边界」是这个故事里最该被学走的习惯</h3>
+<p><strong>Andrii 的 patch 注释里那几句：</strong></p>
+<blockquote><strong>「支持 0x67 前缀（32 位寻址模式），但 moffs 指令除外。</strong>'<br>
+<strong>「其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong></blockquote>
+<strong>⭐ 以及那句：</strong>
+<blockquote><strong>「这段代码是根据 LLM 生成的指令解码图手工编写的。指令列表由 LLM 提供，并用规范人工核对过。」</strong></blockquote>
+<strong>—— 三句话分别做了三件事：</strong> <strong>说清支持什么、说清不支持什么、以及</strong>明确区分「我没找到反例」和「我证明了没有反例」<strong>。</strong>
+<p><strong>⭐ 而这一点和 NVIDIA OpenShell 的 policy prover 恰好形成一组对照：</strong></p>
+<p><strong>—— 两天之内，本号要写的两篇文章，一个是「我检查不了的东西会明确报 <code>unsupported</code>」，一个是「我覆盖的边界会明确写下来」。</strong></p>
+<p><strong>⭐ 而这两个项目、两种风格、两种领域，却共享同一个内核品质：</strong></p>
+<blockquote><strong>明确说出「我不知道」比假装「我都覆盖了」更有价值。</strong></blockquote>
+<h2>Sources</h2>
+<ul>
+<li>openbsd/ports：emulators/wine（Makefile、44 个 patch、提交历史）：https://github.com/openbsd/ports/tree/master/emulators/wine</li>
+<li>openbsd-ports 邮件列表原始讨论（Thomas Frohwein 的移植提案，2026-10-18）：https://marc.info/?l=openbsd-ports&m=179236125692175</li>
+<li>回复 1（Bryan Steele）：https://marc.info/?l=openbsd-ports&m=179236426893591&w=2</li>
+<li>回复 2（Martijn van Duren，列出可运行的游戏）：https://marc.info/?l=openbsd-ports&m=179240622622831&w=2</li>
+<li>回复 3（Stuart Henderson，关于 clang 头文件与上游合并）：https://marc.info/?l=openbsd-ports&m=179240650723110&w=2</li>
+<li>openbsd-tech：Question - %gs support on OpenBSD（2026-09-29）：https://marc.info/?l=openbsd-tech&m=179067466617674&w=2</li>
+<li>openbsd-tech：Re（Story 的解释与自我更正）：https://marc.info/?l=openbsd-tech&m=179069358537094&w=2</li>
+<li>clang PE 头文件仓库：https://thfr.gothub.org/wine-clang-pe-headers</li>
+<li>Discover BSD 转载：New OpenBSD Port Proposed for Wine：https://discoverbsd.com/p/b82c0a61ca</li>
+<li>OSnews 转载：Wine ported to OpenBSD, runs modern Windows games：https://www.osnews.com/story/146195/wine-ported-to-openbsd-runs-modern-windows-games/</li>
+</ul>
+---
+<p>（说明：所有 patch 代码、提交信息、Makefile 内容、邮件列表引述均为实测一手材料；第 5.3 节引用的 patch 注释中关于 LLM 参与的表述为 Andrii Yukhymchak 原文；第九节「十四年的距离」一节依据的是实测的 ports 提交历史；第十节的三点归纳为笔者观点。）
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/",
+      title: "OpenBSD \u628a Wine \u79fb\u690d\u56de\u6765\u4e86\uff1a\u800c\u6253\u5f00\u5927\u95e8\u7684\u5173\u952e\uff0c\u662f\u4e00\u5957\u624b\u5199\u7684 x86 \u6307\u4ee4\u89e3\u7801\u5668"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

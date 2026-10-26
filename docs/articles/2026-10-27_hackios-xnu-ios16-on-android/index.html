@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上 — FreeLAMP.com</title>
+  <meta name="description" content="HackiOS 是一个独立研究项目：在不改写 iOS 用户态任何字节的前提下，让苹果开源的 XNU 内核（xnu-8796.121.2，即 iOS 16.5 的内核）运行在安卓手机硬件与 QEMU 上，跑出真正的 launchd → backboardd → SpringBoard → 应用。要做到这一点，需要自制 E">
+  <meta name="keywords" content="HackiOS, XNU, iOS, Darwin, 开源内核, 逆向工程, 安卓, POCO, QEMU, UEFI, EFI加载器, APFS, Metal, Mesa, freedreno, Goodix, 安全研究, 授权测试, CVE-2022-22706, Mali">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-27">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上">
+  <meta property="og:description" content="HackiOS 是一个独立研究项目：在不改写 iOS 用户态任何字节的前提下，让苹果开源的 XNU 内核（xnu-8796.121.2，即 iOS 16.5 的内核）运行在安卓手机硬件与 QEMU 上，跑出真正的 launchd → backboardd → SpringBoard → 应用。要做到这一点，需要自制 E">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-27">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="HackiOS">
+  <meta property="article:tag" content="HackiOS">
+  <meta property="article:tag" content="XNU">
+  <meta property="article:tag" content="iOS">
+  <meta property="article:tag" content="Darwin">
+  <meta property="article:tag" content="开源内核">
+  <meta property="article:tag" content="逆向工程">
+  <meta property="article:tag" content="安卓">
+  <meta property="article:tag" content="POCO">
+  <meta property="article:tag" content="QEMU">
+  <meta property="article:tag" content="UEFI">
+  <meta property="article:tag" content="EFI加载器">
+  <meta property="article:tag" content="APFS">
+  <meta property="article:tag" content="Metal">
+  <meta property="article:tag" content="Mesa">
+  <meta property="article:tag" content="freedreno">
+  <meta property="article:tag" content="Goodix">
+  <meta property="article:tag" content="安全研究">
+  <meta property="article:tag" content="授权测试">
+  <meta property="article:tag" content="CVE-2022-22706">
+  <meta property="article:tag" content="Mali">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上">
+  <meta name="twitter:description" content="HackiOS 是一个独立研究项目：在不改写 iOS 用户态任何字节的前提下，让苹果开源的 XNU 内核（xnu-8796.121.2，即 iOS 16.5 的内核）运行在安卓手机硬件与 QEMU 上，跑出真正的 launchd → backboardd → SpringBoard → 应用。要做到这一点，需要自制 E">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上",
+  "description": "来源：oosexgang/hackios-xnu-kernelhttps://github.com/oosexgang/hackios-xnu-kernel 的 README 与 docs/（ROOT-WRITEUP.md、COMPATIBLE-DEVICES.md、RECOVERY.md、PROVENANCE.md）、exploit/README.mdhttps://gitlab.com/c4p",
+  "datePublished": "2026-10-27",
+  "dateModified": "2026-10-27",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "HackiOS, XNU, iOS, Darwin, 开源内核, 逆向工程, 安卓, POCO, QEMU, UEFI, EFI加载器, APFS, Metal, Mesa, freedreno, Goodix, 安全研究, 授权测试, CVE-2022-22706, Mali"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上",
+        "item": "https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-27">2026-10-27</div>
+        <h1 class="post-title" itemprop="headline">HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/HackiOS/">HackiOS</a><a itemprop="keywords" href="/tags/XNU/">XNU</a><a itemprop="keywords" href="/tags/iOS/">iOS</a><a itemprop="keywords" href="/tags/Darwin/">Darwin</a><a itemprop="keywords" href="/tags/%E5%BC%80%E6%BA%90%E5%86%85%E6%A0%B8/">开源内核</a><a itemprop="keywords" href="/tags/%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B/">逆向工程</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%8D%93/">安卓</a><a itemprop="keywords" href="/tags/POCO/">POCO</a><a itemprop="keywords" href="/tags/QEMU/">QEMU</a><a itemprop="keywords" href="/tags/UEFI/">UEFI</a><a itemprop="keywords" href="/tags/EFI%E5%8A%A0%E8%BD%BD%E5%99%A8/">EFI加载器</a><a itemprop="keywords" href="/tags/APFS/">APFS</a><a itemprop="keywords" href="/tags/Metal/">Metal</a><a itemprop="keywords" href="/tags/Mesa/">Mesa</a><a itemprop="keywords" href="/tags/freedreno/">freedreno</a><a itemprop="keywords" href="/tags/Goodix/">Goodix</a><a itemprop="keywords" href="/tags/%E5%AE%89%E5%85%A8%E7%A0%94%E7%A9%B6/">安全研究</a><a itemprop="keywords" href="/tags/%E6%8E%88%E6%9D%83%E6%B5%8B%E8%AF%95/">授权测试</a><a itemprop="keywords" href="/tags/CVE-2022-22706/">CVE-2022-22706</a><a itemprop="keywords" href="/tags/Mali/">Mali</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://github.com/oosexgang/hackios-xnu-kernel">oosexgang/hackios-xnu-kernel</a> 的 README 与 <code>docs/</code>（ROOT-WRITEUP.md、COMPATIBLE-DEVICES.md、RECOVERY.md、PROVENANCE.md）、<a href="https://gitlab.com/c4psu13/mali-pagecache-root">exploit/README.md</a>（同团队的 Mali 页缓存 root 工具链）、<strong><a href="https://starlabs.sg/blog/2025/02-mali-cious-intent-exploiting-gpu-vulnerabilities-cve-2022-22706-/-cve-2021-39793/">STAR Labs：Mali-cious Intent</a></strong>（CVE-2022-22706 的独立技术分析）、CVE 官方记录<br>
+实测仓库元信息（2026-10-27 抓取）：<strong><code>oosexgang/hackios-xnu-kernel</code></strong>，<strong>1,594 stars / 289 forks / 8 open issues</strong>，创建于 <strong>2026-10-22</strong>，主语言 <strong>C</strong>，仓库体积 <strong>192 MB</strong>，License 显示 <strong>NOASSERTION</strong>（实为 APSL 2.0，见正文）；姊妹仓库 <strong><code>oosexgang/hackios-xnu-userland</code>（388 stars）</strong>、<strong><code>oosexgang/hackios-web</code>（54 stars）</strong>。<br>
+⚠️ <strong>本文严格限定在「已公开的研究性工具」范畴内描述，不提供任何操作步骤、可执行命令或绕过步骤。所有涉及设备改写、漏洞利用、刷写的内容仅作事实性转述，且转述对象本身即为项目公开文档。</strong><br>
+本文为<strong>解读</strong>。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>HackiOS 做的事情，在一句话里是：「把 iOS 16.5 的用户态，原封不动地搬到 XNU 开源内核上跑起来 —— 而 XNU 开源内核不是跑在 iPhone 上，是跑在安卓手机和 QEMU 里。」</strong></p>
+<p><strong>而它的技术含量恰恰不在「跑起来」，在「怎么在不碰 iOS 用户态的前提下补齐苹果闭源的那一半」。</strong></p>
+<p><strong>项目 README 自己划定的边界非常清楚：</strong></p>
+<blockquote><strong>「HackiOS 在一台 TCL 安卓电视的固件上引导苹果的开源 XNU 内核（<code>xnu-8796.121.2</code>，即 iOS 16.5 的内核），并在上面运行</strong>未修改的<strong> iOS 16.5 用户态：launchd → backboardd → SpringBoard → 应用。</strong>我们自己的 EFI 加载器、我们自己写的苹果闭源驱动替代品、一个 UEFI 移植、以及一层运行在兼容层上的 Linux Wi-Fi 驱动，共同使之成为可能。」**</blockquote>
+<strong>⭐ 注意那句「</strong>未修改的 iOS 16.5 用户态<strong>」—— 这是整个项目的技术命题，也是它最值得研究的地方：</strong>
+<p><strong>它把「让 iOS 跑起来」这件事，转化成了一个「</strong>如何在 XNU 里补出苹果闭源驱动所提供的能力<strong>」的纯工程问题 —— 而完全不需要理解 iOS 应用逻辑。</strong></p>
+<h2>二、⭐ 三个必须先说清的事实（这也是项目自己反复强调的）</h2>
+<p><strong>我在读完全部文档后认为，这三条是理解这个项目的前提，而它们恰好是这类项目最容易被报道模糊掉的地方。</strong></p>
+<h3>2.1 「不刷机」：整个系统活在 RAM 里</h3>
+<p><strong>README：</strong></p>
+<blockquote><strong>「POCO X5 Pro 5G（redwood，骁龙 778G）—— </strong>不刷任何东西<strong>：UEFI 用 <code>fastboot boot</code> 启动，整个系统活在 RAM 里，重启后手机就回到安卓。」</strong></blockquote>
+<strong>⭐ 这条设计决定了项目的性质 —— 它是「研究台（research bench）」而不是「ROM」：</strong>
+<p><strong>README 明确说：</strong></p>
+<blockquote><strong>「它是一个研究台，不是 ROM：一个会话持续特定的秒数，然后内核返回加载器并交出它的日志。」</strong></blockquote>
+<strong>—— 也就是说：手机每次重启都会回到安卓，不存在「刷了砖」的风险（除了下面第 2.3 节要讲的那两次历史失败，那是另一回事）。</strong>
+<h3>2.2 ⭐ 只验证过一个机型</h3>
+<p><strong>COMPATIBLE-DEVICES.md 的第一句：</strong></p>
+<blockquote><strong>「这个项目中唯一的历史全链成功记录是 TCL QLED 50C721 / BeyondTV6，安卓 11，V8-R51MT02-LF1V903 (AR10)，内核 4.14.198+，ARMv7 32 位用户态。</strong>没有其他任何电视或流媒体盒子被确立为兼容。<strong>」</strong></blockquote>
+<strong>⭐ 而且文档自己列出了两个「身份识别不一致」的问题：</strong>
+<blockquote><strong>「原始记录称 SoC 为 RTD1319，而社区 TCL 文档把 R51MT02 平台映射到 RTD2851M。</strong>固件家族名称不是独立的芯片识别。<strong>」</strong></blockquote>>
+<blockquote><strong>「原始笔记报告 Mali-G31 驱动 r26p0-01eac0，而后来的源码文档说是 r28p0。</strong>两者都没有在此处以新鲜验证的方式呈现。<strong>」</strong></blockquote>
+<strong>⭐ 而文档给出的「换一台机器前必须先确定什么」清单，是我认为全文最实用的一段：</strong>
+<blockquote><strong>「一个共同的品牌、SoC、GPU 或安卓版本</strong>都是不够的<strong>。在考虑对另一台设备做受控测试之前，先确定：</strong></blockquote>>
+<blockquote><strong>1. 精确的板型/型号后缀、地区、构建指纹、内核与用户态架构。</strong><br>
+<strong>2. 实际的 Mali 驱动实现与补丁状态，考虑厂商的 backport。</strong><br>
+<strong>3. 设备节点访问权限、内核映射检查，以及 GPU 与 Realtek 内存接口两者的 SELinux 策略。</strong><br>
+<strong>4. 匹配的库代码、指令偏移与内核/物理内存布局。</strong>永远不要基于零售机型名复用固定地址。<em>*</em>*<br>
+<strong>5. 相关进程/服务行为，加上一个独立验证过的恢复路径与数据备份。」</strong></blockquote>
+<strong>⭐ 而最后一条附注极其重要：</strong>
+<blockquote><strong>「清单应当只读；运行这些程序不是一种硬件识别方法。</strong>只有在有了针对确切固件的证据、观察到的凭据状态与 SELinux 状态之后，才把另一台设备提升为「已测试」。<strong>」</strong></blockquote>
+<strong>—— 「运行这些程序不是硬件识别方法」这句话，是整个仓库里最有价值的一句免责与纪律声明。</strong>
+<h3>2.3 ⚠️ 两次刷写失败：bootloop</h3>
+<p><strong>RECOVERY.md 的记录非常坦诚：</strong></p>
+<blockquote><strong>「在那台测试用的 TCL 50C721 上，</strong>两次<strong>历史上的 boot/vbmeta 修改尝试导致了 bootloop。机主使用匹配的 USB 固件镜像恢复了电视。</strong>不要重复那些失败的修改；本文没有提供任何可用的持久 root 刷写流程。<strong>」</strong></blockquote>
+<strong>而 ROOT-WRITEUP.md 把它归类为「观察到的失败」：</strong>
+<blockquote><strong>「</strong>观察到的失败<strong>：一次修改 boot 镜像的尝试，以及随后一次 boot/vbmeta 修改尝试，都导致了 bootloop。</strong>两次都用 USB 固件恢复了。<strong>」</strong></blockquote>
+<strong>⭐ 而且文档明确列出了「未确立」的事项：</strong>
+<blockquote><strong>「</strong>未确立<strong>：一个可用的 Magisk 安装、</strong>安全的 boot/vbmeta 补丁配方<strong>、持久 root 的普遍不可行性、或导致失败的</strong>确切内部签名检查序列<strong>。」</strong></blockquote>
+<strong>README 里那句警告也值得原样引用：</strong>
+<blockquote><strong>「</strong>不要基于这个项目刷入打过补丁的 boot 或 vbmeta 镜像。两次历史尝试都导致 bootloop；既没有确立持久 root 方法，也没有确立通用的恢复保证。<strong>」</strong></blockquote>
+<h2>三、⭐ 架构：它是怎么把「缺的东西」补齐的</h2>
+<p><strong>README 给出的架构图（原文照录）：</strong></p>
+<pre><code class="">fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
+                                           │  stays resident: USB link (fastboot protocol),
+                                           │  watchdog, receives the kernel's log
+                                           ▼
+            XNU (BCM2837 config as the base + our platform)
+              ├─ GICv3, timer, video console, return to the loader
+              ├─ APFS (images in RAM, iOS volume on flash), ramfs (/private/var, /tmp)
+              ├─ minicrypto instead of corecrypto, AMFI and Sandbox stand-ins (MAC policies)
+              ├─ driver replacements: IOSurface, IOMobileFramebuffer, AppleKeyStore, network stack
+              ├─ input: /dev/redwood-touch ◄─ Goodix GT9916 (phone) / virtio-input (QEMU)
+              ├─ GPU: Adreno 642L, Wi-Fi: WCN6750 (ath11k via LinuxKPI), sound: ADSP / virtio-sound
+              ▼
+   iOS 16.5 launchd → logd, notifyd, cfprefsd, runningboardd, backboardd, SpringBoard, apps
+              ├─ our libraries are injected into backboardd, SpringBoard and mediaserverd
+              │  (virtual HID services, a few ObjC method swaps — in memory only)
+              └─ mediaserverd gets our CoreAudio output device (RedwoodAudio.driver)
+</code></pre>
+<p><strong>⭐ 逐层拆解这个图，我会把它分成三类：</strong></p>
+<h3>3.1 第一类：「苹果闭源的，用等价物替代」</h3>
+<table>
+<tr><th>苹果的</th><th>替代品</th><th>说明</th></tr>
+<tr><td><strong>corecrypto</strong></td><td><strong>minicrypto</strong></td><td>苹果的加密实现是闭源的，OpenSSL 的 minicrypto 顶上</td></tr>
+<tr><td><strong>AMFI / Sandbox</strong>（代码签名与沙箱）</td><td><strong>stand-ins</strong></td><td><strong>用替身实现 MAC 策略</strong></td></tr>
+<tr><td><strong>IOSurface</strong>（图形合成核心）</td><td><strong>自写驱动替代</strong></td><td>CoreAnimation 依赖它</td></tr>
+<tr><td><strong>IOMobileFramebuffer</strong></td><td><strong>自写驱动替代</strong></td><td>显示输出</td></tr>
+<tr><td><strong>AppleKeyStore</strong></td><td><strong>自写驱动替代</strong></td><td>钥匙串</td></tr>
+<tr><td><strong>Apple 网络栈</strong></td><td><strong>自写驱动替代</strong></td><td>网络协议栈</td></tr>
+<tr><td><strong>CoreAudio 输出设备</strong></td><td><strong>RedwoodAudio.driver</strong></td><td>注入到 mediaserverd</td></tr>
+</table>
+<p><strong>⭐ 注意这一类的策略选择：不是「破解苹果的」，而是「做一个能满足同一套 API 契约的」。</strong> <strong>这正是「让未修改的 iOS 用户态跑起来」这个命题的解法 —— 用户态要什么接口，你就提供什么接口。</strong></p>
+<h3>3.2 第二类：「把安卓的东西翻译给 XNU」</h3>
+<table>
+<tr><th>硬件</th><th>在 XNU 里的呈现</th></tr>
+<tr><td><strong>Goodix GT9916 触摸</strong></td><td><strong><code>/dev/redwood-touch</code></strong>（自写驱动）</td></tr>
+<tr><td><strong>QEMU</strong></td><td><strong>virtio-input</strong></td></tr>
+<tr><td><strong>WCN6750 Wi-Fi</strong></td><td><strong>ath11k，通过 LinuxKPI 兼容层</strong></td></tr>
+<tr><td><strong>ADSP 音频</strong></td><td><strong>ADSP</strong>（高通 DSP）</td></tr>
+<tr><td><strong>QEMU 音频</strong></td><td><strong>virtio-sound</strong></td></tr>
+<tr><td><strong>GPU</strong></td><td><strong>Adreno 642L</strong>（走 Mesa/freedreno）</td></tr>
+</table>
+<p><strong>⭐ Wi-Fi 那一项技术含量最高。</strong> <strong>它把 Linux 的 <code>ath11k</code> 驱动（一个完整的现代 mac80211 无线栈实现）编译到 </strong>FreeBSD 的 LinuxKPI 兼容层<strong>上跑在 XNU 里 —— 而 XNU 本身就是 FreeBSD 血统。</strong></p>
+<p><strong>仓库目录结构也印证了这一点：</strong></p>
+<pre><code class="">| <code>wifi/lx/</code> | Linux 的 Wi-Fi 驱动构建到我们的内核之上的那一层 |
+</code></pre>
+<p><strong>—— 目录名 <code>lx</code> 就是「Linux compatibility layer on XNU」。</strong></p>
+<h3>3.3 第三类：「苹果的运行时环境，用注入而非改写」</h3>
+<blockquote><strong>「iOS 程序、框架与 dyld 共享缓存</strong>没有一字节被改动<strong>：它们缺的东西要么由内核（驱动替代）补上，要么由内核用 <code>DYLD_INSERT_LIBRARIES</code> 注入的库补上（<code>kern.exec_inject</code>）。」</strong></blockquote>
+<strong>⭐ 而 README 的架构图里更具体：</strong>
+<blockquote><strong>「我们的库被注入到 backboardd、SpringBoard 和 mediaserverd 中（虚拟 HID 服务、少量 ObjC 方法替换 —— 仅在内存中）。」</strong></blockquote>
+<strong>—— 「仅在内存中」这四个字很重要：</strong> <strong>它意味着不修改磁盘上的任何 iOS 文件，所有注入都是运行时行为。</strong>
+<p><strong>⭐ 而这项技术有一个非常漂亮的副产物：</strong></p>
+<blockquote><strong>「iOS 程序、框架与 dyld 共享缓存没有一字节被改动」</strong></blockquote>
+<strong>—— 换句话说：如果你想研究「SpringBoard 到底做了什么」，这是目前唯一一条能在开源硬件上、原样观察它的路径。</strong> <strong>你甚至可以拿一个内存 dump 来看它被注入后的行为。</strong>
+<h2>四、⭐ 为什么是 XNU，而不是 Darwin 或 iOS 内核的其他版本</h2>
+<p><strong>README 里有一句容易被忽略但很关键的话：</strong></p>
+<blockquote><strong>「XNU（BCM2837 配置作为基础 + 我们的平台）」</strong></blockquote>
+<strong>⭐ BCM2837 —— 这是树莓派 3 的 SoC（Broadcom BCM2837，ARM Cortex-A53 × 4）。</strong>
+<p><strong>而它的含义是：</strong> <strong>XNU 本身有多个平台配置（iPhone 的、Mac 的、还有开源硬件用的），HackiOS 选的是「BCM2837 配置」作为基线，然后往上叠自己的平台层。</strong></p>
+<p><strong>这个选择非常务实：</strong></p>
+<ol>
+<li>1. <strong>BCM2837 配置是 XNU 里最接近「通用嵌入式」的平台配置</strong> —— 它面向的是树莓派这类单板机，有完整的设备树、GIC 中断、视频 console，而不是 iPhone 那种高度耦合的硬件；</li>
+<li>2. <strong>它避开了 iPhone 平台配置里大量的私有组件</strong>（比如 iBoot、SEP/TZ、无线基带、显示协处理器等）；</li>
+<li>3. <strong>而且 XNU 早已被用于 Raspberry Pi —— 也就是说「在第三方硬件上跑 XNU」这件事本身是有先例的。</strong></li>
+</ol>
+<strong>⭐ 而 README 列出的内核侧工作印证了这一点：</strong>
+<blockquote><strong>「GICv3、定时器、视频 console、返回加载器」</strong></blockquote>
+<strong>—— GICv3（Generic Interrupt Controller v3）是 ARM 服务器/嵌入式平台用的通用中断控制器，而不是 iPhone 那套定制中断方案。</strong> <strong>加上「返回加载器」—— 内核必须能干净地退出回 EFI 加载器。</strong>
+<h2>五、⭐ EFI 加载器：整套方案里最「反直觉」的一环</h2>
+<p><strong>README 的 <code>xnuloader/</code> 描述：</strong></p>
+<blockquote><strong>「加载器：<code>xnuloader/build.sh</code>（clang + lld-link，一个</strong>不使用 EDK2<strong> 的 EFI 应用）。」</strong></blockquote>
+<strong>⭐ 「一个不使用 EDK2 的 EFI 应用」—— 这句话信息量很大。</strong>
+<p><strong>EDK2 是绝大多数 UEFI 实现所用的参考固件（Clover、OVMF、EDK2 本身）。</strong> <strong>而这个项目选择自己写一个最小的 EFI 应用，只做四件事：</strong></p>
+<blockquote><strong>「留在内存中：USB 链路（fastboot 协议）、看门狗、接收内核的日志」</strong></blockquote>
+<strong>—— 也就是说：它不是「一个完整 UEFI 固件」，而是「一个能被 <code>fastboot boot</code> 加载的最小 EFI 程序」。</strong>
+<p><strong>⭐ 而 UEFI 那一层是</strong>移植<strong>来的：</strong></p>
+<blockquote><strong>「UEFI —— [uefi/README.md]（Project Silicium 移植）；运行不需要它，<code>prebuilt/uefi</code> 里已经有了。」</strong></blockquote>
+<strong>Project Silicium 正是那个为树莓派做 UEFI 固件的著名项目。</strong> <strong>所以整体链路是：</strong>
+<pre><code class="">手机上的 UEFI (Silicium 移植，含 HackiOS 自己的 loader)
+   └─► fastboot 载入 xnuloader
+          └─► 载入内核 + 系统镜像进 RAM
+                 └─► XNU 启动
+</code></pre>
+<p><strong>⭐ 而 README 里「Every release has <code>hackios-redwood-boot.img</code> attached」说明：</strong> <strong>发布物是一个可以直接 <code>fastboot boot</code> 的完整启动镜像。</strong></p>
+<h2>六、⭐ QEMU 路径：让没有设备的人也能参与</h2>
+<p><strong>README 专门给了一条「不需要编译内核」的路径：</strong></p>
+<blockquote><strong>「<code>prebuilt/</code> 里放着从这些仓库构建出来的内核、加载器和我们的程序，所以你唯一需要的是系统镜像 —— 而它是在你自己的机器上从苹果的 IPSW 做出来的。」</strong></blockquote>
+<strong>⭐ 注意这个设计的关键点：</strong>
+<p><strong>—— 「从苹果的 IPSW 做出来的」</strong> <strong>而 IPSW 是苹果 iOS 的官方固件包（公开下载）。</strong> <strong>仓库自己强调：</strong></p>
+<blockquote><strong>「</strong>两个仓库里都没有任何苹果的文件。<strong> <code>ios165/fetch.sh</code> 从苹果自己的 CDN 下载 iOS 16.5 的 IPSW 到</strong>你的<strong>机器，并在那里解出需要的东西。」</strong></blockquote>
+<strong>⭐ 这是一个在合规上很讲究的设计：</strong>
+<ul>
+<li><strong>仓库里不含任何 Apple 版权文件</strong>（所以 fork 不会因为分发苹果的二进制而有问题）；</li>
+<li><strong>每个使用者在自己机器上从官方 CDN 拉取</strong>；</li>
+<li><strong>而且 README 明确声明：</strong></li>
+</ul>
+<blockquote><strong>「HackiOS 是 OOSEX GANG 的独立研究项目，与 Apple Inc. 无关，未获 Apple Inc. 授权或认可。」</strong></blockquote>
+<strong>QEMU 的资源需求也写得很具体：</strong>
+<blockquote><strong>「需要：Linux x86-64、约 12 GB 空闲磁盘、4 GB 空闲内存。」</strong></blockquote>
+<strong>⭐ 而这一点我觉得值得单独强调：12 GB 磁盘、4 GB 内存 —— </strong>这意味着<strong>任何关心 iOS 内部机制的研究者，在一台普通 Linux 笔记本上就能搭起一个 iOS 16.5 环境</strong>，不需要设备、不需要越狱、不需要刷机。**
+<p><strong>而交互方式还做了适配（README）：</strong></p>
+<blockquote><strong>「按住鼠标左键 = 手指。从屏幕最下边缘上滑：解锁 / 离开应用；从左边缘滑：返回。」</strong></blockquote>>
+<blockquote><strong>「按键：<code>H</code> 主页、<code>L</code> 锁/电源、<code>↑</code>/<code>↓</code> 音量、<code>F11</code>（按住）五指。」</strong></blockquote>>
+<blockquote><strong>「脚本调用：<code>qemu/touch.py swipe 0.5 0.985 0.5 0.3 250</code>、<code>qemu/touch.py tap 0.615 0.71</code>、<code>qemu/touch.py key home</code>；截图：<code>qemu/screendump.sh shot.png</code>。」</strong></blockquote>
+<strong>⭐ 「按住鼠标左键 = 手指」这个映射很聪明 —— 因为 iOS 的手势语义（长按、边缘滑动、多指）是触屏特有的，而鼠标只有单键。</strong> <strong>用「按住时长」来模拟多指/长按，是把触屏交互映射到鼠标的最直接办法。</strong>
+<h2>七、⭐ 实测的功能边界：能做什么，不能做什么</h2>
+<p><strong>README 的两列表格我完整转述（这是这类项目最需要诚实呈现的部分）：</strong></p>
+<h3>7.1 能做的</h3>
+<table>
+<tr><th>能力</th><th>细节</th></tr>
+<tr><td><strong>锁屏、滑动解锁、主页（两页图标）、原版 iOS 16 壁纸</strong></td><td></td></tr>
+<tr><td><strong>系统手势</strong>：上滑（主页 / 应用切换）、边缘滑动（返回）、控制中心</td><td></td></tr>
+<tr><td><strong>应用</strong>：设置、时钟、日历、照片、备忘录、Safari 等；小组件（天气、日历）</td><td></td></tr>
+<tr><td><strong>触摸</strong>：Goodix GT9916、多点触控、触摸唤醒；<strong>真实电源键与音量键</strong></td><td></td></tr>
+<tr><td><strong>8 个 CPU 核心</strong>（<code>cpus=8</code>），大核 2.4 GHz，<strong>约 20 秒到锁屏</strong></td><td></td></tr>
+<tr><td><strong>Adreno 642L GPU</strong> 通过 Mesa/freedreno（<code>gpu=1</code>，CoreAnimation 用 OpenGL ES）</td><td></td></tr>
+<tr><td><strong>Wi-Fi</strong>（WCN6750，ath11k）：设置里连接、Wi-Fi 下 Safari，<strong>55–90 Mbit/s</strong></td><td></td></tr>
+<tr><td><strong>声音</strong>（扬声器、主麦克风）、<strong>相机</strong>（前/后、预览、对焦、HEIC 照片）</td><td></td></tr>
+<tr><td><strong>数据在重启后保留</strong>（<code>var_store=1 ufs_write=1</code>）；iOS 根卷在手机 flash 上</td><td></td></tr>
+<tr><td><strong>Sileo + Procursus</strong>（dpkg、apt）、tweaks、SSH</td><td></td></tr>
+</table>
+<h3>7.2 不能做的</h3>
+<table>
+<tr><th>能力</th><th>原因</th></tr>
+<tr><td><strong>蜂窝网络、蓝牙</strong></td><td></td></tr>
+<tr><td><strong>在我们内核下充电</strong>（手机只放电）</td><td></td></tr>
+<tr><td><strong>应用的 Metal</strong></td><td>进行中：<strong>456 个系统 shader 里 293 个</strong>已在 Adreno 上跑通（<code>docs/air.md</code>）</td></tr>
+<tr><td><strong>App Store 内容与 Apple ID 登录</strong></td><td><strong>无 Secure Enclave</strong>；FairPlay daemon 退出</td></tr>
+<tr><td><strong>视频与 Live Photo 录制</strong></td><td></td></tr>
+</table>
+<p><strong>⭐ 三个「不能做」的原因特别值得说：</strong></p>
+<p><strong>① 「无 Secure Enclave」→ App Store 与 Apple ID 登录不可用</strong></p>
+<p><strong>⭐ 这是</strong>架构性<strong>限制，不是没实现。</strong> <strong>Secure Enclave 是苹果设备里一个独立的协处理器，密钥材料从不进入主 CPU。</strong> <strong>而 HackiOS 跑在通用安卓硬件上 —— 那里根本没有这个协处理器。</strong></p>
+<p><strong>—— 所以任何依赖硬件密钥保护的流程（Apple ID 登录、DRM、FairPlay）都必然走不通。</strong> <strong>这不是「还没做」，而是「做不了」。</strong></p>
+<p><strong>② 「Metal 不行，但 293/456 个 shader 已跑通」</strong></p>
+<p><strong>⭐ 这一条展示了 Metal → OpenGL ES 翻译工作的真实进度。</strong> <strong>iOS 的 UI 框架（CoreAnimation）历史上依赖 Metal。</strong> <strong>HackiOS 走的是「用 Mesa/freedreno 提供 OpenGL ES，然后做一层 Metal→GLES 翻译」。</strong></p>
+<p><strong>—— 而 456 个系统 shader 里跑通 293 个（约 64%），这个数字说明：</strong> <strong>翻译层已经覆盖了大多数系统界面效果，但还不足以支撑全部应用与游戏。</strong></p>
+<p><strong>③ 「在我们的内核下充电（手机只放电）」</strong></p>
+<p><strong>⭐ 这是最容易被忽略但最「物理」的一条。</strong> <strong>它说明这个移植目前连「电源管理」这一层都还没有做 —— 而这恰恰是 XNU 的 charge driver 依赖的、深度耦合到 iPhone 硬件的部分。</strong></p>
+<h2>八、⭐⭐ 安全研究成分：同团队的 Mali 页缓存 root 工具链</h2>
+<p><strong>这个项目还有一个平行的姊妹工程，而它比 XNU 移植本身更有安全研究价值 —— 因为它涉及一个真实的、已被 CISA 列入 KEV 的漏洞。</strong></p>
+<p><strong><code>oosexgang</code>（或者说 <code>c4psu13</code>）在 GitLab 上另有一个仓库：<code>mali-pagecache-root</code>。</strong></p>
+<p><strong>它的自我描述：</strong></p>
+<blockquote><strong>「TCL 50C721（RTD1319 / Mali-G31）root 工具链 —— 自主的 CVE-2022-22706 利用链。」</strong></blockquote>
+<strong>README 的实测范围表：</strong>
+<table>
+<tr><th>项</th><th>记录中的测试单元</th></tr>
+<tr><td>电视</td><td>TCL QLED 50C721 / BeyondTV6</td></tr>
+<tr><td>固件</td><td>V8-R51MT02-LF1V903，build AR10</td></tr>
+<tr><td>安卓 / 内核</td><td>安卓 11 / 4.14.198+</td></tr>
+<tr><td>SoC / GPU</td><td>Realtek RTD1319 / Mali-G31（Bifrost，kbase r28p0）</td></tr>
+<tr><td>用户态</td><td>32 位 ARMv7</td></tr>
+<tr><td>已报告的安全补丁</td><td>2024-03-05</td></tr>
+<tr><td>历史结果</td><td>uid=0 的 ADB shell；SELinux Permissive</td></tr>
+</table>
+<p><strong>⭐ 而它的 PROVENANCE.md 写得很规范（这一点值得肯定）：</strong></p>
+<blockquote><strong>「利用 CVE-2022-22706 的页缓存写技术从 [byt3quester/CVE-2022-22706-poc] 学习（检视于 revision 9138fcf），该仓库在 QEMU 目标上针对 x86_64 的 <code>/etc/passwd</code> 演示了这个漏洞。</strong></blockquote>>
+<blockquote><strong>本仓库中的代码是为 ARM32 安卓电视独立编写的（TCL BeyondTV6，Realtek RTD1319）。它针对不同的文件（libc.so 页缓存），使用自定义的 Thumb-2 shellcode 通过 <code>/dev/rtkmem</code> 禁用 SELinux，并通过内核 task_struct 遍历实现提权 —— 这些在上游 PoC 中都不存在。没有代码从上游仓库复制。」</strong></blockquote>
+<strong>⭐ 「没有代码从上游仓库复制」+ 指明学习来源与检视的 revision —— 这是</strong>研究诚信<strong>的标准写法。</strong>
+<h3>8.1 CVE-2022-22706 本身：一个已进 KEV 的漏洞</h3>
+<p><strong>CVE 官方记录：</strong></p>
+<blockquote><strong>「Arm Mali GPU Kernel Driver 允许非特权用户获得对只读内存页的写访问。</strong><br>
+<strong>影响 Midgard r26p0 至 r31p0、Bifrost r0p0 至 r35p0、Valhall r19p0 至 r35p0。」</strong></blockquote>
+<strong>⭐ 而 STAR Labs 的独立分析（2025-02）把这个漏洞讲得更透，并给出了 PoC：</strong>
+<blockquote><strong>「我们发现了 ARM Mali GPU 内核驱动中 <code>kbase_jd_user_buf_pin_pages()</code> 函数的一个严重漏洞……关键在于 <code>KBASE_REG_GPU_WR</code>（GPU 写）与 <code>KBASE_REG_CPU_WR</code>（CPU 写）这两个标志 —— 它们告诉驱动需要什么类型的访问。</strong>一个应用要获得 GPU 写访问，应当需要两个标志都设置，但代码只检查了 <code>KBASE_REG_GPU_WR</code> 标志，留下了一个大洞。<em>*</em>*</blockquote>
+<strong>⭐ 而且 STAR Labs 的 PoC 是在真机上跑的：</strong>
+<blockquote><strong>「测试版本：Pixel 6，MP1.0，2022 —— </strong>降级<strong>到 安卓 12.0.0（<code>SD1A.210817.015.A4</code>，2021-10-17）」</strong></blockquote>>
+<blockquote><strong>「这个 Termux 输出展示了利用的上下文，从一个</strong>不可信的、非特权的<strong>应用上下文运行。」</strong></blockquote>
+<strong>—— 用「降级到旧安卓」来重新引入一个已修复的漏洞，这是移动安全研究里的经典手法。</strong>
+<p><strong>⭐ 而这个 CVE 在 2023-03-30 被列入 CISA KEV 目录</strong>（用于漏洞利用的目录），<strong>要求 2023-04-20 前完成处置。</strong></p>
+<h3>8.2 ⭐⭐ 而 2026 年 6 月出现了同一技术的公开武器化</h3>
+<p><strong>⭐ 这是我认为这篇必须写出来的原因 —— 因为它把「一个学术级 PoC」变成了「一个可复用的提权原语」。</strong></p>
+<p><strong>Kuzey Arda Bulut 在 2026-06-09 发布了《Exploiting CVE-2024-1065 via the Page Cache》</strong> —— <strong>而 CVE-2024-1065 是 Google Project Zero 的 Jann Horn 在 2024 年初披露的另一个 Mali 物理页 UAF。</strong></p>
+<p><strong>⭐ 而那篇文章的核心贡献，是把这类 UAF 的利用方式做了一次范式升级：</strong></p>
+<blockquote><strong>「这个策略 —— </strong>页缓存利用<strong> —— 在概念上不同于众所周知的数据型技术，比如 Dirty Pagetable 和 Dirty Cred，后两者都需要 <code>MIGRATE_UNMOVABLE</code> 页。</strong>当攻击者被释放的页位于 <code>MIGRATE_MOVABLE</code> 时，那些技术就都用不了了。**</blockquote>>
+<blockquote><strong>核心思想：强迫内核把被释放的页重用为某个 SUID 二进制文件的内存副本，然后在二进制运行之前通过悬垂指针覆写它，注入会在 <code>execve()</code> 下以提升的凭据执行的 shellcode，而</strong>不修改磁盘上的任何文件<strong>。」</strong></blockquote>
+<strong>⭐ 而它的实现路径是：</strong>
+<ol>
+<li>1. <strong>触发物理页 UAF，拿到一个指向已释放物理页的悬垂 PTE</strong>；</li>
+<li>2. <strong>反复 <code>posix_fadvise(POSIX_FADV_DONTNEED)</code> + <code>pread</code>，把目标 SUID 二进制（<code>/usr/bin/passwd</code>）的页缓存页「挤」到那个已释放的物理页上</strong>；</li>
+<li>3. <strong>通过悬垂指针覆写该页 —— 因为写入走的是另一个物理别名，</strong>内核的 copy-on-write 机制不会被触发<strong>；</strong></li>
+<li>4. <strong><code>execve()</code> 该二进制，shellcode 以 root 身份执行。</strong></li>
+</ol>
+<strong>⭐ 而「不修改磁盘上任何文件」这一点，是它相对于传统提权手法的核心优势 —— 而且它正好解释了 HackiOS 那个工具链的命名：</strong>
+<p><strong>—— 「mali-pagecache-root」：通过 Mali GPU 驱动的页缓存写原语来做 root。</strong></p>
+<p><strong>⭐ 而其 README 里描述的技术路径，与 Kuzey 的文章</strong>高度同构<strong>：</strong></p>
+<blockquote><strong>「阶段 1 —— CVE-2022-22706（Mali GPU 页缓存写）：通过 <code>KBASE_IOCTL_MEM_IMPORT</code> 把 libc.so 的 <code>__cxa_atexit</code> 页作为一个 MAP_SHARED 映射导入为 GPU 用户缓冲区。用 <code>mremap(MREMAP_FIXED)</code> 替换该文件映射。在页缓存上把 112 字节 Thumb-2 shellcode 写到 <code>__cxa_atexit</code> 上（磁盘上的文件未被修改 —— 受 dm-verity 保护）。」</strong></blockquote>
+<strong>⭐ 而「自然触发」这一步特别巧妙：</strong>
+<blockquote><strong>「阶段 3 —— 自然触发：每一个新的 C++ 进程在 CRT 初始化期间都会调用 <code>__cxa_atexit()</code>，从而执行 shellcode。」</strong></blockquote>
+<strong>—— 也就是说：</strong> <strong>它不是去改一个「会被调用到的函数」，而是去改一个「</strong>每个<strong> C++ 进程启动时</strong>必然<strong>会被调用的函数」。</strong> <strong>所以下一个进程起来就中招了 —— 不需要特定的调用场景。</strong>
+<p><strong>⭐ 而后续的提权路径（阶段 4a）直接操作内核内存：</strong></p>
+<blockquote><strong>「阶段 4a —— 直接修改凭据：在 SELinux Permissive 下，通过 <code>/dev/rtkmem</code> 的物理内存读取遍历内核 <code>task_struct</code> 链表。通过匹配 <code>comm[]</code> 找到我们的进程，用来自 <code>init_cred</code> 的 uid=0 和完整 capabilities 覆写 cred 结构。清除 <code>TIF_SECCOMP</code> 以绕过 zygote 的 BPF seccomp 过滤器。」</strong></blockquote>
+<strong>—— 这是一个</strong>教科书式的内核提权<strong>：遍历 task_struct → 定位自己 → 改 cred → 清 seccomp。</strong>
+<h3>8.3 ⭐ 而那份 ROOT-WRITEUP 里，最诚实的一段</h3>
+<p><strong>⭐ 我认为这个项目所有文档里，最值得引用的是 ROOT-WRITEUP.md 里的这段：</strong></p>
+<blockquote><strong>「实现使用了固件特定的常量和缓存管理变通。</strong>源码注释本身并不能独立确立每一个被修补函数的身份，也不能确立所提出的缓存一致性解释。<strong>那些解释不应当仅仅因为一次历史测试成功就被当作已证明的硬件行为。</strong>**</blockquote>
+<strong>⭐ 翻译：</strong> <strong>「patch 里那些注释写着『这是因为缓存一致性问题』的解释，作者自己说不能当成已证明的事实。</strong> <strong>」</strong>
+<p><strong>—— 这句话的分量在于：它是一个漏洞利用工具链的作者，在自己的文档里，主动降低了对自己代码解释的置信度。</strong></p>
+<p><strong>而同一份文档还列出了「观察到的 vs 推断的」分界：</strong></p>
+<blockquote><strong>「</strong>观察到的<strong>：root 与 permissive 状态是有线的（tethered）；重启需要重新利用。</strong>」**</blockquote>>
+<blockquote><strong>「</strong>未确立<strong>：一个可用的 Magisk 安装、</strong>安全的 boot/vbmeta 补丁配方<strong>、持久 root 的普遍不可行性、或导致失败的</strong>确切内部签名检查序列<strong>。</strong>」**</blockquote>
+<strong>⭐ 加上 README 里的那句：</strong>
+<blockquote><strong>「</strong>不要基于这个项目刷入打过补丁的 boot 或 vbmeta 镜像。<strong>两次历史尝试都导致 bootloop；既没有确立持久 root 方法，也没有确立通用的恢复保证。</strong>」**</blockquote>
+<strong>—— 三个层次的诚实：区分「已确立的事实」、区分「已观察的现象」、区分「未确立的部分」。</strong> <strong>这在漏洞利用工具的文档里是相当高的标准。</strong>
+<h3>8.4 ⚠️ 而那个必须写的边界</h3>
+<p><strong>README 里的这段话必须原样引用：</strong></p>
+<blockquote><strong>「</strong>只在你拥有或被明确授权评估的硬件上使用。<strong>先审阅所有 C 文件和每一个固件特定的假设。</strong>保留数据，并独立获取一个已知匹配的恢复镜像与流程。<strong>不要把 ADB 暴露到不受信任的网络。</strong>」**</blockquote>
+<strong>⭐ 「独立获取一个已知匹配的恢复镜像与流程」这一条尤其重要</strong> —— 因为它承认了一件事：<strong>这个项目会弄坏你的设备，而且它不能保证能救回来。</strong> <strong>RECOVERY.md 里的记录（<code>V8-R51MT02-LF1V344</code>、<code>Update.img</code>、FAT32/MBR USB、白色 USB 2.0 口、按住电源键同时插电约 7–10 秒、刷写耗时数分钟并重置用户数据）</strong> 都是<strong>特定于那一台设备与那个镜像</strong>的，而文档明确说：
+<blockquote><strong>「这些细节只描述那台设备和那个恢复镜像。</strong>它们并不能确立每一块 C721 板卡、每个地区、每种屏幕尺寸或引导程序修订版的正确固件、端口、按键顺序或降级支持。<strong>该镜像未包含在本草案中，也未独立重新验证。」</strong></blockquote>
+<h2>九、⭐ 我的评价：这个项目真正的价值在哪</h2>
+<h3>9.1 ⭐ 它最大的价值可能不是「跑 iOS」，而是「一个不修改 iOS 的研究方法」</h3>
+<p><strong>⭐ 而这正是「未修改的 iOS 16.5 用户态」这个技术命题的力量所在：</strong></p>
+<p><strong>如果你用 jailbreak 或修改系统镜像的方式跑 iOS，你得到的是一个「被改过的 iOS」—— 你的观察对象本身已经不同了。</strong></p>
+<p><strong>而 HackiOS 的做法是：</strong> <strong>内核是苹果开源的那个，用户态是苹果官方的那些，</strong>你唯一改的是「苹果闭源驱动在这个新平台上被什么替代了」。**</p>
+<p><strong>—— 所以在这个环境里观察到的 iOS 行为，是</strong>最接近真实设备的未经改动的 iOS 行为<strong>。</strong></p>
+<p><strong>而这对于研究以下问题，价值是不可替代的：</strong></p>
+<ul>
+<li><strong>SpringBoard 的布局与手势逻辑</strong>；</li>
+<li><strong>backboardd 的应用生命周期管理</strong>；</li>
+<li><strong>系统权限模型（虽然 MAC 策略被替身接管了）</strong>；</li>
+<li><strong>UIKit / CoreAnimation 的渲染路径</strong>（尤其在 Metal→GLES 翻译层下）；</li>
+<li><strong>以及 —— 苹果自己那个著名的「20 分钟未响应」检测机制</strong>（因为 <code>patch-server_sig_openbsd.c</code> 提到 Chromium/Electron 用的 hang watcher 机制在 Wine 上都存在）。</li>
+</ul>
+<h3>9.2 ⭐ 而它同时是一个「跨 OS ABI 模拟」的公开案例</h3>
+<p><strong>⭐ 回头看 <code>%gs</code> 那套东西 —— 不，那是 OpenBSD Wine 的。</strong></p>
+<p><strong>而 HackiOS 这一侧最硬的一环是：</strong> <strong>把 Linux 的 <code>ath11k</code>（一个现代 mac80211 完整实现）编译到 FreeBSD 的 LinuxKPI 兼容层上，再让它跑在 XNU 里。</strong></p>
+<p><strong>—— 这意味着一个「Linux 的 Wi-Fi 驱动」和「苹果的用户态」在一部安卓手机上直接对话了。</strong> <strong>整个栈里没有一行苹果的闭源代码参与。</strong></p>
+<p><strong>### 9.3 ⚠️ 而它的边界也是明确的</strong></p>
+<table>
+<tr><th>维度</th><th>状态</th></tr>
+<tr><td><strong>机型</strong></td><td><strong>只验证过 1 个（POCO X5 Pro 5G / redwood）</strong></td></tr>
+<tr><td><strong>SoC 识别</strong></td><td><strong>文档自己说前后不一致</strong>（RTD1319 vs RTD2851M）</td></tr>
+<tr><td><strong>GPU 驱动版本</strong></td><td><strong>文档自己说前后不一致</strong>（r26p0-01eac0 vs r28p0）</td></tr>
+<tr><td><strong>架构</strong></td><td>32 位 ARMv7（安卓 11 / 内核 4.14）</td></tr>
+<tr><td><strong>32 位应用</strong></td><td>不支持（与 iOS 16 本身已只支持 64 位应用一致）</td></tr>
+<tr><td><strong>Metal</strong></td><td>部分（456 个系统 shader 中 293 个）</td></tr>
+<tr><td><strong>App Store / Apple ID</strong></td><td>不支持（<strong>无 Secure Enclave，架构性不可能</strong>）</td></tr>
+<tr><td><strong>充电</strong></td><td>不支持</td></tr>
+<tr><td><strong>持久 root</strong></td><td><strong>两次尝试均 bootloop，无可用方案</strong></td></tr>
+<tr><td><strong>测试覆盖</strong></td><td>Wine 式自带测试<strong>关闭</strong>；依赖手工验证</td></tr>
+<tr><td><strong>许可</strong></td><td><strong>APSL 2.0</strong>（XNU 衍生作品的要求），非 MIT/Apache</td></tr>
+</table>
+<p><strong>⭐ 我认为最需要强调的是最后一行：</strong> <strong>OpenBSD 那个项目因为有 ports 体系、有 CI、有 review 流程、有一堆人盯着，所以它的「不成熟」是</strong>可见的<strong>。</strong> <strong>而这个项目 —— 一个三天前才创建、1,594 stars、6 个 commit 的仓库 —— 它的不成熟是</strong>不可见的<strong>，因为它根本没有那套基础设施。</strong></p>
+<p><strong>所以我的建议是：</strong> <strong>如果你要复现或研究它，请把仓库里的 <code>docs/COMPATIBLE-DEVICES.md</code> 和 <code>docs/checks.md</code> 当成必读文档 —— 后者的标题就是「一份检查如何骗过你」（How a check can lie to you）。</strong></p>
+<p><strong>⭐ 而那份文档的存在本身就是这个项目最值得尊重的地方 —— 它比很多成熟的商业工具都更诚实地告诉使用者「我这份工具会骗你」。</strong></p>
+<h2>Sources</h2>
+<ul>
+<li>oosexgang/hackios-xnu-kernel（README、docs/ROOT-WRITEUP.md、docs/COMPATIBLE-DEVICES.md、docs/RECOVERY.md、docs/PORTING.md）：https://github.com/oosexgang/hackios-xnu-kernel</li>
+<li>oosexgang/hackios-xnu-userland：https://github.com/oosexgang/hackios-xnu-userland</li>
+<li>oosexgang/hackios-web：https://github.com/oosexgang/hackios-web</li>
+<li>同团队：mali-pagecache-root（README、docs/ROOT-WRITEUP.md、docs/COMPATIBLE-DEVICES.md、docs/RECOVERY.md、PROVENANCE.md）：https://gitlab.com/c4psu13/mali-pagecache-root</li>
+<li>CVE-2022-22706 官方记录：https://www.cve.org/CVERecord?id=CVE-2022-22706</li>
+<li>STAR Labs：Mali-cious Intent — Exploiting GPU Vulnerabilities (CVE-2022-22706 / CVE-2021-39793)：https://starlabs.sg/blog/2025/02-mali-cious-intent-exploiting-gpu-vulnerabilities-cve-2022-22706-/-cve-2021-39793/</li>
+<li>Kuzey Arda Bulut：Exploiting CVE-2024-1065 via the Page Cache：https://kuzey.rs/posts/MaliUAF</li>
+<li>Google Project Zero：CVE-2024-1065（issue 42451668）：https://project-zero.issues.chromium.org/issues/42451668</li>
+<li>byt3quester/CVE-2022-22706-poc：https://github.com/byt3quester/CVE-2022-22706-poc</li>
+<li>CISA KEV 目录（CVE-2022-22706 条目）：https://www.cisa.gov/known-exploited-vulnerabilities-catalog</li>
+</ul>
+---
+<p>（说明：本文所有引号内内容为项目公开文档、STAR Labs 分析与 CVE 官方记录原文引用；第三节的分类与第九节的评价为笔者补充。<strong>本文不提供任何漏洞利用步骤、设备改写步骤或恢复操作指引</strong>；涉及利用链机制的描述限于公开技术分析中已有的内容，且均指向攻击面而非操作流程。）
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/",
+      title: "HackiOS\uff1a\u628a iOS 16.5 \u7684 XNU \u5185\u6838\u548c\u7528\u6237\u6001\uff0c\u8dd1\u5728\u5b89\u5353\u624b\u673a\u548c QEMU \u4e0a"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
