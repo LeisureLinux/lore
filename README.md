@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-27 | [FreeDNS 二十五年：一个域名爱好，如何变成七百万人离不开的公共设施](https://freelamp.com/articles/2026-10-27_freedns-25-years-shared-domain-registry/) | FreeDNS · afraid.org · 动态DNS · DDNS · 共享域名 · 免费服务 · 商业模式 · FreeBSD · DDoS · DNS · 自托管 · 隐私 · IPv6 |
 | 2026-10-27 | [Emaki：一个把「桌面不该需要你配置」做成产品的 Arch + niri 桌面](https://freelamp.com/articles/2026-10-27_emaki-arch-niri-desktop-intro/) | Emaki · Arch · niri · Wayland · Quickshell · 滚动平铺 · SecureBoot · btrfs · 快照 · AUR · Flathub · Linux发行版 · 桌面环境 · 单一作者 |
 | 2026-10-27 | [Linux 7.4 存储栈：EXT4 换掉 buffer_head，大写入最高快一倍；而不受维护的 HPFS 被一次性删掉 6969 行](https://freelamp.com/articles/2026-10-27_linux-7-4-storage-ext4-iomap-hpfs-removal/) | Linux内核 · Linux7.4 · EXT4 · IOmap · buffer_head · HPFS · BFS · XFS · Btrfs · 文件系统 · 存储 · 性能优化 · FIO · CVE-2026-97486 |
 | 2026-10-26 | [Linux 桌面的前三十年：十次转折，和一个反复出现的教训](https://freelamp.com/articles/2026-10-26_linux-desktop-first-decade-ten-turning-points/) | Linux桌面 · 历史 · Debian · RedHat · KDE · GNOME · Knoppix · Ubuntu · Compiz · EeePC · Plasma · GNOME3 · Unity · Cinnamon · MATE · Qt |
