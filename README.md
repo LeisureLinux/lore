@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-26 | [Linux 桌面的前三十年：十次转折，和一个反复出现的教训](https://freelamp.com/articles/2026-10-26_linux-desktop-first-decade-ten-turning-points/) | Linux桌面 · 历史 · Debian · RedHat · KDE · GNOME · Knoppix · Ubuntu · Compiz · EeePC · Plasma · GNOME3 · Unity · Cinnamon · MATE · Qt |
 | 2026-10-26 | [旧电脑不用扔：Windows 10 已经停止支持，而「轻量 Linux 很丑」这个印象已经过时了](https://freelamp.com/articles/2026-10-26_lightweight-linux-old-hardware-windows10-eol/) | 轻量Linux · Linux Mint · MX Linux · antiX · Flatpak · AppImage · Flathub · Cinnamon · Xfce · Fluxbox · Windows10 · ESU · 旧电脑 · 续命 · LMDE · Lubuntu |
 | 2026-10-24 | [qBittorrent 5.3 发了：而这次真正值得升级的理由，不是「匹配所有分享限速」，是 WebUI 的反代认证绕过被堵上了](https://freelamp.com/articles/2026-10-24_qbittorrent-5-3-release-security-webui/) | qBittorrent · BitTorrent · libtorrent · WebUI · 认证绕过 · X-Forwarded-For · Sec-Fetch-Site · SMTP注入 · I2P · RSS · IP封禁 · AppImage |
 | 2026-10-24 | [macOS 不再是 Unix：Open Group 注册表里，Apple 的条目空了](https://freelamp.com/articles/2026-10-24_macos-no-longer-unix-open-group/) | macOS · UNIX · Open Group · UNIX 03 · Darwin · XNU · POSIX · BSD · trademark · certification |
