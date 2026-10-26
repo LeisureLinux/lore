@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-24 | [qBittorrent 5.3 发了：而这次真正值得升级的理由，不是「匹配所有分享限速」，是 WebUI 的反代认证绕过被堵上了](https://freelamp.com/articles/2026-10-24_qbittorrent-5-3-release-security-webui/) | qBittorrent · BitTorrent · libtorrent · WebUI · 认证绕过 · X-Forwarded-For · Sec-Fetch-Site · SMTP注入 · I2P · RSS · IP封禁 · AppImage |
 | 2026-10-24 | [macOS 不再是 Unix：Open Group 注册表里，Apple 的条目空了](https://freelamp.com/articles/2026-10-24_macos-no-longer-unix-open-group/) | macOS · UNIX · Open Group · UNIX 03 · Darwin · XNU · POSIX · BSD · trademark · certification |
 | 2026-10-23 | [不写一个文件，只发两个请求：从一个 OOM 里读出 PHP 的堆地址和模块基址](https://freelamp.com/articles/2026-10-23_php2shell-109618-pure-http-aslr-bypass/) | PHP · php2shell · CVE-2026-109618 · ASLR · OOM · longjmp · Zend · HashTable · session · upload_progress · 堆布局 · mod_php · Debian · 漏洞复现 |
 | 2026-10-23 | [webroot 是空的，也能拿下 shell：把 php2shell 的 RCE 压缩到「零文件」需要三次踩坑](https://freelamp.com/articles/2026-10-23_php2shell-cve-2026-109619-empty-webroot-lab/) | PHP · php2shell · CVE-2026-109619 · session · 反序列化 · upload_progress · php_serialize · 序列化器不一致 · UAF · RCE · mod_php · Apache · Debian · 靶场复现 · __destruct · PrivateTmp · 加固 |
