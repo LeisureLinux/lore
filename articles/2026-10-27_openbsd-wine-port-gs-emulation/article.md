@@ -366,95 +366,126 @@ CONFIGURE_ENV+=		INOTIFY_LIBS="-L${LOCALBASE}/lib/inotify -Wl,-rpath,${LOCALBASE
 
 **（`server/sig_openbsd.c` 也在 44 个 patch 里。）**
 
-## 八、⭐ 移植的实际效果：能跑什么，不能跑什么
+## 八、⭐ 移植的实际效果：实测跑了什么
 
-**Thomas Frohwein 的原始提案给了一张表，我把它完整转述并加上解读：**
+**这一节完全基于 openbsd-ports 邮件列表里的**实际测试记录** —— 开发者自己的测试，加上两位社区测试者各自的实测清单。**
 
-### 8.1 能跑的
+### 8.1 开发者自己的测试
 
-| 项目 | 细节 |
+**Thomas Frohwein 在提案里写的：**
+
+> **「我们此后测试了几十个 64 位的 Windows 软件，大多成功。」**
+>
+> **「甚至上个月刚发售的《巫师 3》重制版也能跑，而且跑得很好（需要加入 vkd3d-proton；见 README；直播录像看起来没那么流畅是因为用 ffmpeg 在本机录制）。」**
+
+**⭐ 三个关键词：** **「几十个」、「大多成功」、「《巫师 3》重制版跑得很好」。**
+
+**—— 尤其值得注意的是最后一条：** **一个 2026 年 10 月刚发售的 3A 大作能跑，这意味着这不是「跑得动老游戏」的 demo，而是**真的能跑当代商业软件**。**
+
+**⚠️ 而它需要 `vkd3d-proton`** —— 这一点很重要：**Wine 在 Unix-like 上没有原生 Direct3D，需要经由 Vulkan 转译，而 Windows 的 HLSL 着色器要先转成 SPIR-V 才能用。**
+
+### 8.2 社区的实测记录（来自邮件列表回复）
+
+**Bryan Steele（`brynet@`）：**
+
+> **「我测试这个 port 的各个迭代已经一周了，至少通关了一个我自己在 GOG 上拥有的游戏 —— 『Iratus』。能正常工作，但要在游戏菜单里把语言设成英文。」**
+
+**Martijn van Duren（`martijn@`）：**
+
+> **「到目前为止，我成功启动并读取了以下游戏的存档：**
+> - **Timberborn**
+> - **Cult of the Lamb**
+> - **Frostpunk**
+> - **ManorLords**
+> - **Peglin**（声音比游戏慢约 1 秒）
+> - **Whiskerwood**
+>
+> **未能启动（未深究原因）：**
+> - **Cyberpunk 2077**
+> - **Vampire the Masquerade – Bloodlines 2**」**
+>
+> **「我挺满意的。**另外提醒一下：我对其中一些游戏还得在 Linux 下做些调整，而且我用的是共享的 ext2fs home 目录，所以我也不确定现在哪些游戏还需要哪些调整了 —— 总之，至少这些是能起来的。」**
+
+**⭐ 这份清单的信息量比「能跑」这个结论大得多：**
+
+| 观察 | 说明什么 |
 |---|---|
-| **锁屏、滑动解锁、主页（两页图标）、原版 iOS 16 壁纸** | — |
-| **系统手势**：上滑（主页 / 应用切换）、边缘滑动（返回）、控制中心 | |
-| **应用**：设置、时钟、日历、照片、备忘录、Safari 等；小组件（天气、日历） | |
-| **触摸**：Goodix GT9916，多点触控，触摸唤醒；真实电源键与音量键 | |
-| **8 个 CPU 核心**（`cpus=8`），大核 2.4 GHz，**约 20 秒到锁屏** | |
-| **Adreno 642L GPU 通过 Mesa/freedreno**（`gpu=1`，OpenGL ES for CoreAnimation） | |
-| **Wi-Fi**（WCN6750，ath11k）：从设置里连接、Wi-Fi 下 Safari，**55–90 Mbit/s** | |
-| **声音**（扬声器、主麦克风）、相机（前/后、预览、对焦、HEIC 照片） | |
-| **数据在重启后保留**（`var_store=1 ufs_write=1`）；iOS 根卷在手机 flash 上 | |
-| **Sileo + Procursus**（dpkg、apt）、tweaks、SSH | |
+| **6 款独立游戏成功启动并读档** | **存档兼容性 OK** —— 这比「能启动」重要得多，因为读档意味着文件格式与目录结构都对 |
+| **《Peglin》声音慢约 1 秒** | **音频路径有延迟** —— 大概是 `pulseaudio` 那条路径的开销 |
+| **《Cyberpunk 2077》未启动** | ⭐ **未深究原因** —— 这类大作通常有更严苛的图形与反作弊要求 |
+| **《血族》2 未启动** | 同上 |
+| **需要「在 Linux 下做些调整」** | **并非开箱即用** —— 而这个「调整」在 Windows 上本来是不需要的 |
+| **共享 ext2fs home 目录** | ⭐ **这是一个很值得注意的细节**：**用 ext2fs 而不是 ext4，是因为 ext4 的某些特性（比如大小写敏感性）会破坏 Windows 程序的预期行为** |
 
-### 8.2 不能跑的
+**⭐ 最后这一条其实是个大新闻 —— 而且方向和本文的主线正好相反：**
 
-| 项目 | 细节 |
+**⭐ 而这个选择是有道理的：ext2fs 保留了一些与 Windows 语义一致的旧行为**（如文件名大小写不敏感），而 ext4 的默认行为会让一部分 Windows 程序找不到文件。**
+
+**—— 原因是 Linux 桌面的默认 ext4 有几个「与 Windows 语义冲突」的行为：**
+- **文件名大小写敏感性不同**（ext4 默认敏感，Windows 不敏感）；
+- **某些路径里不允许特定字符**；
+- **inode 号与文件 ID 的语义差异**。
+
+**⭐ 而这恰恰说明了「移植」的真正难度：它不只包括「让内核跑起来」，还包括「让一个为另一种文件系统语义写的用户态，能在一个语义不同的文件系统上正常工作」。**
+
+### 8.3 ⭐ 最重要的限制：WoW64 不工作
+
+**Thomas Frohwein 原文：**
+
+> **「最大的限制是 WoW64 不工作，所以 32 位的 Windows 软件仍然是 no-op。你可以用 `file(1)` 轻松检查 .exe/.dll —— 如果它显示类似 `MS-DOS executable PE for MS Windows (GUI) Intel 80386 32-bit`，那它就是 32 位的。」**
+
+**⭐ 这条限制的原理和第三节完全连着：**
+
+| | 32 位 x86 | 64 位 x86 |
+|---|---|---|
+| **TLS 访问方式** | **`%fs:0x30`** | **`%gs:0x30`** |
+| **Andrii 的方案** | 需要另一套模拟 | **就是现在这套** |
+| **状态** | **未实现** | **可用** |
+
+**—— 而**好消息**是：2026 年的 Windows 软件已经**大量转向 64 位**（这正是 Thomas 邮件里说的「对 wine 的兴趣出现了浪潮，和 5–10 年前不同」的原因）。**
+
+**⭐ 所以「WoW64 不工作」这个限制，在 2026 年的实际影响，比 2015 年小得多。**
+
+**⚠️ 而这也解释了为什么「多测 64 位软件」和「WoW64 不工作」这两句话能同时出现在同一封邮件里而不矛盾。**
+
+### 8.4 ⚠️ 另一个必须说的状态：自带测试是关闭的
+
+**Thomas Frohwein 原文：**
+
+> **「目前内置测试是禁用的。启用它们相当麻烦，因为它们需要访问 X server，而且多个测试仍然会挂起 —— 尽管在用不少游戏做的真实生活测试中并没有观察到这一点。这仍在处理中。」**
+
+**⭐ 我认为这一条比其他任何一条都更值得强调，因为它划出了这个项目的真实成熟度：**
+
+**它是一个「靠人的手工验证」支撑的 port** —— **没有自动化回归测试网。**
+
+**而这正是我在上一节（第九节）要展开的那个话题的起点：**
+
+> **「2010-10-19 `ae27646c` this port is unfinished, add a comment to make it even more obvious」**
+>
+> **—— 2010 年那次失败，是因为「做不完」。而 2026 年这次，它在**十年后**被 re-import 并完成了。**
+
+**⭐ 两次尝试的差别在哪里？** **从邮件里能看到的答案是：**
+- **2010**：一个人，业余时间，面对一个巨大的代码库 → **做不完**；
+- **2026**：**一个人写出了最难的那部分（`%gs` 模拟）**，另一个人（Thomas）**把它接进 ports 体系**并处理掉所有工程细节（构建系统、依赖、CI、上游配合）**。
+
+**—— 而「自带测试关闭」这件事，恰恰是 ports 体系在补的那个洞：一旦这个 port 进入 ports 树，它就会被纳入 OpenBSD 的 CI 与回归流程。** **这是「个人技术突破」与「集体工程能力」叠加的典型案例。**
+
+### 8.5 一张速查表
+
+| 维度 | 状态 |
 |---|---|
-| **蜂窝网络、蓝牙** | |
-| **在我们内核下充电**（手机只放电） | |
-| **应用的 Metal**（进行中：456 个系统 shader 里 **293 个**已在 Adreno 上跑通） | |
-| **App Store 内容与 Apple ID 登录**（**无 Secure Enclave**；FairPlay daemon 退出） | |
-| **视频与 Live Photo 录制** | |
-
-### 8.3 ⭐ 最重要的两条限制
-
-**① 「WoW64 doesn't work, so 32bit Windows software is still a no-op.」**
-
-**⭐ 这是整个移植**最大**的功能缺口 —— 而它的原因恰好又回到了 `%gs`：**
-
-**因为 WoW64 是「在 64 位 Windows 里跑 32 位 x86 代码」，而 32 位 x86 代码用的是完全不同的 TLS 访问模型（`%fs:0x30` 而非 `%gs:0x30`）。** **也就是说，32 位路径需要另一套模拟实现，而 Andrii 的这套是为 64 位设计的。**
-
-**② 「The builtin-tests are disabled for now.」**
-
-> **「启用它们相当麻烦，因为它们需要访问 X server，而且多个测试仍然会挂起 —— 尽管在用不少游戏做的真实生活测试中并没有观察到这一点。这仍在处理中。」**
-
-**⭐ 我认为这条值得单独说：** **Wine 自带的测试套件被关掉了，理由是「需要 X server」且「多个测试仍然会挂起」。**
-
-**—— 也就是说，这个 port 目前是「靠人的手工验证」支撑的，没有自动化回归测试。** **而 Bryan Steele 的回复里那句「虽然有些粗糙的地方，但没有什么是不能在树内清理的」，正是从「测试关着」这个状态下得出的。**
-
-**⭐ 而 Stuart Henderson 的回复把真正的问题指向了维护成本：**
-
-> **「我很担心这一点。真的需要一些关于如何生成它们的信息，最好是一个能从 llvm/clang 源码 tarball 自动运行、并作为 emulators/wine 构建一部分的方法，这样 wine 就不会挡住每次 lang/clang 更新。**'
->
-> **「如果不能自动，至少要有一个能从 make target 运行的东西。」**
->
-> **「（如果不是构建时自动的，那 BUILD_DEPENDS 就得锁到精确版本……）」**
->
-> **「这些大的补丁集有可能被合入上游吗？」**
->
-> **「有些 `#ifdef __OpenBSD__` 补丁看起来可以用对特定事物的检查（至少 xattrs 是，我不确定还有没有别的）来代替对 OpenBSD/非 OpenBSD 的条件判断。」**
-
-**⭐ 这三条评论，每一条都指向 ports 生态的真实痛点：**
-
-1. **⭐ 「wine 会不会挡住每次 lang/clang 更新」** —— **这是 ports 最经典的「port 拖累整个树」问题。** **因为 clang 的 PE 头文件（`clang/lib/Headers/*.h`）是 Windows 目标代码编译必需的，而 LLVM 每次升级都会动它们。**
-
-2. **⭐ 那个 clang-pe 头文件问题的解法很巧妙** —— 实测 Makefile：
-
-   ```makefile
-   CLANG_PE_RESOURCE =	${WRKDIR}/clang-pe
-   LLVM_PREFIX =		${LOCALBASE}/llvm${MODCLANG_VERSION}
-   CLANG_RESOURCE =	${LLVM_PREFIX}/lib/clang/${MODCLANG_VERSION}
-   pre-configure:
-   	${INSTALL_DATA_DIR} ${CLANG_PE_RESOURCE}/include
-   	cp ${WRKDIR}/devel/llvm/*/*/clang/lib/Headers/*.h \
-   		${CLANG_PE_RESOURCE}/include/
-   	cp -R ${CLANG_RESOURCE}/include/. ${CLANG_PE_RESOURCE}/include/
-   ```
-
-   **⭐ 结合 Thomas Frohwein 邮件里贴的那句注释：**
-   > **「# keep this in sync with MODCLANG_VERSION」**
-   > **「# source for updates/new releases: https://thfr.gothub.org/wine-clang-pe-headers」**
-
-   **—— 也就是说：** **Andrii/Thomas 在自己的 got hub 上维护了一份从 LLVM 提取出来的 clang PE 头文件（实测当前 tag 是 `22.1.8`，来自 `llvm 22.1.8`），并且在 Makefile 里用 `:patch` target 从 LLVM distfile 里自动提取（提交 `b38148f0` 干的就是这件事）。**
-
-   **⭐ 这是一个「既自动又可手工」的折中：** **自动提取保证能跟上 LLVM 版本，外部仓库保证在提取失败时有个可用的兜底。**
-
-3. **⭐ 「这些大的补丁集有可能被合入上游吗？」** —— **这是最要紧的一条。** **44 个 patch 里，`gs_openbsd.c` 那两个（44844 + 2244 字节）是最有上游价值的 —— 因为它们解决的是「Unix-like OS 上跑 Windows x64 代码」这个**通用**问题，不只是 OpenBSD 的问题。**
-
-**而 Thomas 在后续提交里做了一件很 OpenBSD 的事：**
-
-**2026-10-20 `6a68fef3`：`add OpenBSD to #ifdefs for parse_mount_entries`**
-
-**—— 把 OpenBSD 加进上游代码里的 `#ifdef` 列表。** **⭐ 这是「向上游靠拢」的实际动作：让上游代码知道有 OpenBSD 这个平台存在，而不是把 OpenBSD 特有的逻辑全塞进 patch 里。**
+| **32 位 Windows 软件** | ❌ **不支持**（WoW64 未实现） |
+| **64 位 Windows 软件** | ✅ **「几十个」被测过，「大多成功」** |
+| **当代 3A 游戏** | ✅ **《巫师 3》重制版（2026-10 发售）可跑**，需 `vkd3d-proton` |
+| **独立游戏** | ✅ **Timberborn / Cult of the Lamb / Frostpunk / ManorLords / Peglin / Whiskerwood 成功启动并读档** |
+| **大型 3A** | ⚠️ **《Cyberpunk 2077》《血族 2》未能启动**（原因未查） |
+| **存档兼容性** | ✅ **实测可读档** |
+| **图形** | 需 `vkd3d-proton`（D3D → Vulkan 转译） |
+| **音频** | ⚠️ **有延迟**（Peglin 实测约 1 秒） |
+| **Linux 侧调整** | ⚠️ **部分游戏需要额外调整**（GOG 游戏的「Iratus」需改语言） |
+| **推荐文件系统** | ⭐ **ext2fs**（测试者用共享 ext2fs home） |
+| **内置测试** | ❌ **关闭**（需 X server，多测挂起） |
+| **稳定性保证** | ❌ **无自动化回归网**（依赖 ports 体系补） |
 
 ## 九、⭐⭐ 十四年的距离
 
