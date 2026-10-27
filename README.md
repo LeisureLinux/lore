@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-27 | [8.4 万星、宣称省 60–90%：三个团队独立测出同一结论 —— 省 token 不等于省钱](https://freelamp.com/articles/2026-10-27_github-stars-token-savers-eval/) | AIAgent · AgenticCoding · GitHubStars · Token · 成本 · RTK · Headroom · ponytail · JetBrains · Quesma · arXiv · 评测 · 基准测试 · 缓存 · 社交证明 |
 | 2026-10-27 | [Stalwart 1.0：一个人用五年，从一个 Rust 库做到「比 Postfix + Dovecot 更快」的邮件服务器](https://freelamp.com/articles/2026-10-27_stalwart-1-0-mail-server/) | Stalwart · 邮件服务器 · SMTP · IMAP · JMAP · Rust · Postfix · Dovecot · SIMD · SWAR · 全文检索 · 压测 · 迁移 · OAuth · DKIM2 · 后量子 · AGPL · 自托管 |
 | 2026-10-27 | [HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上](https://freelamp.com/articles/2026-10-27_hackios-xnu-ios16-on-android/) | HackiOS · XNU · iOS · Darwin · 开源内核 · 逆向工程 · 安卓 · QEMU · UEFI · APFS · Metal · Mesa · freedreno · 安全研究 · CVE-2022-22706 · Mali |
 | 2026-10-27 | [OpenBSD 把 Wine 移植回来了：而打开大门的关键，是一套手写的 x86 指令解码器](https://freelamp.com/articles/2026-10-27_openbsd-wine-port-gs-emulation/) | OpenBSD · Wine · 移植 · x86_64 · gsbase · SWAPGS · Spectre · CVE-2019-1125 · TLS · TEB · ntdll · vkd3d · clang-pe · 安全设计 · 侧信道 |
