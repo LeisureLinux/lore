@@ -1,32 +1,44 @@
 ---
-title: "HackiOS：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上"
+title: "HakiOS（原 HackiOS）：把 iOS 16.5 的 XNU 内核和用户态，跑在安卓手机和 QEMU 上"
 date: 2026-10-27
 slug: hackios-xnu-ios16-on-android
-tags: [HackiOS, XNU, iOS, Darwin, 开源内核, 逆向工程, 安卓, POCO, QEMU, UEFI, EFI加载器, APFS, Metal, Mesa, freedreno, Goodix, 安全研究, 授权测试]
+tags: [HakiOS, XNU, iOS, Darwin, 开源内核, 逆向工程, 安卓, POCO, QEMU, UEFI, EFI加载器, APFS, Metal, Mesa, freedreno, Goodix, 安全研究, 授权测试]
 category: 安全/研究
 author: FreeLAMP.com
 original_source: "oosexgang/hackios-xnu-kernel 仓库 README + docs（ROOT-WRITEUP / COMPATIBLE-DEVICES / RECOVERY / PROVENANCE）+ 仓库元信息实测 + CVE-2022-22706 与 STAR Labs Mali-cious Intent 分析"
 original_author: "OOSEX GANG（@oodze 创始、@netusd、@wannqn、@hxfuxyyXD）"
 original_date: 2026-10-22
 original_url: "https://github.com/oosexgang/hackios-xnu-kernel"
-description: "HackiOS 是一个独立研究项目：在不改写 iOS 用户态任何字节的前提下，让苹果开源的 XNU 内核（xnu-8796.121.2，即 iOS 16.5 的内核）运行在安卓手机硬件与 QEMU 上，跑出真正的 launchd → backboardd → SpringBoard → 应用。要做到这一点，需要自制 EFI 加载器、自制 UEFI 移植、替换苹果闭源驱动、以及把 Linux 的 ath11k Wi-Fi 驱动跑在 FreeBSD LinuxKPI 兼容层上。本文梳理它的架构与真实边界：只在 POCO X5 Pro 5G（redwood / 骁龙 778G）一个机型上验证过、不刷机全在 RAM、WoW64 类比下的 32 位缺失、两次 bootloop 的刷写失败史，以及项目自己写下的「仅限自有或明确授权设备」纪律。"
+description: "HakiOS 是一个独立研究项目：在不改写 iOS 用户态任何字节的前提下，让苹果开源的 XNU 内核（xnu-8796.121.2，即 iOS 16.5 的内核）运行在安卓手机硬件与 QEMU 上，跑出真正的 launchd → backboardd → SpringBoard → 应用。要做到这一点，需要自制 EFI 加载器、自制 UEFI 移植、替换苹果闭源驱动、以及把 Linux 的 ath11k Wi-Fi 驱动跑在 FreeBSD LinuxKPI 兼容层上。本文梳理它的架构与真实边界：只在 POCO X5 Pro 5G（redwood / 骁龙 778G）一个机型上验证过、不刷机全在 RAM、WoW64 类比下的 32 位缺失、两次 bootloop 的刷写失败史，以及项目自己写下的「仅限自有或明确授权设备」纪律。"
 published: true
 ---
 
 > 来源：[oosexgang/hackios-xnu-kernel](https://github.com/oosexgang/hackios-xnu-kernel) 的 README 与 `docs/`（ROOT-WRITEUP.md、COMPATIBLE-DEVICES.md、RECOVERY.md、PROVENANCE.md）、[exploit/README.md](https://gitlab.com/c4psu13/mali-pagecache-root)（同团队的 Mali 页缓存 root 工具链）、**[STAR Labs：Mali-cious Intent](https://starlabs.sg/blog/2025/02-mali-cious-intent-exploiting-gpu-vulnerabilities-cve-2022-22706-/-cve-2021-39793/)**（CVE-2022-22706 的独立技术分析）、CVE 官方记录
 > 实测仓库元信息（2026-10-27 抓取）：**`oosexgang/hackios-xnu-kernel`**，**1,594 stars / 289 forks / 8 open issues**，创建于 **2026-10-22**，主语言 **C**，仓库体积 **192 MB**，License 显示 **NOASSERTION**（实为 APSL 2.0，见正文）；姊妹仓库 **`oosexgang/hackios-xnu-userland`（388 stars）**、**`oosexgang/hackios-web`（54 stars）**。
 > ⚠️ **本文严格限定在「已公开的研究性工具」范畴内描述，不提供任何操作步骤、可执行命令或绕过步骤。所有涉及设备改写、漏洞利用、刷写的内容仅作事实性转述，且转述对象本身即为项目公开文档。**
+
+> ⚠️ **2026-10-27 更新（重要）：本文初稿基于该项目 2026-10-24 之前的 README 撰写。** **而在这之后，项目经历了一次**彻底的重写**——**
+>
+> **① 项目改名：从 `HackiOS` 改名为 `HakiOS`；仓库仍为 `oosexgang/hackios-xnu-kernel`（README 顶部已写 `# HakiOS`，驱动文件名也从 `hakios.*.c` 重命名），README 新增了英文 / 中文 / 乌克兰文三个版本，克隆地址改为 `oosexgang/hakios-os.git`。**
+>
+> **② 新增了 `LEGAL.md` 与 `COMPLIANCE.md`**，用非常直白的语言划清边界（原文标题即「What this repository does NOT contain and never distributes」）：仓库**从不**包含 iOS 的任何二进制、镜像、缓存、字体、贴图或截图；用户态由使用者自己从苹果公开服务器下载的 IPSW 在**本机**构建；不含任何密钥、证书或激活数据；**仓库也不包含设备固件**（GPU / Wi-Fi / 音频 DSP / 基带 / 震动马达 / 摄像头固件属于厂商，由使用者从自己手机上 pull 进来并被 gitignore）。**
+>
+> **③ ⭐ 项目方向发生了明显扩展：新增了基带（modem）支持。** **README 的「Works / Not yet」表里，蜂窝网络已从「完全不行」变成「**modem 能启动、能看到网络、SIM 已绑定、IPA 数据通路与 `en1` 已就位**」，剩下的是注册、数据会话与状态栏进度中；并新增了 `docs/cellular.md` 记录 DPM Open Port、WDA 与 bind 流程的每一步。** **驱动文件里新增了 `hakios.mpss.c`、`hakios.ipa.c`、`hakios.cell.c`。**
+>
+> **④ 仓库新增了一句目标声明：「hakios is an experimental project focused on bringing ios to android hardware. our goal is to make hackios free and accessible to everyone.」**
+>
+> **⭐ 所以本文以下内容仍然成立（XNU 移植、EFI 加载器、ath11k over LinuxKPI、边界与免责），但**涉及「已支持 / 未支持」功能清单的部分，请以上游最新 README 为准**。**
 > 本文为**解读**。
 
 ## 一句话结论
 
-**HackiOS 做的事情，在一句话里是：「把 iOS 16.5 的用户态，原封不动地搬到 XNU 开源内核上跑起来 —— 而 XNU 开源内核不是跑在 iPhone 上，是跑在安卓手机和 QEMU 里。」**
+**HakiOS 做的事情，在一句话里是：「把 iOS 16.5 的用户态，原封不动地搬到 XNU 开源内核上跑起来 —— 而 XNU 开源内核不是跑在 iPhone 上，是跑在安卓手机和 QEMU 里。」**
 
 **而它的技术含量恰恰不在「跑起来」，在「怎么在不碰 iOS 用户态的前提下补齐苹果闭源的那一半」。**
 
 **项目 README 自己划定的边界非常清楚：**
 
-> **「HackiOS 在一台 TCL 安卓电视的固件上引导苹果的开源 XNU 内核（`xnu-8796.121.2`，即 iOS 16.5 的内核），并在上面运行**未修改的** iOS 16.5 用户态：launchd → backboardd → SpringBoard → 应用。**我们自己的 EFI 加载器、我们自己写的苹果闭源驱动替代品、一个 UEFI 移植、以及一层运行在兼容层上的 Linux Wi-Fi 驱动，共同使之成为可能。」**
+> **「HakiOS 在一部安卓手机上引导苹果的开源 XNU 内核（`xnu-8796.121.2`，即 iOS 16.5 的内核），并在上面运行**未修改的** iOS 16.5 用户态：launchd → backboardd → SpringBoard → 应用。**我们自己的 EFI 加载器、我们自己写的苹果闭源驱动替代品、一个 UEFI 移植、以及一层运行在兼容层上的 Linux Wi-Fi 驱动，共同使之成为可能。」**
 
 **⭐ 注意那句「**未修改的 iOS 16.5 用户态**」—— 这是整个项目的技术命题，也是它最值得研究的地方：**
 
@@ -52,7 +64,11 @@ published: true
 
 ### 2.2 ⭐ 只验证过一个机型
 
-**COMPATIBLE-DEVICES.md 的第一句：**
+**⚠️ 先说清归属：接下来的 2.2 与 2.3 两小节引用的是**同团队另一个仓库**（`mali-pagecache-root`，见第八节）的文档** —— 那是给 TCL 电视做的 root 工具链，而**不是** HakiOS 本体。**
+
+**HakiOS 本体侧的机型约束在新版 README 里写得更直接：「一部有移植的手机（`devices/poco-x5-pro/`，POCO X5 Pro 5G），引导加载器已解锁」，以及「**内核、加载器与用户态是共享的。一部手机的全部信息都在 `devices/` 下的一个目录里**」。**
+
+**而 root 工具链那侧的 COMPATIBLE-DEVICES.md 第一句是：**
 
 > **「这个项目中唯一的历史全链成功记录是 TCL QLED 50C721 / BeyondTV6，安卓 11，V8-R51MT02-LF1V903 (AR10)，内核 4.14.198+，ARMv7 32 位用户态。**没有其他任何电视或流媒体盒子被确立为兼容。**」**
 
@@ -78,7 +94,7 @@ published: true
 
 **—— 「运行这些程序不是硬件识别方法」这句话，是整个仓库里最有价值的一句免责与纪律声明。**
 
-### 2.3 ⚠️ 两次刷写失败：bootloop
+### 2.3 ⚠️ 两次刷写失败：bootloop（同样属于 root 工具链一侧）
 
 **RECOVERY.md 的记录非常坦诚：**
 
@@ -180,7 +196,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 
 **⭐ BCM2837 —— 这是树莓派 3 的 SoC（Broadcom BCM2837，ARM Cortex-A53 × 4）。**
 
-**而它的含义是：** **XNU 本身有多个平台配置（iPhone 的、Mac 的、还有开源硬件用的），HackiOS 选的是「BCM2837 配置」作为基线，然后往上叠自己的平台层。**
+**而它的含义是：** **XNU 本身有多个平台配置（iPhone 的、Mac 的、还有开源硬件用的），HakiOS 选的是「BCM2837 配置」作为基线，然后往上叠自己的平台层。**
 
 **这个选择非常务实：**
 
@@ -215,7 +231,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 **Project Silicium 正是那个为树莓派做 UEFI 固件的著名项目。** **所以整体链路是：**
 
 ```
-手机上的 UEFI (Silicium 移植，含 HackiOS 自己的 loader)
+手机上的 UEFI (Silicium 移植，含 HakiOS 自己的 loader)
    └─► fastboot 载入 xnuloader
           └─► 载入内核 + 系统镜像进 RAM
                  └─► XNU 启动
@@ -241,7 +257,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 - **每个使用者在自己机器上从官方 CDN 拉取**；
 - **而且 README 明确声明：**
 
-> **「HackiOS 是 OOSEX GANG 的独立研究项目，与 Apple Inc. 无关，未获 Apple Inc. 授权或认可。」**
+> **「HakiOS 是 OOSEX GANG 的独立研究项目，与 Apple Inc. 无关，未获 Apple Inc. 授权或认可。」**
 
 **QEMU 的资源需求也写得很具体：**
 
@@ -261,50 +277,69 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 
 ## 七、⭐ 实测的功能边界：能做什么，不能做什么
 
-**README 的两列表格我完整转述（这是这类项目最需要诚实呈现的部分）：**
+**⭐ 这一节的表格我用的是**上游重写后的最新版本**（2026-10-26），而不是初稿引用的旧版 —— 因为改动很大。**
 
 ### 7.1 能做的
 
 | 能力 | 细节 |
 |---|---|
-| **锁屏、滑动解锁、主页（两页图标）、原版 iOS 16 壁纸** | |
-| **系统手势**：上滑（主页 / 应用切换）、边缘滑动（返回）、控制中心 | |
-| **应用**：设置、时钟、日历、照片、备忘录、Safari 等；小组件（天气、日历） | |
-| **触摸**：Goodix GT9916、多点触控、触摸唤醒；**真实电源键与音量键** | |
-| **8 个 CPU 核心**（`cpus=8`），大核 2.4 GHz，**约 20 秒到锁屏** | |
-| **Adreno 642L GPU** 通过 Mesa/freedreno（`gpu=1`，CoreAnimation 用 OpenGL ES） | |
-| **Wi-Fi**（WCN6750，ath11k）：设置里连接、Wi-Fi 下 Safari，**55–90 Mbit/s** | |
-| **声音**（扬声器、主麦克风）、**相机**（前/后、预览、对焦、HEIC 照片） | |
-| **数据在重启后保留**（`var_store=1 ufs_write=1`）；iOS 根卷在手机 flash 上 | |
-| **Sileo + Procursus**（dpkg、apt）、tweaks、SSH | |
+| **锁屏、主页、控制中心、系统手势、原版应用** | |
+| **触摸**：多点触控、电源键与音量键 | |
+| **全部 8 个 CPU 核心**，大核 2.4 GHz | |
+| **Adreno GPU 渲染**（`gpu=1`，OpenGL ES 经 Mesa） | |
+| **扬声器与麦克风**（`adsp=1 sound=4 mic=4`） | |
+| **UI 里的电池电量**（经音频 DSP，`adsp=1`） | |
+| **震动马达**（`haptic=5`） | |
+| **Wi-Fi**：射频、驱动、网络连接（`wifi=1`） | |
+| **Camera.app 里的相机**（`cam=5`） | |
+| **`/private/var` 跨重启保留**（`var_store=1 ufs_write=1`） | |
+| **Sileo、Procursus 包、SSH 进手机** | |
 
-### 7.2 不能做的
+### 7.2 还没做到的（上游原文口径）
 
-| 能力 | 原因 |
+| 能力 | 现状 |
 |---|---|
-| **蜂窝网络、蓝牙** | |
-| **在我们内核下充电**（手机只放电） | |
-| **应用的 Metal** | 进行中：**456 个系统 shader 里 293 个**已在 Adreno 上跑通（`docs/air.md`） |
-| **App Store 内容与 Apple ID 登录** | **无 Secure Enclave**；FairPlay daemon 退出 |
-| **视频与 Live Photo 录制** | |
+| **蜂窝网络** | **⭐ modem 能启动、能看到网络、SIM 已绑定、IPA 数据通路与 `en1` 已就位**；**注册、数据会话与状态栏仍在进行中**（`docs/cellular.md`） |
+| **蓝牙** | 未做 |
+| **在内核下充电** | 未做 |
+| **Metal** | **「有一个 shader 编译器，但没有 Metal」** |
+| **Apple 账号登录** | **无 Secure Enclave** |
+
+### 7.3 ⭐ 三个值得说的变化与限制
+
+**① ⭐ 「Metal（有一个 shader 编译器，但没有 Metal）」—— 这句话的措辞值得原样引用**
+
+**⭐ 相比旧版 README 里那个「293/456 个 shader 已跑通」的进度数字，新版把它换成了这句更本质的描述：** **不是「有多少 shader 跑通了」，而是「**编译链在，但 API 本身没有**」。**
+
+**—— 因为 shader 编译是「把 Metal 着色器翻译成能在 Adreno 上跑的东西」，而没有 Metal API 意味着 CoreAnimation、Metal 框架下的 UI 与游戏都拿不到正确的接口。** **翻译层能做到「像」，做不到「是」。**
+
+**② ⭐ 蜂窝网络从「完全不行」到「已绑定、待注册」—— 这是 2026-10-25/26 两天里最大的方向性变化**
+
+**⭐ 而这条变化的工程量可以从新增的驱动文件看出来：** **`hakios.mpss.c`（基带）、`hakios.ipa.c`（IPA 数据通路）、`hakios.cell.c`（蜂窝），配套还有一整篇 `docs/cellular.md` 记录 DPM Open Port、WDA 与 bind 流程的每一步。**
+
+**—— 而这些工作的难点完全不在代码：它涉及高通基带的完整初始化序列、IPA 的 SMMU 流 ID、SIM 绑定与 NAS，以及「怎样在 Android 已有固件之上把 IPA 数据通路接起来」。**
+
+**③ 「无 Secure Enclave」→ Apple 账号登录不可用：这仍然是**架构性**限制**
+
+**⭐ Secure Enclave 是苹果设备里一个独立的协处理器，密钥材料从不进入主 CPU。** **而 HakiOS 跑在通用安卓硬件上 —— 那里根本没有这个协处理器。**
+
+**—— 所以任何依赖硬件密钥保护的流程（Apple ID 登录、DRM、FairPlay）都必然走不通。这不是「还没做」，而是「做不了」。**
 
 **⭐ 三个「不能做」的原因特别值得说：**
 
 **① 「无 Secure Enclave」→ App Store 与 Apple ID 登录不可用**
 
-**⭐ 这是**架构性**限制，不是没实现。** **Secure Enclave 是苹果设备里一个独立的协处理器，密钥材料从不进入主 CPU。** **而 HackiOS 跑在通用安卓硬件上 —— 那里根本没有这个协处理器。**
+**⭐ 这是**架构性**限制，不是没实现。** **Secure Enclave 是苹果设备里一个独立的协处理器，密钥材料从不进入主 CPU。** **而 HakiOS 跑在通用安卓硬件上 —— 那里根本没有这个协处理器。**
 
 **—— 所以任何依赖硬件密钥保护的流程（Apple ID 登录、DRM、FairPlay）都必然走不通。** **这不是「还没做」，而是「做不了」。**
 
-**② 「Metal 不行，但 293/456 个 shader 已跑通」**
-
-**⭐ 这一条展示了 Metal → OpenGL ES 翻译工作的真实进度。** **iOS 的 UI 框架（CoreAnimation）历史上依赖 Metal。** **HackiOS 走的是「用 Mesa/freedreno 提供 OpenGL ES，然后做一层 Metal→GLES 翻译」。**
-
-**—— 而 456 个系统 shader 里跑通 293 个（约 64%），这个数字说明：** **翻译层已经覆盖了大多数系统界面效果，但还不足以支撑全部应用与游戏。**
-
-**③ 「在我们的内核下充电（手机只放电）」**
+**④ 「在我们的内核下充电（手机只放电）」**
 
 **⭐ 这是最容易被忽略但最「物理」的一条。** **它说明这个移植目前连「电源管理」这一层都还没有做 —— 而这恰恰是 XNU 的 charge driver 依赖的、深度耦合到 iPhone 硬件的部分。**
+
+**⭐ 而这一条与「蓝牙未做」放在一起看，会得到一个关于「移植顺序」的观察：**
+
+**—— 一个能在你手机上跑 iOS 的系统，如果不能充电、不能用蓝牙，那它离「日常可用」还有相当距离。** **而这恰恰是「研究台」与「产品」的分界线：研究台只需要证明「内核与用户态能跑起来」，产品需要证明「一天下来它还活着」。**
 
 ## 八、⭐⭐ 安全研究成分：同团队的 Mali 页缓存 root 工具链
 
@@ -376,7 +411,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 3. **通过悬垂指针覆写该页 —— 因为写入走的是另一个物理别名，**内核的 copy-on-write 机制不会被触发**；**
 4. **`execve()` 该二进制，shellcode 以 root 身份执行。**
 
-**⭐ 而「不修改磁盘上任何文件」这一点，是它相对于传统提权手法的核心优势 —— 而且它正好解释了 HackiOS 那个工具链的命名：**
+**⭐ 而「不修改磁盘上任何文件」这一点，是它相对于传统提权手法的核心优势 —— 而且它正好解释了 HakiOS 那个工具链的命名：**
 
 **—— 「mali-pagecache-root」：通过 Mali GPU 驱动的页缓存写原语来做 root。**
 
@@ -436,7 +471,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 
 **如果你用 jailbreak 或修改系统镜像的方式跑 iOS，你得到的是一个「被改过的 iOS」—— 你的观察对象本身已经不同了。**
 
-**而 HackiOS 的做法是：** **内核是苹果开源的那个，用户态是苹果官方的那些，**你唯一改的是「苹果闭源驱动在这个新平台上被什么替代了」。**
+**而 HakiOS 的做法是：** **内核是苹果开源的那个，用户态是苹果官方的那些，**你唯一改的是「苹果闭源驱动在这个新平台上被什么替代了」。**
 
 **—— 所以在这个环境里观察到的 iOS 行为，是**最接近真实设备的未经改动的 iOS 行为**。**
 
@@ -452,7 +487,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 
 **⭐ 回头看 `%gs` 那套东西 —— 不，那是 OpenBSD Wine 的。**
 
-**而 HackiOS 这一侧最硬的一环是：** **把 Linux 的 `ath11k`（一个现代 mac80211 完整实现）编译到 FreeBSD 的 LinuxKPI 兼容层上，再让它跑在 XNU 里。**
+**而 HakiOS 这一侧最硬的一环是：** **把 Linux 的 `ath11k`（一个现代 mac80211 完整实现）编译到 FreeBSD 的 LinuxKPI 兼容层上，再让它跑在 XNU 里。**
 
 **—— 这意味着一个「Linux 的 Wi-Fi 驱动」和「苹果的用户态」在一部安卓手机上直接对话了。** **整个栈里没有一行苹果的闭源代码参与。**
 
@@ -460,13 +495,16 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 
 | 维度 | 状态 |
 |---|---|
-| **机型** | **只验证过 1 个（POCO X5 Pro 5G / redwood）** |
+| **机型** | **只验证过 1 个（POCO X5 Pro 5G / redwood）；「内核、加载器与用户态是共享的，一部手机的全部信息都在 `devices/` 下的一个目录里」** |
 | **SoC 识别** | **文档自己说前后不一致**（RTD1319 vs RTD2851M） |
 | **GPU 驱动版本** | **文档自己说前后不一致**（r26p0-01eac0 vs r28p0） |
 | **架构** | 32 位 ARMv7（安卓 11 / 内核 4.14） |
 | **32 位应用** | 不支持（与 iOS 16 本身已只支持 64 位应用一致） |
 | **Metal** | 部分（456 个系统 shader 中 293 个） |
 | **App Store / Apple ID** | 不支持（**无 Secure Enclave，架构性不可能**） |
+| **蜂窝网络** | ⭐ **部分可用**：modem 启动、看到网络、SIM 已绑定、IPA 数据通路与 `en1` 就位；注册与数据会话进行中 |
+| **蓝牙** | 未做 |
+| **Metal** | **「有 shader 编译器，但没有 Metal」** |
 | **充电** | 不支持 |
 | **持久 root** | **两次尝试均 bootloop，无可用方案** |
 | **测试覆盖** | Wine 式自带测试**关闭**；依赖手工验证 |
@@ -480,7 +518,7 @@ fastboot boot ──► UEFI (Mu-Silicium) ──► xnuloader (EFI application)
 
 ## Sources
 
-- oosexgang/hackios-xnu-kernel（README、docs/ROOT-WRITEUP.md、docs/COMPATIBLE-DEVICES.md、docs/RECOVERY.md、docs/PORTING.md）：https://github.com/oosexgang/hackios-xnu-kernel
+- **oosexgang/hackios-xnu-kernel**（README、LEGAL.md、COMPLIANCE.md、docs/cellular.md、docs/air.md）：https://github.com/oosexgang/hackios-xnu-kernel　（**⚠️ 2026-10-25/26 项目改名 HakiOS 并重写 README，克隆地址改为 `oosexgang/hakios-os.git`**）
 - oosexgang/hackios-xnu-userland：https://github.com/oosexgang/hackios-xnu-userland
 - oosexgang/hackios-web：https://github.com/oosexgang/hackios-web
 - 同团队：mali-pagecache-root（README、docs/ROOT-WRITEUP.md、docs/COMPATIBLE-DEVICES.md、docs/RECOVERY.md、PROVENANCE.md）：https://gitlab.com/c4psu13/mali-pagecache-root
