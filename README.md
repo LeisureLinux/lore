@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-27 | [GhostBSD 26.2：FreeBSD 桌面这两年最实在的一次进步，是把「安装器」和「首次启动」拆开了](https://freelamp.com/articles/2026-10-27_ghostbsd-26-2-freebsd-15-1/) | GhostBSD · FreeBSD · MATE · ZFS · GELI · 整机加密 · 安装器 · InstallStation · BEStation · BootEnvironment · pkg · Pkg · XLibre · USBHID · Desktop |
 | 2026-10-27 | [树莓派悄悄放了两块新板子的设备树：Zero 3 W 换上 Pi 4 的芯片，Pi 4 Model A 回来了](https://freelamp.com/articles/2026-10-27_raspberry-pi-zero-3-w-pi-4-model-a/) | RaspberryPi · 树莓派 · Zero3W · Pi4ModelA · BCM2711 · 设备树 · DTS · 单板计算机 · SBC · eMMC · SPIFlash · 外部天线 · PCIe · 价格 · 开源硬件 · 内核 |
 | 2026-10-27 | [GoAhead 三个 TLS 漏洞：一个 CRL 加载了却不执行，一个 DH 参数只剩 1 字节，一个证书链深度可以被绕过](https://freelamp.com/articles/2026-10-27_goahead-three-tls-bugs/) | GoAhead · TLS · OpenSSL · LibreSSL · MbedTLS · mTLS · CRL · 证书吊销 · DH · DHE_RSA · 证书链深度 · 嵌入式 · IoT · OT · FoxIO · JA4S · 供应链 |
 | 2026-10-27 | [php2shell 一周实测：全球暴露面掉了 47.9%，但攻击者的下一个瓶颈是「worker 复用」](https://freelamp.com/articles/2026-10-27_wiz-php2shell-exploitation-attempts/) | php2shell · PHP · CVE-2026-109618 · CVE-2026-109619 · OOM · session · upload_progress · honeypot · exploit · PoC · LFI · 会话投毒 · CISA · KEV · 缓解 · 补丁 · 蜜罐 |
