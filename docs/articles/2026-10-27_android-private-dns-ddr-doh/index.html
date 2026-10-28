@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面 — FreeLAMP.com</title>
+  <meta name="description" content="安卓的「私人 DNS」（Private DNS）一直只能走 DNS-over-TLS（853 端口），这在封 853 的校园网/酒店/机场会直接失败。Reddit 上一个用户翻安卓源码后发现：系统其实完整实现了 RFC 9462（DDR，Discovery of Designated Resolvers），可以把 Pr">
+  <meta name="keywords" content="Android, PrivateDNS, DoH, DoT, DDR, RFC9462, SVCB, HTTP3, QUIC, NextDNS, AdGuard, Cloudflare, Quad9, Shizuku, ADB, device_config, CloudflareWorker, DNS加密, 移动网络">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-10-27">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面">
+  <meta property="og:description" content="安卓的「私人 DNS」（Private DNS）一直只能走 DNS-over-TLS（853 端口），这在封 853 的校园网/酒店/机场会直接失败。Reddit 上一个用户翻安卓源码后发现：系统其实完整实现了 RFC 9462（DDR，Discovery of Designated Resolvers），可以把 Pr">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-27">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Android">
+  <meta property="article:tag" content="Android">
+  <meta property="article:tag" content="PrivateDNS">
+  <meta property="article:tag" content="DoH">
+  <meta property="article:tag" content="DoT">
+  <meta property="article:tag" content="DDR">
+  <meta property="article:tag" content="RFC9462">
+  <meta property="article:tag" content="SVCB">
+  <meta property="article:tag" content="HTTP3">
+  <meta property="article:tag" content="QUIC">
+  <meta property="article:tag" content="NextDNS">
+  <meta property="article:tag" content="AdGuard">
+  <meta property="article:tag" content="Cloudflare">
+  <meta property="article:tag" content="Quad9">
+  <meta property="article:tag" content="Shizuku">
+  <meta property="article:tag" content="ADB">
+  <meta property="article:tag" content="device_config">
+  <meta property="article:tag" content="CloudflareWorker">
+  <meta property="article:tag" content="DNS加密">
+  <meta property="article:tag" content="移动网络">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面">
+  <meta name="twitter:description" content="安卓的「私人 DNS」（Private DNS）一直只能走 DNS-over-TLS（853 端口），这在封 853 的校园网/酒店/机场会直接失败。Reddit 上一个用户翻安卓源码后发现：系统其实完整实现了 RFC 9462（DDR，Discovery of Designated Resolvers），可以把 Pr">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面",
+  "description": "来源：Reddit r/nextdns：You can actually do system-wide DNS-over-HTTPS with Android's Private DNS!https://www.reddit.com/r/nextdns/comments/1xe03ic/you_can_actually_do_systemwide_dnsoverhttps_with/（作者 u/T",
+  "datePublished": "2026-10-27",
+  "dateModified": "2026-10-27",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Android, PrivateDNS, DoH, DoT, DDR, RFC9462, SVCB, HTTP3, QUIC, NextDNS, AdGuard, Cloudflare, Quad9, Shizuku, ADB, device_config, CloudflareWorker, DNS加密, 移动网络"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面",
+        "item": "https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-27">2026-10-27</div>
+        <h1 class="post-title" itemprop="headline">安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Android/">Android</a><a itemprop="keywords" href="/tags/PrivateDNS/">PrivateDNS</a><a itemprop="keywords" href="/tags/DoH/">DoH</a><a itemprop="keywords" href="/tags/DoT/">DoT</a><a itemprop="keywords" href="/tags/DDR/">DDR</a><a itemprop="keywords" href="/tags/RFC9462/">RFC9462</a><a itemprop="keywords" href="/tags/SVCB/">SVCB</a><a itemprop="keywords" href="/tags/HTTP3/">HTTP3</a><a itemprop="keywords" href="/tags/QUIC/">QUIC</a><a itemprop="keywords" href="/tags/NextDNS/">NextDNS</a><a itemprop="keywords" href="/tags/AdGuard/">AdGuard</a><a itemprop="keywords" href="/tags/Cloudflare/">Cloudflare</a><a itemprop="keywords" href="/tags/Quad9/">Quad9</a><a itemprop="keywords" href="/tags/Shizuku/">Shizuku</a><a itemprop="keywords" href="/tags/ADB/">ADB</a><a itemprop="keywords" href="/tags/device_config/">device_config</a><a itemprop="keywords" href="/tags/CloudflareWorker/">CloudflareWorker</a><a itemprop="keywords" href="/tags/DNS%E5%8A%A0%E5%AF%86/">DNS加密</a><a itemprop="keywords" href="/tags/%E7%A7%BB%E5%8A%A8%E7%BD%91%E7%BB%9C/">移动网络</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>来源：<a href="https://www.reddit.com/r/nextdns/comments/1xe03ic/you_can_actually_do_systemwide_dnsoverhttps_with/">Reddit r/nextdns：You can actually do system-wide DNS-over-HTTPS with Android's Private DNS!</a>（作者 <strong>u/Timely-Skill4263</strong>，约 2026-10-24）<br>
+⭐ <strong>本文实测拉取了该帖作者配套的开源项目 <a href="https://github.com/eyalm2000/loophole">eyalm2000/loophole</a>（MIT 许可，2026-10-24 创建，5 个 commit）的完整 README 与文档</strong>做交叉核对，并梳理了帖子全部热门评论。<br>
+⚠️ <strong>本文含可执行的操作步骤（adb / Shizuku / DNS 记录配置）。</strong> <strong>这些操作会修改你手机的网络行为，请在充分理解后自行决定是否使用。</strong><br>
+本文为<strong>解读</strong>。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>安卓系统里其实早就完整实现了「用 DNS 发现 DoH 端点」（RFC 9462 DDR），只是被一个 feature flag 挡着 —— 而这解释了为什么你用 Private DNS 在校园网/酒店/机场会莫名其妙地失败。</strong></p>
+<p><strong>⭐ 但真正重要的不是这个发现本身，而是它揭示的一个现实：</strong></p>
+<p><strong>—— 「原生支持 DoH」这条路上，Android 硬编码支持的只有 Google 和 Cloudflare，需要开 flag 的只有 Quad9 等极少数，而 NextDNS、AdGuard、Control D、OpenDNS、CleanBrowsing、Mullvad 这些几乎所有主流服务</strong>都不发布 DDR 记录<strong>。</strong></p>
+<p><strong>⭐ 也就是说：</strong> <strong>对绝大多数用户，这条路是走不通的 —— </strong>而正因为走不通，那个 workaround（自建一个 Cloudflare Worker 当 DoH 端点）才成为唯一解，也才值得单独成篇。**</p>
+<h2>一、先讲清楚原来为什么坏</h2>
+<p><strong>帖子的开场（作者原话）：</strong></p>
+<blockquote><strong>「安卓 Private DNS 这个功能最大的限制一直是：自定义主机名被锁定在 DNS-over-TLS 上。这意味着在封掉那个 TCP 端口的网络上 —— 比如大学 Wi-Fi、酒店、机场等等 —— 你的连接会彻底失败。」</strong></blockquote>
+<strong>⭐ 这个问题很多人遇到过但没想清楚原因：</strong>
+<p><strong>—— Private DNS（私人 DNS）的协议强制是 DoT（DNS over TLS，跑在 853/TCP）。</strong> <strong>而很多企业/公共网络的策略是「封 853，只放行 443」。</strong> <strong>这时候系统设置里明明写了你的 DNS 服务器，域名却完全解析不了 —— 而且错误提示往往很模糊。</strong></p>
+<p><strong>⭐ 而 DoH（DNS over HTTPS）跑在 443 上</strong> —— <strong>那个端口几乎不可能被封。</strong></p>
+<p><strong>所以「Private DNS 支持 DoH」这件事的价值是：让系统级加密 DNS 在「只放行 443」的网络里也能用。</strong></p>
+<h2>二、⭐ 原理：DDR 是什么，为什么它能解决这个问题</h2>
+<p><strong>⭐ 这是全文的技术核心，而它其实是一个相当优雅的机制设计。</strong></p>
+<p><strong>作者的解释（原文）：</strong></p>
+<blockquote><strong>「在翻安卓源码之后，我发现 OS 其实完整支持 </strong>Discovery of Designated Resolvers<strong>（RFC 9462 DDR）来自动把 Private DNS 升级成 HTTP/3 DNS-over-HTTPS！</strong>它就藏在那个 feature flag 后面。<strong>」</strong></blockquote>
+<strong>⭐ 我把 loophole 的 README 里的机制描述抄下来，因为它讲得最清楚（原文）：</strong>
+<blockquote><strong>「开了 flag 之后，安卓通过 DDR 自行发现 DoH 端点：</strong>它在连接前会查询一条名为 <code>_dns.<hostname></code> 的特殊 SVCB DNS 记录，如果该记录通告了一个 DoH 路径，安卓就会跳过 853 端口，改走 DoH，通常跑在 HTTP/3 上。<strong>」</strong></blockquote>
+<strong>⭐ 换句话说，整个流程是：</strong>
+<pre><code class="">你在 Private DNS 里填 "dns.quad9.net"
+        ↓
+安卓先查一条 DNS 记录：_dns.dns.quad9.net
+        ↓
+这条记录（SVCB 类型）里写着："DoH 在 https://dns.quad9.net/dns-query，走 h3"
+        ↓
+安卓于是跳过 853，改用 DoH（HTTP/3 / QUIC，443/UDP）
+</code></pre>
+<p><strong>⭐ 我认为这个设计的优雅之处在于：</strong> <strong>它把「如何知道 DoH 端点在哪」的问题，</strong>用 DNS 自己的扩展机制（SVCB/HTTPS 记录）来回答<strong> —— 而不需要任何客户端额外配置。</strong></p>
+<p><strong>—— 而且它复用了已有的「DoT 主机名」作为入口：</strong> <strong>你仍然填 <code>dns.quad9.net</code>，只是多了一次 SVCB 查询。</strong></p>
+<h2>三、⭐⭐ 关键现实：哪些服务真的支持 DDR</h2>
+<p><strong>⭐ 这一节是本文最实用的部分，因为原帖作者和 loophole 的 README 都强调了这一点。</strong></p>
+<p><strong>loophole README 给的完整分类表（原文照录）：</strong></p>
+<table>
+<tr><th>分组</th><th>服务商</th><th>在封 853 的网络上</th></tr>
+<tr><td><strong>硬编码进安卓</strong></td><td>Google（<code>dns.google</code>）、Cloudflare（<code>cloudflare-dns.com</code>）</td><td>⭐ <strong>DoH 可用，不需要 flag</strong></td></tr>
+<tr><td><strong>不需要 flag 就能用</strong></td><td>所有提供 DoT 端点的服务商（原生 Private DNS）</td><td><strong>只在 853 开放时可用；被封就失效</strong></td></tr>
+<tr><td><strong>需要 flag</strong></td><td><strong>Quad9（<code>dns.quad9.net</code>）</strong> 和其他支持的服务</td><td>⭐ <strong>通过 DDR 走 DoH</strong></td></tr>
+<tr><td><strong>不支持</strong></td><td><strong>NextDNS、AdGuard DNS、Control D、OpenDNS、CleanBrowsing、Mullvad DNS，以及其它大多数</strong></td><td><strong>即使开了 flag 也失败；需要 worker</strong></td></tr>
+</table>
+<p><strong>⭐ 作者在原帖里也说了同样的话：</strong></p>
+<blockquote><strong>「我测了一堆，</strong>唯一发布 DDR 记录的公开服务是 Google、Cloudflare 和 Quad9<strong>。NextDNS 和 AdGuard，以及其它大多数流行服务商</strong>连记录都没有<strong>。🫠」</strong></blockquote>
+<strong>⭐ 而 loophole README 里有一句更精确的补充：</strong>
+<blockquote><strong>「在主要 DNS 服务中，Quad9 是唯一一个支持 DDR 且需要打开 flag 的。Google 和 Cloudflare 不需要它，因为它们是硬编码的。」</strong></blockquote>
+<strong>—— 也就是说，「需要开 flag」这个能力，</strong>目前几乎只有 Quad9 一家真正用上了<strong>。</strong>
+<h3>3.1 ⭐ 而评论区最尖锐的一个问题，恰好指向了它为什么难普及</h3>
+<p><strong>Reddit 上一条评论（u/NegativePerformer788）：</strong></p>
+<blockquote><strong>「DDR 对一个广告拦截型 DNS 服务商来说会很难实现。它也许能把连接升级到加密，</strong>但它怎么知道该分配哪个 profile？<strong>」</strong></blockquote>
+<strong>⭐ 我认为这是全文最重要的一条评论，因为它点出了这个机制的商业困境：</strong>
+<p><strong>DDR 的 SVCB 记录是「</strong>按域名<strong>」发布的</strong>（<code>_dns.<hostname></code>）。<strong> </strong>而 NextDNS 这类服务的核心卖点是「<strong>按用户</strong>」的 profile<strong>（每个用户有自己的配置 ID，对应一个不同的 DoH 端点 URL）。</strong></p>
+<p><strong>—— 所以问题不是「技术上做不到」，而是「</strong>DNS 记录是全域共享的，而 profile 是每用户私有的<strong>」。</strong> <strong>你没法在 <code>dns.nextdns.io</code> 的公共 DNS 记录里告诉全世界「这个用户要用 profile abc123」。</strong></p>
+<p><strong>⭐ 这也解释了为什么 NextDNS 官方没有跟进 —— 它需要的是一个「</strong>用户专属的 DNS 记录<strong>」，而 DDR 的模型是「</strong>服务侧的公共记录<strong>」。</strong></p>
+<p><strong>⭐ 而 Google 和 Cloudflare 能做，是因为它们提供的是「</strong>公共的、无状态的<strong>」DoH 端点</strong> —— 对应到用户是谁不重要。**</p>
+<h2>四、⭐⭐ 所以 workaround 是怎么做的：自己造一个 DoH 端点</h2>
+<p><strong>⭐ 而这正是 loophole 这个项目存在的意义 —— README 的「Why a gateway is needed」一节写得非常清楚：</strong></p>
+<blockquote><strong>「loophole 给安卓的 Private DNS 一个它能自己发现的 DoH 端点，这样系统级加密 DNS 在封 853 端口的网络上仍然可用。它是一个你部署到自己账号的 Cloudflare Worker，加上让发现机制能工作的安卓 flag 文档。</strong>不需要 VPN，不需要 root。<strong>」</strong></blockquote>
+<strong>⭐ 我认为这个设计非常巧，因为它把「服务商不支持 DDR」这个死结，绕开了：</strong>
+<p><strong>—— 你自己提供一个「公共的、无状态的」DoH 端点</strong>（一个 Cloudflare Worker），<strong>它转发到你真正的 NextDNS profile。</strong> <strong>这样 DDR 的「公共记录」模型就成立了。</strong></p>
+<p><strong>README 的原话：</strong></p>
+<blockquote><strong>「你的过滤服务自己</strong>不需要<strong>支持 DDR。」</strong></blockquote>
+<h3>4.1 三条上手路径</h3>
+<p><strong>loophole README 给了三条路径，我按门槛排序：</strong></p>
+<table>
+<tr><th>路径</th><th>需要什么</th><th>适用场景</th></tr>
+<tr><td><strong>① 引导式部署（推荐）</strong></td><td><strong>Worker + Android 16+ + 自有域名</strong></td><td>大多数人</td></tr>
+<tr><td><strong>② 只开 flag</strong></td><td><strong>Android 16+</strong>，服务商自己支持 DDR</td><td>⭐ <strong>用 Quad9 的话根本不需要 Worker</strong></td></tr>
+<tr><td><strong>③ 自建 DoH 端点 / DNS</strong></td><td><strong>DoH 端点 + 你自己域名的 DNS 控制权</strong></td><td>已有 DoH 的人</td></tr>
+</table>
+<p><strong>⭐ 注意路径 ② 的存在 —— 这是最容易被忽略但最省事的一条：</strong></p>
+<p><strong>⭐ 如果你不依赖广告拦截、只是想要「加密的系统 DNS」，</strong> <strong>那么直接用 Quad9 + 两条命令就够了，不需要 Worker、不需要域名、不需要 Cloudflare 账号。</strong></p>
+<h3>4.2 路径 ③ 的 DNS 记录长什么样</h3>
+<p><strong>README 给的记录（原文）：</strong></p>
+<table>
+<tr><th>字段</th><th>值</th></tr>
+<tr><td>Type</td><td><strong>SVCB</strong></td></tr>
+<tr><td>Name</td><td><strong><code>_dns.<你的主机名></code></strong>（填进 Private DNS 的那个主机名，前面加 <code>_dns.</code>）</td></tr>
+<tr><td>Priority</td><td>1</td></tr>
+<tr><td>TTL</td><td>Auto</td></tr>
+<tr><td>Target</td><td><code><你的 DoH 主机名>.</code>（<strong>带尾点</strong>）</td></tr>
+<tr><td>Parameters</td><td><strong><code>alpn="h3" dohpath="/dns-query{?dns}"</code></strong></td></tr>
+</table>
+<p><strong>⭐ 而 README 还给了调整说明：</strong></p>
+<blockquote><strong>「按你的服务器调整两件事：如果它不提供 HTTP/3，用 <code>alpn="h2"</code>（或 <code>alpn="h2,h3"</code> 如果两种都提供）；如果你的 DoH 路径不是 <code>/dns-query</code>，把你的路径放进 <code>dohpath</code> 里。如果你的端点跑在 443 以外的端口上，在参数里加 <code>port=<数字></code>。」</strong></blockquote>
+<strong>⭐ 而 <code>alpn="h3"</code> 这点值得单独说：</strong> <strong>它指的是 QUIC（HTTP/3 over UDP/443）。</strong> <strong>这正是 DoH 相对 DoT 的另一个优势 —— </strong>QUIC 在丢包环境下通常比 TCP 表现更好，而且<strong>首次连接不需要额外往返</strong>。**
+<h3>4.3 要开的 flag 只有两条</h3>
+<p><strong>⭐ 这是最漂亮的部分 —— 整个功能只需要两个 flag：</strong></p>
+<pre><code class="">adb shell device_config put connectivity dns_ddr_version 1
+adb shell device_config put connectivity networkmonitor_async_privdns_resolution 1
+</code></pre>
+<p><strong>而 README 强调了一个非常容易踩的坑：</strong></p>
+<blockquote><strong>「必需的最后一步：打开飞行模式，等几秒，然后关掉。安卓只在重连之后才应用这个改动。</strong>不做这一步，设置就不会生效。<strong>」</strong></blockquote>
+<strong>⭐ 而评论区有人实测了这个流程，并补充了更完整的命令集（u/Masterflitzer 在 Galaxy S23 Plus / Android 17 / OneUI 9.0 上验证）：</strong>
+<pre><code class="">settings put global private_dns_mode hostname
+settings put global private_dns_specifier one.one.one.one
+<p>device_config put connectivity resolver_dns_over_http3_enabled true
+device_config put connectivity resolver_discovery_of_designated_resolvers_enabled true</p>
+<p>device_config put connectivity networkmonitor_async_privdns_resolution 1
+device_config put connectivity dns_ddr_version 1</p>
+<p>device_config put com_android_networkstack com.android.networkstack.flags.network_monitor_dns_ddr true</p>
+<p>device_config put netd_native doh 1
+</code></pre></p>
+<p><strong>⭐ 他的实测结论：</strong></p>
+<blockquote><strong>「一开始不工作，但跑了这些命令并重启手机之后它终于работа了」</strong></blockquote>>
+<blockquote><strong>「我用的是 Cloudflare 帮助站的测试域名 <code>one.one.one.one</code> 和 <code>cloudflare-dns.com</code> 来测试，</strong>因为只有后者在安卓的硬编码白名单里<strong> —— 在做这个之前前者显示 <code>dot</code>（DoT）而后者显示 <code>doh</code>，现在跑完这些命令并重启手机后</strong>两个都显示 doh<strong>，所以说明它生效了。」</strong></blockquote>
+<strong>⭐ 「dot vs doh」这个显示差异是个很好的验证方法</strong> —— <strong>因为系统设置界面会直接告诉你当前 Private DNS 是走的 DoT 还是 DoH。</strong>
+<h2>五、⭐⭐⭐ 必须知道的安全代价</h2>
+<p><strong>⭐ 这一节是本文我最想强调的部分，因为 README 自己把它放在 FAQ 的前几条，而且它是</strong>设计上无法避免<strong>的。</strong></p>
+<h3>5.1 DoH 端点按设计是开放的</h3>
+<p><strong>README 原文：</strong></p>
+<blockquote><strong>「网关的 <code>/dns-query</code> 端点</strong>按设计是开放的<strong>。DDR 要求安卓</strong>在无需认证的情况下<strong>访问它，所以任何找到你网关 URL 的人都可以通过它发查询，</strong>而你的上游 profile 会看到他们的流量<strong>。</strong>除非你接受这一点，否则不要公开你的网关域名。<strong>」</strong></blockquote>
+<strong>⭐ 我想解释一下这个代价的准确形态，因为容易被误解：</strong>
+<table>
+<tr><th>谁</th><th>能看到什么</th></tr>
+<tr><td><strong>看到你的 DNS 查询</strong>（域名）</td><td><strong>你的上游服务商</strong>（NextDNS profile 的所有者）—— 这是本来就会发生的</td></tr>
+<tr><td><strong>⭐ 用你的网关查询</strong></td><td><strong>任何知道 URL 的人</strong> —— 他们的查询会被算在<strong>你的</strong> profile 上，可能触发你的配额/规则误触发</td></tr>
+</table>
+<p><strong>⭐ 而 README 明确说了 PIN 锁不住它：</strong></p>
+<blockquote><strong>「为什么 DNS 端点是开放的？不能拿 PIN 锁住吗？不能。DDR 要求安卓</strong>在无需认证的情况下<strong>访问端点，所以端点无法被锁。</strong>PIN 只保护 dashboard。<strong>」</strong></blockquote>
+<strong>⭐ 这一点值得反复强调 —— 因为很多人在自建 DoH 时会本能地加上鉴权，然后发现 DDR 发现失败。</strong> <strong>不是配置错了，是 DDR 的模型就是「无认证发现」。</strong>
+<h3>5.2 ⭐ 而「你的域名就是你的钥匙」</h3>
+<p><strong>⭐ 所以 README 的建议是：「除非你接受这一点，否则不要公开你的网关域名。」</strong></p>
+<p><strong>⭐ 而这在实践中意味着：</strong> <strong>你的 Worker 域名（如果是 <code>xxx.workers.dev</code>）或者你自己域名下的那个主机名，本质上是一个「公开的秘密」。</strong> <strong>谁拿到它就能借用你的 DNS 配置。</strong></p>
+<p><strong>⭐ 现实影响评估：</strong> <strong>这和「公开的 DNS over HTTPS 端点」是同一类东西 —— 而 Cloudflare/Google 的公共 DoH 端点本来就是公开的。</strong> <strong>真正的风险不是「别人能用你的 DoH」，而是「别人能用你的 NextDNS profile，从而让</strong>你的<strong>规则集被别人的查询触发</strong>，或者消耗你的配额。**</p>
+<h3>5.3 ⭐ 而「不需要 root / 不耗电 / 可以随时撤销」这三点是真实优势</h3>
+<p><strong>README 的 FAQ（原文）：</strong></p>
+<blockquote><strong>「需要 root 吗？不需要。loophole 通过 Shizuku 或 ADB 管理系统设置。</strong>」**</blockquote>>
+<blockquote><strong>「会耗电或后台运行吗？不会。</strong>设置完成后手机上没有任何东西在运行。Private DNS 是一个系统设置，不是一个 app，也不是 VPN，所以没有后台服务，也没有电量开销。<strong>」</strong></blockquote>
+<strong>⭐ 而原帖作者补充了他做这个项目的直接动机：</strong>
+<blockquote><strong>「这意味着像 RethinkDNS 那样吃电的后台 VPN app 不再必要了（我一直很讨厌那种后台 VPN，所以这对我来说意义重大😅）。</strong>」**</blockquote>
+<strong>⭐ 我认为这一点值得展开，因为「用 VPN app 做 DoH」和「用系统级 Private DNS 做 DoH」的差别，比表面看起来大：</strong>
+<table>
+<tr><th></th><th><strong>后台 VPN app</strong>（RethinkDNS 等）</th><th><strong>系统 Private DNS + DDR</strong></th></tr>
+<tr><td><strong>拦截范围</strong></td><td><strong>需要 VPN 模式 → 全部流量走隧道</strong></td><td><strong>⭐ 只有 DNS 查询</strong></td></tr>
+<tr><td><strong>电量</strong></td><td><strong>常驻，耗电</strong></td><td><strong>⭐ 无后台进程</strong></td></tr>
+<tr><td><strong>绕 VPN 的坑</strong></td><td>⭐ <strong>会和银行的 app 冲突</strong></td><td><strong>⭐ </strong>不影响任何其他流量**</td></tr>
+<tr><td><strong>能自定义 DNS 服务器</strong></td><td>可以</td><td><strong>⭐ 可以</strong></td></tr>
+</table>
+<h2>六、⭐ 几个操作细节与坑</h2>
+<p><strong>⭐ 我把 README 和评论区的细节汇总成一份清单：</strong></p>
+<h3>6.1 需要 Android 16+（不是 15）</h3>
+<p><strong>⭐ 注意作者自己修正过一次：</strong></p>
+<blockquote><strong>「这个设置自己搞需要 ~~Android 15+~~（编辑：我说错了，</strong>16+<strong>）</strong>」**</blockquote>
+<h3>6.2 不开 root，用 Shizuku 或 ADB</h3>
+<p><strong>README：</strong></p>
+<blockquote><strong>「Shizuku：在手机上安装 Shizuku，通过无线调试配对，然后装 aShell You 并允许它访问 Shizuku。在那里逐条运行下面的命令。</strong>」**</blockquote>>
+<blockquote><strong>「ADB：从电脑装 Android Platform Tools，开启开发者选项和 USB 调试，USB 连接，跑 <code>adb devices</code> 确认手机出现。</strong>」**</blockquote>
+<strong>⭐ 所以手机本地也能做，不需要电脑 —— 这对很多用户是关键。</strong>
+<h3>6.3 ⭐ flag 会被重置 —— 而这有个「副作用开关」</h3>
+<p><strong>README 有一段很多人会忽略但很实用的内容：</strong></p>
+<blockquote><strong>「如果这些设置一直重置，这会禁用整机的 DeviceConfig 同步。</strong>只在需要时使用：<strong>」</strong></blockquote>>
+<blockquote><pre><code class="">> adb shell device_config set_sync_disabled_for_tests persistent<br>
+</code></pre></blockquote>>
+<blockquote><strong>「恢复：</strong> <code>adb shell device_config set_sync_disabled_for_tests none</code><strong>」</strong></blockquote>
+<strong>⭐ 这一点很重要 —— 因为 DeviceConfig 的设置是从 Google 服务端同步的，</strong>如果你只改了本地，OTA 更新或同步可能把它冲掉。<strong> </strong>而「禁用同步」这个开关是官方提供的、专门给这类场景用的测试接口。**
+<h3>6.4 检查是否生效</h3>
+<pre><code class="">adb shell device_config get connectivity dns_ddr_version
+adb shell device_config get connectivity networkmonitor_async_privdns_resolution
+</code></pre>
+<p><strong>⭐ 两个都应返回 <code>1</code>。</strong> <strong>而更直观的验证是：</strong> <strong>看系统设置里 Private DNS 的状态显示 —— 如果显示 <code>doh</code> 而不是 <code>dot</code>，说明 DDR 生效了。</strong></p>
+<h3>6.5 ⭐ 不需要自定义域名的情况</h3>
+<p><strong>README 的一个 FAQ：</strong></p>
+<blockquote><strong>「不用自定义域名能用吗？部分能。基础 DoH 和 dashboard 在 <code>workers.dev</code> 地址上能用，但</strong>安卓的主机名发现需要自定义域名和它的 SVCB 记录。没有域名，Private DNS 无法发现网关。<strong>」</strong></blockquote>
+<strong>⭐ 也就是说：</strong> <strong>Worker 本身可以挂在 <code>workers.dev</code> 上，但 </strong>SVCB 记录必须在你自己的域名下<strong> —— 因为 <code>_dns.<hostname></code> 这条记录需要一个你能控制的 zone。</strong>
+<h2>七、⭐ 我的评价</h2>
+<h3>7.1 ⭐ 这个发现的价值，比「又一个 DoH 技巧」大</h3>
+<p><strong>⭐ 我认为这个帖子的价值在于它揭示了一个</strong>被忽视的、一直在那里的<strong>能力：</strong></p>
+<p><strong>—— 安卓完整实现了 RFC 9462，代码在树里，只差一个开关。</strong> <strong>而这个开关之所以没打开，很可能就是因为「开了也没用」：</strong></p>
+<p><strong>⭐ 因为能从中受益的服务商，几乎只有 Google、Cloudflare（不需要开）和 Quad9（需要开）。</strong> <strong>而 2026 年的主流 DNS 服务商（NextDNS、AdGuard、Control D…）全都不发布 DDR 记录 —— 对它们来说，DDR 在商业上不成立。</strong></p>
+<p><strong>⭐ 所以这个 flag 大概率会永远关着 —— 除非有人解决评论区提出的那个问题：</strong></p>
+<blockquote><strong>「它怎么知道该分配哪个 profile？」</strong></blockquote>
+<strong>—— 而那需要的是「用户专属的 DNS 记录」，而不是现有的 DDR 模型。</strong>
+<h3>7.2 ⭐ 而 workaround 之所以有价值，恰恰是因为原生路走不通</h3>
+<p><strong>⭐ 我认为这是本文最值得记住的一层因果：</strong></p>
+<p><strong>因为 NextDNS / AdGuard 都不支持 DDR，所以「支持 DDR 的下一个 Android 版本」这个愿望对它们没有意义。</strong> <strong>而对用户来说，唯一的出路就是自己架一个转发 Worker。</strong></p>
+<p><strong>—— 于是形成了一个有点讽刺的格局：</strong> <strong>系统里有能力，但商业上没人用；用户有需求，但系统能力用不上；最后是两个人自己搭桥。</strong></p>
+<h3>7.3 ⭐ 而这个案例本身，是「源码阅读 + 实验」能产出真实价值的一个好例子</h3>
+<p><strong>⭐ 原帖作者的原话：</strong></p>
+<blockquote><strong>「在翻安卓源码之后，我发现 OS 其实完整支持 RFC 9462 DDR……」</strong></blockquote>
+<strong>⭐ 而他做这件事的路径是：遇到一个「封 853 就完全不能用」的实际痛点 → 去翻源码 → 发现有一个被藏起来的能力 → 验证它 → 写出来 → 顺手做成开源工具。</strong>
+<p><strong>—— 这比任何「隐私技巧」文章都更有价值，因为它给出了一个</strong>可复用的方法论<strong>（症状 → 源码 → feature flag → 验证），而不是一个配方。</strong></p>
+<h3>7.4 ⚠️ 而必须提醒的边界</h3>
+<p><strong>⭐ 三条：</strong></p>
+<p><strong>① 不要公开你的网关域名。</strong> <strong>（README 原文警告）</strong></p>
+<p><strong>② 这个方案对「已经用 VPN app 做 DoH」的用户收益最大</strong>（省电 + 不干扰其他流量）；<strong>如果你已经用 AdGuard/NextDNS 的 app 且不介意耗电，收益没那么大。</strong></p>
+<p><strong>③ ⭐ 它只解决 DNS 加密，不解决 DNS 泄漏以外的隐私问题</strong> —— <strong>DNS-over-HTTPS 保护的是「谁看到你的查询」，不是「你访问了什么」。</strong></p>
+<p><strong>⭐ 而值得加一句：</strong> <strong>原帖评论区里有人提到 FortiGate 用户在防火墙上直接屏蔽 DoH（「yeah. im blocking DoH within the firewall. nice try, maybe next time 😄 Fortigate FTW」）—— </strong>企业网络管理员对 DoH 的封锁，本身就是这个方案在企业环境里的最大障碍。**</p>
+<h2>Sources</h2>
+<ul>
+<li>Reddit r/nextdns：You can actually do system-wide DNS-over-HTTPS with Android's Private DNS!（u/Timely-Skill4263）：https://www.reddit.com/r/nextdns/comments/1xe03ic/you_can_actually_do_systemwide_dnsoverhttps_with/</li>
+<li>⭐ 一手：<a href="https://github.com/eyalm2000/loophole">eyalm2000/loophole</a>（MIT，2026-10-24 创建，5 commits）—— README 与完整文档</li>
+<li>RFC 9462：Discovery of Designated Resolvers（https://datatracker.ietf.org/doc/html/rfc9462）</li>
+<li>Shizuku：https://shizuku.rikka.app/download/</li>
+<li>aShell You：https://github.com/DP-Hridayan/aShellYou</li>
+<li>Android Platform Tools：https://developer.android.com/tools/releases/platform-tools</li>
+</ul>
+---
+<p>（说明：所有引号内内容为 Reddit 原帖、评论区与 loophole README 原文引用；<strong>第四节与第六节的操作细节为原文与评论区的汇总，未做任何改动</strong>；<strong>第五节的三条代价分析、第七节的评价为笔者补充</strong>。<strong>Reddit 评论区用户的实测机型为 Galaxy S23 Plus / Android 17 / OneUI 9.0。</strong>）
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/",
+      title: "\u5b89\u5353\u5176\u5b9e\u65e9\u5c31\u6709\u7cfb\u7edf\u7ea7 DoH\uff0c\u53ea\u662f\u88ab\u85cf\u5728\u4e00\u4e2a feature flag \u540e\u9762"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
