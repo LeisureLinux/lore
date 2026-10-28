@@ -17,6 +17,12 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-27 | [GoAhead 三个 TLS 漏洞：一个 CRL 加载了却不执行，一个 DH 参数只剩 1 字节，一个证书链深度可以被绕过](https://freelamp.com/articles/2026-10-27_goahead-three-tls-bugs/) | GoAhead · TLS · OpenSSL · LibreSSL · MbedTLS · mTLS · CRL · 证书吊销 · DH · DHE_RSA · 证书链深度 · 嵌入式 · IoT · OT · FoxIO · JA4S · 供应链 |
+| 2026-10-27 | [php2shell 一周实测：全球暴露面掉了 47.9%，但攻击者的下一个瓶颈是「worker 复用」](https://freelamp.com/articles/2026-10-27_wiz-php2shell-exploitation-attempts/) | php2shell · PHP · CVE-2026-109618 · CVE-2026-109619 · OOM · session · upload_progress · honeypot · exploit · PoC · LFI · 会话投毒 · CISA · KEV · 缓解 · 补丁 · 蜜罐 |
+| 2026-10-27 | [Tailscale SSH 出了权限提升问题：官方说「不建议所有人关掉」，但给了一条能立刻上手的开关](https://freelamp.com/articles/2026-10-27_tailscale-ssh-investigation-update/) | Tailscale · SSH · 权限提升 · 零信任 · WireGuard · TS_SSH_DISABLE_FORWARDING · 访问控制 · ACL · 应急响应 · 披露流程 · 远程访问 |
+| 2026-10-27 | [Ghostty 1.4：Kitty 图形协议做到 100%、内存降到 16 KiB、解析快了 5.7 倍，还带了 10 个安全公告](https://freelamp.com/articles/2026-10-27_ghostty-1-4-0-release/) | Ghostty · 终端 · Wayland · KittyGraphics · Kitty剪贴板 · scrollback · 压缩 · EGL · GTK · macOS · SSH集成 · 安全公告 · GHSA · 性能 |
+| 2026-10-27 | [GoAhead 三个 TLS 漏洞：一个 CRL 加载了却不执行，一个 DH 参数只剩 1 字节，一个证书链深度可以被绕过](https://freelamp.com/articles/2026-10-27_goahead-three-tls-bugs/) | GoAhead · TLS · OpenSSL · LibreSSL · MbedTLS · mTLS · CRL · 证书吊销 · DH · DHE_RSA · 证书链深度 · 嵌入式 · IoT · OT · FoxIO · JA4S · 供应链 |
+| 2026-10-27 | [php2shell 一周实测：全球暴露面掉了 47.9%，但攻击者的下一个瓶颈是「worker 复用」](https://freelamp.com/articles/2026-10-27_wiz-php2shell-exploitation-attempts/) | php2shell · PHP · CVE-2026-109618 · CVE-2026-109619 · OOM · session · upload_progress · honeypot · exploit · PoC · LFI · 会话投毒 · CISA · KEV · 缓解 · 补丁 · 蜜罐 |
 | 2026-10-27 | [如何在 AI 黑客面前「跑得比对方快」：Cowen 给的答案里，最扎实的一条其实不是技术](https://freelamp.com/articles/2026-10-27_tyler-cowen-outrun-ai-hackers/) | AI安全 · AI黑客 · php2shell · PHP · 漏洞披露 · embargo · 密码轮换 · 密钥轮换 · PKI · 加密敏捷性 · NSA · 椭圆曲线 · Claude · 纵深防御 · 运维 · 应急响应 |
 | 2026-10-27 | [1Password for Agents：给 AI agent 开通账号，而不是把密码交给它](https://freelamp.com/articles/2026-10-27_1password-for-agents/) | 1Password · 密码管理器 · AIAgent · 凭证 · 密钥管理 · OAuth · 自动填充 · 代理安全 · 浏览器 · 隐私 · 集成 · 最小权限 |
 | 2026-10-27 | [PHP 连续第五天发 Windows 包：而这次修了的东西，根本不在 PHP 源码里](https://freelamp.com/articles/2026-10-27_php-windows-brotli-cve-2026-111497/) | PHP · Windows · CVE-2026-111497 · Brotli · 供应链 · SBOM · 打包 · 二进制依赖 · curl · Guzzle · Node2Shell · OpenAI · Imperva · CVSS · 组件化 |

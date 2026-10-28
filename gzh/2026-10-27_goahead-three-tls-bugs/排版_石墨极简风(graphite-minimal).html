@@ -1,0 +1,686 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">这三个判断全是错的，而且没有一条会产生可见的征兆。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">本文对三个 GoAhead 漏洞共同形状的归纳</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf=""></span></p>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">BACKGROUND</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">背景与前提</span></h3>
+      </section>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">来源：[FoxIO 官方博客：Choose Your Backend: Three TLS Bugs in GoAhead](https://foxio.io/blog/choose-your-backend-three-tls-bugs-in-goahead)（</span><strong style="color:#27272A;"><span leaf="">2026-10-26</span></strong><span leaf="">，作者 </span><strong style="color:#27272A;"><span leaf="">Sébastien Féry</span></strong><span leaf="">）；[GHSA-5m75-xq69-c3c5（OpenSSL CRL，Critical 9.1 / CVE-2026-115881）](https://github.com/embedthis/goahead/security/advisories/GHSA-5m75-xq69-c3c5)、[GHSA-fmvx-2xfx-2gq4（Mbed TLS DH）](https://github.com/embedthis/goahead/security/advisories/GHSA-fmvx-2xfx-2gq4)、[GHSA-r392-vqwx-3r4g（LibreSSL 链深度）](https://github.com/embedthis/goahead/security/advisories/GHSA-r392-vqwx-3r4g)</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">PoC：https://github.com/FoxIO-LLC/blog_poc/tree/main/chooseyourbackend</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">本文为</span><strong style="color:#27272A;"><span leaf="">解读</span></strong><span leaf="">。第六节的评价为笔者补充。</span></p>
+    </section>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">一句话结论</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一句话结论</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这三个漏洞有一个共同点：它们都不是「加密算法被破了」，而是「</span></strong><span leaf="">某个安全机制被正确地配置了、正确地加载了、但从未真正被执行</span><strong style="color:#27272A;"><span leaf="">」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GoAhead 是被用在数以亿计嵌入式设备里的 Web 服务器（路由器、交换机、打印机、网关、工业控制，也包括 Palo Alto Networks、Comcast、D-Link、HP、Canon、Honeywell、GE、Oracle、Siemens、Rockwell、Lockheed Martin、Boeing 等厂商的设备）。而 FoxIO 披露的这三个独立缺陷，全部属于「</span></strong><span leaf="">该拦的没拦住</span><strong style="color:#27272A;"><span leaf="">」。</span></strong></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**CRL 加载但不执行**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">OpenSSL 兼容</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**Critical 9.1**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**已吊销的客户端证书照样能完成 mTLS 握手**</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">DH 模数被截成 1 字节</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">Mbed TLS</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">Medium 5.9</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">共享密钥只剩 8 种可能，5 次尝试即可还原</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">证书链深度限制被绕过</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">LibreSSL 旧验证器</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">High 7.4</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">超长证书链可以突破 10 层深度限制</span></strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">一GOAHEAD 是什么以及为什么这三个漏洞</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一、GoAhead 是什么，以及为什么这三个漏洞重要</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">FoxIO 的定位：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「GoAhead 被用在数以亿计的 IoT、防火墙、OT 和军用设备上，包括来自 Palo Alto Networks、Comcast、D-Link、HP、Canon、Honeywell、GE、Oracle、Siemens、Rockwell、Digi、Lockheed Martin、Boeing 等厂商的设备。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 GoAhead 本身的定位（官方文档）：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「GoAhead 是一个嵌入式 Web 服务器，用于设备管理：路由器、交换机、打印机、网关和工业控制器。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 我认为这里的关键背景是：</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">嵌入式设备管理界面通常是「跑在设备本地的 HTTP 服务 + 一个 Web UI」，而这些设备往往：</span></strong></p>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">有 mTLS 客户端证书认证（设备之间互信）；</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">在物理上部署在客户现场，升级周期以年计；</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><strong style="color:#27272A;"><span leaf="">暴露在 OT / 工业网络里，而那些网络的边界设备往往就是这同一台设备。</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 也就是说，「GoAhead 没正确执行 CRL」这件事，直接对应「</span></strong><span leaf="">一台部署在客户现场的设备，接受了一张本该已被吊销的证书</span><strong style="color:#27272A;"><span leaf="">」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而修复版本是 </span></strong><span leaf="">6.1.1</span><strong style="color:#27272A;"><span leaf="">（2026-08-02 发布，2026-10-12 公开 advisory）。</span></strong></p>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">二 缺陷一</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">二、⭐ 缺陷一：CRL 被加载了，但从未被执行（Critical 9.1）</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2.1 机制：少了一个 flag</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GoAhead 的 OpenSSL 后端在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sslOpen()</span><span leaf=""> 里加载 CRL：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">// src/openssl.c
+if (ME_GOAHEAD_SSL_REVOKE &amp;&amp; *ME_GOAHEAD_SSL_REVOKE) {
+    store = SSL_CTX_get_cert_store(sslctx);
+    if (!X509_STORE_load_locations(store, ME_GOAHEAD_SSL_REVOKE, 0)) {
+        error("Cannot load certificate revoke list: %s", ME_GOAHEAD_SSL_REVOKE);
+        sslClose();
+        return -1;
+    }
+}</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而 OpenSSL 要真正执行 CRL 检查，必须额外设置 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_V_FLAG_CRL_CHECK</span><span leaf="">：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">// OpenSSL crypto/x509/x509_vfy.c
+int crl_check_enabled =
+    (ctx-&gt;param-&gt;flags &amp;
+     (X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL)) != 0;
+...
+if (!crl_check_enabled &amp;&amp; !ocsp_check_enabled)
+    return 1;</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 注意 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">return 1</span><span leaf=""> 的位置：它在检查吊销状态</span></strong><span leaf="">之前</span><strong style="color:#27272A;"><span leaf="">就返回成功。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 所以整个链条是：</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">① 运维配置了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ME_GOAHEAD_SSL_REVOKE</span><span leaf=""> 指向一个 CRL 文件 → ② 启动时文件被成功加载，没有任何警告 → ③ 但因为没设那个 flag，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">check_revocation()</span><span leaf=""> 每次握手都直接返回成功 → ④ 已吊销的客户端证书照样通过 mTLS 握手。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">advisory 里的实测证据（GoAhead 6.1.0 + OpenSSL 3.6.2）：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">VERIFY_CB: preverify_ok=1 error=0(ok) depth=1
+VERIFY_CB: preverify_ok=1 error=0(ok) depth=0</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 整条链上没有一个错误。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2.2 ⭐ 而这个缺陷最恶劣的地方：它「看起来是生效的」</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">advisory 里有一句话点破了要害：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_STORE_load_locations</span><span leaf=""> 调用返回成功，面向运维的路径不产生任何错误；</span></strong><span leaf="">一个配置了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ME_GOAHEAD_SSL_REVOKE</span><span leaf=""> 且没有看到启动警告的运维，有充分理由相信吊销是被强制执行的。</span><strong style="color:#27272A;"><span leaf="">它不是。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 我认为这是这个漏洞真正的危害所在 —— 它不是「没配 CRL」，而是「</span></strong><span leaf="">配了 CRL，并且一切看起来都正常</span><strong style="color:#27272A;"><span leaf="">」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">advisory 同时明确了触发条件：</span></strong></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**构建**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">GoAhead **3.4.5 – 6.1.0**，OpenSSL 兼容后端</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">配置</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">mTLS 启用 + 配置了 CRL</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">附加</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">即使启用了 issuer 校验</span></strong><span leaf="">（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_ISSUER=1</span><span leaf="">），吊销证书仍被接受</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而且 advisory 特别澄清了一个容易误判的点：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「GoAhead 的默认构建不启用 mTLS，也不加载 CRL。</span></strong><span leaf="">这个易受攻击的配置需要运维主动选择；配置了 CRL 的部署才是明确的目标 —— 运维选择 CRL，是因为他们有证书需要吊销。</span><strong style="color:#27272A;"></strong></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><strong style="color:#27272A;"><span leaf="">「在这个人群内部，每个部署在每次握手上都是完全易受攻击的，直到升级。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 也就是说，最需要吊销机制的那批部署，恰恰 100% 中招。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">2.3 修复：一行</span></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">         if (!X509_STORE_load_locations(store, ME_GOAHEAD_SSL_REVOKE, 0)) {
+             error("Cannot load certificate revoke list: %s", ME_GOAHEAD_SSL_REVOKE);
+             sslClose();
+             return -1;
+         }
++        X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而 advisory 里有一段解释，说明这个取舍是刻意的：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「我们故意不在这个修复中启用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_V_FLAG_CRL_CHECK_ALL</span><span leaf="">（全链 CRL 强制）。</span></strong><span leaf="">全链检查要求信任链上每一个签发者都有 CRL，而大多数部署并不提供。</span><strong style="color:#27272A;"><span leaf="">恢复仅叶子证书的强制执行，符合运维对 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ME_GOAHEAD_SSL_REVOKE</span><span leaf=""> 的既有预期。</span></strong><span leaf="">」</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 「恢复运维的预期」这个措辞很准确：缺陷的本质是「实现与文档承诺不符」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⚠️ 而 advisory 也标注了：</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">「mbedtls 构建</span></strong><span leaf="">不</span><strong style="color:#27272A;"><span leaf="">受影响。</span></strong><span leaf="">」</span><strong style="color:#27272A;"><span leaf=""> </span></strong><span leaf="">（因为 mbedtls 后端走完全不同的 CRL 代码路径。</span><strong style="color:#27272A;"></strong></p>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">三 缺陷二</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三、⭐ 缺陷二：一个 sizeof 笔误，把 2048 位 DH 模数变成 1 字节（Medium 5.9）</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3.1 机制</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GoAhead 的 mbed TLS 后端配置 RFC 3526 的 2048 位 DH 群：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">// src/mbedtls.c
+cuchar dhm_p[] = MBEDTLS_DHM_RFC3526_MODP_2048_P_BIN; // 256 bytes
+cuchar dhm_g[] = MBEDTLS_DHM_RFC3526_MODP_2048_G_BIN; // 1 byte: 0x02
+
+mbedtls_ssl_conf_dh_param_bin(conf, dhm_p, sizeof(dhm_g), dhm_g, sizeof(dhm_g));</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 笔误一目了然：模数长度参数写成了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sizeof(dhm_g)</span><span leaf="">（</span><span leaf="">= 1），而它应该是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sizeof(dhm_p)</span><span leaf="">（</span><span leaf="">= 256）。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">于是 mbed TLS 只读到 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">dhm_p</span><span leaf=""> 的第一个字节 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">0xFF</span><span leaf="">（255），丢掉其余 255 字节，然后把这个值发给客户端：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">0c 00 01 0d 00 01 ff 00 01 02 00 01 08</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">00 01 ff</span><span leaf=""> 表示「一个 1 字节的 DH 参数，值是 255」。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3.2 ⭐ 而这意味着什么</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">FoxIO 的分析：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「破损的参数只留下八个可能的共享密钥值：十六进制的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">01</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">02</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">04</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">08</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">10</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">20</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">40</span><span leaf=""> 和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">80</span><span leaf="">。</span></strong><span leaf="">观察者可以逐个尝试候选值，通过检查是否能成功解密捕获的流量来确定正确的那一个。</span><strong style="color:#27272A;"><span leaf="">」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 换句话说：一个本该是 2048 位的 Diffie-Hellman，退化成了</span></strong><span leaf="">8 种可能的共享密钥</span><strong style="color:#27272A;"><span leaf="">。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而 PoC 的实测：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「在附带的 PoC 中，我在五次尝试后成功复现了共享密钥。它与客户端的密钥匹配，确认可以推导出相同的 TLS 会话密钥来解密 HTTP 交换。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 五次尝试。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这基本上就是「当场解密」。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3.3 ⭐ 但触发条件比想象的窄</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">advisory 明确列出了限制：</span></strong></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**需要客户端接受破损参数**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**⭐ 测用的 OpenSSL 客户端直接拒绝了**（`DH_check_params_ex: modulus too small`）</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">需要 TLS 1.2 + DHE_RSA</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">ECDHE 会话与 TLS 1.3 </span><strong style="color:#27272A;"><span leaf="">不受影响</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">只影响有限域 DH 套件</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">「配置的有限域群」这一条路径</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而「宽容客户端」的存在是真实的：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「宽容的客户端，包括没有最小尺寸检查的自定义或嵌入式实现，可以完成一个可解密的会话。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 而考虑到 GoAhead 自己的部署场景（</span></strong><span leaf="">嵌入式设备</span><strong style="color:#27272A;"><span leaf="">），「自定义或嵌入式实现」恰恰是常态而非例外。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3.4 ⭐ 排查方法：JA4S</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">FoxIO 给了一个非常可操作的检测方法：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「如果你在环境的 JA4S 日志里看到这些套件，你可能受影响（例如 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">t120100_009f_1ca028f07214</span><span leaf="">）」</span></strong></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><strong style="color:#27272A;"><span leaf="">「一个你可能想在 Splunk 或其它工具里跑的样本查询会是：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">DestIP = (GoAhead Device) AND JA4S = *_0014_</span><span leaf="">」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 完整的 DHE_RSA 套件码表（FoxIO 原文）：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">0014  TLS_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA
+0015  TLS_DHE_RSA_WITH_DES_CBC_SHA
+0016  TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA
+0033  TLS_DHE_RSA_WITH_AES_128_CBC_SHA
+0039  TLS_DHE_RSA_WITH_AES_256_CBC_SHA
+0045  TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA
+0067  TLS_DHE_RSA_WITH_AES_128_CBC_SHA256
+006B  TLS_DHE_RSA_WITH_AES_256_CBC_SHA256
+0088  TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA
+009A  TLS_DHE_RSA_WITH_SEED_CBC_SHA
+009E  TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+009F  TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
+00BE  TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA256
+00C4  TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA256
+C044  TLS_DHE_RSA_WITH_ARIA_128_CBC_SHA256
+C045  TLS_DHE_RSA_WITH_ARIA_256_CBC_SHA384
+C052  TLS_DHE_RSA_WITH_ARIA_128_GCM_SHA256
+C053  TLS_DHE_RSA_WITH_ARIA_256_GCM_SHA384
+0C07C  TLS_DHE_RSA_WITH_CAMELLIA_128_GCM_SHA256
+0C07D  TLS_DHE_RSA_WITH_CAMELLIA_256_GCM_SHA384
+C09E  TLS_DHE_RSA_WITH_AES_128_CCM
+C09F  TLS_DHE_RSA_WITH_AES_256_CCM
+C0A2  TLS_DHE_RSA_WITH_AES_128_CCM_8
+C0A3  TLS_DHE_RSA_WITH_AES_256_CCM_8
+CCAA  TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256</pre>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">3.5 修复与「这个 typo 活了多久」</span></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">- mbedtls_ssl_conf_dh_param_bin(conf, dhm_p, sizeof(dhm_g), dhm_g, sizeof(dhm_g))
++ mbedtls_ssl_conf_dh_param_bin(conf, dhm_p, sizeof(dhm_p), dhm_g, sizeof(dhm_g))</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而 FoxIO 在博客里加了一句我认为值得记的时间说明：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「这个 typo 是在 2018 年迁移到二进制参数 API 时引入的，并且 survived 了 2024 年 4 月的 TLS 重构。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 一个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sizeof</span><span leaf=""> 笔误，2018 年进去，2026 年出来。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而且 advisory 补了一条重要的边界：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「Mbed TLS 4.x 移除了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">TLS_DHE_*</span><span leaf=""> 套件，所以这条 DHE 路径不受影响。」</span></strong></p>
+    </section>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">四 缺陷三</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">四、⭐ 缺陷三：LibreSSL 旧验证器下，证书链深度限制可被绕过（High 7.4）</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4.1 机制：错误码分类吃掉了深度错误</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GoAhead 设置了 10 层的证书链深度上限：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">// src/openssl.c
+SSL_CTX_set_verify_depth(sslctx, VERIFY_DEPTH);</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">而它的验证回调里，深度检查是有条件的：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">if (ok &amp;&amp; VERIFY_DEPTH &lt; depth) {
+    if (error == 0) {
+        error = X509_V_ERR_CERT_CHAIN_TOO_LONG;
+    }
+}</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 注意 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ok &amp;&amp;</span><span leaf=""> 这个前提：只有「当前这一步是 OK 的」时，才会去设置深度错误。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而回调随后对错误码分类：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">case X509_V_ERR_CERT_UNTRUSTED:
+case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+    if (ME_GOAHEAD_SSL_VERIFY_ISSUER) {
+        ok = 0;
+    }
+    break;
+
+case X509_V_ERR_CERT_CHAIN_TOO_LONG:
+default:
+    ok = 0;
+    break;</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 于是关键在于：LibreSSL 报的是哪个错误码。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">旧版 LibreSSL 的验证器在构建链时，遇到深度限制直接停下，却</span></strong><span leaf="">没有</span><strong style="color:#27272A;"><span leaf="">记录深度错误：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">// LibreSSL src/lib/libcrypto/x509/x509_vfy.c
+for (;;) {
+    /* FIXME: If this happens, we should take
+     * note of it and, if appropriate, use the
+     * X509_V_ERR_CERT_CHAIN_TOO_LONG error code
+     * later.
+     */
+    if (depth &lt; num)
+        break;</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 注意那个 FIXME —— 它自己写着「以后应该改用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_V_ERR_CERT_CHAIN_TOO_LONG</span><span leaf=""> 错误码」，但一直没改。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">结果是：失败以 error 20（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">UNABLE_TO_GET_ISSUER_CERT_LOCALLY</span><span leaf="">）的形式到达 GoAhead，而 error 20 在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_ISSUER=0</span><span leaf=""> 时是被容忍的。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 也就是说：深度超限这条限制，因为错误码「记错了类型」，被另一条限制的宽松分支顺带放行了。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4.2 实测：17 张证书的链通过了</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GoAhead 6.1.0 + LibreSSL 3.3.6：</span></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">VERIFY_CB_ENTRY: preverify_ok=0 error=20(unable to get local issuer certificate) depth=10
+VERIFY_CB_ENTRY: preverify_ok=1 error=20(unable to get local issuer certificate) depth=9
+VERIFY_CB_ENTRY: preverify_ok=1 error=20(unable to get local issuer certificate) depth=8</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而结果是：「握手完成，客户端证书要求后面的资源返回了 HTTP 200。」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而且 FoxIO 做了对照实验：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「同一份 GoAhead 源码链接 LibreSSL 4.3.1 构建时，在 depth 10 收到 error 22 并拒绝了这条链。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 所以这不是 GoAhead 逻辑的问题，是 </span></strong><span leaf="">LibreSSL 旧版验证器的一个 FIXME 没被修</span><strong style="color:#27272A;"><span leaf="">，而 GoAhead 的错误码分类恰好把它变成了可绕过的。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">4.3 触发条件</span></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**GoAhead**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">3.2.x 或 3.3.2–3.3.6，**≤ 6.1.0**</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">LibreSSL</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">3.2.x / 3.3.2–3.3.6 的旧版验证器</span></strong><span leaf="">（3.2.x 与 3.3.2–3.3.6 默认使用旧验证器）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">配置</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_PEER=1</span><span leaf=""> 且 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_ISSUER=0</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">结果</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">超深度的客户端链被接受</span></strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而修复方式是两条：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「启用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_ISSUER=1</span><span leaf=""> 并提供受信 CA bundle，或改用 OpenSSL / LibreSSL 4.x。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 注意 advisories 里明确说了：「OpenSSL、BoringSSL、AWS-LC 和 LibreSSL 4.x 构建</span></strong><span leaf="">不</span><strong style="color:#27272A;"><span leaf="">受这个旧验证器触发条件影响。」</span></strong></p>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">五 影响面汇总与 JA4SCAN 指纹</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">五、⭐ 影响面汇总与 JA4Scan 指纹</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">FoxIO 官方给出的表格：</span></strong></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**OpenSSL 兼容后端**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">≥ 3.4.5, ≤ 6.1.0</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**mTLS 启用 + 配置了 CRL**；即使启用了 issuer 校验，已吊销证书仍被接受</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**升级到 6.1.1 或更高**</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">Mbed TLS 后端</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">≥ 4.0.2, ≤ 6.1.0</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">TLS 1.2 DHE_RSA，且客户端接受破损参数</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">升级到 6.1.1</span></strong><span leaf="">、</span><strong style="color:#27272A;"><span leaf="">禁用有限域 DHE 套件</span></strong><span leaf="">、或改用 OpenSSL 后端</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">LibreSSL 旧验证器</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">3.2.x 或 3.3.2–3.3.6</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">≤ 6.1.0</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_ISSUER=1</span><span leaf=""> + 受信 CA bundle</span></strong><span leaf="">，或改用 OpenSSL / LibreSSL 4.x</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而 FoxIO 还给出了「怎么在你的公网资产里找出 GoAhead」的方法 —— 直接给 JA4Scan-TLS 指纹：</span></strong></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**OpenSSL 3.6.2**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">`03100h0s00sn_1fe27f6025fb_d06dc4648d2f_sr00ss537461`</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">LibreSSL 3.3.6</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">03100h0s00s0_9d52559f55bc_c64486648d2f_sr00sc24603c</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">LibreSSL 4.3.1（深度绕过不受影响）</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">03100h0r00s0_9d52559f55bc_c64486206461_sr00scc98ba1</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">mbedTLS 3.6.6</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">23100h0s01s0_d7d3025021f4_0475c5cede0d_sr0ss02265cf</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 这张表的价值在于：它能区分「同一个 GoAhead 设备，用的是哪条 TLS 路径」—— 而这正是决定你受不受影响的关键。</span></strong></p>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">08</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">六 我的评价</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">六、⭐ 我的评价</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">6.1 这三个漏洞揭示了一个共同的反模式：</span><strong style="color:#27272A;"><span leaf="">「配置了 ≠ 生效了」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 我认为这三个漏洞应该被当成</span></strong><span leaf="">一组</span><strong style="color:#27272A;"><span leaf="">来看，而不是三个独立条目，因为它们共享同一个形状：</span></strong></p>
+    <section style="margin:0 0 24px;border:1px solid #E4E4E7;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**CRL 检查**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">✅ OpenSSL 有这个能力</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">❌ **从未调用**</span></th><th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">❌ **启动无任何警告**</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">DH 模数</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">✅ 缓冲区是完整的 256 字节</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">❌ </span><strong style="color:#27272A;"><span leaf="">只读了 1 字节</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">❌ 客户端能拒绝（但嵌入式客户端不会）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">链深度检查</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">✅ GoAhead 自己检查了 depth</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⚠️ </span><strong style="color:#27272A;"><span leaf="">检查了，但被错误分类绕过</span></strong></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">❌ 握手成功</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而最值得警惕的共同点是：</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">它们在「部署者视角」下全都是「静默的」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 运维配了 CRL，看到启动日志没有错误，就认为吊销在生效；运维看到 DHE 套件握手成功，就认为加密是强的；运维看到 mTLS 握手成功，就认为链深度限制在工作。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">这三个判断全是错的，而且没有一条会产生可见的征兆。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">6.2 ⭐ 而 GoAhead 场景的特殊性，让这件事更严重</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 前面提过 GoAhead 的部署形态（设备管理界面、现场部署、升级周期以年计）。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">我想再补一层：</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">FoxIO 的官方表格里，「LibreSSL 构建可能同时继承 CRL 缺陷和旧验证器的深度问题」</span></strong><span leaf=""> —— </span><strong style="color:#27272A;"><span leaf="">也就是说，</span></strong><span leaf="">一个用 LibreSSL 3.3.x 构建的 GoAhead 设备，可能同时中两个。</span><strong style="color:#27272A;"></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 而在 OT / IoT 场景里，「这个设备需要多久才能升级到 6.1.1」是一个供应链问题，不是技术问题。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 而且 advisory 里有一句值得引用：</span></strong></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><strong style="color:#27272A;"><span leaf="">「GoAhead 的默认构建不启用 mTLS，也不加载 CRL。这个易受攻击的配置需要运维主动选择。」</span></strong></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 这句话对防守方是好消息（默认安全），对「资产清单」是坏消息（</span></strong><span leaf="">你得先知道自己哪些设备配了 CRL</span><strong style="color:#27272A;"><span leaf="">，才知道哪些要升级）。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">6.3 ⭐ 三个可迁移的检查项</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 我认为这三个漏洞的</span></strong><span leaf="">排查方法</span><strong style="color:#27272A;"><span leaf="">比漏洞本身更值得带走，因为它们可以迁移到你自己的代码库：</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">① 「我加载了 X，是否真的启用了 X 的执行开关？」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">GoAhead 的教训是：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_STORE_load_locations()</span><span leaf=""> 成功 ≠ CRL 会被检查。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这类「加载 vs 执行」的分裂在各类库里非常常见（策略加载、审计日志加载、证书钉扎加载……）。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">值得做的是：对着每个「我加载了 X」去查对应库文档里「启用 X 的那个 flag/调用」。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">② 「我给两个不同长度的缓冲区传了同一个长度参数？」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 那个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sizeof(dhm_g)</span><span leaf=""> 用了两次。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而这类 bug 的隐蔽性在于：</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">它编译通过、运行不报错、只有在握手时才体现为「参数看起来很奇怪」。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">静态检查（clang-tidy 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">bugprone-sizeof-expression</span><span leaf=""> 之类）通常抓不到它，但「同一函数里多个 sizeof 出现在同一调用」是一个可 grep 的模式。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">③ 「我的错误码分类里，有哪几个是『被容忍的』？」</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ GoAhead 的回调里，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY</span><span leaf=""> 在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">VERIFY_ISSUER=0</span><span leaf=""> 时被容忍 —— 而这恰好是旧版 LibreSSL 用来报告深度超限的那个错误码。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 也就是说，一个「宽松的错误处理分支」，意外地成了另一个安全限制的旁路。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">这类 bug 只有在你把「哪些错误码是可容忍的」列成一张表，并逐个核对上游语义时才可能发现。</span></strong></p>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">6.4 一个小注记：advisory 的作者就是报告者</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">三份 advisory 的 Credits 都写着「Reported by Sébastien Féry」</span></strong><span leaf=""> —— 而 FoxIO 那篇博客的作者也是他。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 这意味着</span></strong><span leaf="">这次漏洞发现走的是「研究者直接向厂商报告 → 厂商发 advisory → 研究者公开分析」的路径</span><strong style="color:#27272A;"><span leaf="">，</span></strong><span leaf="">而不是「研究者直接公开」。</span><strong style="color:#27272A;"><span leaf=""> </span></strong><span leaf="">而官方时间线印证了这个流程是有效的：</span><strong style="color:#27272A;"></strong></p>
+    <section style="background:#27272A;border-radius:4px;padding:14px 16px;margin:0 0 24px;">
+      <pre style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#E4E4E7;">2026-04-22  LibreSSL 报告
+2026-04-27  MbedTLS 报告
+2026-04-30  OpenSSL 报告
+2026-08-02  GoAhead 6.1.1 发布
+2026-10-12  Advisories 公开
+2026-10-26  博客公开</pre>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">⭐ 从最早报告（4-22）到修复版发布（8-02）是 102 天，到 advisory 公开（10-12）是 173 天。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">而 blog 公开（10-26）是在 advisory 公开之后两周 —— 顺序是对的。</span></strong></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><strong style="color:#27272A;"><span leaf="">—— 这一点值得和本号此前写的那篇《PHP 基金会承认：一个漏洞拖了两年》对照读：</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">同样是嵌入式/开源项目，一个是研究者报告后 102 天修复，一个是漏洞在树上躺了 28 个月才被外部信号推动。</span></strong><span leaf=""> </span><strong style="color:#27272A;"><span leaf="">差别不在项目大小，而在「有没有一条让外部信号能推动内部决策的通道」。</span></strong></p>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">09</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SOURCES</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Sources</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">FoxIO 博客：Choose Your Backend — Three TLS Bugs in GoAhead（2026-10-26，Sébastien Féry）：https://foxio.io/blog/choose-your-backend-three-tls-bugs-in-goahead</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">GHSA-5m75-xq69-c3c5（OpenSSL CRL，Critical 9.1，CVE-2026-115881）：https://github.com/embedthis/goahead/security/advisories/GHSA-5m75-xq69-c3c5</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">GHSA-fmvx-2xfx-2gq4（Mbed TLS DH 截断）：https://github.com/embedthis/goahead/security/advisories/GHSA-fmvx-2xfx-2gq4</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">GHSA-r392-vqwx-3r4g（LibreSSL 链深度绕过，High 7.4，CVE-2026-115884）：https://github.com/embedthis/goahead/security/advisories/GHSA-r392-vqwx-3r4g</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">PoC：https://github.com/FoxIO-LLC/blog_poc/tree/main/chooseyourbackend</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">FoxIO JA4Scan 介绍：https://foxio.io/blog/introducing-ja4scan-active-server-fingerprinting-for-tls-and-quic</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">GoAhead SSL 文档：https://www.embedthis.com/goahead/doc/users/ssl.html</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">OpenSSL </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">X509_STORE_set_flags(3)</span><span leaf="">：https://docs.openssl.org/3.6/man3/X509_STORE_set_flags/</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">（说明：所有引号内内容与代码块均为官方博客/advisory 原文；第六节的归纳、6.3 的三条「可迁移检查项」与 6.4 的时间线对照为笔者补充。</span><strong style="color:#27272A;"><span leaf="">代码块为安全研究中的必要引用，均来自厂商 advisory 的官方修复 diff。</span></strong><span leaf="">）</span></p>
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">16</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">产品</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">GoAhead —— 嵌入式 Web 服务器（路由器、交换机、打印机、网关、工业控制器）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">规模</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ 数以亿计的 IoT / 防火墙 / OT / 军用设备</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">厂商名单</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">Palo Alto Networks · Comcast · D-Link · HP · Canon · Honeywell · GE · Oracle · Siemens · Rockwell · Digi · Lockheed Martin · Boeing</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">缺陷一</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ OpenSSL CRL 加载但不执行 —— Critical 9.1（CVE-2026-115881）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">缺陷二</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ Mbed TLS sizeof 笔误 → DH 模数 256 字节变 1 字节 —— Medium 5.9</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">缺陷三</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ LibreSSL 旧验证器 → 链深度限制被绕过 —— High 7.4（CVE-2026-115884）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">最恶劣的一点</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ 「配了 CRL、启动无任何警告」—— 运维有充分理由相信吊销生效，但它没有</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 触发人群</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ 最需要吊销机制的那批部署，恰恰 100% 中招</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ DH 后果</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">2048 位 DH 退化成 8 种可能共享密钥；PoC 五次尝试即还原</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ DH 历史</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ 2018 年引入的 typo，survived 了 2024 年 4 月的 TLS 重构</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 链深度机制</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">LibreSSL 旧验证器的 FIXME：深度超限时报 error 20 而非 22，被 VERIFY_ISSUER</span><span leaf="">=0 分支容忍</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 互相叠加</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ LibreSSL 构建可能同时继承 CRL 缺陷与深度问题</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">修复版本</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ 6.1.1（2026-08-02 发布，10-12 公开 advisory）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 检测方法</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">JA4Scan-TLS 指纹表 + JA4S 套件码查询（</span><span leaf="">*_0014_）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 共同形状</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ 「配置了 ≠ 生效了」；且在部署者视角下全部是静默的</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 三个检查项</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">加载 vs 执行开关 · 两个缓冲区同一 sizeof · 错误码分类里哪些被容忍</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">流程</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><strong style="color:#27272A;"><span leaf="">研究者直报厂商 → 厂商发 advisory → 研究者公开；⭐ 102 天修复，顺序正确</span></strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;font-weight:700;color:#27272A;line-height:1.8;"><span leaf="">这三个漏洞应该被当成一组来看，而不是三个独立条目，因为它们共享同一个形状：「配置了 ≠ 生效了」。CRL 检查：机制在 OpenSSL 里存在，但从未被调用；DH 模数：缓冲区是完整的 256 字节，但只读了 1 字节；链深度检查：GoAhead 自己检查了 depth，但错误码分类把它放行了。而在部署者视角下，它们全都是静默的 —— 配了 CRL 的人看到启动日志没有错误，就认为吊销生效；看到 DHE 握手成功的人，就认为加密是强的；看到 mTLS 握手成功的人，就认为链深度限制在工作。这三个判断全是错的，而且没有一条会产生可见的征兆。而我认为这三个漏洞的排查方法比漏洞本身更值得带走，因为它们可以迁移到你自己的代码库：第一，「我加载了 X，是否真的启用了 X 的执行开关？」；第二，「我给两个不同长度的缓冲区传了同一个长度参数？」；第三，「我的错误码分类里，有哪几个是被容忍的？」—— 一个宽松的错误处理分支，意外成了另一个安全限制的旁路。而 GoAhead 的场景让这件事更严重：它是装在客户现场、升级周期以年计的嵌入式设备，而 FoxIO 官方表格里明确写着「LibreSSL 构建可能同时继承 CRL 缺陷和旧验证器的深度问题」。不过这次披露流程本身值得肯定：研究者直报厂商、102 天出修复版、advisory 先于博客公开两周。这恰好和本号此前写的那篇 PHP 基金会流程复盘形成对照：同样是开源项目，一个是研究者报告后 102 天修复，一个是漏洞在树上躺了 28 个月才被外部信号推动。差别不在项目大小，而在「有没有一条让外部信号能推动内部决策的通道」。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
