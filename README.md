@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-28 | [Omarchy 4.5-RC2：安装器不再一个一个装包了，而是把 940 个包烤成一张镜像直接写进硬盘](https://freelamp.com/articles/2026-10-28_omarchy-4-5-rc2-f1-installer-940-packages/) | Omarchy · Arch Linux · btrfs · zstd · installer · F1 · Limine · Hyprland · 性能优化 · Linux装机 · 发行版 · DHH · 浮动工作区 · 每显示器工作区 · 通知系统 · 中国镜像 · 安全 · 凭据管理 |
 | 2026-10-27 | [一个 16 岁的缓冲区溢出，让全球大多数服务器的固件都能被远程打穿：CVE-2026-97631](https://freelamp.com/articles/2026-10-27_uefi-edk2-pxe-icmp-cve-2026-97631/) | UEFI · EDK2 · TianoCore · PXE · ICMP · 缓冲区溢出 · CVE-2026-97631 · 固件安全 · SecureBoot · TPM · 网络启动 · 预执行环境 · 供应链 · PXEBaseCode |
 | 2026-10-27 | [安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面](https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/) | Android · PrivateDNS · DoH · DoT · DDR · RFC9462 · SVCB · HTTP3 · QUIC · NextDNS · AdGuard · Cloudflare · Quad9 · Shizuku · ADB · device_config · DNS加密 |
 | 2026-10-27 | [GhostBSD 26.2：FreeBSD 桌面这两年最实在的一次进步，是把「安装器」和「首次启动」拆开了](https://freelamp.com/articles/2026-10-27_ghostbsd-26-2-freebsd-15-1/) | GhostBSD · FreeBSD · MATE · ZFS · GELI · 整机加密 · 安装器 · InstallStation · BEStation · BootEnvironment · pkg · Pkg · XLibre · USBHID · Desktop |
