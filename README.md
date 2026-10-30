@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-10-30 | [史上最大规模加密盗窃：63.6 亿美元、20 分钟、10 条链 —— 而 Binance 说私钥没泄露](https://freelamp.com/articles/2026-10-30_binance-6-36-billion-hack-eip-7702-presigned-authorization/) | Binance · 加密货币盗窃 · EIP-7702 · Pectra · 热钱包 · 预签名 · 签名基础设施 · TraderTraitor · 朝鲜 · 链上取证 · 稳定币冻结 · 洗钱 · 以太坊 · 比特币 · TRM · Chainalysis · Elliptic · 供应链安全 · DevSecOps |
+| 2026-10-30 | [一个 66 行的 loader，和 5000 个装上它的开发者：Cursor 市场上架的 Claude Code 扩展被投毒](https://freelamp.com/articles/2026-10-30_cursor-claude-code-extension-ssh-backdoor/) | 供应链安全 · Cursor · VSCode扩展 · ClaudeCode · Anthropic · OpenVSX · SSH后门 · 反向隧道 · 恶意软件 · IOC · 持久化 · LaunchAgent · 定时任务 · 凭据泄露 · 开发者工具 · 远控 |
 | 2026-10-28 | [Omarchy 4.5-RC2：安装器不再一个一个装包了，而是把 940 个包烤成一张镜像直接写进硬盘](https://freelamp.com/articles/2026-10-28_omarchy-4-5-rc2-f1-installer-940-packages/) | Omarchy · Arch Linux · btrfs · zstd · installer · F1 · Limine · Hyprland · 性能优化 · Linux装机 · 发行版 · DHH · 浮动工作区 · 每显示器工作区 · 通知系统 · 中国镜像 · 安全 · 凭据管理 |
 | 2026-10-27 | [一个 16 岁的缓冲区溢出，让全球大多数服务器的固件都能被远程打穿：CVE-2026-97631](https://freelamp.com/articles/2026-10-27_uefi-edk2-pxe-icmp-cve-2026-97631/) | UEFI · EDK2 · TianoCore · PXE · ICMP · 缓冲区溢出 · CVE-2026-97631 · 固件安全 · SecureBoot · TPM · 网络启动 · 预执行环境 · 供应链 · PXEBaseCode |
 | 2026-10-27 | [安卓其实早就有系统级 DoH，只是被藏在一个 feature flag 后面](https://freelamp.com/articles/2026-10-27_android-private-dns-ddr-doh/) | Android · PrivateDNS · DoH · DoT · DDR · RFC9462 · SVCB · HTTP3 · QUIC · NextDNS · AdGuard · Cloudflare · Quad9 · Shizuku · ADB · device_config · DNS加密 |
