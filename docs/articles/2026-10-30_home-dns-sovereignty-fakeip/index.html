@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家庭网络的 DNS 自主化改造：FakeIP + 双递归 + 广告过滤的完整架构 — FreeLAMP.com</title>
+  <meta name="description" content="家庭网络 DNS 自主化架构深度实践：nsd 根区镜像抗污染原理、FakeIP 假地址换真域名机制、双 unbound 递归（墙内宽松/墙外严格 DNSSEC）、165 万广告域名增量分类流水线、 sing-box 透明代理分流，以及完整的隐私模型分析。">
+  <meta name="keywords" content="DNS, FakeIP, unbound, nsd, sing-box, DNSSEC, IPv6, 网络架构, 自托管">
+  <meta name="author" content="LeisureLinux">
+  <meta name="date" content="2026-10-30">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-10-30_home-dns-sovereignty-fakeip/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="家庭网络的 DNS 自主化改造：FakeIP + 双递归 + 广告过滤的完整架构">
+  <meta property="og:description" content="家庭网络 DNS 自主化架构深度实践：nsd 根区镜像抗污染原理、FakeIP 假地址换真域名机制、双 unbound 递归（墙内宽松/墙外严格 DNSSEC）、165 万广告域名增量分类流水线、 sing-box 透明代理分流，以及完整的隐私模型分析。">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-10-30_home-dns-sovereignty-fakeip/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-10-30">
+  <meta property="article:author" content="LeisureLinux">
+  <meta property="article:section" content="DNS">
+  <meta property="article:tag" content="DNS">
+  <meta property="article:tag" content="FakeIP">
+  <meta property="article:tag" content="unbound">
+  <meta property="article:tag" content="nsd">
+  <meta property="article:tag" content="sing-box">
+  <meta property="article:tag" content="DNSSEC">
+  <meta property="article:tag" content="IPv6">
+  <meta property="article:tag" content="网络架构">
+  <meta property="article:tag" content="自托管">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="家庭网络的 DNS 自主化改造：FakeIP + 双递归 + 广告过滤的完整架构">
+  <meta name="twitter:description" content="家庭网络 DNS 自主化架构深度实践：nsd 根区镜像抗污染原理、FakeIP 假地址换真域名机制、双 unbound 递归（墙内宽松/墙外严格 DNSSEC）、165 万广告域名增量分类流水线、 sing-box 透明代理分流，以及完整的隐私模型分析。">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "家庭网络的 DNS 自主化改造：FakeIP + 双递归 + 广告过滤的完整架构",
+  "description": "在保留 IPv6 的前提下，让全屋设备的 DNS 查询不出门、不被污染、不被统计——不依赖任何公共 DNS 的完整实践",
+  "datePublished": "2026-10-30",
+  "dateModified": "2026-10-30",
+  "author": {
+    "@type": "Person",
+    "name": "LeisureLinux",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-10-30_home-dns-sovereignty-fakeip/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "DNS, FakeIP, unbound, nsd, sing-box, DNSSEC, IPv6, 网络架构, 自托管"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "家庭网络的 DNS 自主化改造：FakeIP + 双递归 + 广告过滤的完整架构",
+        "item": "https://freelamp.com/articles/2026-10-30_home-dns-sovereignty-fakeip/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-10-30">2026-10-30</div>
+        <h1 class="post-title" itemprop="headline">家庭网络的 DNS 自主化改造：FakeIP + 双递归 + 广告过滤的完整架构</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/DNS/">DNS</a><a itemprop="keywords" href="/tags/FakeIP/">FakeIP</a><a itemprop="keywords" href="/tags/unbound/">unbound</a><a itemprop="keywords" href="/tags/nsd/">nsd</a><a itemprop="keywords" href="/tags/sing-box/">sing-box</a><a itemprop="keywords" href="/tags/DNSSEC/">DNSSEC</a><a itemprop="keywords" href="/tags/IPv6/">IPv6</a><a itemprop="keywords" href="/tags/%E7%BD%91%E7%BB%9C%E6%9E%B6%E6%9E%84/">网络架构</a><a itemprop="keywords" href="/tags/%E8%87%AA%E6%89%98%E7%AE%A1/">自托管</a></div>
+        <meta itemprop="author" content="LeisureLinux">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+
+<blockquote>在保留 IPv6 的前提下，让全屋设备的 DNS 查询「不出门、不被污染、不被统计」——不依赖任何公共 DNS 的完整实践</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>本文看点</h2>
+<table>
+<tr><th>#</th><th>要点</th></tr>
+<tr><td>1</td><td>运营商 DNS 污染的实测：v4 与 v6 递归路径双双中招，<code>2001::1</code> 假答现场抓获</td></tr>
+<tr><td>2</td><td>根区镜像（nsd slave）为什么天生抗污染：TCP + DNSSEC + 多上游冗余</td></tr>
+<tr><td>3</td><td>FakeIP 原理详解：用假地址换真域名，让污染在物理上无的放矢</td></tr>
+<tr><td>4</td><td>165 万广告域名的增量分类流水线：NXDOMAIN 占 65% 的意外发现</td></tr>
+<tr><td>5</td><td>隐私模型：谁能看到你的 DNS？逐个观察者拆解</td></tr>
+</table>
+<p>---</p>
+<h2>一、起点：一个被污染的递归链路</h2>
+<p>家里的网络拓扑很普通：光猫（桥接 IPv6）→ 主路由 → 一台跑着 sing-box 的软路由（下文称「网关」），全屋设备的流量透明经过它。原有的 DNS 方案是 unbound 递归解析 + nsd 做根区镜像，看起来已经相当「自主」。</p>
+<p>直到做了一次实测：</p>
+<pre><code class="">$ dig facebook.com @8.8.8.8
+31.13.92.37          ← 假 IP
+<p>$ dig facebook.com @127.0.0.1   (本地 unbound 递归)
+104.244.42.197       ← 真 IP</p>
+<p>$ dig AAAA facebook.com @127.0.0.1
+2001::1              ← 著名的 GFW v6 污染地址！
+</code></pre></p>
+<p>三个结果对应三种现实：公共 DNS 被污染不奇怪；<strong>本地递归的 v4 路径拿到了真 IP</strong>（随机源端口+多权威交叉的功劳）；但 <strong>v6 递归路径被注入了 <code>2001::1</code></strong>——「IPv6 不污染」的旧印象过时了，GFW 对 v6 的 UDP/53 注入已经全面部署。</p>
+<p>这引出了本文的核心问题：<strong>在保留 IPv6 的前提下，如何让全屋 DNS 完全自主、完全抗污染、并且顺带把广告和恶意网站过滤做满？</strong></p>
+<h2>二、先分清三个角色</h2>
+<p>动手前必须分清三个经常被混为一谈的角色：</p>
+<p><strong>解析器（Resolver）</strong>——真正做递归查询的程序：unbound、BIND。它们从根开始，一层层问到权威服务器。</p>
+<p><strong>过滤网关（Filter）</strong>——在解析前后做域名黑名单匹配：AdGuard Home、mosdns，或者 unbound 的 <code>local-zone: always_null</code>（借位实现）。</p>
+<p><strong>分流器（Splitter）</strong>——决定「这个连接走直连还是代理」：sing-box、mosdns。</p>
+<p>我先后考虑过 mosdns 和 AdGuard Home，结论是它们在我的场景里都是多余的：</p>
+<ul>
+<li><strong>mosdns</strong>：纯分流/过滤转发器，不做递归。加进架构只是把 sing-box 或 unbound 已有的功能多包一层，且它的过滤数据源和我自己抓的完全是同一批。</li>
+<li><strong>AdGuard Home</strong>：产品化程度高（面板、DoH 服务端、统计），但<strong>不做递归</strong>。在墙内用它，国内域名的递归还得在后面挂 unbound，多一跳；而我已有基于 dnstap 的自建查询面板，AGH 反而会把数据流打断。</li>
+</ul>
+最终架构里，<strong>递归交给 unbound，过滤借 unbound 的 local-zone，分流交给 sing-box</strong>——三个角色各归其位，零冗余组件。
+<h2>三、根区镜像：天生抗污染的基石</h2>
+<p>nsd 在我的架构里不是递归解析器，而是<strong>根区 slave</strong>——通过 AXFR（TCP/53）从根服务器直接同步整个根区：</p>
+<pre><code class="">zone:
+    name: "."
+    request-xfr: 192.228.79.201 NOKEY    # b.root-servers.net
+    request-xfr: 192.33.4.12 NOKEY       # c.root-servers.net
+    request-xfr: 192.5.5.241 NOKEY       # f.root-servers.net
+    ...
+    request-xfr: 2001:500:84::b NOKEY    # b.root-servers.net (v6)
+    request-xfr: 2001:500:2f::f NOKEY    # f.root-servers.net (v6)
+</code></pre>
+<p>这条链路对抗污染有六层护甲：</p>
+<ol>
+<li>1. <strong>TCP 而非 UDP</strong>——AXFR 必须走 TCP 长连接。运营商的污染手段核心是「UDP 抢答注入」（伪造源地址的应答包抢在真应答之前），对 TCP 会话无效：要么序列号对不上被丢弃，要么直接 RST——而 nsd 配了 7 个 primary，断一条换一条</li>
+<li>2. <strong>根区全程 DNSSEC 签名</strong>——伪造整个根区内容在数学上不可行（拿不到根的私钥）</li>
+<li>3. <strong>v4 + v6 双协议上游</strong>——需要同时劫持两条路径</li>
+<li>4. <strong>IXFR 增量传送</strong>——日常只有几 KB 的增量，即使单次被干扰，下次重试即恢复</li>
+<li>5. <strong>ICANN 直属分发节点</strong>——<code>xfr.cjr.dns.icann.org</code> 等，与运营商无关</li>
+<li>6. <strong>数据公开可校验</strong>——根区在 internic.net 有官方发布，可随时比对</li>
+</ol>
+实测三台 v6 根服务器 TCP/53 全部可达，AXFR 链路通畅。
+<p><strong>但要清醒</strong>：根区只包含 TLD 的 NS/DS 记录。拿到根区之后，unbound 还要自己迭代查询 .com 权威、目标域权威——<strong>这些迭代查询是明文 UDP/53，v4 和 v6 都会被污染</strong>。根区镜像解决的是「信任锚」问题，防不了迭代路径上的注入。这就轮到下一个角色出场。</p>
+<h2>四、FakeIP：让污染在物理上无的放矢</h2>
+<h3>4.1 透明代理的鸡生蛋问题</h3>
+<p>透明代理架构里有个经典难题：设备先查 DNS 拿 IP，再发起 TCP 连接。代理网关在 TCP 层只看到一个<strong>裸 IP</strong>——它怎么知道这个 IP 对应哪个域名？IP 反查在 CDN 场景下不可靠，TLS SNI 嗅探要等连接建立之后。</p>
+<h3>4.2 FakeIP 的解法</h3>
+<p><strong>DNS 查询时撒谎</strong>：sing-box 对需要特殊处理的域名不做真实解析，而是从保留地址池（<code>198.18.0.0/15</code>，RFC 2544 基准测试段，现实中不会被路由）里顺序发放一个假 IP，同时在内存里记账：</p>
+<pre><code class="">198.18.0.1  ←→  google.com
+198.18.0.2  ←→  facebook.com
+</code></pre>
+<p>设备拿到假 IP 后发起 TCP 连接——<strong>目的地就是 FakeIP 池</strong>——网关劫持连接，查映射表，域名信息 100% 精确恢复。之后代理出口（墙外）再做真实解析，TCP 的 SNI 也是干净的域名直传。</p>
+<p>三个精妙之处：</p>
+<ol>
+<li>1. <strong>本地不做真实解析</strong> → 污染注入的靶子不存在了</li>
+<li>2. <strong>分流判定提前到 DNS 阶段</strong> → 不需要等连接建立后嗅探</li>
+<li>3. <strong>域名级代理</strong> → 代理服务器在墙外解析，天然拿到未污染结果 + 最优 CDN 调度</li>
+</ol>
+<h3>4.3 国内外都发 FakeIP，但路径不同</h3>
+<p>一个容易误解的点：FakeIP 不只是「走代理的域名」用的。在我的架构里<strong>国内外域名统一发 FakeIP</strong>，差异在 FakeIP 背后问谁、TCP 阶段怎么走：</p>
+<p><strong>国外域名（google.com）</strong>：</p>
+<pre><code class="">手机查 DNS → sing-box 分流判定：非国内
+→ DoT:853（经加密隧道）→ 墙外 unbound 递归 → 真实 IP 142.251.x.x
+→ sing-box 记账，给手机发 198.18.0.1
+→ 手机连 198.18.0.1 → tproxy 劫持 → 查表恢复域名
+→ 走 SOCKS，域名直传墙外出口
+</code></pre>
+<p><strong>国内域名（baidu.com）</strong>：</p>
+<pre><code class="">手机查 DNS → 命中 geosite-cn
+→ DoT:853 → 阿里公共 DoT（加密出光猫）→ 真实 IP 110.242.x.x
+→ sing-box 记账，给手机发 198.18.0.2
+→ 手机连 198.18.0.2 → tproxy 劫持 → 查表恢复域名
+→ 判定国内 → 用真实 IP 直连（不走代理）
+</code></pre>
+<p><strong>例外</strong>：<code>.lan</code> 等内网域名返回真实内网 IP——给内网服务发假 IP 只会破坏寻址。</p>
+<h3>4.4 FakeIP 之后的观察者视角</h3>
+<table>
+<tr><th>观察者</th><th>能看到什么</th></tr>
+<tr><td>LAN 内其他设备</td><td>手机发出的 TCP 目的地全是 198.18.x.x，<strong>看不出访问了什么</strong></td></tr>
+<tr><td>宽带运营商</td><td>国内域名：到阿里 DoT 的加密流量；国外：隧道加密流量。<strong>零明文 DNS 查询</strong></td></tr>
+<tr><td>阿里</td><td>国内域名查询全集（已知信任边界）</td></tr>
+<tr><td>墙外 VPS 服务商</td><td>国外域名查询 + 全部出站流量（已知信任边界）</td></tr>
+<tr><td>目标网站</td><td>国内：家宽 IP 直连（TCP 层面无法隐藏）；国外：VPS 的 IP</td></tr>
+</table>
+<p>远程接入也一样：从外面通过 WireGuard 进入家庭网络时，隧道解包后的流量同样汇入网关的透明代理链，FakeIP 对远程设备同样生效——<strong>通信层（WG）与 DNS 处理层（sing-box）是解耦的，后者统一处理两路来源</strong>。</p>
+<h2>五、墙外递归：第二台 unbound + nsd</h2>
+<p>墙外 VPS 上部署与墙内对称的递归栈：</p>
+<pre><code class="">VPS:  unbound（严格 DNSSEC） + nsd（根区镜像） + 过滤表
+墙内: unbound-domestic（宽松验签） + nsd（根区镜像） + 过滤表
+</code></pre>
+<p>sing-box 的国外 DNS 上游指向 VPS unbound 的 DoT（853 端口），且 <strong>DoT 流量本身套进代理隧道</strong>——运营商连「你在做 DNS over TLS」都观察不到，只见一条加密隧道。</p>
+<p>VPS 侧为什么可以开严格 DNSSEC（<code>harden-dnssec-stripped: yes</code>）：它的迭代路径不被墙干扰，验签不会因中间人注入而误杀。墙内的 domestic 实例则保持宽松——国内大量域名没有 DNSSEC 签名，严格模式会误伤。</p>
+<p>这里放弃了 AdGuard Home 方案的一个关键原因：<strong>AGH 的上游通常是 8.8.8.8 之类的公共 DNS，违背「不依赖任何公共 DNS」的原则</strong>。unbound + nsd 的组合在墙外同样成立，且过滤表直接复用我的分类器输出。</p>
+<h2>六、165 万黑名单的增量分类流水线</h2>
+<p>广告和恶意网站过滤是刚需，数据来自我自己维护的聚合项目：每天从 oisd、StevenBlack、Firebog、phishing.army 等 20 个源抓取去重，产出约 165 万域名的黑名单。</p>
+<h3>6.1 采样评估：65% 是死域名</h3>
+<p>在动手拆分前先做了抽样测量（按域名首字符 0-9a-z 分组、每组随机采样、5 个公共 DNS 轮询解析、IP 落入 geoip-cn 判定归属）：</p>
+<pre><code class="">采样 14,400 个域名：
+  存活（有解析结果）：  34.3%
+  死域名（NXDOMAIN）：  65.7%   ← 意外发现
+  存活中归属国内：      0.95%
+</code></pre>
+<p><strong>三分之二的黑名单是已失效域名</strong>——历史积累的陈旧条目每天在白白消耗内存。这个数字直接决定了后续设计：死域名不值得分类，也不值得加载。</p>
+<h3>6.2 状态机 + 增量分类</h3>
+<p>全量解析 165 万域名既慢又没必要，正确做法是<strong>状态机 + 增量</strong>：</p>
+<pre><code class="">每日：抓源生成新黑名单 → 与存量 diff → 只解析「新增」域名（通常几千个）
+      → 结果写入状态文件（domain / category / last_seen / ip）
+每周：全量重查存活域名（域名换 IP 需要纠正）
+      + 对死域名做一次重试，仍死则长期搁置
+</code></pre>
+<p>状态文件每行一条记录：</p>
+<pre><code class="">example.com    noncn    20261030    20261030    93.184.216.34
+stale-domain.cn    nx    20261028    20261028    -
+</code></pre>
+<p>分类三态：<code>cn</code>（解析出的 IP 落在 geoip-cn）、<code>noncn</code>、<code>nx</code>（解析失败）。<strong>nx 域名不加载进任何实例</strong>——反正查不出来，省下 65% 的内存。</p>
+<p>最终产出两个 unbound 格式的过滤表：</p>
+<pre><code class="">adhole-cn.conf     ≈ 5,000 条   → 墙内 domestic 实例
+adhole-noncn.conf  ≈ 560,000 条 → 墙外 VPS 实例
+</code></pre>
+<p>首次全量分类约 4-7 小时（限速 80 QPS、5 个公共 DNS 轮询分摊、并发 60），之后每天增量在分钟级完成。</p>
+<h2>七、架构总览</h2>
+<p>!<img src="architecture.svg" alt="家庭网络 DNS 自主化架构：FakeIP + 双递归 + 过滤" loading="lazy" decoding="async" style="max-width:100%;height:auto;border-radius:8px;margin:12px 0;"></p>
+<pre><code class="">                    ┌─────────────── 家庭 LAN ────────────────┐
+                    │   设备（无任何代理/DNS 软件）              │
+                    │   所有 DNS 应答 = FakeIP 198.18.x.x      │
+                    └──────┬──────────────────┬──────────────┘
+                           │ UDP:53           │ TCP 目的=198.18.x.x
+                           ▼                  │
+                ┌──────────────────┐          │
+                │  nftables tproxy │◄─────────┘  (FakeIP 段天然被接管)
+                │  :53/:7895/:7896 │
+                └──────┬───────────┘
+                       ▼
+            ┌────────────────────────────┐
+            │     sing-box（网关）        │
+            │  ┌──────────────────────┐  │
+            │  │ DNS 分流             │  │
+            │  │  .lan → 本地数据     │  │
+            │  │  geosite-cn → 阿里   │  │
+            │  │  其余 → VPS          │  │
+            │  └──┬──────────────┬────┘  │
+            │     ▼              ▼       │
+            │  DoT:853        DoT:853    │
+            │  (阿里，明文出墙)  (套代理隧道)│
+            │     │              │       │
+            │  FakeIP 表（域名↔假IP）     │
+            └──────┼──────────────┼───────┘
+                   │              │
+      ┌────────────┴───┐     加密隧道（WireGuard/代理）
+      ▼                ▼                 ▼
+┌───────────┐   ┌──────────┐   ┌──────────────────────────┐
+│ 阿里 DoT   │   │ 国内 CDN  │   │  墙外 VPS                 │
+│ (国内解析) │   │ 直连出口  │   │  ┌──────────────────────┐ │
+└───────────┘   └──────────┘   │  │ unbound 递归+严格DNSSEC│ │
+                               │  │ nsd 根区镜像           │ │
+                               │  │ adhole-noncn 过滤表    │ │
+                               │  └──────────────────────┘ │
+                               └──────────────────────────┘
+<p>墙内同时运行：
+  unbound-domestic :53（国内递归兜底 + adhole-cn 过滤 + dnstap）
+  nsd :1053（根区镜像，TCP AXFR，抗污染）
+  内网权威数据（自动生成的 zone 文件）
+</code></pre></p>
+<p><strong>nftables 层的职责</strong>只有一件事：把设备的 <code>:53</code>（DNS）和去往 FakeIP 段/公网的 TCP/UDP 劫持进 sing-box。FakeIP 段 <code>198.18.0.0/15</code> 不在任何私网直通名单里，天然会被 tproxy 接管，无需专门规则。</p>
+<h2>八、为什么这不是过度设计</h2>
+<p>每砍一个组件都有明确理由，每留一个组件都有不可替代性：</p>
+<table>
+<tr><th>组件</th><th>保留理由</th><th>考虑过并放弃的替代</th></tr>
+<tr><td>unbound（墙内）</td><td>国内递归 + dnstap 观测 + local-zone 过滤</td><td>AGH（不做递归、打断 dnstap）</td></tr>
+<tr><td>unbound（墙外）</td><td>严格验签 + 「不依赖公共DNS」原则</td><td>AGH（上游是公共DNS）</td></tr>
+<tr><td>nsd ×2</td><td>根区信任锚，天生抗污染</td><td>用公共 DNS 的根（违背原则）</td></tr>
+<tr><td>sing-box</td><td>分流 + tproxy + FakeIP + 兜底</td><td>mosdns（无递归无 tproxy，纯多余层）</td></tr>
+<tr><td>自建黑名单流水线</td><td>数据自有自控、每日更新</td><td>第三方聚合包（源头相同、更新更慢）</td></tr>
+</table>
+<p><strong>防御纵深是互补的</strong>：FakeIP 让「被污染的域名根本不在本地解析」；DNSSEC 让「必须本地解析的域名可验证」；加密隧道让「运营商看到的全是密文」；过滤表让「广告和恶意域名在解析阶段就消失」。任何单层失效，其余各层独立成立。</p>
+<h2>九、遗留的诚实清单</h2>
+<p>没有完美方案，这些是明知的取舍：</p>
+<ol>
+<li>1. <strong>阿里看到全部国内查询</strong>——用阿里 DoT 是「使用而不依赖」：解析正确性有 sing-box 兜底，阿里挂了自动降级到本地递归（隐私降级但可用）</li>
+<li>2. <strong>VPS 服务商看到全部国外查询</strong>——这是信任边界，无解，只能选可信服务商</li>
+<li>3. <strong>国内域名的 TCP SNI 明文</strong>——DNS 层藏得再好，TLS 握手的 SNI 字段照样暴露（ECH 部署后可解，另文再谈）</li>
+<li>4. <strong>个别 App 检测 FakeIP</strong>——银行/运营商类 App 对 198.18.x.x 有校验，需按目的地址加 FakeIP 排除规则</li>
+<li>5. <strong>国内域名无 DNSSEC</strong>——明文递归路径上移动理论上可注入，靠「无动机」而非「无能力」防御；阿里 DoT 路径则传输层免疫</li>
+</ol>
+<h2>十、总结</h2>
+<p>这套架构的本质是一句话：<strong>让每一个 DNS 查询都发生在最合适的地方</strong>——国内域名在墙内递归（快）、国外域名在墙外递归（净）、内网域名本地应答（稳），而设备端只看 FakeIP（盲）。</p>
+<p>改造的推进顺序也值得复述：先实测确认威胁（污染存在于 v4 和 v6）、再分清组件角色（递归/过滤/分流不可混谈）、然后用数据驱动设计决策（65% 死域名改变了内存预算）、最后让每个观察者的可见性都成为<strong>主动选择</strong>而非被动暴露。</p>
+<p>IPv6 不是这个架构的障碍——根区镜像有 v6 上游、迭代有 v6 路径、FakeIP 池同样有 v6 段可选。真正的原则只有一条：<strong>任何一层都不假设下一层是可信的。</strong>
+</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <p class="beian" style="margin-top: 8px; font-size: 12px;">
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="nofollow">沪ICP备20001486号-1</a>
+        <!-- 公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+        -->
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-10-30_home-dns-sovereignty-fakeip/",
+      title: "\u5bb6\u5ead\u7f51\u7edc\u7684 DNS \u81ea\u4e3b\u5316\u6539\u9020\uff1aFakeIP + \u53cc\u9012\u5f52 + \u5e7f\u544a\u8fc7\u6ee4\u7684\u5b8c\u6574\u67b6\u6784"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

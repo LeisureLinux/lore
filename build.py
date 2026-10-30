@@ -902,6 +902,11 @@ def markdown_to_html(md_content):
     # 链接
     html = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html)
     
+    # 图片（必须在链接规则之后，否则会被链接规则误吞）
+    html = re.sub(r'<a href="([^"]+)\.(png|jpe?g|svg|gif|webp)">([^<]+)</a>',
+                  lambda m: f'<img src="{m.group(1)}.{m.group(2)}" alt="{m.group(3)}" loading="lazy" decoding="async" style="max-width:100%;height:auto;border-radius:8px;margin:12px 0;">',
+                  html)
+    
     # 列表（无序 `- ` 与有序 `1. `）
     html = re.sub(r'^- (.+)$', r'<U>\1</U>', html, flags=re.MULTILINE)
     html = re.sub(r'^(\d+)\.\s+(.+)$', r'<O>\1. \2</O>', html, flags=re.MULTILINE)
@@ -1683,6 +1688,22 @@ def main():
             copied_static += 1
 
     total_files = len(articles) + 4 + copied_static  # 首页 + 文章 + sitemap + robots + rss
+
+    # 复制各文章目录内的静态资源（图片/SVG 等），供文章内相对路径引用
+    copied_assets = 0
+    asset_exts = {'.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'}
+    for article_dir in ARTICLES_DIR.iterdir():
+        if not article_dir.is_dir() or article_dir.name.startswith('.'):
+            continue
+        dst_dir = DOCS_DIR / "articles" / article_dir.name
+        if not dst_dir.is_dir():
+            continue
+        for f in article_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in asset_exts:
+                shutil.copy2(f, dst_dir / f.name)
+                copied_assets += 1
+    if copied_assets:
+        print(f"✅ 复制文章内静态资源：{copied_assets} 个文件（svg/图片）")
 
     # 复制 LeisureLinux 公众号导航页（若存在）到 docs/，使其在站点中可访问
     import shutil as _shutil
