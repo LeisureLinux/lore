@@ -289,7 +289,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>来源：<strong><a href="https://github.com/openbsd/ports/tree/master/emulators/wine">openbsd/ports 仓库 emulators/wine</a></strong> 的实际提交与 44 个 patch 原文（实测拉取）、<strong><a href="https://marc.info/?l=openbsd-ports&m=179236125692175">openbsd-ports 邮件列表原始讨论</a></strong>（Thomas Frohwein，2026-10-18）、<a href="https://marc.info/?l=openbsd-ports&m=179236426893591&w=2">回复</a>（Bryan Steele）、<a href="https://marc.info/?l=openbsd-ports&m=179240622622831&w=2">回复</a>（Martijn van Duren）、<a href="https://marc.info/?l=openbsd-ports&m=179240650723110&w=2">回复</a>（Stuart Henderson）、<a href="https://marc.info/?l=openbsd-tech&m=179067466617674&w=2">openbsd-tech 的 %gs 提问</a> 与 <a href="https://marc.info/?l=openbsd-tech&m=179069358537094&w=2">回复</a><br>
+<blockquote>来源：<strong><a href="https://github.com/openbsd/ports/tree/master/emulators/wine" target="_blank" rel="noopener noreferrer">openbsd/ports 仓库 emulators/wine</a></strong> 的实际提交与 44 个 patch 原文（实测拉取）、<strong><a href="https://marc.info/?l=openbsd-ports&amp;m=179236125692175" target="_blank" rel="noopener noreferrer">openbsd-ports 邮件列表原始讨论</a></strong>（Thomas Frohwein，2026-10-18）、<a href="https://marc.info/?l=openbsd-ports&amp;m=179236426893591&amp;w=2" target="_blank" rel="noopener noreferrer">回复</a>（Bryan Steele）、<a href="https://marc.info/?l=openbsd-ports&amp;m=179240622622831&amp;w=2" target="_blank" rel="noopener noreferrer">回复</a>（Martijn van Duren）、<a href="https://marc.info/?l=openbsd-ports&amp;m=179240650723110&amp;w=2" target="_blank" rel="noopener noreferrer">回复</a>（Stuart Henderson）、<a href="https://marc.info/?l=openbsd-tech&amp;m=179067466617674&amp;w=2" target="_blank" rel="noopener noreferrer">openbsd-tech 的 %gs 提问</a> 与 <a href="https://marc.info/?l=openbsd-tech&amp;m=179069358537094&amp;w=2" target="_blank" rel="noopener noreferrer">回复</a><br>
 ⚠️ <strong>实测的 ports 提交序列</strong>（<code>path=emulators/wine</code>）：<strong>2026-10-19 <code>e441aff3</code> re-import emulators/wine</strong> → <code>fd10d99c</code> resolve merge conflicts → 10-20 <code>6a68fef3</code> → 10-22 <code>b38148f0</code> use clang headers from llvm distfile → <code>6086ce08</code> update distinfo → <strong><code>4a90c8df</code> update to wine 11.20</strong> → 10-25 <code>71cac71b</code> hidden dep on linux/input.h → 10-26 <code>fef9ec33</code> disable linux/input.h header in autoconf。<strong>再往前一次提交是 2011-07-06 <code>70ca2b7e</code> "Remove the wine port."</strong><br>
 本文为<strong>解读</strong>。所有 patch 代码与提交记录为实测一手材料。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
@@ -307,59 +307,57 @@
 <h2>二、起点：一个被搁置了 15 年的问题</h2>
 <h3>2.1 邮件列表里的那个提问</h3>
 <p><strong>2026 年 9 月 29 日，Neth Iafin（也就是 Andrii Yukhymchak 自己的化名）在 openbsd-tech 上问：</strong></p>
-<blockquote><strong>「我想知道为什么 OpenBSD 在用户态没有设置 <code>%gs</code> 的能力？这是为了避免 swapgs 漏洞吗？还是别的原因？」</strong></blockquote>>
-<blockquote><strong>「我理解支持 wine 在 OpenBSD 的优先级大概是低于 0，但我好奇 <code>%gs</code> 被锁给内核的理由。」</strong></blockquote>>
-<blockquote><strong>「我假设设置 <code>%gs</code> 作为 syscall 回来的可能性是零？」</strong></blockquote>
-<strong>一个半小时后，Story 回复：</strong>
-<blockquote><strong>「让进程设置自己的 GS.base 会暴露经典的 SWAPGS 推测性侧信道那一类 bug（CVE-2019-1125 之类）。把 GS 保持在内核的独占控制下，去掉了这个攻击面，也让进入/退出路径保持简单。」</strong></blockquote>>
-<blockquote><strong>「我不是专家，我还在读 man page，但我知道没有计划为此加 syscall。」</strong></blockquote>
-<strong>⭐ 注意两件事：</strong>
-<ol>
-<li>1. <strong>这条回复的定性非常准。</strong> <strong>CVE-2019-1125 是 Linux 上非常著名的 SWAPGS 缓解副作用 —— 在 64 位系统上用 <code>swapgs</code> 恢复 GS 寄存器时，如果攻击者能控制 <code>mov %gs</code> 后的指令字节，会造成推测执行窗口。</strong> <strong>OpenBSD 是 FreeBSD 血统，而 FreeBSD 从来就没提供用户态设 GS base 的接口 —— 所以这条是继承来的。</strong></li>
-</ol>
-<ol>
-<li>2. <strong>⭐ Story 在 18 分钟后自己发了一条更正：</strong></li>
-</ol>
-   > <strong>「更正：我在猜测原因，我不知道开发者的意图。」</strong>
-   > <strong>「我跳进来太早了。」</strong>
+<blockquote><strong>「我想知道为什么 OpenBSD 在用户态没有设置 <code>%gs</code> 的能力？这是为了避免 swapgs 漏洞吗？还是别的原因？」</strong><br>
+<br>
+<strong>「我理解支持 wine 在 OpenBSD 的优先级大概是低于 0，但我好奇 <code>%gs</code> 被锁给内核的理由。」</strong><br>
+<br>
+<strong>「我假设设置 <code>%gs</code> 作为 syscall 回来的可能性是零？」</strong></blockquote>
+<p><strong>一个半小时后，Story 回复：</strong></p>
+<blockquote><strong>「让进程设置自己的 GS.base 会暴露经典的 SWAPGS 推测性侧信道那一类 bug（CVE-2019-1125 之类）。把 GS 保持在内核的独占控制下，去掉了这个攻击面，也让进入/退出路径保持简单。」</strong><br>
+<br>
+<strong>「我不是专家，我还在读 man page，但我知道没有计划为此加 syscall。」</strong></blockquote>
+<p><strong>⭐ 注意两件事：</strong></p>
+<ol><li><strong>这条回复的定性非常准。</strong> <strong>CVE-2019-1125 是 Linux 上非常著名的 SWAPGS 缓解副作用 —— 在 64 位系统上用 <code>swapgs</code> 恢复 GS 寄存器时，如果攻击者能控制 <code>mov %gs</code> 后的指令字节，会造成推测执行窗口。</strong> <strong>OpenBSD 是 FreeBSD 血统，而 FreeBSD 从来就没提供用户态设 GS base 的接口 —— 所以这条是继承来的。</strong></li><li><strong>⭐ Story 在 18 分钟后自己发了一条更正：</strong></li></ol>
+<blockquote><strong>「更正：我在猜测原因，我不知道开发者的意图。」</strong><br>
+<strong>「我跳进来太早了。」</strong></blockquote>
 <p><strong>—— 这两封邮件合起来，恰好是这个故事最好的开场：一条「安全决策」的公开解释，和它随后被作者自己标注为「猜测」的诚实。</strong></p>
 <h3>2.2 而 Thomas Frohwein 的第一句话就是「今年最令人惊讶的移植提案」</h3>
 <p><strong>2026 年 10 月 18 日 22:08 UTC，Thomas Frohwein 在 openbsd-ports 发出提案：</strong></p>
-<blockquote><strong>「在可能是今年最令人惊讶的移植提案里，我自豪地呈现一个新的 wine 移植提案。</strong></blockquote>>
-<blockquote><strong>这是集体努力的结果，源于在 %gs/gsbase 这个问题上的一些推动（见讨论串）。</strong></blockquote>>
-<blockquote><strong>大门是随着 Andrii 针对 %gs 问题的软件方案打开的 —— 他向我解释为：『不能设 gsbase，所以我们在命令上模拟 %gs 前缀』。</strong></blockquote>>
-<blockquote><strong>总的来说重活是 Andrii 和 Fabien 干的 —— 致谢。</strong></blockquote>>
-<blockquote><strong>结果是对 wine 的兴趣出现了一股浪潮，和 5-10 年前不一样，因为很多 Windows 软件已经转向 64 位了。」</strong></blockquote>
-<strong>⭐ 注意这个措辞：「</strong>在命令上模拟 %gs 前缀<strong>」—— 这就是全部魔法的十一个字的摘要。</strong>
+<blockquote><strong>「在可能是今年最令人惊讶的移植提案里，我自豪地呈现一个新的 wine 移植提案。</strong><br>
+<br>
+<strong>这是集体努力的结果，源于在 %gs/gsbase 这个问题上的一些推动（见讨论串）。</strong><br>
+<br>
+<strong>大门是随着 Andrii 针对 %gs 问题的软件方案打开的 —— 他向我解释为：『不能设 gsbase，所以我们在命令上模拟 %gs 前缀』。</strong><br>
+<br>
+<strong>总的来说重活是 Andrii 和 Fabien 干的 —— 致谢。</strong><br>
+<br>
+<strong>结果是对 wine 的兴趣出现了一股浪潮，和 5-10 年前不一样，因为很多 Windows 软件已经转向 64 位了。」</strong></blockquote>
+<p><strong>⭐ 注意这个措辞：「</strong>在命令上模拟 %gs 前缀<strong>」—— 这就是全部魔法的十一个字的摘要。</strong></p>
 <h2>三、⭐ 问题的实质：为什么 x64 Windows 离不开 <code>%gs:0x30</code></h2>
 <p><strong>要理解这个移植，必须先理解 <code>%gs</code> 在 Windows x64 里到底干什么。</strong></p>
 <p><strong>从 Andrii 的 patch 注释里能直接读到答案（<code>patch-dlls_ntdll_unix_gs_openbsd_c</code>，974 行新增代码）：</strong></p>
-<pre><code class="">(1) In place - this is NtCurrentTeb() call. It always compiles into
+<pre><code>(1) In place - this is NtCurrentTeb() call. It always compiles into
     mov %gs:0x30, %r for this to work, since we have ref to teb in our
     teb_tls_offset, we can just replace few values in the command itself
     for example
  65 48 8b 04 25 30 00 00 00          mov %gs:0x30, %rax
  64 48 8b 04 25 xx xx xx xx          mov %fs:teb_tls_offset, %rax
-                        --- where teb_tls_offset is negative
-</code></pre>
+                        --- where teb_tls_offset is negative</code></pre>
 <p><strong>⭐ 翻译一下：</strong></p>
-<ul>
-<li><strong>Windows x64 的线程块指针（TEB）固定存放在 <code>GS:0x30</code></strong>；</li>
-<li><strong><code>NtCurrentTeb()</code> 在任何编译器下都编译成 <code>mov %gs:0x30, %rax</code></strong>；</li>
-<li><strong>而 Wine 的 POSIX 后端要访问同样语义的东西，只能走 <code>%fs:</code> —— 因为 OpenBSD 的 TLS 机制在 <code>%fs</code> 上。</strong></li>
-</ul>
-<strong>所以问题的本质是：</strong> <strong>Wine 的 ntdll 需要把「<code>%gs:0x30</code>」这个语义，翻译成「<code>%fs:teb_tls_offset</code>」（一个负偏移，位于 OpenBSD 的 threadblock 之下）。</strong>
+<ul><li><strong>Windows x64 的线程块指针（TEB）固定存放在 <code>GS:0x30</code></strong>；</li><li><strong><code>NtCurrentTeb()</code> 在任何编译器下都编译成 <code>mov %gs:0x30, %rax</code></strong>；</li><li><strong>而 Wine 的 POSIX 后端要访问同样语义的东西，只能走 <code>%fs:</code> —— 因为 OpenBSD 的 TLS 机制在 <code>%fs</code> 上。</strong></li></ul>
+<p><strong>所以问题的本质是：</strong> <strong>Wine 的 ntdll 需要把「<code>%gs:0x30</code>」这个语义，翻译成「<code>%fs:teb_tls_offset</code>」（一个负偏移，位于 OpenBSD 的 threadblock 之下）。</strong></p>
 <p><strong>而这不是「加一个偏移量」就能解决的 —— 因为 <code>%gs</code> 和 <code>%fs</code> 是两个不同的段寄存器，编码在指令前缀里（<code>0x65</code> vs <code>0x64</code>）。</strong></p>
 <p><strong>⭐ 更加要命的是：编译器并不只生成一条 <code>mov %gs:0x30,%rax</code>。</strong> <strong>它是生成一大类。</strong> <strong>Andrii 的 patch 里有一整个 <code>get_gs_opcode_info()</code> 函数在做 opcode 表 —— 覆盖 <code>add/or/adc/sbb/and/sub/xor/cmp</code> 带寄存器、group1 的立即数形式、<code>mov</code> 的各种宽度、<code>movzx/movsx</code>、<code>cmovcc</code> 全家桶……</strong></p>
 <h2>四、⭐⭐ Andrii 的三级回退策略</h2>
 <p><strong>这是整个移植的技术核心，而它的设计逻辑非常清晰。</strong></p>
 <p><strong>patch 顶部的注释原文：</strong></p>
-<pre><code class="">Whenever we have a page fault, we need to see if the fault was caused by %gs
+<pre><code>Whenever we have a page fault, we need to see if the fault was caused by %gs
 being pinned to 0 in OpenBSD. For this we parse the command assuming %gs was 0
 (fault was at "zero-page"), find if it is really %gs command and then rewrite
 it without %gs. Sometimes another thread will already rewrite gs to fs/jmp and
 we just need a retry.
-<p>Following approaches are implemented:
+
+Following approaches are implemented:
 (1) In place - this is NtCurrentTeb() call. ...
 (2) Generic Stub
     for this to work, the instruction has to be 5 bytes or longer. If it is,
@@ -369,161 +367,119 @@ we just need a retry.
     less than 5 bytes, we don't have enough space to replace it. I will have to
     be handled by case 3, but commands like that are rare. This replacement is
     stable but we have to specifically handle case when thread is being stopped
-    inside of the stub.</p>
-<p>(3) SIGSEGV on every trap over that instruction
+    inside of the stub.
+
+(3) SIGSEGV on every trap over that instruction
     Same as 2 but there was not enough space to replace it with a JMP REL
     (5 bytes). We pay signal round trip every time but at least it works.
     The stub is basically the same but we are replacing a "replaced instruction"
     with a hash table that points that for this SIGSEGV on this instruction we
-    jump to that Stub.
-</code></pre></p>
+    jump to that Stub.</code></pre>
 <p><strong>⭐ 三个策略的取舍逻辑非常清楚：</strong></p>
-<table>
-<tr><th>策略</th><th>条件</th><th>代价</th><th>稳定性</th></tr>
-<tr><td><strong>① 原位改写</strong></td><td>指令是已知的 <code>NtCurrentTeb()</code> 形式</td><td><strong>零开销</strong></td><td>最好</td></tr>
-<tr><td><strong>② rel32 跳 stub</strong></td><td>指令 <strong>≥ 5 字节</strong></td><td>一次跳转</td><td>好（但要处理「线程停在 stub 里」的边界情况）</td></tr>
-<tr><td><strong>③ SIGSEGV 陷阱</strong></td><td>指令 <strong>< 5 字节</strong>（放不下 jmp rel32）</td><td><strong>每次都付一次信号往返</strong></td><td>最差，但「至少它能用」</td></tr>
-</table>
+<table><thead><tr><th>策略</th><th>条件</th><th>代价</th><th>稳定性</th></tr></thead><tbody><tr><td><strong>① 原位改写</strong></td><td>指令是已知的 <code>NtCurrentTeb()</code> 形式</td><td><strong>零开销</strong></td><td>最好</td></tr><tr><td><strong>② rel32 跳 stub</strong></td><td>指令 <strong>≥ 5 字节</strong></td><td>一次跳转</td><td>好（但要处理「线程停在 stub 里」的边界情况）</td></tr><tr><td><strong>③ SIGSEGV 陷阱</strong></td><td>指令 <strong>&lt; 5 字节</strong>（放不下 jmp rel32）</td><td><strong>每次都付一次信号往返</strong></td><td>最差，但「至少它能用」</td></tr></tbody></table>
 <p><strong>⭐ 而触发机制的巧妙之处在于：它不是主动扫描代码，而是「等它出错」。</strong></p>
 <p><strong>在 OpenBSD 上 <code>%gs</code> 被钉在 0，所以任何 <code>%gs:xxx</code> 访存都会去访问「零页」→ 触发 SIGSEGV → 信号处理器拿到出错时的 PC → 反汇编那几条字节 → 判断「这真的是一条 <code>%gs</code> 指令吗」→ 是的话就改写掉。</strong></p>
 <p><strong>⭐ 这是一个「懒的、零扫描成本」的方案 —— 而它的代价就是策略 ③ 那种「每次付一次信号往返」。</strong></p>
 <h2>五、⭐⭐ stub 的生成：手写的机器码</h2>
 <p><strong>这是整个方案里最硬核的部分 —— 因为它要在运行时</strong>生成<strong>机器码。</strong></p>
 <p><strong>patch 里的 stub 格式注释：</strong></p>
-<pre><code class="">The form of the stub for 64-bit addressing is
+<pre><code>The form of the stub for 64-bit addressing is
  mov %S,%fs:slot+8           save the scratch register S
  mov %fs:slot, %S            S = TEB
  lea 0(%base, %S, 1), %S     S = TEB + base , if base register
- <the instruction>           [S + index*scale + disp32] instead of %gs:...
+ &lt;the instruction&gt;           [S + index*scale + disp32] instead of %gs:...
  mov %fs:slot+8, %S          restore S
  jmp *0(%rip)                back to next instruction
  .quad site + len
-<p>Slot is our offset (negative) below OpenBSD's threadblock.
-Slot contains TEB at <em>slot, and scratch register at </em>slot+8
+
+Slot is our offset (negative) below OpenBSD's threadblock.
+Slot contains TEB at *slot, and scratch register at *slot+8
 32-bit addressing uses a second scratch register at *slot+16.
 %S scratch register is any register that is not used in the instruction.
 There are up to 3 registers that can be used in the instruction, so we
-always have a one of 7 (not you %rsp) registers free.
-</code></pre></p>
+always have a one of 7 (not you %rsp) registers free.</code></pre>
 <p><strong>⭐ 逐句读这个 stub：</strong></p>
-<ol>
-<li>1. <strong><code>mov %S, %fs:slot+8</code></strong> —— 把一个「临时寄存器」S 的值存到 TLS slot 里（因为 stub 要用 S 改写地址，但得先保存原值）；</li>
-<li>2. <strong><code>mov %fs:slot, %S</code></strong> —— 取出 TEB 指针到 S；</li>
-<li>3. <strong><code>lea 0(%base, %S, 1), %S</code></strong> —— 加上基址（对应原指令里的 base 寄存器或 disp32）；</li>
-<li>4. <strong><code><the instruction></code></strong> —— <strong>原样插入那条原始指令，只是现在它的内存操作数是 <code>[S + index*scale + disp32]</code>，而不是 <code>%gs:...</code></strong>；</li>
-<li>5. <strong><code>mov %fs:slot+8, %S</code></strong> —— 恢复 S；</li>
-<li>6. <strong><code>jmp *0(%rip)</code> + <code>.quad site + len</code></strong> —— <strong>跳回原指令的下一条</strong>。</li>
-</ol>
-<strong>⭐ 而「7 个可用临时寄存器」这个细节非常关键：</strong>
+<ol><li><strong><code>mov %S, %fs:slot+8</code></strong> —— 把一个「临时寄存器」S 的值存到 TLS slot 里（因为 stub 要用 S 改写地址，但得先保存原值）；</li><li><strong><code>mov %fs:slot, %S</code></strong> —— 取出 TEB 指针到 S；</li><li><strong><code>lea 0(%base, %S, 1), %S</code></strong> —— 加上基址（对应原指令里的 base 寄存器或 disp32）；</li><li><strong><code>&lt;the instruction&gt;</code></strong> —— <strong>原样插入那条原始指令，只是现在它的内存操作数是 <code>[S + index*scale + disp32]</code>，而不是 <code>%gs:...</code></strong>；</li><li><strong><code>mov %fs:slot+8, %S</code></strong> —— 恢复 S；</li><li><strong><code>jmp *0(%rip)</code> + <code>.quad site + len</code></strong> —— <strong>跳回原指令的下一条</strong>。</li></ol>
+<p><strong>⭐ 而「7 个可用临时寄存器」这个细节非常关键：</strong></p>
 <blockquote><strong>「%S 临时寄存器是指任何未被该指令使用的寄存器。一条指令最多能用 3 个寄存器，所以我们总能从 7 个（不含 <code>%rsp</code>）里挑出一个空闲的。」</strong></blockquote>
-<strong>—— x86-64 有 16 个通用寄存器，扣掉 <code>%rsp</code> 和指令自身占用的，最多 3 个，剩下至少 7 个可用。</strong> <strong>这保证了「找一个不冲突的临时寄存器」永远做得到。</strong>
+<p><strong>—— x86-64 有 16 个通用寄存器，扣掉 <code>%rsp</code> 和指令自身占用的，最多 3 个，剩下至少 7 个可用。</strong> <strong>这保证了「找一个不冲突的临时寄存器」永远做得到。</strong></p>
 <p><strong>⭐ 而且 32 位寻址模式还多了一个 scratch 槽（<code>slot+16</code>）</strong> —— patch 里对应 <code>two_scratch</code> 标志。</p>
 <h3>5.1 TLS slot 放在 loader 里（而不是 ntdll）</h3>
 <p><strong>这是另一个很见功力的细节，来自 <code>patch-loader_main_c</code>：</strong></p>
-<blockquote><strong>「给 loader 加一个 32 字节的 TLS slot。它位于 <code>%fs</code> 线程指针正下方，保存 TEB 指针以及用于 <code>%gs</code> 修补的两个 scratch 槽。</strong></blockquote>>
-<blockquote><strong>这个 slot 必须放在 loader 里，因为 ld.so 拒绝 <code>dlopen()</code> 的库（比如 ntdll.so）使用静态 TLS。」</strong>"</blockquote>
-<strong>⭐ 翻译：</strong> <strong>静态 TLS（TLS model 里的 initial-exec / local-exec）只有可执行文件本体能用，动态加载的共享库不行。</strong> <strong>而 ntdll 是 <code>dlopen</code> 进来的。</strong> <strong>所以那个必须被所有线程共享的 TEB 指针槽，只能放在 loader 里 —— 而 Wine 的 loader 是 <code>wine/loader</code> 那个静态可执行文件。</strong>
+<blockquote><strong>「给 loader 加一个 32 字节的 TLS slot。它位于 <code>%fs</code> 线程指针正下方，保存 TEB 指针以及用于 <code>%gs</code> 修补的两个 scratch 槽。</strong><br>
+<br>
+<strong>这个 slot 必须放在 loader 里，因为 ld.so 拒绝 <code>dlopen()</code> 的库（比如 ntdll.so）使用静态 TLS。」</strong>"</blockquote>
+<p><strong>⭐ 翻译：</strong> <strong>静态 TLS（TLS model 里的 initial-exec / local-exec）只有可执行文件本体能用，动态加载的共享库不行。</strong> <strong>而 ntdll 是 <code>dlopen</code> 进来的。</strong> <strong>所以那个必须被所有线程共享的 TEB 指针槽，只能放在 loader 里 —— 而 Wine 的 loader 是 <code>wine/loader</code> 那个静态可执行文件。</strong></p>
 <p><strong>⭐ 这个约束的连锁反应很大：TLS slot 的位置必须是「OpenBSD threadblock 下方的一个固定负偏移」，而且必须所有线程一致 —— 所以 patch 里才有 <code>teb_tls_offset</code> 这个全局变量，在 <code>gs_init_process()</code> 里通过 <code>dlsym(RTLD_DEFAULT, "__wine_teb_tls_offset")</code> 拿到。</strong></p>
 <h3>5.2 还有一个「伪装」机制</h3>
 <p><strong>patch 里还有一条我认为很有意思的设计：</strong></p>
 <blockquote><strong>「另一个值得注意的方法是 <code>gs_leave_stub</code>，它允许我们在 SIGSEGV 和 SIGUSR1 上离开 stub，所以在外面它永远看起来我们不在 stub 里。这有助于调试、信号处理和一般的合理性检查。」</strong></blockquote>
-<strong>⭐ 翻译：</strong> <strong>stub 里的执行状态会让调试器和信号处理器困惑（栈上的返回地址不对、看起来像在 Wine 内部某处）。</strong> <strong>所以他加了一个「退出 stub」的机制 —— 让执行流在特定信号下看起来已经回到正常代码路径。</strong>
+<p><strong>⭐ 翻译：</strong> <strong>stub 里的执行状态会让调试器和信号处理器困惑（栈上的返回地址不对、看起来像在 Wine 内部某处）。</strong> <strong>所以他加了一个「退出 stub」的机制 —— 让执行流在特定信号下看起来已经回到正常代码路径。</strong></p>
 <p><strong>这是一个纯工程上的「让系统看起来正常」的设计 —— 而它的存在本身说明了问题的复杂度：你在一个完全陌生的 ABI 上模拟另一个 OS 的内存模型。</strong></p>
 <h3>5.3 ⚠️ 一个值得注意的细节：指令列表由 LLM 生成</h3>
 <p><strong>patch 注释里有一段必须引用：</strong></p>
 <blockquote><strong>「大部分代码基于 64 位规范构建，以及开源（Copyleft 且免费）编译器为 Windows 生成 TEB 块访问的指令列表。这段代码是根据 LLM 生成的指令解码图</strong>手工<strong>编写的。指令列表由 LLM 提供，并</strong>用规范人工核对<strong>过。支持 0x67 前缀（32 位寻址模式），但 moffs 指令除外。其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong></blockquote>
-<strong>⭐ 我认为这段注释的写法非常值得学习 —— 它同时说清了三件事：</strong>
-<ol>
-<li>1. <strong>用了 LLM</strong>（不藏着）；</li>
-<li>2. <strong>「根据 LLM 生成的解码图手工编写」</strong> —— 不是直接用 LLM 的输出；</li>
-<li>3. <strong>「用规范人工核对过」</strong> —— 有人对着 Intel/AMD 的架构手册逐条核过。</li>
-</ol>
-<strong>—— 而且它还诚实地划出了边界：「支持 0x67 前缀，但 moffs 指令除外。其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong>
+<p><strong>⭐ 我认为这段注释的写法非常值得学习 —— 它同时说清了三件事：</strong></p>
+<ol><li><strong>用了 LLM</strong>（不藏着）；</li><li><strong>「根据 LLM 生成的解码图手工编写」</strong> —— 不是直接用 LLM 的输出；</li><li><strong>「用规范人工核对过」</strong> —— 有人对着 Intel/AMD 的架构手册逐条核过。</li></ol>
+<p><strong>—— 而且它还诚实地划出了边界：「支持 0x67 前缀，但 moffs 指令除外。其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong></p>
 <p><strong>这最后半句是安全审计里最该有的一句话：「我没找到反例」和「我证明了没有反例」是两回事。</strong></p>
-<p><strong>⭐ 而这里有一个非常有意思的上下文：Hacker News 上讨论这个移植时，有评论者说：</strong>
-<blockquote><strong>「我也尊重 Wine 和 OpenBSD 以及他们「不在 repo/ports 里放任何 LLM 代码」的规则。」</strong></blockquote>
-<strong>（OpenBSD 的 <code>README</code>/端口惯例里有明确要求，ports 里不放 AI 生成的代码。）</strong></p>
+<p><strong>⭐ 而这里有一个非常有意思的上下文：Hacker News 上讨论这个移植时，有评论者说：</strong> &gt; <strong>「我也尊重 Wine 和 OpenBSD 以及他们「不在 repo/ports 里放任何 LLM 代码」的规则。」</strong></p>
+<p><strong>（OpenBSD 的 <code>README</code>/端口惯例里有明确要求，ports 里不放 AI 生成的代码。）</strong></p>
 <p><strong>⭐ 而 Andrii 的处理方式，恰好给出了这条规则下一个可行的范式：</strong> <strong>LLM 参与「资料整理与初稿」，但最终产物是</strong>手工编写<strong>的、</strong>人工核对过<strong>的、且</strong>明确标注了覆盖边界<strong>的代码 —— 而且它没有进 ports 树，而是先以「移植提案」的形式在邮件列表里公开征求意见。</strong></p>
 <p><strong>（最终 44 个 patch 里，<code>gs_openbsd.c</code> 的版权头明确写着 <code>Copyright (C) 2026 Andrii Yukhymchak</code>，是 LGPL-2.1+ 的原创代码。）</strong></p>
 <h2>六、⭐ 44 个 patch：不只是 <code>%gs</code></h2>
 <p><strong>实测 <code>emulators/wine/patches/</code> 目录，共 44 个 patch。分类看：</strong></p>
-<table>
-<tr><th>类别</th><th>文件</th><th>说明</th></tr>
-<tr><td><strong><code>%gs</code> 核心</strong></td><td><code>patch-dlls_ntdll_unix_gs_openbsd_c</code>（<strong>44844 字节</strong>，新增 974 行）、<code>..._gs_openbsd_h</code></td><td>指令解码器 + stub 生成器</td></tr>
-<tr><td><strong>信号处理</strong></td><td><code>patch-dlls_ntdll_unix_sig_openbsd_c</code>、<code>..._sig_openbsd_h</code>、<code>patch-server_sig_openbsd_c</code>、<code>..._sig_openbsd_h</code>、<code>patch-dlls_ntdll_unix_signal_x86_64_c</code>（16597 字节）</td><td>见第七节</td></tr>
-<tr><td><strong>进程/线程模型</strong></td><td><code>patch-server_process_c/h</code>、<code>patch-server_thread_c</code>、<code>patch-server_ptrace_c</code>、<code>patch-dlls_ntdll_unix_process_c</code>、<code>..._unix_thread_c</code></td><td></td></tr>
-<tr><td><strong>Unix 环境</strong></td><td><code>patch-dlls_ntdll_unix_env_c</code>、<code>..._unix_file_c</code>、<code>..._unix_server_c</code>、<code>..._unix_system_c</code>、<code>..._unix_virtual_c</code>、<code>..._unix_unix_private_h</code></td><td></td></tr>
-<tr><td><strong>API 差异</strong></td><td><code>patch-dlls_dnsapi_<em></code>、<code>patch-dlls_iphlpapi_</em></code>、<code>patch-dlls_nsiproxy_*</code>、<code>patch-dlls_msvcrt_handler4_c</code>、<code>patch-dlls_crypt32_unixlib_c</code>、<code>patch-dlls_dxgi_output_c</code>、<code>patch-include_wine_server_protocol_h</code></td><td></td></tr>
-<tr><td><strong>X11 / 图形</strong></td><td><code>patch-dlls_winex11_drv_keyboard_c</code>、<code>..._drv_x11drv_main_c</code>、<code>patch-dlls_winebus_sys_bus_sdl_c</code></td><td></td></tr>
-<tr><td><strong>音频</strong></td><td><code>patch-dlls_winepulse_drv_pulse_c</code></td><td></td></tr>
-<tr><td><strong>其他</strong></td><td><code>patch-loader_main_c</code>、<code>patch-server_Makefile_in</code>、<code>patch-server_fd_c</code>、<code>patch-server_sock_c</code>、<code>patch-server_unicode_c</code>、<code>patch-server_protocol_def</code>、<code>patch-tools_tools_h</code>、<code>patch-libs_vkd3d_libs_vkd3d_utils_c</code>、<code>patch-dlls_wpcap_Makefile_in</code>、<code>patch-patch-configure_ac</code></td><td></td></tr>
-</table>
+<table><thead><tr><th>类别</th><th>文件</th><th>说明</th></tr></thead><tbody><tr><td><strong><code>%gs</code> 核心</strong></td><td><code>patch-dlls_ntdll_unix_gs_openbsd_c</code>（<strong>44844 字节</strong>，新增 974 行）、<code>..._gs_openbsd_h</code></td><td>指令解码器 + stub 生成器</td></tr><tr><td><strong>信号处理</strong></td><td><code>patch-dlls_ntdll_unix_sig_openbsd_c</code>、<code>..._sig_openbsd_h</code>、<code>patch-server_sig_openbsd_c</code>、<code>..._sig_openbsd_h</code>、<code>patch-dlls_ntdll_unix_signal_x86_64_c</code>（16597 字节）</td><td>见第七节</td></tr><tr><td><strong>进程/线程模型</strong></td><td><code>patch-server_process_c/h</code>、<code>patch-server_thread_c</code>、<code>patch-server_ptrace_c</code>、<code>patch-dlls_ntdll_unix_process_c</code>、<code>..._unix_thread_c</code></td><td></td></tr><tr><td><strong>Unix 环境</strong></td><td><code>patch-dlls_ntdll_unix_env_c</code>、<code>..._unix_file_c</code>、<code>..._unix_server_c</code>、<code>..._unix_system_c</code>、<code>..._unix_virtual_c</code>、<code>..._unix_unix_private_h</code></td><td></td></tr><tr><td><strong>API 差异</strong></td><td><code>patch-dlls_dnsapi_*</code>、<code>patch-dlls_iphlpapi_*</code>、<code>patch-dlls_nsiproxy_*</code>、<code>patch-dlls_msvcrt_handler4_c</code>、<code>patch-dlls_crypt32_unixlib_c</code>、<code>patch-dlls_dxgi_output_c</code>、<code>patch-include_wine_server_protocol_h</code></td><td></td></tr><tr><td><strong>X11 / 图形</strong></td><td><code>patch-dlls_winex11_drv_keyboard_c</code>、<code>..._drv_x11drv_main_c</code>、<code>patch-dlls_winebus_sys_bus_sdl_c</code></td><td></td></tr><tr><td><strong>音频</strong></td><td><code>patch-dlls_winepulse_drv_pulse_c</code></td><td></td></tr><tr><td><strong>其他</strong></td><td><code>patch-loader_main_c</code>、<code>patch-server_Makefile_in</code>、<code>patch-server_fd_c</code>、<code>patch-server_sock_c</code>、<code>patch-server_unicode_c</code>、<code>patch-server_protocol_def</code>、<code>patch-tools_tools_h</code>、<code>patch-libs_vkd3d_libs_vkd3d_utils_c</code>、<code>patch-dlls_wpcap_Makefile_in</code>、<code>patch-patch-configure_ac</code></td><td></td></tr></tbody></table>
 <h3>6.1 Makefile 里那些 <code>--without-</code> 每一个都是一条「OpenBSD 没有这个」的注脚</h3>
 <p><strong>实测的 <code>emulators/wine/Makefile</code>（4754 字节）：</strong></p>
 <pre><code class="makefile">ONLY_FOR_ARCHS =	amd64
 COMMENT =		compatibility layer to run Windows applications
 DISTNAME =		wine-11.20
 REVISION =		1
-MAINTAINER =		Thomas Frohwein <thfr@openbsd.org>, \
-			Andrii Yukhymchak <NethIafin-obsd@proton.me>
-CONFIGURE_ARGS =	--enable-archs=x86_64 --with-mingw
-</code></pre>
+MAINTAINER =		Thomas Frohwein &lt;thfr@openbsd.org&gt;, \
+			Andrii Yukhymchak &lt;NethIafin-obsd@proton.me&gt;
+CONFIGURE_ARGS =	--enable-archs=x86_64 --with-mingw</code></pre>
 <p><strong>⭐ 注意 <code>ONLY_FOR_ARCHS = amd64</code> —— 这个 port 只在 amd64 上存在。</strong> <strong>而 Mail 列表里 Bryan Steele 的测试确认也正是「port builds on amd64 (tested on Intel 11th Gen w/ IBT)」。</strong></p>
 <p><strong>而那一长串 <code>--without-</code>，每一个后面都有注释解释为什么：</strong></p>
 <pre><code class="makefile"># krb5: Kerberos authentication also needs adaptation to security/heimdal.
-<h1>USB: devel/libusb1 lacks hotplug support. wineusb aborts initialization.</h1>
-<h1>V4L2: libv4l2 is found, but linux/videodev2.h is missing.</h1>
-<h1>Wayland: untested</h1>
+# USB: devel/libusb1 lacks hotplug support. wineusb aborts initialization.
+# V4L2: libv4l2 is found, but linux/videodev2.h is missing.
+# Wayland: untested
 CONFIGURE_ARGS+=	--without-gssapi --without-krb5 --without-usb \
-			--without-v4l2 --without-wayland
-</code></pre>
+			--without-v4l2 --without-wayland</code></pre>
 <p><strong>⭐ 我认为这五条注释本身就是一份「Windows 世界 → Unix 世界」的对照表：</strong></p>
-<table>
-<tr><th>Windows 需要</th><th>OpenBSD 的情况</th></tr>
-<tr><td><strong>Kerberos（SSP + krb5）</strong></td><td>需要适配 OpenBSD 的 <strong>Heimdal</strong> 而非 MIT Kerberos</td></tr>
-<tr><td><strong>USB 热插拔</strong></td><td><code>devel/libusb1</code> 缺少 hotplug 支持，wineusb 会 abort 初始化</td></tr>
-<tr><td><strong>V4L2 视频设备</strong></td><td>libv4l2 存在，但缺 <code>linux/videodev2.h</code></td></tr>
-<tr><td><strong>Wayland</strong></td><td><strong>untested</strong>（尚未测试）</td></tr>
-<tr><td><strong>ALSA / CoreAudio / OSS / udev / hwloc / OpenCL</strong></td><td>全部 <code>--without</code></td></tr>
-</table>
+<table><thead><tr><th>Windows 需要</th><th>OpenBSD 的情况</th></tr></thead><tbody><tr><td><strong>Kerberos（SSP + krb5）</strong></td><td>需要适配 OpenBSD 的 <strong>Heimdal</strong> 而非 MIT Kerberos</td></tr><tr><td><strong>USB 热插拔</strong></td><td><code>devel/libusb1</code> 缺少 hotplug 支持，wineusb 会 abort 初始化</td></tr><tr><td><strong>V4L2 视频设备</strong></td><td>libv4l2 存在，但缺 <code>linux/videodev2.h</code></td></tr><tr><td><strong>Wayland</strong></td><td><strong>untested</strong>（尚未测试）</td></tr><tr><td><strong>ALSA / CoreAudio / OSS / udev / hwloc / OpenCL</strong></td><td>全部 <code>--without</code></td></tr></tbody></table>
 <p><strong>—— 注意 Wayland 那条：OpenBSD 的 Wayland 支持本身还不完善，所以 Wine 只能走 X11。</strong></p>
 <h3>6.2 Linux 特有的头文件依赖：两次提交解决一个依赖</h3>
 <p><strong>实测提交序列里有两个连续的、看起来很小但很有代表性的提交：</strong></p>
-<ul>
-<li><strong>2026-10-25 <code>71cac71b</code></strong>：<code>hidden dep on linux/input.h; found by naddy@</code></li>
-<li><strong>2026-10-26 <code>fef9ec33</code></strong>：<code>Better: disable linux/input.h header in autoconf. Similar to how it is ...</code></li>
-</ul>
-<strong>对应 Makefile 里这一行：</strong>
+<ul><li><strong>2026-10-25 <code>71cac71b</code></strong>：<code>hidden dep on linux/input.h; found by naddy@</code></li><li><strong>2026-10-26 <code>fef9ec33</code></strong>：<code>Better: disable linux/input.h header in autoconf. Similar to how it is ...</code></li></ul>
+<p><strong>对应 Makefile 里这一行：</strong></p>
 <pre><code class="makefile"># prevent linux/input.h detection: evdev keycodes don't match OpenBSD XFree86.
-CONFIGURE_ENV+=		ac_cv_header_linux_input_h=no
-</code></pre>
+CONFIGURE_ENV+=		ac_cv_header_linux_input_h=no</code></pre>
 <p><strong>⭐ 这个注释是整个移植里信息量最大的一句：</strong></p>
 <p><strong>「阻止 <code>linux/input.h</code> 的探测：evdev 的键码与 OpenBSD 的 XFree86 不匹配。」</strong></p>
 <p><strong>—— 也就是说：</strong> <strong>Wine 的输入层抽象建立在 </strong>Linux evdev<strong> 的键码编号之上，而 OpenBSD 的 XFree86 用的是另一套键码编号。</strong> <strong>所以这个「伪装成 Linux 有这个头文件」的开关，不只是让 configure 过，而是</strong>必须在 configure 阶段就掐掉<strong>，否则会编译出键码错乱的输入处理。</strong></p>
 <p><strong>⭐ 而这两天的两连提交，说明这个依赖是在 port 已经在树里之后才被发现的 —— 由 naddy@ 报出。</strong> <strong>这正是 OpenBSD ports 流程的一个特点：port 先合并，问题在 CI 与用户测试中暴露，再补提交。</strong></p>
 <h3>6.3 libpcap 的 <code>.pc</code> 文件名差异</h3>
 <pre><code class="makefile"># Wine requests libpcap.pc; the OpenBSD port instead provides libepcap.pc
-<h1>and installs its headers/libraries outside the default search paths.</h1>
+# and installs its headers/libraries outside the default search paths.
 CONFIGURE_ENV+=		INOTIFY_LIBS="-L${LOCALBASE}/lib/inotify -Wl,-rpath,${LOCALBASE}/lib/inotify -linotify" \
 			PCAP_CFLAGS="-I${LOCALBASE}/include/libpcap" \
-			PCAP_LIBS="-L${LOCALBASE}/lib/libpcap -Wl,-rpath,${LOCALBASE}/lib/libpcap -lpcap"
-</code></pre>
+			PCAP_LIBS="-L${LOCALBASE}/lib/libpcap -Wl,-rpath,${LOCALBASE}/lib/libpcap -lpcap"</code></pre>
 <p><strong>⭐ 而 <code>inotify</code> 那条更典型：OpenBSD 的 inotify 是独立 port（<code>lib/inotify</code>），装在非标准路径下，所以要手工给 <code>-L</code> 和 <code>-rpath</code>。</strong></p>
 <h2>七、⭐ 第二个硬骨头：跨进程线程信号</h2>
 <p><strong>这是除了 <code>%gs</code> 之外的另一个大工程，而它的成因非常 OpenBSD。</strong></p>
 <p><strong><code>patch-dlls_ntdll_unix_sig_openbsd.c</code> 的注释原文：</strong></p>
-<blockquote><strong>「从 wineserver 发给客户端线程的信号总是要跨越进程边界。</strong></blockquote>>
-<blockquote><strong>在 OpenBSD 上你不能从另一个进程给一个线程发信号。<code>thrkill()</code> 只在同一进程内有效。</strong></blockquote>>
-<blockquote><strong>绕过它的办法是：用 SIGUSR2 把整个进程杀掉，然后内核把它投递给一个活跃线程。那个线程用 <code>thrkill()</code> 把每个排队的信号发给它的目标线程。</strong></blockquote>>
-<blockquote><strong>Chromium/Electron 主动使用这个机制来做采样 profiler 和 hang watcher。」</strong></blockquote>
-<strong>⭐ 翻译一下这个「绕法」：</strong>
-<ol>
-<li>1. <strong>wineserver 想给客户端的某个线程发信号</strong>（Wine 的架构里，wineserver 是「会话管理器」，客户端进程通过它受控）；</li>
-<li>2. <strong>正常做法是 <code>tkill(tid, tid, sig)</code> 或 <code>thrkill()</code>；</strong></li>
-<li>3. <strong>⭐ 但 OpenBSD 的 <code>thrkill()</code> 只允许同进程内调用（这是 OpenBSD 特有的安全收紧 —— 防止跨进程操纵线程）；</strong></li>
-<li>4. <strong>所以改成：给整个进程发 <code>SIGUSR2</code> → 内核把它投递给某个「活跃线程」 → 那个线程醒来，用 <code>thrkill()</code>（现在同进程了）把排队的信号转发给真正的目标线程。</strong></li>
-</ol>
-<strong>⭐ 而最后那句「Chromium/Electron 主动使用这个机制来做采样 profiler 和 hang watcher」非常关键 —— 因为它意味着这条路径</strong>不是 Wine 特有的<strong>，而是一个通用的、会被大量现代应用用到的机制。</strong>
+<blockquote><strong>「从 wineserver 发给客户端线程的信号总是要跨越进程边界。</strong><br>
+<br>
+<strong>在 OpenBSD 上你不能从另一个进程给一个线程发信号。<code>thrkill()</code> 只在同一进程内有效。</strong><br>
+<br>
+<strong>绕过它的办法是：用 SIGUSR2 把整个进程杀掉，然后内核把它投递给一个活跃线程。那个线程用 <code>thrkill()</code> 把每个排队的信号发给它的目标线程。</strong><br>
+<br>
+<strong>Chromium/Electron 主动使用这个机制来做采样 profiler 和 hang watcher。」</strong></blockquote>
+<p><strong>⭐ 翻译一下这个「绕法」：</strong></p>
+<ol><li><strong>wineserver 想给客户端的某个线程发信号</strong>（Wine 的架构里，wineserver 是「会话管理器」，客户端进程通过它受控）；</li><li><strong>正常做法是 <code>tkill(tid, tid, sig)</code> 或 <code>thrkill()</code>；</strong></li><li><strong>⭐ 但 OpenBSD 的 <code>thrkill()</code> 只允许同进程内调用（这是 OpenBSD 特有的安全收紧 —— 防止跨进程操纵线程）；</strong></li><li><strong>所以改成：给整个进程发 <code>SIGUSR2</code> → 内核把它投递给某个「活跃线程」 → 那个线程醒来，用 <code>thrkill()</code>（现在同进程了）把排队的信号转发给真正的目标线程。</strong></li></ol>
+<p><strong>⭐ 而最后那句「Chromium/Electron 主动使用这个机制来做采样 profiler 和 hang watcher」非常关键 —— 因为它意味着这条路径</strong>不是 Wine 特有的<strong>，而是一个通用的、会被大量现代应用用到的机制。</strong></p>
 <p><strong>—— 换句话说：如果没有这个 patch，Wine 里的 Chromium/Electron 应用（VS Code、Slack、各种 Electron 桌面应用）的采样器和 hang watcher 都会失效。</strong></p>
 <p><strong>而 <code>patch-server_ptrace_c</code> 里还配套改了一处：</strong></p>
 <pre><code class="c"> void finish_process_tracing( struct process *process )
@@ -531,102 +487,71 @@ CONFIGURE_ENV+=		INOTIFY_LIBS="-L${LOCALBASE}/lib/inotify -Wl,-rpath,${LOCALBASE
 +#ifdef __OpenBSD__
 +    finish_process_signal_targets( process );
 +#endif
- }
-</code></pre>
+ }</code></pre>
 <p><strong>—— 进程追踪结束时，必须把排队的信号目标清掉，否则会残留。</strong></p>
 <p><strong>⭐ 官方明确要求双向同步：</strong></p>
 <blockquote><strong>「这里的任何改动都必须同步反映到 server 的 <code>sig_openbsd</code>。」</strong></blockquote>
-<strong>（<code>server/sig_openbsd.c</code> 也在 44 个 patch 里。）</strong>
+<p><strong>（<code>server/sig_openbsd.c</code> 也在 44 个 patch 里。）</strong></p>
 <h2>八、⭐ 移植的实际效果：实测跑了什么</h2>
 <p><strong>这一节完全基于 openbsd-ports 邮件列表里的</strong>实际测试记录<strong> —— 开发者自己的测试，加上两位社区测试者各自的实测清单。</strong></p>
 <h3>8.1 开发者自己的测试</h3>
 <p><strong>Thomas Frohwein 在提案里写的：</strong></p>
-<blockquote><strong>「我们此后测试了几十个 64 位的 Windows 软件，大多成功。」</strong></blockquote>>
-<blockquote><strong>「甚至上个月刚发售的《巫师 3》重制版也能跑，而且跑得很好（需要加入 vkd3d-proton；见 README；直播录像看起来没那么流畅是因为用 ffmpeg 在本机录制）。」</strong></blockquote>
-<strong>⭐ 三个关键词：</strong> <strong>「几十个」、「大多成功」、「《巫师 3》重制版跑得很好」。</strong>
+<blockquote><strong>「我们此后测试了几十个 64 位的 Windows 软件，大多成功。」</strong><br>
+<br>
+<strong>「甚至上个月刚发售的《巫师 3》重制版也能跑，而且跑得很好（需要加入 vkd3d-proton；见 README；直播录像看起来没那么流畅是因为用 ffmpeg 在本机录制）。」</strong></blockquote>
+<p><strong>⭐ 三个关键词：</strong> <strong>「几十个」、「大多成功」、「《巫师 3》重制版跑得很好」。</strong></p>
 <p><strong>—— 尤其值得注意的是最后一条：</strong> <strong>一个 2026 年 10 月刚发售的 3A 大作能跑，这意味着这不是「跑得动老游戏」的 demo，而是</strong>真的能跑当代商业软件<strong>。</strong></p>
 <p><strong>⚠️ 而它需要 <code>vkd3d-proton</code></strong> —— 这一点很重要：<strong>Wine 在 Unix-like 上没有原生 Direct3D，需要经由 Vulkan 转译，而 Windows 的 HLSL 着色器要先转成 SPIR-V 才能用。</strong></p>
 <h3>8.2 社区的实测记录（来自邮件列表回复）</h3>
 <p><strong>Bryan Steele（<code>brynet@</code>）：</strong></p>
 <blockquote><strong>「我测试这个 port 的各个迭代已经一周了，至少通关了一个我自己在 GOG 上拥有的游戏 —— 『Iratus』。能正常工作，但要在游戏菜单里把语言设成英文。」</strong></blockquote>
-<strong>Martijn van Duren（<code>martijn@</code>）：</strong>
+<p><strong>Martijn van Duren（<code>martijn@</code>）：</strong></p>
 <blockquote><strong>「到目前为止，我成功启动并读取了以下游戏的存档：</strong><br>
 - <strong>Timberborn</strong><br>
 - <strong>Cult of the Lamb</strong><br>
 - <strong>Frostpunk</strong><br>
 - <strong>ManorLords</strong><br>
 - <strong>Peglin</strong>（声音比游戏慢约 1 秒）<br>
-- <strong>Whiskerwood</strong></blockquote>>
-<blockquote><strong>未能启动（未深究原因）：</strong><br>
+- <strong>Whiskerwood</strong><br>
+<br>
+<strong>未能启动（未深究原因）：</strong><br>
 - <strong>Cyberpunk 2077</strong><br>
-- <strong>Vampire the Masquerade – Bloodlines 2</strong>」**</blockquote>>
-<blockquote><strong>「我挺满意的。</strong>另外提醒一下：我对其中一些游戏还得在 Linux 下做些调整，而且我用的是共享的 ext2fs home 目录，所以我也不确定现在哪些游戏还需要哪些调整了 —— 总之，至少这些是能起来的。」**</blockquote>
-<strong>⭐ 这份清单的信息量比「能跑」这个结论大得多：</strong>
-<table>
-<tr><th>观察</th><th>说明什么</th></tr>
-<tr><td><strong>6 款独立游戏成功启动并读档</strong></td><td><strong>存档兼容性 OK</strong> —— 这比「能启动」重要得多，因为读档意味着文件格式与目录结构都对</td></tr>
-<tr><td><strong>《Peglin》声音慢约 1 秒</strong></td><td><strong>音频路径有延迟</strong> —— 大概是 <code>pulseaudio</code> 那条路径的开销</td></tr>
-<tr><td><strong>《Cyberpunk 2077》未启动</strong></td><td>⭐ <strong>未深究原因</strong> —— 这类大作通常有更严苛的图形与反作弊要求</td></tr>
-<tr><td><strong>《血族》2 未启动</strong></td><td>同上</td></tr>
-<tr><td><strong>需要「在 Linux 下做些调整」</strong></td><td><strong>并非开箱即用</strong> —— 而这个「调整」在 Windows 上本来是不需要的</td></tr>
-<tr><td><strong>共享 ext2fs home 目录</strong></td><td>⭐ <strong>这是一个很值得注意的细节</strong>：<strong>用 ext2fs 而不是 ext4，是因为 ext4 的某些特性（比如大小写敏感性）会破坏 Windows 程序的预期行为</strong></td></tr>
-</table>
+- <strong>Vampire the Masquerade – Bloodlines 2</strong>」**<br>
+<br>
+<strong>「我挺满意的。</strong>另外提醒一下：我对其中一些游戏还得在 Linux 下做些调整，而且我用的是共享的 ext2fs home 目录，所以我也不确定现在哪些游戏还需要哪些调整了 —— 总之，至少这些是能起来的。」**</blockquote>
+<p><strong>⭐ 这份清单的信息量比「能跑」这个结论大得多：</strong></p>
+<table><thead><tr><th>观察</th><th>说明什么</th></tr></thead><tbody><tr><td><strong>6 款独立游戏成功启动并读档</strong></td><td><strong>存档兼容性 OK</strong> —— 这比「能启动」重要得多，因为读档意味着文件格式与目录结构都对</td></tr><tr><td><strong>《Peglin》声音慢约 1 秒</strong></td><td><strong>音频路径有延迟</strong> —— 大概是 <code>pulseaudio</code> 那条路径的开销</td></tr><tr><td><strong>《Cyberpunk 2077》未启动</strong></td><td>⭐ <strong>未深究原因</strong> —— 这类大作通常有更严苛的图形与反作弊要求</td></tr><tr><td><strong>《血族》2 未启动</strong></td><td>同上</td></tr><tr><td><strong>需要「在 Linux 下做些调整」</strong></td><td><strong>并非开箱即用</strong> —— 而这个「调整」在 Windows 上本来是不需要的</td></tr><tr><td><strong>共享 ext2fs home 目录</strong></td><td>⭐ <strong>这是一个很值得注意的细节</strong>：<strong>用 ext2fs 而不是 ext4，是因为 ext4 的某些特性（比如大小写敏感性）会破坏 Windows 程序的预期行为</strong></td></tr></tbody></table>
 <p><strong>⭐ 最后这一条其实是个大新闻 —— 而且方向和本文的主线正好相反：</strong></p>
 <p><strong>⭐ 而这个选择是有道理的：ext2fs 保留了一些与 Windows 语义一致的旧行为</strong>（如文件名大小写不敏感），而 ext4 的默认行为会让一部分 Windows 程序找不到文件。**</p>
-<p><strong>—— 原因是 Linux 桌面的默认 ext4 有几个「与 Windows 语义冲突」的行为：</strong>
-<ul>
-<li><strong>文件名大小写敏感性不同</strong>（ext4 默认敏感，Windows 不敏感）；</li>
-<li><strong>某些路径里不允许特定字符</strong>；</li>
-<li><strong>inode 号与文件 ID 的语义差异</strong>。</li>
-</ul>
-<strong>⭐ 而这恰恰说明了「移植」的真正难度：它不只包括「让内核跑起来」，还包括「让一个为另一种文件系统语义写的用户态，能在一个语义不同的文件系统上正常工作」。</strong></p>
+<p><strong>—— 原因是 Linux 桌面的默认 ext4 有几个「与 Windows 语义冲突」的行为：</strong></p>
+<ul><li><strong>文件名大小写敏感性不同</strong>（ext4 默认敏感，Windows 不敏感）；</li><li><strong>某些路径里不允许特定字符</strong>；</li><li><strong>inode 号与文件 ID 的语义差异</strong>。</li></ul>
+<p><strong>⭐ 而这恰恰说明了「移植」的真正难度：它不只包括「让内核跑起来」，还包括「让一个为另一种文件系统语义写的用户态，能在一个语义不同的文件系统上正常工作」。</strong></p>
 <h3>8.3 ⭐ 最重要的限制：WoW64 不工作</h3>
 <p><strong>Thomas Frohwein 原文：</strong></p>
 <blockquote><strong>「最大的限制是 WoW64 不工作，所以 32 位的 Windows 软件仍然是 no-op。你可以用 <code>file(1)</code> 轻松检查 .exe/.dll —— 如果它显示类似 <code>MS-DOS executable PE for MS Windows (GUI) Intel 80386 32-bit</code>，那它就是 32 位的。」</strong></blockquote>
-<strong>⭐ 这条限制的原理和第三节完全连着：</strong>
-<table>
-<tr><th></th><th>32 位 x86</th><th>64 位 x86</th></tr>
-<tr><td><strong>TLS 访问方式</strong></td><td><strong><code>%fs:0x30</code></strong></td><td><strong><code>%gs:0x30</code></strong></td></tr>
-<tr><td><strong>Andrii 的方案</strong></td><td>需要另一套模拟</td><td><strong>就是现在这套</strong></td></tr>
-<tr><td><strong>状态</strong></td><td><strong>未实现</strong></td><td><strong>可用</strong></td></tr>
-</table>
+<p><strong>⭐ 这条限制的原理和第三节完全连着：</strong></p>
+<table><thead><tr><th></th><th>32 位 x86</th><th>64 位 x86</th></tr></thead><tbody><tr><td><strong>TLS 访问方式</strong></td><td><strong><code>%fs:0x30</code></strong></td><td><strong><code>%gs:0x30</code></strong></td></tr><tr><td><strong>Andrii 的方案</strong></td><td>需要另一套模拟</td><td><strong>就是现在这套</strong></td></tr><tr><td><strong>状态</strong></td><td><strong>未实现</strong></td><td><strong>可用</strong></td></tr></tbody></table>
 <p><strong>—— 而</strong>好消息<strong>是：2026 年的 Windows 软件已经</strong>大量转向 64 位<strong>（这正是 Thomas 邮件里说的「对 wine 的兴趣出现了浪潮，和 5–10 年前不同」的原因）。</strong></p>
 <p><strong>⭐ 所以「WoW64 不工作」这个限制，在 2026 年的实际影响，比 2015 年小得多。</strong></p>
 <p><strong>⚠️ 而这也解释了为什么「多测 64 位软件」和「WoW64 不工作」这两句话能同时出现在同一封邮件里而不矛盾。</strong></p>
 <h3>8.4 ⚠️ 另一个必须说的状态：自带测试是关闭的</h3>
 <p><strong>Thomas Frohwein 原文：</strong></p>
 <blockquote><strong>「目前内置测试是禁用的。启用它们相当麻烦，因为它们需要访问 X server，而且多个测试仍然会挂起 —— 尽管在用不少游戏做的真实生活测试中并没有观察到这一点。这仍在处理中。」</strong></blockquote>
-<strong>⭐ 我认为这一条比其他任何一条都更值得强调，因为它划出了这个项目的真实成熟度：</strong>
+<p><strong>⭐ 我认为这一条比其他任何一条都更值得强调，因为它划出了这个项目的真实成熟度：</strong></p>
 <p><strong>它是一个「靠人的手工验证」支撑的 port</strong> —— <strong>没有自动化回归测试网。</strong></p>
 <p><strong>而这正是我在上一节（第九节）要展开的那个话题的起点：</strong></p>
-<blockquote><strong>「2010-10-19 <code>ae27646c</code> this port is unfinished, add a comment to make it even more obvious」</strong></blockquote>>
-<blockquote><strong>—— 2010 年那次失败，是因为「做不完」。而 2026 年这次，它在</strong>十年后<strong>被 re-import 并完成了。</strong></blockquote>
-<strong>⭐ 两次尝试的差别在哪里？</strong> <strong>从邮件里能看到的答案是：</strong>
-<ul>
-<li><strong>2010</strong>：一个人，业余时间，面对一个巨大的代码库 → <strong>做不完</strong>；</li>
-<li><strong>2026</strong>：<strong>一个人写出了最难的那部分（<code>%gs</code> 模拟）</strong>，另一个人（Thomas）<strong>把它接进 ports 体系</strong>并处理掉所有工程细节（构建系统、依赖、CI、上游配合）**。</li>
-</ul>
-<strong>—— 而「自带测试关闭」这件事，恰恰是 ports 体系在补的那个洞：一旦这个 port 进入 ports 树，它就会被纳入 OpenBSD 的 CI 与回归流程。</strong> <strong>这是「个人技术突破」与「集体工程能力」叠加的典型案例。</strong>
+<blockquote><strong>「2010-10-19 <code>ae27646c</code> this port is unfinished, add a comment to make it even more obvious」</strong><br>
+<br>
+<strong>—— 2010 年那次失败，是因为「做不完」。而 2026 年这次，它在</strong>十年后<strong>被 re-import 并完成了。</strong></blockquote>
+<p><strong>⭐ 两次尝试的差别在哪里？</strong> <strong>从邮件里能看到的答案是：</strong></p>
+<ul><li><strong>2010</strong>：一个人，业余时间，面对一个巨大的代码库 → <strong>做不完</strong>；</li><li><strong>2026</strong>：<strong>一个人写出了最难的那部分（<code>%gs</code> 模拟）</strong>，另一个人（Thomas）<strong>把它接进 ports 体系</strong>并处理掉所有工程细节（构建系统、依赖、CI、上游配合）**。</li></ul>
+<p><strong>—— 而「自带测试关闭」这件事，恰恰是 ports 体系在补的那个洞：一旦这个 port 进入 ports 树，它就会被纳入 OpenBSD 的 CI 与回归流程。</strong> <strong>这是「个人技术突破」与「集体工程能力」叠加的典型案例。</strong></p>
 <h3>8.5 一张速查表</h3>
-<table>
-<tr><th>维度</th><th>状态</th></tr>
-<tr><td><strong>32 位 Windows 软件</strong></td><td>❌ <strong>不支持</strong>（WoW64 未实现）</td></tr>
-<tr><td><strong>64 位 Windows 软件</strong></td><td>✅ <strong>「几十个」被测过，「大多成功」</strong></td></tr>
-<tr><td><strong>当代 3A 游戏</strong></td><td>✅ <strong>《巫师 3》重制版（2026-10 发售）可跑</strong>，需 <code>vkd3d-proton</code></td></tr>
-<tr><td><strong>独立游戏</strong></td><td>✅ <strong>Timberborn / Cult of the Lamb / Frostpunk / ManorLords / Peglin / Whiskerwood 成功启动并读档</strong></td></tr>
-<tr><td><strong>大型 3A</strong></td><td>⚠️ <strong>《Cyberpunk 2077》《血族 2》未能启动</strong>（原因未查）</td></tr>
-<tr><td><strong>存档兼容性</strong></td><td>✅ <strong>实测可读档</strong></td></tr>
-<tr><td><strong>图形</strong></td><td>需 <code>vkd3d-proton</code>（D3D → Vulkan 转译）</td></tr>
-<tr><td><strong>音频</strong></td><td>⚠️ <strong>有延迟</strong>（Peglin 实测约 1 秒）</td></tr>
-<tr><td><strong>Linux 侧调整</strong></td><td>⚠️ <strong>部分游戏需要额外调整</strong>（GOG 游戏的「Iratus」需改语言）</td></tr>
-<tr><td><strong>推荐文件系统</strong></td><td>⭐ <strong>ext2fs</strong>（测试者用共享 ext2fs home）</td></tr>
-<tr><td><strong>内置测试</strong></td><td>❌ <strong>关闭</strong>（需 X server，多测挂起）</td></tr>
-<tr><td><strong>稳定性保证</strong></td><td>❌ <strong>无自动化回归网</strong>（依赖 ports 体系补）</td></tr>
-</table>
+<table><thead><tr><th>维度</th><th>状态</th></tr></thead><tbody><tr><td><strong>32 位 Windows 软件</strong></td><td>❌ <strong>不支持</strong>（WoW64 未实现）</td></tr><tr><td><strong>64 位 Windows 软件</strong></td><td>✅ <strong>「几十个」被测过，「大多成功」</strong></td></tr><tr><td><strong>当代 3A 游戏</strong></td><td>✅ <strong>《巫师 3》重制版（2026-10 发售）可跑</strong>，需 <code>vkd3d-proton</code></td></tr><tr><td><strong>独立游戏</strong></td><td>✅ <strong>Timberborn / Cult of the Lamb / Frostpunk / ManorLords / Peglin / Whiskerwood 成功启动并读档</strong></td></tr><tr><td><strong>大型 3A</strong></td><td>⚠️ <strong>《Cyberpunk 2077》《血族 2》未能启动</strong>（原因未查）</td></tr><tr><td><strong>存档兼容性</strong></td><td>✅ <strong>实测可读档</strong></td></tr><tr><td><strong>图形</strong></td><td>需 <code>vkd3d-proton</code>（D3D → Vulkan 转译）</td></tr><tr><td><strong>音频</strong></td><td>⚠️ <strong>有延迟</strong>（Peglin 实测约 1 秒）</td></tr><tr><td><strong>Linux 侧调整</strong></td><td>⚠️ <strong>部分游戏需要额外调整</strong>（GOG 游戏的「Iratus」需改语言）</td></tr><tr><td><strong>推荐文件系统</strong></td><td>⭐ <strong>ext2fs</strong>（测试者用共享 ext2fs home）</td></tr><tr><td><strong>内置测试</strong></td><td>❌ <strong>关闭</strong>（需 X server，多测挂起）</td></tr><tr><td><strong>稳定性保证</strong></td><td>❌ <strong>无自动化回归网</strong>（依赖 ports 体系补）</td></tr></tbody></table>
 <h2>九、⭐⭐ 十四年的距离</h2>
 <p><strong>这一节我想单独讲，因为它是我在实测提交历史里发现的最有冲击力的一个事实。</strong></p>
 <p><strong><code>path=emulators/wine</code> 的完整提交历史（实测）：</strong></p>
-<pre><code class="">2026-10-26 fef9ec33 Better: disable linux/input.h header in autoconf...
+<pre><code>2026-10-26 fef9ec33 Better: disable linux/input.h header in autoconf...
 2026-10-25 71cac71b hidden dep on linux/input.h; found by naddy@
 2026-10-22 4a90c8df update to wine 11.20. Tested by Andrii and me.
 2026-10-22 6086ce08 update distinfo
@@ -640,12 +565,12 @@ CONFIGURE_ENV+=		INOTIFY_LIBS="-L${LOCALBASE}/lib/inotify -Wl,-rpath,${LOCALBASE
 2010-11-15 a14bf26c new depends
 2010-10-24 ff07e285 Remove USE_X11.
 2010-10-23 ec8f9886 revision/lib_depends
-2010-10-19 ae27646c this port is unfinished, add a comment to make it even more obvious
-</code></pre>
+2010-10-19 ae27646c this port is unfinished, add a comment to make it even more obvious</code></pre>
 <p><strong>⭐ 注意 2010-10-19 那一条提交信息：</strong></p>
-<blockquote><strong><code>this port is unfinished, add a comment to make it even more obvious</code></strong></blockquote>>
-<blockquote>（<strong>这个 port 还没完成，加一条注释让它更明显</strong>。）</blockquote>
-<strong>—— 也就是说：上一次尝试（2010）不是被「技术不行」否掉的，而是被「做不完」否掉的 —— 作者自己加了个注释让所有人都知道这是个半成品，然后在半年后（2011-07）把它删了。</strong>
+<blockquote><strong><code>this port is unfinished, add a comment to make it even more obvious</code></strong><br>
+<br>
+（<strong>这个 port 还没完成，加一条注释让它更明显</strong>。）</blockquote>
+<p><strong>—— 也就是说：上一次尝试（2010）不是被「技术不行」否掉的，而是被「做不完」否掉的 —— 作者自己加了个注释让所有人都知道这是个半成品，然后在半年后（2011-07）把它删了。</strong></p>
 <p><strong>⭐ 而 2026 年这一次，它被「re-import」了。</strong></p>
 <p><strong>Thomas 在邮件里用了「re-import」这个词，而实测提交 <code>fd10d99c</code> 的说明是「resolve merge conflicts by re-reading previously removed files」</strong> —— <strong>⭐ 这说明这次不是从零开始，而是把 2010 年那个半成品 port 的文件重新拉回来，然后在上面继续。</strong></p>
 <p><strong>—— 换句话说：十五年前那位作者留下的骨架，被两个人接力完成了。</strong></p>
@@ -662,39 +587,23 @@ CONFIGURE_ENV+=		INOTIFY_LIBS="-L${LOCALBASE}/lib/inotify -Wl,-rpath,${LOCALBASE
 <p><strong>这是我在这个故事里看到的最漂亮的一次「把约束变成机会」。</strong></p>
 <h3>10.2 三级回退是一种「成本可预测」的工程方法</h3>
 <p><strong>⭐ Andrii 的三级策略（改写 / stub / SIGSEGV）本质上是一套「按指令形态选择最便宜实现」的机制：</strong></p>
-<ul>
-<li><strong>最常见的形态</strong>（<code>NtCurrentTeb()</code>）→ <strong>零成本改写</strong>；</li>
-<li><strong>绝大多数 5 字节以上的指令</strong> → <strong>一次跳转</strong>；</li>
-<li><strong>极少数短指令</strong> → <strong>付一次信号往返</strong>。</li>
-</ul>
-<strong>—— 这不是「先做个能跑的版本」，而是一个从一开始就</strong>按成本分档<strong>的设计。</strong> <strong>这在移植工作里特别重要，因为它让你知道「最坏情况有多坏」。</strong>
+<ul><li><strong>最常见的形态</strong>（<code>NtCurrentTeb()</code>）→ <strong>零成本改写</strong>；</li><li><strong>绝大多数 5 字节以上的指令</strong> → <strong>一次跳转</strong>；</li><li><strong>极少数短指令</strong> → <strong>付一次信号往返</strong>。</li></ul>
+<p><strong>—— 这不是「先做个能跑的版本」，而是一个从一开始就</strong>按成本分档<strong>的设计。</strong> <strong>这在移植工作里特别重要，因为它让你知道「最坏情况有多坏」。</strong></p>
 <h3>10.3 ⭐ 而「报告覆盖边界」是这个故事里最该被学走的习惯</h3>
 <p><strong>Andrii 的 patch 注释里那几句：</strong></p>
 <blockquote><strong>「支持 0x67 前缀（32 位寻址模式），但 moffs 指令除外。</strong>'<br>
 <strong>「其他不支持的前缀未被检测到会与 <code>%gs</code> 一起由已审阅的编译器生成。」</strong></blockquote>
-<strong>⭐ 以及那句：</strong>
+<p><strong>⭐ 以及那句：</strong></p>
 <blockquote><strong>「这段代码是根据 LLM 生成的指令解码图手工编写的。指令列表由 LLM 提供，并用规范人工核对过。」</strong></blockquote>
-<strong>—— 三句话分别做了三件事：</strong> <strong>说清支持什么、说清不支持什么、以及</strong>明确区分「我没找到反例」和「我证明了没有反例」<strong>。</strong>
+<p><strong>—— 三句话分别做了三件事：</strong> <strong>说清支持什么、说清不支持什么、以及</strong>明确区分「我没找到反例」和「我证明了没有反例」<strong>。</strong></p>
 <p><strong>⭐ 而这一点和 NVIDIA OpenShell 的 policy prover 恰好形成一组对照：</strong></p>
 <p><strong>—— 两天之内，本号要写的两篇文章，一个是「我检查不了的东西会明确报 <code>unsupported</code>」，一个是「我覆盖的边界会明确写下来」。</strong></p>
 <p><strong>⭐ 而这两个项目、两种风格、两种领域，却共享同一个内核品质：</strong></p>
 <blockquote><strong>明确说出「我不知道」比假装「我都覆盖了」更有价值。</strong></blockquote>
 <h2>Sources</h2>
-<ul>
-<li>openbsd/ports：emulators/wine（Makefile、44 个 patch、提交历史）：https://github.com/openbsd/ports/tree/master/emulators/wine</li>
-<li>openbsd-ports 邮件列表原始讨论（Thomas Frohwein 的移植提案，2026-10-18）：https://marc.info/?l=openbsd-ports&m=179236125692175</li>
-<li>回复 1（Bryan Steele）：https://marc.info/?l=openbsd-ports&m=179236426893591&w=2</li>
-<li>回复 2（Martijn van Duren，列出可运行的游戏）：https://marc.info/?l=openbsd-ports&m=179240622622831&w=2</li>
-<li>回复 3（Stuart Henderson，关于 clang 头文件与上游合并）：https://marc.info/?l=openbsd-ports&m=179240650723110&w=2</li>
-<li>openbsd-tech：Question - %gs support on OpenBSD（2026-09-29）：https://marc.info/?l=openbsd-tech&m=179067466617674&w=2</li>
-<li>openbsd-tech：Re（Story 的解释与自我更正）：https://marc.info/?l=openbsd-tech&m=179069358537094&w=2</li>
-<li>clang PE 头文件仓库：https://thfr.gothub.org/wine-clang-pe-headers</li>
-<li>Discover BSD 转载：New OpenBSD Port Proposed for Wine：https://discoverbsd.com/p/b82c0a61ca</li>
-<li>OSnews 转载：Wine ported to OpenBSD, runs modern Windows games：https://www.osnews.com/story/146195/wine-ported-to-openbsd-runs-modern-windows-games/</li>
-</ul>
----
-<p>（说明：所有 patch 代码、提交信息、Makefile 内容、邮件列表引述均为实测一手材料；第 5.3 节引用的 patch 注释中关于 LLM 参与的表述为 Andrii Yukhymchak 原文；第九节「十四年的距离」一节依据的是实测的 ports 提交历史；第十节的三点归纳为笔者观点。）
-</p>
+<ul><li>openbsd/ports：emulators/wine（Makefile、44 个 patch、提交历史）：<a href="https://github.com/openbsd/ports/tree/master/emulators/wine" target="_blank" rel="noopener noreferrer">https://github.com/openbsd/ports/tree/master/emulators/wine</a></li><li>openbsd-ports 邮件列表原始讨论（Thomas Frohwein 的移植提案，2026-10-18）：<a href="https://marc.info/?l" target="_blank" rel="noopener noreferrer">https://marc.info/?l</a>=openbsd-ports&amp;m=179236125692175</li><li>回复 1（Bryan Steele）：<a href="https://marc.info/?l" target="_blank" rel="noopener noreferrer">https://marc.info/?l</a>=openbsd-ports&amp;m=179236426893591&amp;w=2</li><li>回复 2（Martijn van Duren，列出可运行的游戏）：<a href="https://marc.info/?l" target="_blank" rel="noopener noreferrer">https://marc.info/?l</a>=openbsd-ports&amp;m=179240622622831&amp;w=2</li><li>回复 3（Stuart Henderson，关于 clang 头文件与上游合并）：<a href="https://marc.info/?l" target="_blank" rel="noopener noreferrer">https://marc.info/?l</a>=openbsd-ports&amp;m=179240650723110&amp;w=2</li><li>openbsd-tech：Question - %gs support on OpenBSD（2026-09-29）：<a href="https://marc.info/?l" target="_blank" rel="noopener noreferrer">https://marc.info/?l</a>=openbsd-tech&amp;m=179067466617674&amp;w=2</li><li>openbsd-tech：Re（Story 的解释与自我更正）：<a href="https://marc.info/?l" target="_blank" rel="noopener noreferrer">https://marc.info/?l</a>=openbsd-tech&amp;m=179069358537094&amp;w=2</li><li>clang PE 头文件仓库：<a href="https://thfr.gothub.org/wine-clang-pe-headers" target="_blank" rel="noopener noreferrer">https://thfr.gothub.org/wine-clang-pe-headers</a></li><li>Discover BSD 转载：New OpenBSD Port Proposed for Wine：<a href="https://discoverbsd.com/p/b82c0a61ca" target="_blank" rel="noopener noreferrer">https://discoverbsd.com/p/b82c0a61ca</a></li><li>OSnews 转载：Wine ported to OpenBSD, runs modern Windows games：<a href="https://www.osnews.com/story/146195/wine-ported-to-openbsd-runs-modern-windows-games/" target="_blank" rel="noopener noreferrer">https://www.osnews.com/story/146195/wine-ported-to-openbsd-runs-modern-windows-games/</a></li></ul>
+<hr>
+<p>（说明：所有 patch 代码、提交信息、Makefile 内容、邮件列表引述均为实测一手材料；第 5.3 节引用的 patch 注释中关于 LLM 参与的表述为 Andrii Yukhymchak 原文；第九节「十四年的距离」一节依据的是实测的 ports 提交历史；第十节的三点归纳为笔者观点。）</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

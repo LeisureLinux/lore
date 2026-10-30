@@ -282,8 +282,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-
-<blockquote>原文：<a href="https://codyho.dev/blog/gpu-driver/">I Came, I Prompted, I Left Part 2: Building a GPU Driver From Scratch in One Month</a>（Cody Ho，2026-09-15）。本文由 LeisureLinux 翻译整理并加注解读；文内所有事实、数字与引语均来自原作者博客，未作改动。</blockquote>
+<blockquote>原文：<a href="https://codyho.dev/blog/gpu-driver/" target="_blank" rel="noopener noreferrer">I Came, I Prompted, I Left Part 2: Building a GPU Driver From Scratch in One Month</a>（Cody Ho，2026-09-15）。本文由 LeisureLinux 翻译整理并加注解读；文内所有事实、数字与引语均来自原作者博客，未作改动。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
       <span class="tc-ad-label">推广</span>
@@ -292,20 +291,15 @@
       </a>
     </div>
 
-一个正常需要<strong>几年</strong>的工程量，两个人加上 LLM，用<strong>大约一个月</strong>做完了：为 M4 Mac Mini 和 MacBook Neo 从零写出了一个<strong>完整符合 OpenGL ES 3.0 规范</strong>的 GPU 驱动。Chrome 和 Firefox 能在 M4 Mac Mini 上跑 WebGL 并正常合成；Minecraft 能跑到 <strong>200fps</strong>。
+<p>一个正常需要<strong>几年</strong>的工程量，两个人加上 LLM，用<strong>大约一个月</strong>做完了：为 M4 Mac Mini 和 MacBook Neo 从零写出了一个<strong>完整符合 OpenGL ES 3.0 规范</strong>的 GPU 驱动。Chrome 和 Firefox 能在 M4 Mac Mini 上跑 WebGL 并正常合成；Minecraft 能跑到 <strong>200fps</strong>。</p>
 <p>作者是 Cody Ho（博客标题系列「I Came, I Prompted, I Left」的第二篇）。整件事在一个<strong>可验证的净室（clean room）</strong>流程下完成——没有看过任何 Apple 二进制，只用他们此前自建 hypervisor 抓到的硬件 trace，以及自己写的 shader。</p>
-<p>---</p>
+<hr>
 <h2>译文：他们做了什么</h2>
 <h3>起点：先有 hypervisor，再有驱动</h3>
 <p>作者此前为了逆向 macOS，先写了一个 hypervisor。这一篇的目标是把那套工具拿来做点真正有用的事——写 GPU 驱动。理由很直白：现代系统里 GPU 是硬需求，否则一切都要 CPU 渲染，慢几个数量级、能效也差。</p>
 <p>他们的目标是为 M4 Mac Mini 和 MacBook Neo 实现<strong>合规的 OpenGL（以及后续的 Vulkan）驱动</strong>。原计划是「几天」，现实是「几周」——但相比惯例的「几年」，仍然是数量级的改进。</p>
 <p>这几周里他们做到了：</p>
-<ul>
-<li>仅靠 live probing 逆向 M4、A18 Pro 和（大部分）M5 的用户空间，并发现了<strong>Apple 自家驱动都没发出的</strong>硬件支持特性与指令；</li>
-<li>写出完整可用的用户空间驱动，包含自研的 IR/shader 编译器、命令流构建器等组件；</li>
-<li>用此前 hypervisor 抓的 trace，<strong>从零逆向出完整的 AGX 固件 ABI</strong>；</li>
-<li>为这套固件 ABI 实现了完整的 Linux 内核驱动。</li>
-</ul>
+<ul><li>仅靠 live probing 逆向 M4、A18 Pro 和（大部分）M5 的用户空间，并发现了<strong>Apple 自家驱动都没发出的</strong>硬件支持特性与指令；</li><li>写出完整可用的用户空间驱动，包含自研的 IR/shader 编译器、命令流构建器等组件；</li><li>用此前 hypervisor 抓的 trace，<strong>从零逆向出完整的 AGX 固件 ABI</strong>；</li><li>为这套固件 ABI 实现了完整的 Linux 内核驱动。</li></ul>
 <h3>内核侧：真正的敌人是固件 ABI</h3>
 <p>在 Apple Silicon 上，内核驱动<strong>不直接和硬件对话</strong>，而是和跑在一个叫 <strong>RTKit</strong> 的自定义 RTOS 上的 GPU 固件对话。所以写内核驱动的第一步不是搞硬件，而是搞清固件 ABI。</p>
 <p>这是整个项目最烦人的部分。Apple 没有设计一套体面的接口，而是<strong>把一个普通内核驱动切成两半</strong>，一半塞进 AGX 叫「固件」，另一半用内存里的共享 struct 通信。这些 struct 里，固件持有的字段（绝不能改、只能逆向学）和主机控制的字段交错在一起。作为复杂度参考，这是 M1/M2 上的共享内存树——而 A18 Pro 的固件 ABI 比「已经非常复杂」的 M1 还要复杂得多：<strong>struct 数量 1.5 倍、指针数量 2 倍、提交工作的流程显著更复杂</strong>。</p>
@@ -318,91 +312,47 @@
 <p><strong>第一个：固件启动之后提交的 render 工作。</strong> 固件启动前预置工作没问题；固件一启动，任何提交的工作就只会被 ACK 然后退休，什么都不做。作者介入检查后发现，Codex 在重放一个<strong>位于 AGX 生命周期很晚</strong>的捕获——那里已经积累了大量事件。他让 Codex 改选「固件启动后的第一个捕获」，问题几乎立刻被定位：<strong>少了一个单字节的 descriptor</strong>。这花了几天。</p>
 <p><strong>第二个（唯一真正阻塞的）：compute。</strong> AGX 大致支持两类工作：compute 和 render。在常规 GUI 路径里，compute 只在大量 render 执行之后才会被调度，因此很难拿到干净的 compute 捕获。Codex 最终拿到的捕获是 <strong>336MB 且无法重放</strong>；它试了很久，又花了一周多尝试从捕获里自己构造对象，最终失败——垃圾信息太多。作者也反思了自己的失误：render 跑通后他「失去了谦逊」，以为 compute 几小时就能搞定，没有为 LLM 搭好脚手架。</p>
 <p>解决办法来自另一个 Codex 会话：</p>
-<ol>
-<li>1. 以单用户模式启动，禁用 GUI——这样不会有 render 工作；</li>
-<li>2. 装一个 LaunchDaemon，在 Metal 可用的<strong>最早时刻</strong>运行；</li>
-<li>3. 跑一个他们提供的小小程序；</li>
-<li>4. 捕获并重放这个又小又纯的 compute trace。</li>
-</ol>
-trace 捕获成功，几小时内 Codex 就把它拆解了，几天内 compute 就跑通了。至于原来那份 compute 代码为什么不行——<strong>Codex 自己也不知道</strong>，能跑的和坏掉的看起来几乎一样。
+<ol><li>以单用户模式启动，禁用 GUI——这样不会有 render 工作；</li><li>装一个 LaunchDaemon，在 Metal 可用的<strong>最早时刻</strong>运行；</li><li>跑一个他们提供的小小程序；</li><li>捕获并重放这个又小又纯的 compute trace。</li></ol>
+<p>trace 捕获成功，几小时内 Codex 就把它拆解了，几天内 compute 就跑通了。至于原来那份 compute 代码为什么不行——<strong>Codex 自己也不知道</strong>，能跑的和坏掉的看起来几乎一样。</p>
 <p><strong>第三个：partial render。</strong> 当 Tiled Vertex Buffer（TVB）装不下当前几何体时（三角形太多），驱动要么扩大 TVB，要么做一次 partial render：先渲染一部分，再把剩余三角形重新载入 buffer，完成剩下的部分。这非常挑剔，因为<strong>本质上等于给 GPU 驱动加上 save/resume</strong>。这里前面那套工作流派上了用场：Codex 先重放一次 partial render 事务，然后修改 Metal shader 主动触发多次 partial render（用成千上万个三角形猛砸同一个 tile 即可），学会重放之后，剩下的就只是时间问题。</p>
 <h3>从 Python 原型到 Linux 驱动：三天</h3>
 <p>从 Python 原型驱动走到功能完整的 Linux 驱动花了<strong>三天</strong>，其中一天几乎白费——因为 Codex 不知为何<strong>选择先啃 partial render</strong>（最难的任务），而不是先做 compute（最简单的）。作者让它先做 compute 之后，一切顺利。</p>
 <p>整体流程是：</p>
-<ol>
-<li>1. 用 Rust 重写现有 drm-shim，沿用同一套模式 → 得到一个同步的 Rust 驱动；</li>
-<li>2. 把前端改成异步，GPU 提交本身仍保持同步；</li>
-<li>3. 重构 GPU 提交为异步：不再轮询，而是监听固件事件、把工作与 fence 关联；</li>
-<li>4. 做一批低成本优化，比如批量提交工作。</li>
-</ol>
-作者的评价是：这都是相当常规的工程工作，<strong>LLM 完全有能力胜任</strong>。
+<ol><li>用 Rust 重写现有 drm-shim，沿用同一套模式 → 得到一个同步的 Rust 驱动；</li><li>把前端改成异步，GPU 提交本身仍保持同步；</li><li>重构 GPU 提交为异步：不再轮询，而是监听固件事件、把工作与 fence 关联；</li><li>做一批低成本优化，比如批量提交工作。</li></ol>
+<p>作者的评价是：这都是相当常规的工程工作，<strong>LLM 完全有能力胜任</strong>。</p>
 <h3>用户空间：两条路线，Mesa 优先赢了</h3>
 <p>A18 Pro 的用户空间和 M1/M2 很不一样：新的 descriptor 格式、新的 ISA。除了同样是面向 Metal 的 tile-based deferred renderer，它基本就是另一块 GPU。</p>
 <p>好消息是用户空间逆向有非常明确的流程：写个小 Metal 程序、编译、运行、看什么变了、拆开、改 bit 直到搞懂每个 bit 干什么。听着就像那种枯燥重复的机械劳动——<strong>正是 LLM 擅长的</strong>。</p>
 <p>逆向分两阶段。第一阶段让 Claude 把它能找到的所有 Metal 程序看一遍，构建反汇编器、汇编器，理解 descriptor / 命令流等格式。这一步成功了——但「能反汇编再汇编」不等于「知道怎么自己造一个」。当试图补齐这个差距（理解每条指令到能编译任意程序的程度）时，<strong>Claude 表现很糟，基本零进展</strong>。</p>
 <p>此时 Niklas 完成了 M4 Mac Mini 的 drm-shim 并加入第二阶段。两人路线不同：</p>
-<ul>
-<li><strong>Cody 的路线</strong>：优先做硬件逆向，先搞清硬件和指令，然后写 spec、让 LLM 实现，目标是完整的 OpenGL 和 Vulkan 合规。代价是 LLM 大量时间花在「为了完整性」的琐碎实验上。</li>
-<li><strong>Niklas 的路线</strong>：所谓「Mesa first」——先把 Mesa 搭起来，只在需要实现某功能时才去逆向。</li>
-</ul>
-结果 <strong>Niklas 明显更快</strong>。原因也很清楚：他的 agent 被「真的要把 Mesa 建起来」这个目标锚定，时间和资源用得高效得多；而 Cody 的 agent 会为了完整性在一些无关紧要的小任务上耗时。Niklas 快到什么程度——Cody 后来干脆转为支援他，去调查他还没搞懂的行为。
+<ul><li><strong>Cody 的路线</strong>：优先做硬件逆向，先搞清硬件和指令，然后写 spec、让 LLM 实现，目标是完整的 OpenGL 和 Vulkan 合规。代价是 LLM 大量时间花在「为了完整性」的琐碎实验上。</li><li><strong>Niklas 的路线</strong>：所谓「Mesa first」——先把 Mesa 搭起来，只在需要实现某功能时才去逆向。</li></ul>
+<p>结果 <strong>Niklas 明显更快</strong>。原因也很清楚：他的 agent 被「真的要把 Mesa 建起来」这个目标锚定，时间和资源用得高效得多；而 Cody 的 agent 会为了完整性在一些无关紧要的小任务上耗时。Niklas 快到什么程度——Cody 后来干脆转为支援他，去调查他还没搞懂的行为。</p>
 <p>作者点出了 Codex 的一个大局限，用的词是 <strong>「pedantic（迂腐）」</strong>：它极其彻底，这在某些场景是巨大优势，但另一些时候会卡在某个不相干的枝节上，损害整体目标。</p>
 <p>逆向过程中，他们发现了<strong>硬件支持但 Metal 未暴露</strong>的行为（靠直接改指令的 bit 并外推，和当年 Alyssa Rosenzweig 逆向 M1/M2 的做法一样）：</p>
-<ul>
-<li>原生单指令 <strong>64 位加法</strong>；</li>
-<li><strong>各向异性过滤到 128x</strong>（Metal 上限 16x）；</li>
-<li>矩阵单元的<strong>一个新模式</strong>；</li>
-<li><code>uniform_mov</code> 的 <strong>7 位立即数</strong>支持。</li>
-</ul>
+<ul><li>原生单指令 <strong>64 位加法</strong>；</li><li><strong>各向异性过滤到 128x</strong>（Metal 上限 16x）；</li><li>矩阵单元的<strong>一个新模式</strong>；</li><li><code>uniform_mov</code> 的 <strong>7 位立即数</strong>支持。</li></ul>
 <h3>Mesa 开发：测试已经有人写好了</h3>
 <p>用户空间图形开发有几件大好事。最关键的：<strong>Khronos 的兼容性测试套件（CTS）</strong>本身就是一份详尽的测试语料，是驱动必须通过的。换句话说，「给 LLM 提供好测试来锚定它」——整个 LLM 工作流里最难、最敏感的一环——<strong>已经免费得到</strong>。</p>
 <p>另外 Mesa 的抽象层极大降低了难度：只需在 Gallium（Mesa 内部 API）和 AGX 硬件语义之间做翻译，其中一大块是把 NIR（Mesa 的内部 IR，很像 LLVM IR）翻译成 AGX 的私有 ISA。这个编译器将来做 Vulkan 驱动还能复用。</p>
 <p>Niklas 就这样一边逆向用户空间一边迭代 OpenGL 特性，最终达成<strong>完整 OpenGL ES 3.0 合规</strong>（未通过的都是可选扩展）。</p>
 <p>整个过程还受益于已有的 M1/M2 工作：具体硬件语义不同，但整体形状相似，很多正确的取舍别人已经替他们做过了。作者对 Alyssa Rosenzweig 等人的评价是：<strong>「他们简直是巫师。」</strong></p>
 <h3>交付物与后续</h3>
-<ul>
-<li>Mesa：<a href="https://github.com/niklassheth/mesa">github.com/niklassheth/mesa</a></li>
-<li>Linux 内核驱动：<a href="https://github.com/GravityLinux/linux">github.com/GravityLinux/linux</a>（<code>gravity-m4</code> 分支）</li>
-<li>用户空间逆向文档（作者自嘲是「一坨可怕的 LLM 垃圾，但能用」）</li>
-</ul>
-剩余工作在范围内：<strong>Vulkan 1.4、OpenGL 4.6、OpenGL ES 3.2、OpenCL 3.1、Direct3D 12（走 Proton）、光线追踪</strong>。他们的目标是「做到和世界上最好的图形驱动一样好」。
+<ul><li>Mesa：<a href="https://github.com/niklassheth/mesa" target="_blank" rel="noopener noreferrer">github.com/niklassheth/mesa</a></li><li>Linux 内核驱动：<a href="https://github.com/GravityLinux/linux" target="_blank" rel="noopener noreferrer">github.com/GravityLinux/linux</a>（<code>gravity-m4</code> 分支）</li><li>用户空间逆向文档（作者自嘲是「一坨可怕的 LLM 垃圾，但能用」）</li></ul>
+<p>剩余工作在范围内：<strong>Vulkan 1.4、OpenGL 4.6、OpenGL ES 3.2、OpenCL 3.1、Direct3D 12（走 Proton）、光线追踪</strong>。他们的目标是「做到和世界上最好的图形驱动一样好」。</p>
 <p>上游化则明确写着「主要是人和非技术的问题，LLM 帮不上忙」：Mesa 用的是未修改的 Asahi UAPI，没有策略问题，但需要大量测试、人工 review，并重构成一个可 review 的 PR。他们预计会遭遇严重质疑——毕竟这<strong>很可能是史上第一个完全由 LLM 写成的 GPU 驱动</strong>，而代码会被用比人类手写更高的标准审视。</p>
 <h3>附：一个「够蠢够快」的续跑守护进程</h3>
 <p>作者用的是 Codex + GPT-5.6 Sol（后来是 GPT-6 Astra）做内核逆向。最大的麻烦是<strong>过于激进的安全限制</strong>（他没有 enroll 到 trusted access）。99% 的情况下，一句「/goal resume」或「keep going」就能让它继续——这也说明限制过于激进——但它依然打断了无人值守流程。</p>
 <p>于是他写了一个「最快最蠢」的方案：<strong>一个每分钟截屏一次的守护进程，把截图与上一张做 diff，如果完全相同（说明 Codex 停止了推进），就自动键入 <code>/goal resume</code></strong>。他说自己不小心把这个 daemon 留在了某些群聊里。不过他也强调：GPT-6 Astra 和 GPT-5.6 Sol 在固件 ABI 逆向上「简直疯狂」，是最好的表现者，所以这个 hack 值回票价。</p>
-<p>---</p>
+<hr>
 <h2>解读：这篇博客真正的信息量在哪</h2>
-<p><strong>1. 「一个月写完 GPU 驱动」不是 LLM 单飞的胜利，而是流程设计的胜利。</strong>
-把文章里真正起作用的东西列出来：一个自建 hypervisor（可复现地抓硬件 trace）、净室隔离（不碰 Apple 二进制）、最小可复现捕获（单用户模式 + 最早的 LaunchDaemon + 极小 Metal 程序）、以及现成的 CTS 测试语料。LLM 负责的是在这些约束里做枯燥而庞大的 bit 级推理。少任何一环，一个月都不可能。</p>
-<p><strong>2. 「重放」是逆向 agent 时代的核心工作流。</strong>
-Codex 的第一反应就是「把整块 GPU 内存状态存下来、拷回去、kick、看输出页变没变」，然后<strong>逐步减少拷贝的页数直到完全从源码构建</strong>。这其实是一种自动化的、可度量的收敛过程：每一轮实验都是对理解程度的一次可验证检验。这篇文章最有价值的方法论可能就在这几段。</p>
-<p><strong>3. 卡点几乎总是「拿不到干净捕获」，而不是模型能力不够。</strong>
-第一个问题（少一个单字节 descriptor）的解法是换更早的捕获点；第二个（336MB compute trace 无法重放）的解法是单用户模式 + 极小 trace。两次都不是「模型太笨」，而是<strong>实验设计没收敛</strong>。作者的自我反省也指向同一件事：他以为简单所以没搭脚手架，结果白白烧掉一周多。</p>
-<p><strong>4. 「Mesa first」胜过「硬件优先」——这是给所有 agent 使用者的通用教训。</strong>
-两条路线的差别，本质是<strong>任务有没有可验证的收敛判据</strong>。为完整性做实验，判据是主观的、开放的，agent 会无限膨胀；为「让 Mesa 跑起来」做实验，判据是客观的、可跑的。CTS 的价值同理：它不是测试，它是<strong>把开放性目标变成封闭性目标</strong>的那把钥匙。这也解释了为什么作者说 Codex「pedantic」既是优点又是缺陷。</p>
-<p><strong>5. 上游化会是人类瓶颈，这一条短期内不会变。</strong>
-「我们预期会被用比人类手写更高的标准要求」——这句话点出了 LLM 生成代码进入关键基础设施（内核、Mesa）的真实阻力。技术验证可以自动化，但<strong>信任与责任无法自动化</strong>，只能靠测试、review 和时间累积。作者的结论很务实：等 M1/M2 驱动先上游，再排队。</p>
-<p>---</p>
+<p><strong>1. 「一个月写完 GPU 驱动」不是 LLM 单飞的胜利，而是流程设计的胜利。</strong> 把文章里真正起作用的东西列出来：一个自建 hypervisor（可复现地抓硬件 trace）、净室隔离（不碰 Apple 二进制）、最小可复现捕获（单用户模式 + 最早的 LaunchDaemon + 极小 Metal 程序）、以及现成的 CTS 测试语料。LLM 负责的是在这些约束里做枯燥而庞大的 bit 级推理。少任何一环，一个月都不可能。</p>
+<p><strong>2. 「重放」是逆向 agent 时代的核心工作流。</strong> Codex 的第一反应就是「把整块 GPU 内存状态存下来、拷回去、kick、看输出页变没变」，然后<strong>逐步减少拷贝的页数直到完全从源码构建</strong>。这其实是一种自动化的、可度量的收敛过程：每一轮实验都是对理解程度的一次可验证检验。这篇文章最有价值的方法论可能就在这几段。</p>
+<p><strong>3. 卡点几乎总是「拿不到干净捕获」，而不是模型能力不够。</strong> 第一个问题（少一个单字节 descriptor）的解法是换更早的捕获点；第二个（336MB compute trace 无法重放）的解法是单用户模式 + 极小 trace。两次都不是「模型太笨」，而是<strong>实验设计没收敛</strong>。作者的自我反省也指向同一件事：他以为简单所以没搭脚手架，结果白白烧掉一周多。</p>
+<p><strong>4. 「Mesa first」胜过「硬件优先」——这是给所有 agent 使用者的通用教训。</strong> 两条路线的差别，本质是<strong>任务有没有可验证的收敛判据</strong>。为完整性做实验，判据是主观的、开放的，agent 会无限膨胀；为「让 Mesa 跑起来」做实验，判据是客观的、可跑的。CTS 的价值同理：它不是测试，它是<strong>把开放性目标变成封闭性目标</strong>的那把钥匙。这也解释了为什么作者说 Codex「pedantic」既是优点又是缺陷。</p>
+<p><strong>5. 上游化会是人类瓶颈，这一条短期内不会变。</strong> 「我们预期会被用比人类手写更高的标准要求」——这句话点出了 LLM 生成代码进入关键基础设施（内核、Mesa）的真实阻力。技术验证可以自动化，但<strong>信任与责任无法自动化</strong>，只能靠测试、review 和时间累积。作者的结论很务实：等 M1/M2 驱动先上游，再排队。</p>
+<hr>
 <h2>关键事实速查</h2>
-<table>
-<tr><th>项目</th><th>内容</th></tr>
-<tr><td>作者</td><td>Cody Ho + Niklas（前篇：自建 hypervisor 逆向 macOS）</td></tr>
-<tr><td>成果</td><td>完整符合 OpenGL ES 3.0 的 GPU 驱动</td></tr>
-<tr><td>硬件</td><td>M4 Mac Mini、MacBook Neo（另含 A18 Pro / M5 部分逆向）</td></tr>
-<tr><td>周期</td><td>约 1 个月（原计划几天）</td></tr>
-<tr><td>性能</td><td>Minecraft 200fps；Chrome/Firefox WebGL 正常合成</td></tr>
-<tr><td>净室要求</td><td>不看 Apple 二进制，只用自建 hypervisor 的硬件 trace</td></tr>
-<tr><td>内核侧难点</td><td>AGX 固件 ABI（跑在 RTKit 上；A18 Pro 比 M1 复杂：struct 1.5x、指针 2x）</td></tr>
-<tr><td>三大卡点</td><td>固件启动后 render 捕获、336MB compute 捕获、partial render（≈ save/resume）</td></tr>
-<tr><td>关键方法</td><td>重放 → 逐步减少拷贝页数 → 完全从源码构建</td></tr>
-<tr><td>用户空间</td><td>自研反汇编/汇编器 + NIR→AGX ISA 编译器</td></tr>
-<tr><td>测试锚点</td><td>Khronos CTS（现成语料，等价于免费的 grounding）</td></tr>
-<tr><td>胜出路线</td><td>「Mesa first」（Niklas）胜过「硬件优先」（Cody）</td></tr>
-<tr><td>交付物</td><td>niklassheth/mesa、GravityLinux/linux <code>gravity-m4</code> 分支</td></tr>
-<tr><td>后续范围</td><td>Vulkan 1.4、OpenGL 4.6、GLES 3.2、OpenCL 3.1、D3D12（Proton）、光追</td></tr>
-<tr><td>上游障碍</td><td>需测试、人工 review、重构；预计被更高标准审视（恐为首个全 LLM 写的 GPU 驱动）</td></tr>
-</table>
-<p>---</p>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>作者</td><td>Cody Ho + Niklas（前篇：自建 hypervisor 逆向 macOS）</td></tr><tr><td>成果</td><td>完整符合 OpenGL ES 3.0 的 GPU 驱动</td></tr><tr><td>硬件</td><td>M4 Mac Mini、MacBook Neo（另含 A18 Pro / M5 部分逆向）</td></tr><tr><td>周期</td><td>约 1 个月（原计划几天）</td></tr><tr><td>性能</td><td>Minecraft 200fps；Chrome/Firefox WebGL 正常合成</td></tr><tr><td>净室要求</td><td>不看 Apple 二进制，只用自建 hypervisor 的硬件 trace</td></tr><tr><td>内核侧难点</td><td>AGX 固件 ABI（跑在 RTKit 上；A18 Pro 比 M1 复杂：struct 1.5x、指针 2x）</td></tr><tr><td>三大卡点</td><td>固件启动后 render 捕获、336MB compute 捕获、partial render（≈ save/resume）</td></tr><tr><td>关键方法</td><td>重放 → 逐步减少拷贝页数 → 完全从源码构建</td></tr><tr><td>用户空间</td><td>自研反汇编/汇编器 + NIR→AGX ISA 编译器</td></tr><tr><td>测试锚点</td><td>Khronos CTS（现成语料，等价于免费的 grounding）</td></tr><tr><td>胜出路线</td><td>「Mesa first」（Niklas）胜过「硬件优先」（Cody）</td></tr><tr><td>交付物</td><td>niklassheth/mesa、GravityLinux/linux <code>gravity-m4</code> 分支</td></tr><tr><td>后续范围</td><td>Vulkan 1.4、OpenGL 4.6、GLES 3.2、OpenCL 3.1、D3D12（Proton）、光追</td></tr><tr><td>上游障碍</td><td>需测试、人工 review、重构；预计被更高标准审视（恐为首个全 LLM 写的 GPU 驱动）</td></tr></tbody></table>
+<hr>
 <blockquote>本文为 Cody Ho 博客的翻译与解读，事实与引语以原文为准。如果你也在用 agent 做逆向或底层工程，欢迎留言聊聊：你更倾向「硬件优先」还是「可运行目标优先」？下一篇我们可以拆一下 Asahi 项目在 LLM 时代的开源协作模式会怎么变。</blockquote>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>

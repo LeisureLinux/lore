@@ -283,69 +283,40 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<p>
-我手头装了 Servo——Mozilla 起源、Linux Foundation 维护的 Rust 浏览器引擎。想把它接到我日常用的 AI 编程助手 Pi 里，但实际一上手才发现：<strong>Servo 没法直接当 AI 工具用</strong>。没有 Chrome DevTools Protocol（CDP）、不支持 <code>--proxy-server</code>、WebDriver 只实现子集——和 Chrome/Firefox 那一套完全不是一个思路。</p>
+<p>我手头装了 Servo——Mozilla 起源、Linux Foundation 维护的 Rust 浏览器引擎。想把它接到我日常用的 AI 编程助手 Pi 里，但实际一上手才发现：<strong>Servo 没法直接当 AI 工具用</strong>。没有 Chrome DevTools Protocol（CDP）、不支持 <code>--proxy-server</code>、WebDriver 只实现子集——和 Chrome/Firefox 那一套完全不是一个思路。</p>
 <p>折腾了一周后我把链路打通成「servo-fetch → MCP 智能分流代理 → Pi 自动调用」。下面把整套设计、实现、踩坑一次性讲清，给同样想给 AI 装"浏览器"的朋友一份可复制的方案。</p>
-<p>---</p>
+<hr>
 <h2>一、先说结论：Servo 在 AI 场景下的真实定位</h2>
 <p>Servo 引擎本身是个<strong>真浏览器内核</strong>（SpiderMonkey JS + 并行 CSS layout + 软件渲染），但它的对外接口很窄——只有 W3C WebDriver，连 Chrome 用户熟悉的 CDP 都没有。这让两个常见期待落空：</p>
-<ul>
-<li><strong>Puppeteer / Playwright 连不上</strong>：它们只认 CDP。</li>
-<li><strong>直接 <code>--proxy-server</code> 也不行</strong>：Servo 引擎偏好里有 proxy 相关项，但当前 0.6.0 版本根本没实现。</li>
-</ul>
-好在社区项目 <a href="https://github.com/konippi/servo-fetch">konippi/servo-fetch</a> 把 Servo 引擎嵌进单二进制，专门为 agent 设计——自带 MCP server。但它默认不带代理，海外站点拉不下来。
+<ul><li><strong>Puppeteer / Playwright 连不上</strong>：它们只认 CDP。</li><li><strong>直接 <code>--proxy-server</code> 也不行</strong>：Servo 引擎偏好里有 proxy 相关项，但当前 0.6.0 版本根本没实现。</li></ul>
+<p>好在社区项目 <a href="https://github.com/konippi/servo-fetch" target="_blank" rel="noopener noreferrer">konippi/servo-fetch</a> 把 Servo 引擎嵌进单二进制，专门为 agent 设计——自带 MCP server。但它默认不带代理，海外站点拉不下来。</p>
 <p><strong>我做的整套链路</strong>就是给 servo-fetch 加一层"按 PAC 智能分流"的 MCP 代理层，让 AI 抓国内站走直连（快）、抓海外站自动过代理。</p>
-<p>---</p>
+<hr>
 <h2>二、servo-fetch vs 其它 AI 浏览器工具</h2>
-<table>
-<tr><th>维度</th><th>Servo + servo-fetch</th><th>Chromium + Puppeteer</th><th>Firefox + Playwright</th><th>headless Chrome + chrome-devtools-mcp</th></tr>
-<tr><td><strong>二进制大小</strong></td><td>134 MB 单文件</td><td>200 MB+</td><td>150 MB+</td><td>~300 MB（含浏览器）</td></tr>
-<tr><td><strong>需要 GPU</strong></td><td>否（软件渲染）</td><td>通常要</td><td>通常要</td><td>通常要</td></tr>
-<tr><td><strong>冷启动</strong></td><td>~50 ms</td><td>500 ms-2 s</td><td>300 ms-1 s</td><td>1-3 s</td></tr>
-<tr><td><strong>JS 执行</strong></td><td>SpiderMonkey</td><td>V8</td><td>SpiderMonkey</td><td>V8</td></tr>
-<tr><td><strong>CSS 完整 layout</strong></td><td>是</td><td>是</td><td>是</td><td>是</td></tr>
-<tr><td><strong>Web 兼容性</strong></td><td>中等（~10 年前 Chrome 水平）</td><td>优</td><td>优</td><td>优</td></tr>
-<tr><td><strong>协议</strong></td><td>仅 WebDriver 子集</td><td>CDP</td><td>CDP</td><td>CDP</td></tr>
-<tr><td><strong>代理</strong></td><td>只认 env（<code>HTTPS_PROXY</code> 等）</td><td><code>--proxy-server</code></td><td><code>--proxy</code></td><td>env / flag</td></tr>
-<tr><td><strong>MCP 集成</strong></td><td>自带 + 可包装</td><td>第三方</td><td>第三方</td><td>自带</td></tr>
-<tr><td><strong>Cookie / 会话</strong></td><td>弱</td><td>完整</td><td>完整</td><td>完整</td></tr>
-</table>
+<table><thead><tr><th>维度</th><th>Servo + servo-fetch</th><th>Chromium + Puppeteer</th><th>Firefox + Playwright</th><th>headless Chrome + chrome-devtools-mcp</th></tr></thead><tbody><tr><td><strong>二进制大小</strong></td><td>134 MB 单文件</td><td>200 MB+</td><td>150 MB+</td><td>~300 MB（含浏览器）</td></tr><tr><td><strong>需要 GPU</strong></td><td>否（软件渲染）</td><td>通常要</td><td>通常要</td><td>通常要</td></tr><tr><td><strong>冷启动</strong></td><td>~50 ms</td><td>500 ms-2 s</td><td>300 ms-1 s</td><td>1-3 s</td></tr><tr><td><strong>JS 执行</strong></td><td>SpiderMonkey</td><td>V8</td><td>SpiderMonkey</td><td>V8</td></tr><tr><td><strong>CSS 完整 layout</strong></td><td>是</td><td>是</td><td>是</td><td>是</td></tr><tr><td><strong>Web 兼容性</strong></td><td>中等（~10 年前 Chrome 水平）</td><td>优</td><td>优</td><td>优</td></tr><tr><td><strong>协议</strong></td><td>仅 WebDriver 子集</td><td>CDP</td><td>CDP</td><td>CDP</td></tr><tr><td><strong>代理</strong></td><td>只认 env（<code>HTTPS_PROXY</code> 等）</td><td><code>--proxy-server</code></td><td><code>--proxy</code></td><td>env / flag</td></tr><tr><td><strong>MCP 集成</strong></td><td>自带 + 可包装</td><td>第三方</td><td>第三方</td><td>自带</td></tr><tr><td><strong>Cookie / 会话</strong></td><td>弱</td><td>完整</td><td>完整</td><td>完整</td></tr></tbody></table>
 <p><strong>什么时候该用 Servo</strong>：</p>
-<ul>
-<li>✅ AI agent 抓文档页、博客、Stack Overflow（Readability 抽干净 Markdown，省 token）</li>
-<li>✅ CI / 容器里跑批量抓取（无 GPU 依赖）</li>
-<li>✅ 受限网络环境抓海外文档（智能分流价值最大）</li>
-<li>✅ JS 重渲染后取结构化数据（无障碍树 / accessibility tree）</li>
-</ul>
-<strong>什么时候别用</strong>：
-<ul>
-<li>❌ 高频浏览器交互（填表 / 点击 / 截屏判断）—— Servo 不适合，WebDriver 子集</li>
-<li>❌ 复杂 SPA（Notion、Figma、各种 SaaS 后台）—— web 兼容性不够</li>
-<li>❌ 需要 CDP 的工具链</li>
-<li>❌ 严格登录态、cookie 持久化场景</li>
-</ul>
-<strong>最重要的一点</strong>：纯 XML / RSS / API JSON 这种静态内容，<strong>curl 完全够用且更快</strong>，Servo 是杀鸡用牛刀。我实测抓 BBC RSS feed，curl ~0.7 s，servo-fetch ~0.8 s 还多出 fork 开销——纯 XML/RSS 场景下两者没区别。
-<p>---</p>
+<ul><li>✅ AI agent 抓文档页、博客、Stack Overflow（Readability 抽干净 Markdown，省 token）</li><li>✅ CI / 容器里跑批量抓取（无 GPU 依赖）</li><li>✅ 受限网络环境抓海外文档（智能分流价值最大）</li><li>✅ JS 重渲染后取结构化数据（无障碍树 / accessibility tree）</li></ul>
+<p><strong>什么时候别用</strong>：</p>
+<ul><li>❌ 高频浏览器交互（填表 / 点击 / 截屏判断）—— Servo 不适合，WebDriver 子集</li><li>❌ 复杂 SPA（Notion、Figma、各种 SaaS 后台）—— web 兼容性不够</li><li>❌ 需要 CDP 的工具链</li><li>❌ 严格登录态、cookie 持久化场景</li></ul>
+<p><strong>最重要的一点</strong>：纯 XML / RSS / API JSON 这种静态内容，<strong>curl 完全够用且更快</strong>，Servo 是杀鸡用牛刀。我实测抓 BBC RSS feed，curl ~0.7 s，servo-fetch ~0.8 s 还多出 fork 开销——纯 XML/RSS 场景下两者没区别。</p>
+<hr>
 <h2>三、MCP 真正的价值在哪里</h2>
 <p>MCP 不是 "curl 的 MCP 包装"。它真正的功能是<strong>让 LLM 在对话里自由组合抓取 + 推理</strong>：</p>
-<pre><code class="">用户：「帮我看 BBC 头条里有没有 AI 监管相关的，列前三条全文」
-<p>LLM 推理：
+<pre><code>用户：「帮我看 BBC 头条里有没有 AI 监管相关的，列前三条全文」
+
+LLM 推理：
   1. 调 servo.fetch(url=feeds.bbci.co.uk/news/rss.xml, format=html)
      → 拿到 RSS XML
   2. 解析，筛出含 "AI regulation" / "AI safety" 的条目
   3. 调 servo.fetch(url=每条原文 URL, format=markdown)
      → Readability 抽好的全文
-  4. 整理成自然语言回复
-</code></pre></p>
+  4. 整理成自然语言回复</code></pre>
 <p>整个流程 LLM <strong>现场编排</strong>，不需要你预先写脚本。MCP 只是把工具暴露给 LLM。判断要不要用 MCP 的两条问题：</p>
-<ol>
-<li>1. <strong>LLM 现场决定怎么抓吗？</strong> 是 → MCP；否 → curl + bash</li>
-<li>2. <strong>页面要 JS / 浏览器渲染才能拿内容吗？</strong> 是 → Servo；否 → curl</li>
-</ol>
----
+<ol><li><strong>LLM 现场决定怎么抓吗？</strong> 是 → MCP；否 → curl + bash</li><li><strong>页面要 JS / 浏览器渲染才能拿内容吗？</strong> 是 → Servo；否 → curl</li></ol>
+<hr>
 <h2>四、链路设计：servo + 智能分流 MCP proxy</h2>
 <p>直接调 servo-fetch 的 MCP 服务意味着每次要么全走代理（国内站浪费）要么全直连（海外站拿不到）。我需要 per-call 决策，于是写了 150 行 Node 零依赖 MCP server：</p>
-<pre><code class="">┌─────────────┐  stdio/JSON-RPC  ┌──────────────────────┐  spawn + env  ┌─────────────┐
+<pre><code>┌─────────────┐  stdio/JSON-RPC  ┌──────────────────────┐  spawn + env  ┌─────────────┐
 │  Pi (LLM)  │ ────────────────→ │ servo-mcp-proxy.mjs │ ─────────────→ │ servo-fetch │
 └─────────────┘                   └──────────────────────┘                └─────────────┘
                                            │
@@ -353,38 +324,25 @@
                                            ▼
                                    ┌──────────────────┐
                                    │ wpad.dat (PAC)   │
-                                   └──────────────────┘
-</code></pre>
+                                   └──────────────────┘</code></pre>
 <p>每收到一个 <code>fetch</code> 调用：</p>
-<ol>
-<li>1. 跑 <code>pactester -p ~/.cache/servo/wpad.dat -u URL</code>（15 ms）→ 拿到 <code>DIRECT</code> 或 <code>PROXY host:port</code></li>
-<li>2. spawn <code>servo-fetch</code> 子进程，按需注入 <code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code></li>
-<li>3. 把 stdout / stderr 包装成 MCP <code>text</code> 或 <code>image</code> content 返回</li>
-</ol>
-实测分流效果（同一台机、同一网络）：
-<table>
-<tr><th>站点</th><th>PAC 决策</th><th>走代理延迟</th><th>直连延迟</th><th>倍数</th></tr>
-<tr><td><code>www.google.com/</code></td><td>PROXY</td><td>0.8 s</td><td>超时（被墙）</td><td>—</td></tr>
-<tr><td><code>example.org/</code></td><td>DIRECT</td><td>0.8 s</td><td><0.2 s</td><td><strong>4×</strong></td></tr>
-<tr><td><code>www.baidu.com/</code></td><td>DIRECT</td><td>1.67 s</td><td>0.12 s</td><td><strong>14×</strong></td></tr>
-</table>
+<ol><li>跑 <code>pactester -p ~/.cache/servo/wpad.dat -u URL</code>（15 ms）→ 拿到 <code>DIRECT</code> 或 <code>PROXY host:port</code></li><li>spawn <code>servo-fetch</code> 子进程，按需注入 <code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code></li><li>把 stdout / stderr 包装成 MCP <code>text</code> 或 <code>image</code> content 返回</li></ol>
+<p>实测分流效果（同一台机、同一网络）：</p>
+<table><thead><tr><th>站点</th><th>PAC 决策</th><th>走代理延迟</th><th>直连延迟</th><th>倍数</th></tr></thead><tbody><tr><td><code>www.google.com/</code></td><td>PROXY</td><td>0.8 s</td><td>超时（被墙）</td><td>—</td></tr><tr><td><code>example.org/</code></td><td>DIRECT</td><td>0.8 s</td><td>&lt;0.2 s</td><td><strong>4×</strong></td></tr><tr><td><code>www.baidu.com/</code></td><td>DIRECT</td><td>1.67 s</td><td>0.12 s</td><td><strong>14×</strong></td></tr></tbody></table>
 <p><strong>国内站走代理慢 14 倍</strong>——智能分流不是锦上添花，是必须。</p>
-<p>---</p>
+<hr>
 <h2>五、实现细节（可直接抄）</h2>
 <h3>5.1 安装 servo-fetch</h3>
-<pre><code class="bash">curl -fsSL https://raw.githubusercontent.com/konippi/servo-fetch/main/install.sh | sh
-</code></pre>
+<pre><code class="bash">curl -fsSL https://raw.githubusercontent.com/konippi/servo-fetch/main/install.sh | sh</code></pre>
 <p>装到 <code>~/.local/bin/servo-fetch</code>。Linux x86_64 需要 <code>libEGL</code> / <code>libfontconfig</code> / <code>libfreetype</code>（机器上齐的话脚本会过）。</p>
 <h3>5.2 准备 PAC</h3>
 <pre><code class="bash">mkdir -p ~/.cache/servo
-curl -fsS https://wpad.freelamp.com/wpad.dat -o ~/.cache/servo/wpad.dat
-</code></pre>
+curl -fsS https://wpad.freelamp.com/wpad.dat -o ~/.cache/servo/wpad.dat</code></pre>
 <p>PAC 是 nginx 在 443 端口提供的标准 <code>application/x-ns-proxy-autoconfig</code>（genpac 3.0.1 + GFWList）。<code>pactester</code> 是 Debian 自带的 PAC 测试工具：</p>
 <pre><code class="bash">pactester -p ~/.cache/servo/wpad.dat -u https://www.google.com/
-<h1>→ PROXY 192.168.68.68:8888; socks5 192.168.68.68:1080</h1>
+# → PROXY 192.168.68.68:8888; socks5 192.168.68.68:1080
 pactester -p ~/.cache/servo/wpad.dat -u https://example.org/
-<h1>→ DIRECT</h1>
-</code></pre>
+# → DIRECT</code></pre>
 <p><strong>别自己 awk 解 PAC</strong>——genpac 3.0.1 输出的 <code>rules[*]</code> 是嵌套数组，awk 容易写错。直接 <code>pactester</code> 是 15 ms 一次的最干净方案。</p>
 <h3>5.3 写 MCP proxy server</h3>
 <p>保存为 <code>~/bin/servo-mcp-proxy.mjs</code>：</p>
@@ -393,50 +351,55 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-<p>const SERVO_BIN = "~/.local/bin/servo-fetch";
+
+const SERVO_BIN = "~/.local/bin/servo-fetch";
 const PAC_URL = "https://wpad.freelamp.com/wpad.dat";
 const PAC_CACHE = join(process.env.HOME, ".cache/servo/wpad.dat");
-const PAC_MAX_AGE_MIN = 30;</p>
-<p>async function ensurePacFresh() {
+const PAC_MAX_AGE_MIN = 30;
+
+async function ensurePacFresh() {
   let needs = !existsSync(PAC_CACHE);
-  if (!needs && (Date.now() - statSync(PAC_CACHE).mtimeMs) / 60000 > PAC_MAX_AGE_MIN)
+  if (!needs &amp;&amp; (Date.now() - statSync(PAC_CACHE).mtimeMs) / 60000 &gt; PAC_MAX_AGE_MIN)
     needs = true;
   if (needs) {
     mkdirSync(dirname(PAC_CACHE), { recursive: true });
     const tmp = PAC_CACHE + ".tmp";
-    const ok = await new Promise((res) => {
+    const ok = await new Promise((res) =&gt; {
       const p = spawn("curl", ["-fsS", "--max-time", "8", PAC_URL, "-o", tmp]);
-      p.on("close", (c) => res(c === 0));
-      p.on("error", () => res(false));
+      p.on("close", (c) =&gt; res(c === 0));
+      p.on("error", () =&gt; res(false));
     });
     if (ok) (await import("node:fs")).renameSync(tmp, PAC_CACHE);
   }
-}</p>
-<p>function parseProxy(out) {
+}
+
+function parseProxy(out) {
   const m = out.match(/^(?:PROXY|SOCKS5)\s+([^;\s]+)/m);
   return m ? m[1] : null;
-}</p>
-<p>function runPactester(url) {
-  return new Promise((resolve) => {
+}
+
+function runPactester(url) {
+  return new Promise((resolve) =&gt; {
     const p = spawn("pactester", ["-p", PAC_CACHE, "-u", url]);
     let out = "", err = "";
-    p.stdout.on("data", (d) => out += d);
-    p.stderr.on("data", (d) => err += d);
-    p.on("close", (code) => resolve({ output: (out || err).trim(), proxy: parseProxy(out || err) }));
+    p.stdout.on("data", (d) =&gt; out += d);
+    p.stderr.on("data", (d) =&gt; err += d);
+    p.on("close", (code) =&gt; resolve({ output: (out || err).trim(), proxy: parseProxy(out || err) }));
   });
-}</p>
-<p>function runServoFetch(args, env) {
-  return new Promise((resolve) => {
+}
+
+function runServoFetch(args, env) {
+  return new Promise((resolve) =&gt; {
     const child = spawn(SERVO_BIN, args, { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
     const chunks = [], errs = [];
-    child.stdout.on("data", (d) => chunks.push(d));
-    child.stderr.on("data", (d) => errs.push(d.toString()));
-    child.on("close", (code) => resolve({ code, stdout: Buffer.concat(chunks), stderr: errs.join("") }));
+    child.stdout.on("data", (d) =&gt; chunks.push(d));
+    child.stderr.on("data", (d) =&gt; errs.push(d.toString()));
+    child.on("close", (code) =&gt; resolve({ code, stdout: Buffer.concat(chunks), stderr: errs.join("") }));
   });
-}</p>
-<p>// JSON-RPC over stdio (Content-Length 帧格式)
-// ... 完整代码见 GitHub gist ...
-</code></pre></p>
+}
+
+// JSON-RPC over stdio (Content-Length 帧格式)
+// ... 完整代码见 GitHub gist ...</code></pre>
 <p>完整版含 JSON-RPC 帧解析、<code>fetch</code> / <code>health</code> 两个 tool、image content 返回，<strong>共 290 行纯 Node 24 内置，零 npm 依赖</strong>。</p>
 <h3>5.4 接入 Pi</h3>
 <p><code>~/.pi/agent/mcp.json</code>：</p>
@@ -451,40 +414,20 @@ const PAC_MAX_AGE_MIN = 30;</p>
       "args": ["~/bin/servo-mcp-proxy.mjs"]
     }
   }
-}
-</code></pre>
+}</code></pre>
 <p>重启 Pi 后 <code>servo</code> 服务带两个 tool：<code>fetch</code>（<code>url/format/timeout/selector/js/screenshot/settle/userAgent</code>）+ <code>health</code>。</p>
-<p>---</p>
+<hr>
 <h2>六、踩过的坑（希望你少走弯路）</h2>
-<ol>
-<li>1. <strong>stderr 走 MCP 进程 stderr，不要往 stdout 写日志</strong>——会破坏 JSON-RPC 帧。日志格式我写成 <code>[servo-mcp] fetch <url> fmt=... pac=PROXY ...</code> 方便调试。</li>
-<li>2. <strong>pactester 拿到的代理字符串是裸 <code>host:port</code></strong>，要塞 <code>HTTPS_PROXY</code> 必须加 <code>http://</code> 前缀：<code>192.168.68.68:8888</code> → <code>http://192.168.68.68:8888</code>。</li>
-<li>3. <strong><code>ALL_PROXY</code> env ureq 不识别</strong>，只认 <code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code>。我用 <code>env -u HTTPS_PROXY -u HTTP_PROXY -u ALL_PROXY</code> 显式取消（不然 shell 里残留的 ALL_PROXY 会让 direct 路径失败）。</li>
-<li>4. <strong>shell 函数跨调用陷阱</strong>：在 wrapper 里写 <code>pick_proxy_url() { sed ... }</code> 然后调用——shell 默认按 PATH 找外部命令，会报「未找到命令」。要么 source 进来，要么写成一行 sed 流。</li>
-<li>5. <strong>servo engine 本身有 <code>network_https_proxy_url</code> 等偏好</strong>（通过 <code>--pref=</code> 给 servoshell），但当前 0.6.0 版本还没实现，会报 <code>Unknown preference</code>。别在这条路浪费时间。</li>
-<li>6. <strong>pactester 不在路径里就装</strong>：Debian/Ubuntu 自带 <code>libpacparser</code>；找不到就 <code>apt install libpacparser-tools</code>。</li>
-</ol>
----
+<ol><li><strong>stderr 走 MCP 进程 stderr，不要往 stdout 写日志</strong>——会破坏 JSON-RPC 帧。日志格式我写成 <code>[servo-mcp] fetch &lt;url&gt; fmt=... pac=PROXY ...</code> 方便调试。</li><li><strong>pactester 拿到的代理字符串是裸 <code>host:port</code></strong>，要塞 <code>HTTPS_PROXY</code> 必须加 <code>http://</code> 前缀：<code>192.168.68.68:8888</code> → <code>http://192.168.68.68:8888</code>。</li><li><strong><code>ALL_PROXY</code> env ureq 不识别</strong>，只认 <code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code>。我用 <code>env -u HTTPS_PROXY -u HTTP_PROXY -u ALL_PROXY</code> 显式取消（不然 shell 里残留的 ALL_PROXY 会让 direct 路径失败）。</li><li><strong>shell 函数跨调用陷阱</strong>：在 wrapper 里写 <code>pick_proxy_url() { sed ... }</code> 然后调用——shell 默认按 PATH 找外部命令，会报「未找到命令」。要么 source 进来，要么写成一行 sed 流。</li><li><strong>servo engine 本身有 <code>network_https_proxy_url</code> 等偏好</strong>（通过 <code>--pref=</code> 给 servoshell），但当前 0.6.0 版本还没实现，会报 <code>Unknown preference</code>。别在这条路浪费时间。</li><li><strong>pactester 不在路径里就装</strong>：Debian/Ubuntu 自带 <code>libpacparser</code>；找不到就 <code>apt install libpacparser-tools</code>。</li></ol>
+<hr>
 <h2>七、这套架构的扩展空间</h2>
 <p>走通了"AI + 真浏览器引擎 + 智能代理"这条线后，能做的远不止 fetch：</p>
-<ul>
-<li><strong>miniflux / RSS 自动化整理</strong>：Pi 拉 unread → LLM 摘要 + 翻译 + 分类 → 写回 miniflux（10 条/天，200 行 Node + cron 搞定）</li>
-<li><strong>GitHub issue / PR 调研</strong>：「帮我看 servo 最近 3 个月重要 PR」—— LLM 自己组合多次 fetch</li>
-<li><strong>跨媒体事件追踪</strong>：同一新闻 BBC / Reuters / Al Jazeera 三家报道差异对比</li>
-<li><strong>SPA 后台操作</strong>：登录态抓 SaaS 页面（chrome-devtools MCP 更合适，但 Servo 可以兜底）</li>
-</ul>
-<strong>判断要不要给 AI 装浏览器</strong>：
-<table>
-<tr><th>问题</th><th>是 → 用</th></tr>
-<tr><td>LLM 要现场决定怎么抓？</td><td>MCP</td></tr>
-<tr><td>页面要 JS 渲染？</td><td>Servo / Chromium</td></tr>
-<tr><td>大规模抓 1000+ 页？</td><td>curl</td></tr>
-<tr><td>抓静态 RSS / API JSON？</td><td>curl</td></tr>
-<tr><td>需要交互操作（填表 / 点击）？</td><td>chrome-devtools MCP / Playwright</td></tr>
-</table>
+<ul><li><strong>miniflux / RSS 自动化整理</strong>：Pi 拉 unread → LLM 摘要 + 翻译 + 分类 → 写回 miniflux（10 条/天，200 行 Node + cron 搞定）</li><li><strong>GitHub issue / PR 调研</strong>：「帮我看 servo 最近 3 个月重要 PR」—— LLM 自己组合多次 fetch</li><li><strong>跨媒体事件追踪</strong>：同一新闻 BBC / Reuters / Al Jazeera 三家报道差异对比</li><li><strong>SPA 后台操作</strong>：登录态抓 SaaS 页面（chrome-devtools MCP 更合适，但 Servo 可以兜底）</li></ul>
+<p><strong>判断要不要给 AI 装浏览器</strong>：</p>
+<table><thead><tr><th>问题</th><th>是 → 用</th></tr></thead><tbody><tr><td>LLM 要现场决定怎么抓？</td><td>MCP</td></tr><tr><td>页面要 JS 渲染？</td><td>Servo / Chromium</td></tr><tr><td>大规模抓 1000+ 页？</td><td>curl</td></tr><tr><td>抓静态 RSS / API JSON？</td><td>curl</td></tr><tr><td>需要交互操作（填表 / 点击）？</td><td>chrome-devtools MCP / Playwright</td></tr></tbody></table>
 <p>最后这条最关键：<strong>MCP 的价值不在"抓一次"上，在"让 LLM 能组合很多次抓取 + 推理"上</strong>。把它当 LLM 的"工具箱"而不是"curl 替代品"，整套架构就跑通了。</p>
-<p>---</p>
-<p><strong>完整代码</strong>：<code>~/bin/servo-mcp-proxy.mjs</code>（290 行 Node）+ <code>~/.pi/agent/mcp.json</code>。改 mcp.json 之前会自动备份到 <code>.bak.<timestamp></code>，改完起不来的话一键回滚。</p>
+<hr>
+<p><strong>完整代码</strong>：<code>~/bin/servo-mcp-proxy.mjs</code>（290 行 Node）+ <code>~/.pi/agent/mcp.json</code>。改 mcp.json 之前会自动备份到 <code>.bak.&lt;timestamp&gt;</code>，改完起不来的话一键回滚。</p>
 <p>如果你也想给 AI 装个"自己上网"的能力，欢迎留言交流你的代理拓扑和 PAC 方案——智能分流这块几乎每个团队都不一样，但骨架可以复用。</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>

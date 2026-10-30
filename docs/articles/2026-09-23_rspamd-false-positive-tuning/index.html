@@ -285,24 +285,18 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<p>
-自建邮件的同学大概都经历过这个循环：发现某封该收到的信躺在 Junk 里，于是加一条域名白名单；过几天换个发件人，又漏一封，再加一条。白名单越写越长，误判照旧。</p>
+<p>自建邮件的同学大概都经历过这个循环：发现某封该收到的信躺在 Junk 里，于是加一条域名白名单；过几天换个发件人，又漏一封，再加一条。白名单越写越长，误判照旧。</p>
 <p>我的一台 Debian 12 邮件网关（postfix + dovecot + rspamd）就跑到了这个状态。真正促使我下决心排查的，是归档邮件的统计结果：<strong>用户手动标过「非垃圾」的邮件里，有一半是服务端先扔进 Junk、用户再从客户端捞回来的</strong>。</p>
 <p>最后的结论有点意外——这不是「规则不够多」的问题，而是 <strong>rspamd 的配置体系被破坏了一处，导致一整套检查形同虚设</strong>；再加上一个<strong>所有自建邮件都会踩的语义陷阱</strong>。</p>
 <p>先说排查结果：</p>
-<table>
-<tr><th>指标</th><th>排查前</th><th>排查后</th></tr>
-<tr><td>合法邮件被误判进 Junk</td><td><strong>294 / 643（46%）</strong></td><td><strong>40 / 643（6%）</strong></td></tr>
-<tr><td>真实垃圾被正确拦截</td><td>19 / 27</td><td>13 / 27</td></tr>
-<tr><td>单封扫描耗时</td><td>~4136 ms</td><td>611–1236 ms</td></tr>
-</table>
+<table><thead><tr><th>指标</th><th>排查前</th><th>排查后</th></tr></thead><tbody><tr><td>合法邮件被误判进 Junk</td><td><strong>294 / 643（46%）</strong></td><td><strong>40 / 643（6%）</strong></td></tr><tr><td>真实垃圾被正确拦截</td><td>19 / 27</td><td>13 / 27</td></tr><tr><td>单封扫描耗时</td><td>~4136 ms</td><td>611–1236 ms</td></tr></tbody></table>
 <p>误判率降到七分之一，顺带把扫描耗时砍掉四分之三。下面把这套配置体系的每一层拆开讲清楚，再逐条说问题出在哪。</p>
-<p>---</p>
+<hr>
 <h2>一、先把 rspamd 的配置文件体系理清</h2>
-<p>rspamd 的配置目录初看很乱——<code>/etc/rspamd/</code> 下有近四十个文件，还有 <code>local.d/</code>、<code>override.d/</code>、<code>modules.d/</code>、<code>scores.d/</code> 四套平行目录。但它的设计其实非常规整，核心只有一条规则：<strong>发行版的默认值走 <code><em>.conf</code> / <code></em>.d/</code>，你的修改走 <code>local.d/</code> 或 <code>override.d/</code></strong>。</p>
+<p>rspamd 的配置目录初看很乱——<code>/etc/rspamd/</code> 下有近四十个文件，还有 <code>local.d/</code>、<code>override.d/</code>、<code>modules.d/</code>、<code>scores.d/</code> 四套平行目录。但它的设计其实非常规整，核心只有一条规则：<strong>发行版的默认值走 <code>*.conf</code> / <code>*.d/</code>，你的修改走 <code>local.d/</code> 或 <code>override.d/</code></strong>。</p>
 <h3>1. 顶层编排：<code>rspamd.conf</code></h3>
 <p>这是唯一的入口，不定义具体参数，只负责把其它文件按顺序拼起来：</p>
-<pre><code class="">/etc/rspamd/rspamd.conf
+<pre><code>/etc/rspamd/rspamd.conf
  └─ .include "$CONFDIR/common.conf"        # 公共部分
      ├─ metrics.conf                        # metric 定义（分数聚合方式）
      ├─ actions.conf                        # 分数阈值 → 动作
@@ -310,79 +304,61 @@
      ├─ composites.conf                     # 复合规则（多个符号组合出新符号）
      ├─ statistic.conf                      # 贝叶斯统计后端
      ├─ modules.conf → modules.d/*.conf     # 各功能模块
-     └─ settings.conf                       # 条件化配置（按用户/网络）
-</code></pre>
+     └─ settings.conf                       # 条件化配置（按用户/网络）</code></pre>
 <p>然后依次定义 <code>options</code>、<code>lang_detection</code>、<code>logging</code>、各 <code>worker</code>（normal / controller / rspamd_proxy / fuzzy / hs_helper）。每个段落都是同一个三段式结构：</p>
-<pre><code class="">options {
+<pre><code>options {
     .include "$CONFDIR/options.inc"                                          # 发行版默认
     .include(try=true; priority=1,duplicate=merge) "$LOCAL_CONFDIR/local.d/options.inc"   # merge 覆盖
     .include(try=true; priority=10) "$LOCAL_CONFDIR/override.d/options.inc"  # 严格覆盖
-}
-</code></pre>
+}</code></pre>
 <h3>2. <code>local.d/</code> 与 <code>override.d/</code> 的区别（最容易踩的语义）</h3>
 <p>这两者的差异是<strong>合并方式</strong>，不是优先级高低：</p>
-<table>
-<tr><th>目录</th><th>语义</th><th>行为</th></tr>
-<tr><td><code>local.d/</code></td><td>merge（<code>duplicate=merge</code>，priority=1）</td><td><strong>逐键合并</strong>。只写你要改的键，其余保留默认值</td></tr>
-<tr><td><code>override.d/</code></td><td>strict override（priority=10）</td><td><strong>整段替换</strong>。一旦存在，这个段落的默认值全部作废，只有你写的内容生效</td></tr>
-</table>
+<table><thead><tr><th>目录</th><th>语义</th><th>行为</th></tr></thead><tbody><tr><td><code>local.d/</code></td><td>merge（<code>duplicate=merge</code>，priority=1）</td><td><strong>逐键合并</strong>。只写你要改的键，其余保留默认值</td></tr><tr><td><code>override.d/</code></td><td>strict override（priority=10）</td><td><strong>整段替换</strong>。一旦存在，这个段落的默认值全部作废，只有你写的内容生效</td></tr></tbody></table>
 <p>这就是第一个大坑。<code>local.d/</code> 是安全的（写多少生效多少），而 <strong><code>override.d/</code> 里的文件必须自身完整</strong>——它会把发行版定义的同名段落整个顶掉。</p>
 <h3>3. <code>scores.d/</code> 与 <code>groups.conf</code>：符号分数定义在哪</h3>
 <p>符号的分数不在 <code>metrics.conf</code> 里，而是按 <strong>group</strong> 组织在 <code>scores.d/</code>：</p>
-<pre><code class="">group "headers" {
+<pre><code>group "headers" {
     .include "$CONFDIR/scores.d/headers_group.conf"
     .include(try=true; priority=1; duplicate=merge) "$LOCAL_CONFDIR/local.d/headers_group.conf"
     .include(try=true; priority=10) "$LOCAL_CONFDIR/override.d/headers_group.conf"
-}
-</code></pre>
+}</code></pre>
 <p><code>policies_group.conf</code> 就是其中一个 group，管的是 SPF / DKIM / DMARC / ARC 这一族符号：</p>
-<pre><code class="">"R_DKIM_ALLOW" { weight = -0.1; description = "DKIM verification succeed"; one_shot = true; groups = ["dkim"]; }
+<pre><code>"R_DKIM_ALLOW" { weight = -0.1; description = "DKIM verification succeed"; one_shot = true; groups = ["dkim"]; }
 "R_DKIM_REJECT" { weight = 1.0; ... }
 "R_SPF_ALLOW" { weight = -0.2; ... }
-"DMARC_POLICY_ALLOW" { weight = -0.5; ... }
-</code></pre>
+"DMARC_POLICY_ALLOW" { weight = -0.5; ... }</code></pre>
 <p>注意这同样是三段式 include——<strong>所以它也有 <code>local.d/</code> 和 <code>override.d/</code> 变体</strong>。</p>
 <h3>4. <code>actions.conf</code>：分数如何变成动作</h3>
 <p>这是整个评分体系的出口，也是理解后文的关键：</p>
-<pre><code class="">actions {
+<pre><code>actions {
     reject = 15;      # 达到 15 分 → 拒收
     add_header = 6;   # 达到 6 分 → 加垃圾标记头
     greylist = 4;     # 达到 4 分 → 灰名单（软拒，要求重投）
-}
-</code></pre>
+}</code></pre>
 <h3>5. <code>modules.d/</code>、<code>settings.conf</code>、<code>rspamd.local.lua</code>、<code>maps.d/</code></h3>
-<ul>
-<li><strong><code>modules.d/*.conf</code></strong>：每个功能模块一段（<code>dkim</code>、<code>dmarc</code>、<code>spf</code>、<code>greylist</code>、<code>multimap</code>…），同样是 <code>local.d/</code> + <code>override.d/</code> 三段式。</li>
-<li><strong><code>settings.conf</code></strong>：按条件切换策略，比如「来自内网的邮件只验 DKIM 不查 RBL」。</li>
-<li><strong><code>rspamd.local.lua</code></strong>：自定义 Lua 规则的挂载点，通过 <code>rspamd_config.<SYMBOL> = { callback = ..., score = ... }</code> 注册符号。</li>
-<li><strong><code>maps.d/</code> + <code>multimap</code> 模块</strong>：外部数据列表（白名单域名、IP 段、SURBL 例外等）。</li>
-</ul>
-理清这五层之后，排查就有了路径：<strong>先确认每个模块是否真的加载了，再确认符号是否真的有权重，最后才轮到调分数</strong>。
-<p>---</p>
+<ul><li><strong><code>modules.d/*.conf</code></strong>：每个功能模块一段（<code>dkim</code>、<code>dmarc</code>、<code>spf</code>、<code>greylist</code>、<code>multimap</code>…），同样是 <code>local.d/</code> + <code>override.d/</code> 三段式。</li><li><strong><code>settings.conf</code></strong>：按条件切换策略，比如「来自内网的邮件只验 DKIM 不查 RBL」。</li><li><strong><code>rspamd.local.lua</code></strong>：自定义 Lua 规则的挂载点，通过 <code>rspamd_config.&lt;SYMBOL&gt; = { callback = ..., score = ... }</code> 注册符号。</li><li><strong><code>maps.d/</code> + <code>multimap</code> 模块</strong>：外部数据列表（白名单域名、IP 段、SURBL 例外等）。</li></ul>
+<p>理清这五层之后，排查就有了路径：<strong>先确认每个模块是否真的加载了，再确认符号是否真的有权重，最后才轮到调分数</strong>。</p>
+<hr>
 <h2>二、问题一：一份被截断的 <code>options.inc</code>，让整套 DKIM 检查静默失效</h2>
 <h3>症状</h3>
 <p><code>rspamadm configtest</code> 报了一串可疑的警告：</p>
-<pre><code class="">$ rspamadm configtest
+<pre><code>$ rspamadm configtest
 cannot enable arc plugin: dkim is disabled
-cannot register delayed dependency DMARC_CHECK -> R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
-cannot register delayed dependency WHITELIST_DKIM -> R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
-cannot register delayed dependency WHITELIST_SPF_DKIM -> R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
+cannot register delayed dependency DMARC_CHECK -&gt; R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
+cannot register delayed dependency WHITELIST_DKIM -&gt; R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
+cannot register delayed dependency WHITELIST_SPF_DKIM -&gt; R_DKIM_ALLOW: destination R_DKIM_ALLOW is missing
 ...
-syntax OK
-</code></pre>
+syntax OK</code></pre>
 <p>注意最后一行是 <code>syntax OK</code>——<strong>语法没问题，但依赖全断了</strong>。这种「语法通过、功能静默缺失」的状态最危险。</p>
 <h3>根因</h3>
 <p>对比一下 <code>/etc/rspamd/options.inc</code> 和发行版原件 <code>/etc/rspamd/options.inc.dpkg-dist</code>：</p>
 <pre><code class="bash">$ wc -l /etc/rspamd/options.inc /etc/rspamd/options.inc.dpkg-dist
   25 /etc/rspamd/options.inc
-  93 /etc/rspamd/options.inc.dpkg-dist
-</code></pre>
+  93 /etc/rspamd/options.inc.dpkg-dist</code></pre>
 <p>当前的 <code>options.inc</code> 只剩 25 行，有效内容就一句：</p>
-<pre><code class="">local_additions = "enable";
-</code></pre>
+<pre><code>local_additions = "enable";</code></pre>
 <p>而原件第 16 行是：</p>
-<pre><code class="">filters = "chartable,dkim,regexp,fuzzy_check";
-</code></pre>
+<pre><code>filters = "chartable,dkim,regexp,fuzzy_check";</code></pre>
 <p><strong>rspamd 官方文档原文</strong>：</p>
 <blockquote>C modules provide the core functionality of Rspamd and are statically linked to the main Rspamd code. C modules are defined in <code>options.inc</code> with the <code>filters</code> attribute. The default configuration enables all C modules explicitly:<br>
 <code>filters = "chartable,dkim,regexp,fuzzy_check";</code><br>
@@ -395,77 +371,63 @@ syntax OK
       </a>
     </div>
 
-这些模块是<strong>静态编译进 <code>librspamd-server.so</code> 的 C 模块</strong>，不是 Lua 插件——所以它们在磁盘上找不到对应的 <code>.lua</code> 文件，肉眼检查完全看不出问题。验证一下二进制里确实有：
+<p>这些模块是<strong>静态编译进 <code>librspamd-server.so</code> 的 C 模块</strong>，不是 Lua 插件——所以它们在磁盘上找不到对应的 <code>.lua</code> 文件，肉眼检查完全看不出问题。验证一下二进制里确实有：</p>
 <pre><code class="bash">$ nm -D /usr/lib/rspamd/librspamd-server.so | grep -ci dkim
 31
 $ strings /usr/lib/rspamd/librspamd-server.so | grep "src/plugins/dkim_check.c" | head -2
 ./src/plugins/dkim_check.c:179
-./src/plugins/dkim_check.c:596
-</code></pre>
+./src/plugins/dkim_check.c:596</code></pre>
 <p>能力都在，只是 <code>filters</code> 一空，<strong>一个都没注册</strong>。</p>
 <h3>连锁反应</h3>
 <p>DKIM 模块没加载，<code>R_DKIM_ALLOW</code> / <code>R_DKIM_NA</code> / <code>R_DKIM_REJECT</code> 这几个符号就不存在。而 rspamd 的配置是<strong>声明式依赖</strong>——凡是引用了不存在符号的规则，不会报错，只是永远不触发。实测这些规则全部失效：</p>
-<table>
-<tr><th>失效的规则</th><th>本应作用</th></tr>
-<tr><td><code>WHITELIST_DKIM</code></td><td>DKIM 通过的白名单域给负分</td></tr>
-<tr><td><code>WHITELIST_SPF_DKIM</code></td><td>SPF + DKIM 双通过给强负分</td></tr>
-<tr><td><code>WHITELIST_DMARC</code></td><td>DMARC 对齐给负分</td></tr>
-<tr><td><code>TRUSTED_NEWSLETTER_PASS</code></td><td>可信订阅邮件对冲 <code>FORGED_SENDER</code></td></tr>
-<tr><td><code>DMARC_CHECK</code></td><td>DMARC 策略检查</td></tr>
-<tr><td><code>NO_AUTH_SPOOF</code></td><td>无认证伪造检测</td></tr>
-</table>
+<table><thead><tr><th>失效的规则</th><th>本应作用</th></tr></thead><tbody><tr><td><code>WHITELIST_DKIM</code></td><td>DKIM 通过的白名单域给负分</td></tr><tr><td><code>WHITELIST_SPF_DKIM</code></td><td>SPF + DKIM 双通过给强负分</td></tr><tr><td><code>WHITELIST_DMARC</code></td><td>DMARC 对齐给负分</td></tr><tr><td><code>TRUSTED_NEWSLETTER_PASS</code></td><td>可信订阅邮件对冲 <code>FORGED_SENDER</code></td></tr><tr><td><code>DMARC_CHECK</code></td><td>DMARC 策略检查</td></tr><tr><td><code>NO_AUTH_SPOOF</code></td><td>无认证伪造检测</td></tr></tbody></table>
 <p>顺手翻出同一份文件里丢掉的其它东西：</p>
-<pre><code class="">dns {
+<pre><code>dns {
 	timeout = 1s;
 	sockets = 16;
 	retransmits = 5;
 }
-local_addrs = [192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, fd00::/8, 169.254.0.0/16, fe80::/10];
-</code></pre>
+local_addrs = [192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, fd00::/8, 169.254.0.0/16, fe80::/10];</code></pre>
 <p><code>local_addrs</code> 丢失会让 <code>is_local()</code> 判断失真；<code>dns</code> 段落丢失意味着 RBL 查询用默认超时——实测这台机器 rspamd 日志里每天有 <strong>1304 次 <code>query timed out</code></strong>（集中在 <code>asn6.rspamd.com</code> 和 DNSWL/URIBL 各 zone），既拖慢扫描，又让 <code>DWL_DNSWL_HI</code>（-3.5 分）这类白名单负分拿不到。</p>
 <h3>修复：用 <code>local.d/</code> 补回，不动原文件</h3>
 <p><code>options.inc</code> 顶部自己就写着「请改用 <code>local.d/</code>」，而且 <code>local.d/</code> 是 merge 语义，补键最安全：</p>
-<pre><code class=""># /etc/rspamd/local.d/options.inc
+<pre><code># /etc/rspamd/local.d/options.inc
 local_additions = "enable";
 filters = "chartable,dkim,regexp,fuzzy_check";
-<p>local_addrs = [192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, fd00::/8, 169.254.0.0/16, fe80::/10];</p>
-<p>dns {
+
+local_addrs = [192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, fd00::/8, 169.254.0.0/16, fe80::/10];
+
+dns {
 	timeout = 1s;
 	sockets = 16;
 	retransmits = 5;
-}
-</code></pre></p>
+}</code></pre>
 <p>重载后：</p>
-<pre><code class="bash">$ rspamadm configtest 2>&1 | grep -c "is missing"
+<pre><code class="bash">$ rspamadm configtest 2&gt;&amp;1 | grep -c "is missing"
 0
 $ rspamc counters | grep R_DKIM
-<table>
-<tr><td>494</td><td>R_DKIM_ALIGNED</td><td>-0.1</td></tr>
-<tr><td>495</td><td>R_DKIM_ALLOW</td><td>-0.1</td></tr>
-<tr><td>496</td><td>R_DKIM_NA</td><td>0.0</td></tr>
-<tr><td>497</td><td>R_DKIM_PERMFAIL</td><td>0.0</td></tr>
-<tr><td>498</td><td>R_DKIM_REJECT</td><td>1.0</td></tr>
-<tr><td>499</td><td>R_DKIM_TEMPFAIL</td><td>0.0</td></tr>
-</table>
-</code></pre>
+| 494 | R_DKIM_ALIGNED  | -0.1 |
+| 495 | R_DKIM_ALLOW    | -0.1 |
+| 496 | R_DKIM_NA       |  0.0 |
+| 497 | R_DKIM_PERMFAIL |  0.0 |
+| 498 | R_DKIM_REJECT   |  1.0 |
+| 499 | R_DKIM_TEMPFAIL |  0.0 |</code></pre>
 <p>扫描耗时立刻从 ~4136 ms 降到 611–1236 ms——<strong>DNS 配置的收益比什么都直接</strong>。</p>
-<p>---</p>
+<hr>
 <h2>三、问题二：<code>override.d/</code> 的严格覆盖语义，漏掉了六个符号</h2>
 <p>DKIM 模块注册成功后，<code>configtest</code> 又报出新的一层：</p>
-<pre><code class="">symbol R_DKIM_ALLOW has no score registered, skip its check
+<pre><code>symbol R_DKIM_ALLOW has no score registered, skip its check
 symbol R_DKIM_REJECT has no score registered, skip its check
 symbol R_DKIM_NA has no score registered, skip its check
-...
-</code></pre>
+...</code></pre>
 <p>符号存在，但权重是空的。查 <code>override.d/policies_group.conf</code>：</p>
-<pre><code class="">$ wc -l scores.d/policies_group.conf override.d/policies_group.conf
+<pre><code>$ wc -l scores.d/policies_group.conf override.d/policies_group.conf
   158 scores.d/policies_group.conf
-   28 override.d/policies_group.conf
-</code></pre>
+   28 override.d/policies_group.conf</code></pre>
 <p><code>override.d</code> 版本只有 28 行，定义了 SPF、DMARC、ARC 三组，<strong>唯独没有 DKIM</strong>。因为它是 <code>priority=10</code> 的严格覆盖，发行版那 158 行里的 DKIM 段落被整个顶掉了。</p>
 <p>这就是 <code>override.d</code> 的正确用法陷阱：<strong>它适合「我完全接管这一组配置」，而不是「我只想改其中几条」</strong>。后者应该用 <code>local.d/</code>。</p>
 <p>补上六个符号（权重照抄 <code>scores.d/</code> 的默认值）即可。修复后 <code>WHITELIST_DMARC</code>（-7.0）和 <code>WHITELIST_SPF_DKIM</code>（-3.0）这两条之前完全没触发过的规则，在语料重扫中命中 858 次和 885 次。</p>
-<p>---</p>
+<hr>
 <h2>四、问题三：<code>FORGED_SENDER</code> 对 ESP 的正常行为开枪</h2>
 <p>前两个问题修完，评分分布已经明显健康了，但还有一类邮件稳定误判：合规的批量邮件。</p>
 <h3>触发条件</h3>
@@ -476,18 +438,10 @@ if smtp_from and smtp_from[1] and smtp_from[1]['addr'] ~= '' then
   if not same_mailbox((mime_from or E)[1], smtp_from[1]) then
     task:insert_result(symbol_sender, 1, ...)   -- +5.0
   end
-end
-</code></pre>
+end</code></pre>
 <p>一句话：<strong>envelope sender（SMTP <code>MAIL FROM</code>）与 header <code>From</code> 不是同一个邮箱，就扣 5 分</strong>。</p>
 <p>问题是，<strong>整个 ESP（邮件发送服务商）行业就是靠这个机制工作的</strong>。所有主流 ESP 都用独立域做退信地址：</p>
-<table>
-<tr><th>header From</th><th>envelope sender</th><th>服务商</th></tr>
-<tr><td><code>news@customer.com</code></td><td><code>bounce-hash@bounce.customer.com</code></td><td>通用模式</td></tr>
-<tr><td><code>publishing@email.mckinsey.com</code></td><td><code>bounce@email.mckinsey.com</code></td><td>McKinsey</td></tr>
-<tr><td><code>jobs-noreply@linkedin.com</code></td><td><code>m-1but2tww...@bounce.linkedin.com</code></td><td>LinkedIn</td></tr>
-<tr><td><code>notifications@github.com</code></td><td><code>bounces@sgmail.github.com</code></td><td>GitHub</td></tr>
-<tr><td><code>author@debian.org</code></td><td><code>bounce-debian-list=user=freelamp.com@lists.debian.org</code></td><td>邮件列表 VERP</td></tr>
-</table>
+<table><thead><tr><th>header From</th><th>envelope sender</th><th>服务商</th></tr></thead><tbody><tr><td><code>news@customer.com</code></td><td><code>bounce-hash@bounce.customer.com</code></td><td>通用模式</td></tr><tr><td><code>publishing@email.mckinsey.com</code></td><td><code>bounce@email.mckinsey.com</code></td><td>McKinsey</td></tr><tr><td><code>jobs-noreply@linkedin.com</code></td><td><code>m-1but2tww...@bounce.linkedin.com</code></td><td>LinkedIn</td></tr><tr><td><code>notifications@github.com</code></td><td><code>bounces@sgmail.github.com</code></td><td>GitHub</td></tr><tr><td><code>author@debian.org</code></td><td><code>bounce-debian-list=user=freelamp.com@lists.debian.org</code></td><td>邮件列表 VERP</td></tr></tbody></table>
 <p>这是 RFC 合规设计，不是伪造。但 <code>FORGED_SENDER</code> 对此一概 +5.0。</p>
 <p>rspamd 确实内置了一个针对性的规则 <code>ENVFROM_PRVS</code>，注释写得很清楚：</p>
 <pre><code class="lua">--[[
@@ -496,17 +450,11 @@ end
     btv1==TAG==USER@example.com     Barracuda
     msprvs1=TAG=USER@example.com    Sparkpost
 ]] --
-local re_text = '^(?:(prvs|msprvs1)=([^=]+)=|btv1==[^=]+==)(.+@(.+))$'
-</code></pre>
+local re_text = '^(?:(prvs|msprvs1)=([^=]+)=|btv1==[^=]+==)(.+@(.+))$'</code></pre>
 <p>它只认这三种格式。实测在生产日志里 <strong>0 次命中</strong>——因为 <code>bounce@</code>、<code>sgmail.</code> 这些主流写法一个都不匹配。</p>
 <h3>量化：这类邮件到底是不是垃圾</h3>
 <p>在 3687 封归档邮件上做统计，把 envelope 域与 header 域的关系分类：</p>
-<table>
-<tr><th>envelope 域 vs header 域</th><th>数量</th><th>标签</th></tr>
-<tr><td>不同但同源（子域关系）</td><td><strong>1785</strong></td><td>全部是合法邮件，<strong>零垃圾</strong></td></tr>
-<tr><td>同域</td><td>1577</td><td>—</td></tr>
-<tr><td>不同且无关</td><td>69</td><td>混杂</td></tr>
-</table>
+<table><thead><tr><th>envelope 域 vs header 域</th><th>数量</th><th>标签</th></tr></thead><tbody><tr><td>不同但同源（子域关系）</td><td><strong>1785</strong></td><td>全部是合法邮件，<strong>零垃圾</strong></td></tr><tr><td>同域</td><td>1577</td><td>—</td></tr><tr><td>不同且无关</td><td>69</td><td>混杂</td></tr></tbody></table>
 <p>1785 封「信封域与信头域不同但属于同一组织」的邮件，<strong>没有一封是垃圾</strong>。这个信号本身是高度可信的。</p>
 <h3>修复：不做域名白名单，做 relay 识别</h3>
 <p>之前的做法是维护 <code>whitelist_domains.inc</code>，每来一个新 ESP 加一行——这是<strong>枚举式</strong>方案，永远漏。</p>
@@ -521,17 +469,19 @@ local function domains_related(env_dom, from_dom)
   if lua_util.str_endswith(from_dom, '.' .. env_dom) then return true end
   return false
 end
-<p>-- 信封是否是 relay/bounce 形态
+
+-- 信封是否是 relay/bounce 形态
 local RELAY_LOCAL_RE = rspamd_regexp.create_cached(
-  '^(?:bounce|bounces|mailer-daemon|postmaster|msprvs[0-9]<em>|prvs|btv[0-9]</em>|srs[0-9]*|' ..
+  '^(?:bounce|bounces|mailer-daemon|postmaster|msprvs[0-9]*|prvs|btv[0-9]*|srs[0-9]*|' ..
   'return|no-?reply|noreply|newsletter|news|marketing|notifications?|updates?|' ..
-  '[a-z0-9]+[=+][a-z0-9=+_.-]<em>=?|.</em>=bounces=)')
+  '[a-z0-9]+[=+][a-z0-9=+_.-]*=?|.*=bounces=)')
 local RELAY_HOST_RE = rspamd_regexp.create_cached(
-  '(?:^|\\.)(?:bounce[0-9]<em>|bounces|mailer|lists|list|mail|email|em[0-9]+|mta[0-9]</em>|' ..
-  'smtp[0-9]<em>|send|sending|news|newsletter|marketing|mkt[0-9]</em>|campaign|sgmail|rsgsv|' ..
+  '(?:^|\\.)(?:bounce[0-9]*|bounces|mailer|lists|list|mail|email|em[0-9]+|mta[0-9]*|' ..
+  'smtp[0-9]*|send|sending|news|newsletter|marketing|mkt[0-9]*|campaign|sgmail|rsgsv|' ..
   'cmail|mcsv|createsend|mandrill|sparkpost|mailgun|sendgrid|amazonses|postmark|' ..
-  'exacttarget|hubspot|braze|iterable|klaviyo|sailthru)\\.')</p>
-<p>rspamd_config.RELAY_ENVELOPE = {
+  'exacttarget|hubspot|braze|iterable|klaviyo|sailthru)\\.')
+
+rspamd_config.RELAY_ENVELOPE = {
   callback = function(task)
     if not task:has_symbol('FORGED_SENDER') then return false end
     if not is_relay_envelope(task) then return false end
@@ -543,54 +493,52 @@ local RELAY_HOST_RE = rspamd_regexp.create_cached(
   score = -5.0,
   group = 'headers',
   description = 'Envelope is a bounce/relay address related to the From domain and the message authenticated',
-}
-</code></pre></p>
+}</code></pre>
 <p>覆盖率的离线评估结果：</p>
-<pre><code class="">=== offline rule coverage by label ===
+<pre><code>=== offline rule coverage by label ===
    2426  ham:CAUGHT
      37  ham:MISS
-    110  inbox:CAUGHT
-</code></pre>
+    110  inbox:CAUGHT</code></pre>
 <p>合法邮件的信封形态覆盖率 <strong>98.5%</strong>（2426 / 2463）。而漏掉的 37 封里，绝大多数是 envelope 域等于 header 域的情况——<strong>那些根本不触发 <code>FORGED_SENDER</code>，不需要这条规则</strong>。</p>
 <p>注意最后那个 <code>authed</code> 条件不是装饰：<strong>没有它，真实伪造（信封域碰巧同源但完全无认证）也会被放过</strong>。这道保险必须留。</p>
-<p>---</p>
+<hr>
 <h2>五、问题四：一条 <code>force_actions</code> 规则，硬拒了合法邮件列表</h2>
 <p>这条是排查中<strong>最值得单独拿出来讲</strong>的，因为它的表达式看起来完全合理。</p>
 <p><code>force_actions</code> 模块允许无视分数直接执行动作。配置里有一条：</p>
-<pre><code class="">BLOCK_SPOOFED_LOCAL_DOMAIN {
-    expression = "FORGED_SENDER & !DMARC_POLICY_ALLOW & !R_SPF_ALLOW";
+<pre><code>BLOCK_SPOOFED_LOCAL_DOMAIN {
+    expression = "FORGED_SENDER &amp; !DMARC_POLICY_ALLOW &amp; !R_SPF_ALLOW";
     action = "reject";
     message = "Security breach: Spoofed internal domain identity rejected.";
-}
-</code></pre>
+}</code></pre>
 <p>名字叫「拦截伪造本地域」，<code>message</code> 说要防的是「内部身份伪造」。但看表达式——<strong>它一个字都没提到本地域</strong>。</p>
 <p>它实际的含义是：<em>任何</em> envelope 与 From 不一致、且没有 SPF/DMARC 的邮件，直接拒收。</p>
 <p>而 Debian 邮件列表的信封长这样：</p>
-<pre><code class="">From: Peter Pentchev <roam@ringlet.net>
-Return-Path: <bounce-debian-devel=albertxu=freelamp.com@lists.debian.org>
-</code></pre>
+<pre><code>From: Peter Pentchev &lt;roam@ringlet.net&gt;
+Return-Path: &lt;bounce-debian-devel=albertxu=freelamp.com@lists.debian.org&gt;</code></pre>
 <p><code>freelamp.com</code> 出现在信封里，但它是 <strong>VERP 编码的投递标签</strong>（<code>list名=收件人=域名</code>），不是身份声明。这条规则把它当成了「伪造本地域」，硬拒。</p>
 <p>一条命令就能看出问题：</p>
 <pre><code class="bash">$ grep -c "forced: reject" /var/log/rspamd/rspamd.log
 32
-$ grep "forced: reject" /var/log/rspamd/rspamd.log | grep -oE "from: <[^>]<em>>" | sed 's/.</em>@//;s/>//' | sort | uniq -c | sort -rn
+$ grep "forced: reject" /var/log/rspamd/rspamd.log | grep -oE "from: &lt;[^&gt;]*&gt;" | sed 's/.*@//;s/&gt;//' | sort | uniq -c | sort -rn
      22 lists.debian.org
-      4 scoutcamp.bounces.google.com
-</code></pre>
+      4 scoutcamp.bounces.google.com</code></pre>
 <p>32 次强制拒收里，22 次是 Debian 邮件列表。</p>
 <h3>修复：把「本地域」这个判断真的写进去</h3>
 <p>用 Lua 重新实现，这次<strong>真的检查 header From 是否声称本地域</strong>：</p>
 <pre><code class="lua">local LOCAL_DOMAINS = { "freelamp.com" }
-<p>local function spoofed_local_domain_cb(task)
+
+local function spoofed_local_domain_cb(task)
   local hdr = task:get_from('mime')
   if not hdr or not hdr[1] or not hdr[1].domain then return false end
-  local hd = hdr[1].domain:lower()</p>
-<p>  local is_local = false
+  local hd = hdr[1].domain:lower()
+
+  local is_local = false
   for _, d in ipairs(LOCAL_DOMAINS) do
     if hd == d or lua_util.str_endswith(hd, '.' .. d) then is_local = true; break end
   end
-  if not is_local then return false end          -- 关键：不是本地域，直接放过</p>
-<p>  -- 声称是本地域，就必须自证
+  if not is_local then return false end          -- 关键：不是本地域，直接放过
+
+  -- 声称是本地域，就必须自证
   if task:has_symbol('DMARC_POLICY_ALLOW') then return false end
   if task:get_user() then return false end        -- 已认证提交
   local ip = task:get_from_ip()
@@ -598,35 +546,34 @@ $ grep "forced: reject" /var/log/rspamd/rspamd.log | grep -oE "from: <[^>]<em>>"
   if task:has_symbol('R_SPF_ALLOW') then return false end
   if task:has_symbol('R_DKIM_ALLOW') then return false end
   return true
-end</p>
-<p>rspamd_config.SPOOFED_LOCAL_DOMAIN = {
+end
+
+rspamd_config.SPOOFED_LOCAL_DOMAIN = {
   callback = spoofed_local_domain_cb,
   score = 8.0,
   group = 'headers',
   description = 'Header From claims a local domain but the message failed SPF, DKIM and DMARC',
-}
-</code></pre></p>
+}</code></pre>
 <p>另一个必须记住的细节：<strong><code>force_actions</code> 不认 <code>enable = false</code></strong>。它的规则加载循环只读 <code>action</code> 和 <code>expression</code> 两个字段：</p>
 <pre><code class="lua">for name, sett in pairs(opts.rules) do
   local action = sett.action
   local expr = sett.expression
   if action and expr then
-    ...
-</code></pre>
+    ...</code></pre>
 <p>所以想停用一条规则，<strong>只能把整块注释掉</strong>，加 <code>enable = false</code> 是无效的（这一点我实测确认过——配置检查仍然会注册那个 <code>FORCE_ACTION_BLOCK_*</code> 符号）。</p>
-<p>---</p>
+<hr>
 <h2>六、问题五：Sieve 的 <code>X-Spam: Yes</code> 阈值语义</h2>
 <p>最后一个是投递层的。Dovecot 用一个全局 Sieve 脚本把垃圾邮件投进 Junk：</p>
 <pre><code class="sieve">require ["fileinto", "mailbox"];
-<p>if anyof (
+
+if anyof (
   header :contains "X-Spam" "Yes",
   header :contains "X-Spam-Flag" "YES",
   header :contains "X-Spamd-Bar" "+"
 ) {
   fileinto :create "Junk";
   stop;
-}
-</code></pre></p>
+}</code></pre>
 <p>看起来没问题——「标记为垃圾就进 Junk」。但 <code>X-Spam: Yes</code> 是谁写的、什么条件下写？</p>
 <p>在 <code>milter_headers.lua</code> 里：</p>
 <pre><code class="lua">routines['x-spam-status'] = function()
@@ -638,22 +585,21 @@ end</p>
   else
     is_spam = 'No'
   end
-  spamstatus = is_spam .. ', score=' .. string.format('%.2f', score)
-</code></pre>
+  spamstatus = is_spam .. ', score=' .. string.format('%.2f', score)</code></pre>
 <p>而动作是由 <code>actions.conf</code> 决定的：</p>
-<pre><code class="">actions {
+<pre><code>actions {
     reject = 15;      # 15 分 → reject
     add_header = 6;   # 6 分 → add header  ← 这里就已经是 "Yes" 了
     greylist = 4;
-}
-</code></pre>
+}</code></pre>
 <p>所以 <strong><code>X-Spam: Yes</code> 的真正阈值是 6 分，不是 15 分</strong>。从 6 到 15 之间有整整 9 分的空间被压缩成了一个二元判断——只要达到 <code>add_header</code>，Sieve 立刻投进 Junk，用户永远看不到中间地带。</p>
 <p>这也解释了为什么用户要反复标 <code>NonJunk</code>：<strong>大量 6–8 分的订阅邮件、邮件列表、ESP 批量邮件，就卡在这个区间被一刀切</strong>。</p>
 <h3>修复：用真实阈值</h3>
 <p>Sieve 支持关系比较，直接对着硬动作和分数栏判断：</p>
 <pre><code class="sieve">require ["fileinto", "mailbox"];
-<h1>X-Rspamd-Action: reject 是 rspamd 自己认为「确定是垃圾」的动作（≥15 分），</h1>
-<h1>rewrite subject 次之（≥12 分）。X-Spamd-Bar 每分一个 '+'，八个 '+' 即 ≥8 分。</h1>
+
+# X-Rspamd-Action: reject 是 rspamd 自己认为「确定是垃圾」的动作（≥15 分），
+# rewrite subject 次之（≥12 分）。X-Spamd-Bar 每分一个 '+'，八个 '+' 即 ≥8 分。
 if anyof (
   header :contains "X-Rspamd-Action" "reject",
   header :contains "X-Rspamd-Action" "rewrite subject",
@@ -661,19 +607,17 @@ if anyof (
 ) {
   fileinto :create "Junk";
   stop;
-}
-</code></pre>
+}</code></pre>
 <p><code>X-Spamd-Bar</code> 的生成逻辑正好是「分数取整后重复 <code>+</code>」，可以直接当分数用：</p>
 <pre><code class="lua">local spambar
-if score <= -1 then
+if score &lt;= -1 then
   spambar = string.rep(local_mod.negative, math.floor(score * -1))
-elseif score >= 1 then
+elseif score &gt;= 1 then
   spambar = string.rep(local_mod.positive, math.floor(score))
 else
   spambar = local_mod.neutral
-end
-</code></pre>
-<p>---</p>
+end</code></pre>
+<hr>
 <h2>七、怎么验证改对了（而不是拍脑袋）</h2>
 <p>改配置最怕「感觉好点了」。这套排查里最有价值的方法论是：<strong>用归档邮件建带标签的回归集</strong>。</p>
 <p>Dovecot 的 Maildir 本身就是标注数据——用户把邮件放进哪个文件夹、打了什么关键字，就是标签。但这里有个<strong>几乎所有人都会踩的坑</strong>：</p>
@@ -689,24 +633,18 @@ $ cat Maildir/.LinkedIn/dovecot-keywords
 2 Junk
 $ cat Maildir/.McKinsey/dovecot-keywords
 0 NonJunk      ← index 0
-1 Junk
-</code></pre>
+1 Junk</code></pre>
 <p><code>INBOX/cur/...:2,Sc</code> 里的 <code>c</code> 是 index 2 → <code>NonJunk</code>。<strong>跨文件夹套用同一张表，会把用户「标记为非垃圾」读成「标记为垃圾」，结论完全反过来。</strong></p>
 <p>第二个坑：<strong>重扫会破坏 DKIM 签名</strong>。Maildir 里存的是 LF 换行，而原始邮件是 CRLF，DKIM 是签在规范化的原始字节上的——重扫一遍，body hash 全部失效，<code>R_DKIM_REJECT</code> 全是假象。判断真实 DKIM 结论只能看生产日志：</p>
 <pre><code class="bash">$ grep -oE "R_DKIM_(ALLOW|REJECT|NA)\([-0-9.]+\)" /var/log/rspamd/rspamd.log | sed 's/(.*//' | sort | uniq -c
     459 R_DKIM_ALLOW
      62 R_DKIM_REJECT
-     43 R_DKIM_NA
-</code></pre>
-<p>第三个坑：<strong>重扫时 rspamd 会读到自己上次写进去的 <code>X-Spam: Yes</code></strong>，触发 <code>SPAM_FLAG</code> 规则再 +5.0。必须在扫描前把自己产生的头（<code>X-Spam<em></code>、<code>X-Rspamd</em></code>、<code>Authentication-Results</code>）剥掉，否则每一封都凭空多 5 分，回归数据全废。</p>
+     43 R_DKIM_NA</code></pre>
+<p>第三个坑：<strong>重扫时 rspamd 会读到自己上次写进去的 <code>X-Spam: Yes</code></strong>，触发 <code>SPAM_FLAG</code> 规则再 +5.0。必须在扫描前把自己产生的头（<code>X-Spam*</code>、<code>X-Rspamd*</code>、<code>Authentication-Results</code>）剥掉，否则每一封都凭空多 5 分，回归数据全废。</p>
 <p>最终对比（670 封可比对样本）：</p>
-<table>
-<tr><th>判据</th><th>合法邮件误入 Junk</th><th>真垃圾正确拦截</th></tr>
-<tr><td>旧：<code>X-Spam: Yes</code>（≥6 分）</td><td>294 / 643（46%）</td><td>19 / 27（70%）</td></tr>
-<tr><td>新：<code>Bar≥8</code> 或 <code>reject</code></td><td>40 / 643（6%）</td><td>13 / 27（48%）</td></tr>
-</table>
+<table><thead><tr><th>判据</th><th>合法邮件误入 Junk</th><th>真垃圾正确拦截</th></tr></thead><tbody><tr><td>旧：<code>X-Spam: Yes</code>（≥6 分）</td><td>294 / 643（46%）</td><td>19 / 27（70%）</td></tr><tr><td>新：<code>Bar≥8</code> 或 <code>reject</code></td><td>40 / 643（6%）</td><td>13 / 27（48%）</td></tr></tbody></table>
 <p>误判降到 6%。漏判看起来从 8 封涨到 14 封，但需要说明的是：那 40 封「误判」里，有相当一部分其实是<strong>真垃圾</strong>（取到 <code>BAYES_SPAM</code>、<code>PHISHING</code>、<code>VIOLATED_DIRECT_SPF</code> 等强特征）——只是用户没清理，留在 INBOX 里被当成了正样本。自动标注天然带噪，这个残差是标签问题，不是规则问题。</p>
-<p>---</p>
+<hr>
 <h2>八、复盘：三条通用经验</h2>
 <p><strong>1. 「语法 OK」不等于「功能 OK」。</strong></p>
 <p>rspamd 的 <code>configtest</code> 会对缺失的符号依赖给出 <code>destination ... is missing</code>，但那只是 warning，最后仍然打印 <code>syntax OK</code>。这类警告必须当成错误看。更隐蔽的是 <code>filters</code> 这种——它连警告都不给，只是整套 C 模块安静地不工作。<strong>部署后第一件事应该是 <code>rspamc counters</code>，确认该出现的符号都出现了。</strong></p>
@@ -715,19 +653,11 @@ $ cat Maildir/.McKinsey/dovecot-keywords
 <p><code>FORGED_SENDER</code> 那条 <code>force_actions</code> 规则则提醒了另一面：<strong>表达式的语义要和规则的意图对齐</strong>。名字叫「拦截伪造本地域」，表达式却没有任何本地域判断——这种错位不会报错，只会在几个月后以「用户抱怨邮件列表收不到」的形式暴露。</p>
 <p><strong>3. 阈值型配置要追到最后一层。</strong></p>
 <p>分数 → 动作 → 邮件头 → Sieve，一条链上任何一层的阈值都和你想的不一样，最终行为就会出乎意料。<code>X-Spam: Yes</code> 这个头名字太有迷惑性，让人以为它代表「确定是垃圾」，实际上它只是「不是 no action」——<strong>阈值是 6 分</strong>。<strong>每一条规则的效果都要追到用户实际看到的那个信箱为止</strong>，中间任何一层用「应该没问题」带过，都会留下这种半年后才发作的坑。</p>
-<p>---</p>
+<hr>
 <h2>附：本次改动清单</h2>
-<table>
-<tr><th>文件</th><th>改动</th></tr>
-<tr><td><code>local.d/options.inc</code></td><td>补回 <code>filters</code> / <code>dns{}</code> / <code>local_addrs</code></td></tr>
-<tr><td><code>override.d/policies_group.conf</code></td><td>补回 6 个 <code>R_DKIM_*</code> 符号权重</td></tr>
-<tr><td><code>rspamd.local.lua</code></td><td>新增 <code>RELAY_ENVELOPE</code>、<code>SPOOFED_LOCAL_DOMAIN</code></td></tr>
-<tr><td><code>local.d/force_actions.conf</code></td><td>注释掉 <code>BLOCK_SPOOFED_LOCAL_DOMAIN</code></td></tr>
-<tr><td><code>/var/lib/dovecot/sieve/spam-to-junk.sieve</code></td><td>判据改为 <code>X-Rspamd-Action</code> / <code>Bar≥8</code></td></tr>
-</table>
-<p>全部改动均可回滚，改动前都保留了 <code>.bak.<timestamp></code> 备份。改完建议至少观察一个完整投递周期再清理备份。</p>
-<p>最后重申那个最省事的教训：<strong>排查配置类问题时，先确认「模块加载了吗」和「符号有权重吗」，再考虑「分数要不要调」</strong>。这次五个问题里有三个属于前者——而它们造成的损失，远大于任何调分数的努力。
-</p>
+<table><thead><tr><th>文件</th><th>改动</th></tr></thead><tbody><tr><td><code>local.d/options.inc</code></td><td>补回 <code>filters</code> / <code>dns{}</code> / <code>local_addrs</code></td></tr><tr><td><code>override.d/policies_group.conf</code></td><td>补回 6 个 <code>R_DKIM_*</code> 符号权重</td></tr><tr><td><code>rspamd.local.lua</code></td><td>新增 <code>RELAY_ENVELOPE</code>、<code>SPOOFED_LOCAL_DOMAIN</code></td></tr><tr><td><code>local.d/force_actions.conf</code></td><td>注释掉 <code>BLOCK_SPOOFED_LOCAL_DOMAIN</code></td></tr><tr><td><code>/var/lib/dovecot/sieve/spam-to-junk.sieve</code></td><td>判据改为 <code>X-Rspamd-Action</code> / <code>Bar≥8</code></td></tr></tbody></table>
+<p>全部改动均可回滚，改动前都保留了 <code>.bak.&lt;timestamp&gt;</code> 备份。改完建议至少观察一个完整投递周期再清理备份。</p>
+<p>最后重申那个最省事的教训：<strong>排查配置类问题时，先确认「模块加载了吗」和「符号有权重吗」，再考虑「分数要不要调」</strong>。这次五个问题里有三个属于前者——而它们造成的损失，远大于任何调分数的努力。</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

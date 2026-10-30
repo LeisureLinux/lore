@@ -174,6 +174,19 @@ def _table_block(rows):
     )
 
 
+def _image_block(payload):
+    """图片（石墨主题「组件 14 图片容器」：极简线框，无圆角）。"""
+    alt, url = payload
+    return (
+        f'    <section style="margin:0 10px 24px;text-align:center;">\n'
+        f'      <img src="{G.esc(url)}" alt="{G.esc(alt)}" '
+        f'style="max-width:100%;height:auto;border:1px solid {G.LINE};" />\n'
+        f'      <p style="margin:8px 0 0;font-size:12px;color:{G.FAINT};'
+        f'text-align:center;">{G.leaf(G.esc(alt))}</p>\n'
+        f'    </section>\n'
+    )
+
+
 def _ol_block(items):
     """有序列表（石墨圆标编号）。"""
     if not items:
@@ -223,7 +236,9 @@ def _install_theme_extensions():
             elif kind == 'ol':
                 o.append(ol_block(payload))
             elif kind == 'h4':
-                o.append(h4_block(payload))"""
+                o.append(h4_block(payload))
+            elif kind == 'image':
+                o.append(image_block(payload))"""
 
     src = src.replace(anchor, injected, 1)
 
@@ -233,6 +248,7 @@ def _install_theme_extensions():
     mod.md_table_block = _table_block
     mod.ol_block = _ol_block
     mod.h4_block = _h4_block
+    mod.image_block = _image_block
     mod.__dict__["__file__"] = os.path.join(WECHAT_DIR, "_gzh_graphite.py")
 
     exec(compile(src, mod.__dict__["__file__"], "exec"), mod.__dict__)
@@ -244,6 +260,7 @@ def _install_theme_extensions():
     mod.md_table_block = _table_block
     mod.ol_block = _ol_block
     mod.h4_block = _h4_block
+    mod.image_block = _image_block
     return mod
 
 
@@ -268,13 +285,15 @@ RE_H = re.compile(r"^(#{1,6})\s+(.*)$")
 RE_UL = re.compile(r"^\s*[-*+]\s+(.*)$")
 RE_OL = re.compile(r"^\s*\d+[.)]\s+(.*)$")
 RE_HR = re.compile(r"^-{3,}\s*$")
+# 独立成行的图片：![alt](url)
+RE_IMAGE_LINE = re.compile(r"^!\[(.*?)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)$")
 
 
 def parse_markdown(md):
     """把 Markdown 解析成 block 列表。
 
     返回的 block 是 ``(kind, payload)``，kind ∈
-    ``p / h3 / h4 / quote / note / ul / ol / code / table / hr``。
+    ``p / h3 / h4 / quote / note / ul / ol / code / table / hr / image``。
 
     约定：
     - ``> `` 开头 → quote
@@ -355,6 +374,14 @@ def parse_markdown(md):
                 items.append(RE_UL.match(lines[i]).group(1).strip())
                 i += 1
             blocks.append(("ul", items))
+            continue
+
+        # 独立成行的图片 ![alt](url)
+        m_img = RE_IMAGE_LINE.match(s)
+        if m_img:
+            flush()
+            blocks.append(("image", (m_img.group(1), m_img.group(2))))
+            i += 1
             continue
 
         # 有序列表
@@ -560,6 +587,8 @@ def _render_blocks(blocks):
             o.append(T.code_block(payload))
         elif kind == "table":
             o.append(T.md_table_block(payload))
+        elif kind == "image":
+            o.append(T.image_block(payload))
         elif kind == "hr":
             o.append(T.hr())
     return "".join(o)

@@ -293,7 +293,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>来源：<a href="https://marcpaul.io/logs/same-job-two-engines-innodb-and-iceberg-internals/">Same Job, Two Engines: InnoDB and Iceberg Internals</a>（<strong>Marc Paul，2026-09-14</strong>）<br>
+<blockquote>来源：<a href="https://marcpaul.io/logs/same-job-two-engines-innodb-and-iceberg-internals/" target="_blank" rel="noopener noreferrer">Same Job, Two Engines: InnoDB and Iceberg Internals</a>（<strong>Marc Paul，2026-09-14</strong>）<br>
 一手材料：文章包含<strong>作者自己的建表 DDL、分区配置、MERGE 语句、存储过程源码</strong>，以及一张完整的 11 项机制对照表。作者另有关于调度器、Spark shuffle、复制拓扑的配套文章。<br>
 本文为<strong>解读</strong>。第四节关于「他那个错误为什么必然发生」的分析、第五节的判断是笔者补充的部分。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
@@ -307,40 +307,40 @@
 <h2>一句话结论</h2>
 <p><strong>这篇文章的开头一句就把它的性质说清楚了，而这句话里有一个很诚实的动词</strong>：</p>
 <blockquote><strong>「我的股票分析仓库第一版在一个 OLTP 引擎上跑分析，第二版在 OLAP 栈上跑同样的东西。我选择 OLAP 栈是因为一个优化，但我必须理解 lakehouse 的一切才能利用它。」</strong></blockquote>
-<strong>「必须理解 lakehouse 的一切才能利用它」（had to understand everything about the lakehouse to take advantage of it）。</strong>
+<p><strong>「必须理解 lakehouse 的一切才能利用它」（had to understand everything about the lakehouse to take advantage of it）。</strong></p>
 <p><strong>我认为这个句子的后半段比前半段重要得多，因为它是这次迁移真正的成本，而它被绝大多数「换个数据库就好了」的讨论忽略</strong>：<strong>那个「一个优化」很具体，就是列裁剪（只读查询用到的列）。而为了拿到这个优化，作者花了大约一个月才搞懂 lakehouse 的查询优化器，而他的原话是</strong>：</p>
 <blockquote><strong>「我的 lakehouse 的查询优化器花了我大约一个月才理解，因为这是一个相对复杂的话题，而且它是我少数几个无法与自己 OLTP 背景联系起来的概念之一。」</strong></blockquote>
-<strong>而这次迁移的收益，他用一个数字给了</strong>：
+<p><strong>而这次迁移的收益，他用一个数字给了</strong>：</p>
 <blockquote><strong>「我的指标表有 36 列。当一个指标需要 <code>close</code> 和 <code>volume</code> 时，我终于可以说那两列被读了，而其他 34 列留在磁盘上它们该在的地方。只花了我大约 8,000 字和 9 个月。」</strong></blockquote>
-<strong>「8,000 字和 9 个月」（about 8,000 words and 9 months）。我认为这两个数字放在一起，是这篇文章最诚实的一处自我评价</strong>：<strong>一个「只读两列」的优化，代价是九个月。</strong>
+<p><strong>「8,000 字和 9 个月」（about 8,000 words and 9 months）。我认为这两个数字放在一起，是这篇文章最诚实的一处自我评价</strong>：<strong>一个「只读两列」的优化，代价是九个月。</strong></p>
 <h2>一、InnoDB 的三个保证，以及它们各自在什么场景下变成负担</h2>
 <p><strong>作者对 InnoDB 的总结只有三句话，而我认为这个归纳方式很值得学，因为他把每条都写成了「它对什么好，对什么坏」</strong>：</p>
 <p><strong>第一：行把所有列存在一起。</strong></p>
 <blockquote><strong>「为一个 symbol 取一根 bar 只碰到磁盘上的一个位置，这正是摄取想要的。一个需要两列的指标仍然要通过缓冲池取回每一列。」</strong></blockquote>
-<strong>这就是问题的种子。</strong> <strong>「取回每一列」在写入时是优势（一次顺序写），在分析时是劣势（读 2 列付 36 列的 I/O）。</strong>
+<p><strong>这就是问题的种子。</strong> <strong>「取回每一列」在写入时是优势（一次顺序写），在分析时是劣势（读 2 列付 36 列的 I/O）。</strong></p>
 <p><strong>第二：索引加快读，减慢写。</strong></p>
 <blockquote><strong>「每个索引都是它自己的一棵 B 树，而每次写入必须更新表里所有的 B 树。B 树读取极其快。任何索引的目标都是以更慢的写入为代价加快读取。非常适合选择性读取，对写入密集的摄取工作非常糟糕。」</strong></blockquote>
-<strong>而他把这条用在了自己的设计上，而这个决定我认为是对的</strong>：
-<blockquote><strong>「这就是为什么我的 <code>Raw<em></code> 表只有一个主键，以及为什么接收 <code>Raw</em></code> 工作的那些表有重度索引和分区。」</strong></blockquote>
-<strong>第三：undo log 让读写并发。</strong>
+<p><strong>而他把这条用在了自己的设计上，而这个决定我认为是对的</strong>：</p>
+<blockquote><strong>「这就是为什么我的 <code>Raw*</code> 表只有一个主键，以及为什么接收 <code>Raw*</code> 工作的那些表有重度索引和分区。」</strong></blockquote>
+<p><strong>第三：undo log 让读写并发。</strong></p>
 <p><strong>这一段是全文对 MVCC 解释得最清楚的一段，我完整保留</strong>：</p>
 <blockquote><strong>「当一个行被更新或删除时，旧值被存在一个叫 undo log 的东西里。如果一个会话在写入期间读这张表，旧值从 undo log 来。插入也会得到一个更小的 undo log，它存的是表和被插入的主键，这样 InnoDB 知道如果插入没有提交要回滚什么。</strong>提交时，插入的 undo log 被立即清除<strong>。更新或删除的 undo log 加入一个叫 history list 的全局链表，这就是让会话能读到已变更数据的旧版本的东西。对更新和删除密集的数据库，history list 增长很快，那会是一场噩梦。幸运的是某个比我聪明的人做了解法，而你猜对了，它内建在 InnoDB 里。InnoDB 标记 undo log 在每一个在提交之前或期间开始的会话都完成之后被清除。」</strong></blockquote>
-<strong>「每一个在提交之前或期间开始的会话都完成之后」（once every session that started before or during the commit has finished）。我认为这句话是理解 MVCC 成本的关键，而作者把它翻译成了一句人话</strong>：
+<p><strong>「每一个在提交之前或期间开始的会话都完成之后」（once every session that started before or during the commit has finished）。我认为这句话是理解 MVCC 成本的关键，而作者把它翻译成了一句人话</strong>：</p>
 <blockquote><strong>「在一堆技术术语之后，英文翻译是 MVCC 允许插入和更新发生而不阻塞读取。」</strong></blockquote>
-<strong>但注意那个条件：它不阻塞读取，代价是 undo log 必须留着，直到所有旧会话结束。</strong> <strong>而这个代价在长事务或慢查询多的系统里会突然变成主要问题，因为 history list 会一直涨。而这也解释了为什么 Iceberg 那条路能省掉这一整块：</strong> <strong>它根本不需要 undo log，因为旧版本就是旧文件。</strong>
+<p><strong>但注意那个条件：它不阻塞读取，代价是 undo log 必须留着，直到所有旧会话结束。</strong> <strong>而这个代价在长事务或慢查询多的系统里会突然变成主要问题，因为 history list 会一直涨。而这也解释了为什么 Iceberg 那条路能省掉这一整块：</strong> <strong>它根本不需要 undo log，因为旧版本就是旧文件。</strong></p>
 <h2>二、他承认的那个错误，以及它为什么是必然的</h2>
 <p><strong>这一节是全文最有价值的部分，因为作者花了很大篇幅讲一个他自己搞砸的设计，而没有用「我学到了」来草草收尾。</strong></p>
 <p><strong>错误的形状是</strong>：</p>
 <blockquote><strong>「在不知不觉中，我用一个 OLAP 设计的基本原则设计了我的 InnoDB 数据库。<code>financialdata</code> 持有 <code>datetime</code>、<code>open</code>、<code>high</code>、<code>low</code> 和 <code>close</code>。它原本是唯一持有 <code>datetime</code> 的表。任何我想查询的技术指标都需要 join 到 <code>financialdata</code> 表，才知道那个指标的行是为哪天算的。」</strong></blockquote>
-<strong>而他的自我评价很硬</strong>：
+<p><strong>而他的自我评价很硬</strong>：</p>
 <blockquote><strong>「那是我最糟的数据设计之一。一个我在数据库超过 100GB 之后才意识到行不通的设计。修它是残酷的。」</strong></blockquote>
-<strong>「在超过 100GB 之后才意识到」（only after the database had over 100GBs of data）。</strong>
+<p><strong>「在超过 100GB 之后才意识到」（only after the database had over 100GBs of data）。</strong></p>
 <p><strong>而我认为这个错误值得展开，因为作者给的自我解释里有一个很精确的诊断</strong>：</p>
 <blockquote><strong>「公平地说，这个设计背后的想法是合理的。<code>financialdata</code> 有 <code>datetime</code>、<code>open</code>、<code>close</code>、<code>low</code>、<code>high</code> 和 <code>StockID</code>，以及相当多其他列，正如你从上面的 schema 看到的。当我开始做这个数据库时，我以为我每次查询都需要这些列。当我开始做这个数据库时，我甚至不知道最重要的价格是收盘价。」</strong></blockquote>
-<strong>「我甚至不知道最重要的价格是收盘价」（I didn't even know the most important price is the closing price）。</strong>
+<p><strong>「我甚至不知道最重要的价格是收盘价」（I didn't even know the most important price is the closing price）。</strong></p>
 <p><strong>我认为这句话解释了那个错误的真正来源，而它不是「设计失误」，是「领域知识不足」</strong>：<strong>他当时的模型是「行情数据是一张大表，指标都是从它派生出来的」。而这个模型在关系上是对的（指标确实从行情派生），在物理上却是错的（分析时你不需要每次把整张行情表拖过来）。</strong> <strong>而「我不知道最重要的价格是收盘价」这句话说明，他在建表时甚至还没确定自己的查询会长什么样。于是在不确定查询形状的时候，他选了一个「把所有东西放一起」的设计，而这个选择的动机是</strong>：</p>
 <blockquote><strong>「我把它用作我的基表，根据我正在处理的指标『挑选』我想要的列，这个想法听起来跟只查询我想要的列、忽略表里其他列， darn 地相似。」</strong></blockquote>
-<strong>「听起来跟只查询我想要的列、忽略表里其他列，darn 地相似」。</strong> <strong>这句话是整篇文章里最精妙的一处自我嘲讽，因为他描述的正是他后来迁移的</strong>目的<strong>：</strong>他当时用「逻辑上挑选列」模拟了他真正需要的东西（物理上只读那些列），而两者的差距就是那 34 列的无用 I/O。**
+<p><strong>「听起来跟只查询我想要的列、忽略表里其他列，darn 地相似」。</strong> <strong>这句话是整篇文章里最精妙的一处自我嘲讽，因为他描述的正是他后来迁移的</strong>目的<strong>：</strong>他当时用「逻辑上挑选列」模拟了他真正需要的东西（物理上只读那些列），而两者的差距就是那 34 列的无用 I/O。**</p>
 <p><strong>而修复方式也值得看，因为它是「在 100GB 表上补一列」的教科书做法</strong>：</p>
 <pre><code class="sql">CREATE TEMPORARY TABLE IF NOT EXISTS t
 (StockDate DATETIME, FinancialDataID INT PRIMARY KEY);
@@ -349,66 +349,54 @@ INSERT INTO t(StockDate, FinancialDataID)
 UPDATE sar sr INNER JOIN t ON sr.FinancialDataID = t.FinancialDataID
   SET sr.StockDate = t.StockDate;
 -- 对 macd / directionalmovement / boilerband / chaikinoscillator 重复
-DROP TEMPORARY TABLE IF EXISTS t;
-</code></pre>
+DROP TEMPORARY TABLE IF EXISTS t;</code></pre>
 <p><strong>而他的调度方式是</strong>：</p>
 <blockquote><strong>「每个定时事件只跑这些更新中的一个，其余更新被注释掉。」</strong></blockquote>
-<strong>「其余更新被注释掉」（with the other updates commented out）。我认为这个细节值得单独点出来，因为它是一个真实的运维妥协</strong>：<strong>他没法在一个存储过程里同时跑五条 UPDATE（那会锁住五张表），所以他复制了五份存储过程，每次只启用一条，用五个定时事件错开跑。</strong> <strong>而这个做法在功能上是对的，在可维护性上是灾难</strong>，因为<strong>你改了逻辑就要同步改五份，而「其余被注释掉」意味着这五份代码里永远有 80% 是死的。</strong>
+<p><strong>「其余更新被注释掉」（with the other updates commented out）。我认为这个细节值得单独点出来，因为它是一个真实的运维妥协</strong>：<strong>他没法在一个存储过程里同时跑五条 UPDATE（那会锁住五张表），所以他复制了五份存储过程，每次只启用一条，用五个定时事件错开跑。</strong> <strong>而这个做法在功能上是对的，在可维护性上是灾难</strong>，因为<strong>你改了逻辑就要同步改五份，而「其余被注释掉」意味着这五份代码里永远有 80% 是死的。</strong></p>
 <h2>三、Iceberg 的「俄罗斯套娃」：三层剪枝，以及它为什么需要三层</h2>
 <p><strong>作者对 lakehouse 的解释用了一个很好的比喻，我先把它完整引出来</strong>：</p>
 <blockquote><strong>「我喜欢把优化层想成那些俄罗斯嵌套娃娃，我们从最小的娃娃开始，把每个娃娃放进下一个更小的娃娃里，从数据文件开始、到 metadata.json 文件结束，为每一层建立摘要。」</strong></blockquote>
-<strong>而三层分别是</strong>：
+<p><strong>而三层分别是</strong>：</p>
 <p><strong>最小的一层：数据文件（Parquet）。</strong></p>
 <blockquote><strong>「数据文件就是它听起来的样子，表里的数据写成一个叫 parquet 文件的文件。parquet 文件为列式系统优化，让我们能挑选要读的列，而不是总要读每一列。数据文件是最小的娃娃，是因为每个 parquet 文件有不同的行组，以及每个行组的摘要，具体是每列的最小/最大值和 null 数量。」</strong></blockquote>
-<strong>第二层：Manifest。</strong>
+<p><strong>第二层：Manifest。</strong></p>
 <blockquote><strong>「数据文件被一种叫 Manifest 的东西分组。就像行组一样，一个 Manifest 追踪每列的最小/最大值和 null 计数，它还追踪每个数据文件的分区值、文件大小和位置。和行组同一个想法，但摘要更大。」</strong></blockquote>
-<strong>第三层：Manifest List。</strong>
+<p><strong>第三层：Manifest List。</strong></p>
 <blockquote><strong>「最大的嵌套娃娃是 Manifest List。和上一步完全一样，Manifest List 是比 Manifests 高一级的摘要。Manifest List 给我们每个 Manifest 计算出的最小/最大分区值，以及每个 Manifest 是在哪个分区版本下写的。追踪分区版本让 split planning 成为可能。」</strong></blockquote>
-<strong>而完整的查询路径，作者写成了一段我认为可以直接当教材用的流程</strong>：
+<p><strong>而完整的查询路径，作者写成了一段我认为可以直接当教材用的流程</strong>：</p>
 <blockquote><strong>「执行器从最大的嵌套娃娃开始，向 Polaris 请求表指向当前元数据文件的指针。元数据文件命名当前快照。快照指向它的 manifest list（第二大娃娃），而规划器计算出我的 symbol 的 bucket，只进入这个 symbol 所属的那个 bucket。我们只检查分区范围包含我们计算出的 symbol 的那些 Manifests（第三大娃娃）。在之前剪枝中存活下来的数据文件检查每个行组的统计信息，剪掉我们不需要检查的任何行组（最小的娃娃），然后我们解码仍然活着的行组的数据文件。」</strong></blockquote>
-<strong>「三层数据过滤，在 lakehouse 的显著不同层级上。」</strong>
+<p><strong>「三层数据过滤，在 lakehouse 的显著不同层级上。」</strong></p>
 <p><strong>而我认为这里最值得注意的技术点，是「分区可以后加」这件事</strong>：</p>
 <blockquote><strong>「使用 Iceberg 的一个奢侈之处是它把任何分区都计算并存在元数据里。这意味着如果我想给分区加一列，我在读取时付代价。数据按分区版本分组，每个版本独立剪枝，之后再把剪枝结果合并。这一步叫 split planning。」</strong></blockquote>
-<strong>「如果我想给分区加一列，我在读取时付代价」（if I want to add a column to the partition I pay the price during reads）。</strong>
+<p><strong>「如果我想给分区加一列，我在读取时付代价」（if I want to add a column to the partition I pay the price during reads）。</strong></p>
 <p><strong>这句话是理解两种引擎差异的关键</strong>：<strong>在 InnoDB 里，改分区意味着物理重建整张表（作者说几天到一周）；在 Iceberg 里，改分区只是一个元数据变更，代价被推迟到读取时的 split planning。</strong> <strong>而作者对 InnoDB 那个代价的描述很具体</strong>：</p>
 <blockquote><strong>「在 v1 里给一张表分区花了几天到一周，我做 v1 的时候有大量的喝咖啡休息时间，而如果我想改一个分区，我就得把整张表重新分区一遍，这就是为什么我选择了一个比正常更大的哈希值 100。约 13,000 个 StockID 被分成 130 个一组，意味着我要过好几年才需要重新分区。」</strong></blockquote>
-<strong>「选 100 这个大于正常的哈希」（a larger than normal hash of 100）。我认为这个细节是全文里最实用的一条经验，因为它是一个「用空间换未来」的具体决策</strong>：<strong>他知道改分区很贵，所以他选了 100 个分区（远超当时需要的），用更多的文件换来「几年内不用再改」。</strong>
+<p><strong>「选 100 这个大于正常的哈希」（a larger than normal hash of 100）。我认为这个细节是全文里最实用的一条经验，因为它是一个「用空间换未来」的具体决策</strong>：<strong>他知道改分区很贵，所以他选了 100 个分区（远超当时需要的），用更多的文件换来「几年内不用再改」。</strong></p>
 <h2>四、两种原子提交，恰好是相反的解法</h2>
 <p><strong>这一节我认为是全文技术含量最高的部分，因为作者把 InnoDB 的「悲观」和 Iceberg 的「乐观」放在了同一个问题的两个答案上，而且他自己两版都实现过。</strong></p>
 <p><strong>Iceberg 的提交路径是这样</strong>：</p>
 <blockquote><strong>「写入者构建描述新文件的新 manifests、为新快照的一个新 manifest list，以及一个把快照追加到表历史的新元数据文件。然后它请求 Polaris 把表的指针从旧元数据文件换到新的。</strong>那个交换是原子的，而它就是整个提交<strong>。」</strong></blockquote>
-<strong>而并发写入的冲突处理是乐观并发</strong>：
+<p><strong>而并发写入的冲突处理是乐观并发</strong>：</p>
 <blockquote><strong>「两个写入者竞争会产生两个潜在的元数据文件，而更快的那个检查表当前版本是否匹配它读到的版本，然后赢得交换。较慢的那个看到不匹配，然后检查新表版本里改变的数据文件是否和它处理的是同一批。如果数据文件不同，较慢的写入者把它的变更重新应用到新的当前快照上，并再次尝试交换。如果数据文件相同，它失败并按重试逻辑再试。」</strong></blockquote>
-<strong>而作者给了 v1 的做法作对照，而它恰好相反</strong>：
+<p><strong>而作者给了 v1 的做法作对照，而它恰好相反</strong>：</p>
 <blockquote><strong>「我的 v1 咨询锁用相反的方式解决了同一个竞争，第二个写入者等它的轮次，而不是输掉然后重试。」</strong></blockquote>
-<strong>「等它的轮次」vs「输掉然后重试」。</strong> <strong>我认为这个对照是整篇文章最有价值的一条工程经验，因为它是「同一个问题，两种代价」的干净对照</strong>：<strong>悲观锁的代价是等待（写入者的时间浪费在排队上），乐观锁的代价是重做（失败者要把工作重做一遍）。</strong> <strong>而选择哪一个，取决于冲突频率：</strong> <strong>冲突少，乐观锁几乎零成本；冲突多，乐观锁会陷入「重做 → 又冲突 → 再重做」的活锁。而作者的场景（一个 symbol 一个 bucket，13,000 个 symbol 分 100 个分区）冲突率极低，所以乐观是对的。</strong>
+<p><strong>「等它的轮次」vs「输掉然后重试」。</strong> <strong>我认为这个对照是整篇文章最有价值的一条工程经验，因为它是「同一个问题，两种代价」的干净对照</strong>：<strong>悲观锁的代价是等待（写入者的时间浪费在排队上），乐观锁的代价是重做（失败者要把工作重做一遍）。</strong> <strong>而选择哪一个，取决于冲突频率：</strong> <strong>冲突少，乐观锁几乎零成本；冲突多，乐观锁会陷入「重做 → 又冲突 → 再重做」的活锁。而作者的场景（一个 symbol 一个 bucket，13,000 个 symbol 分 100 个分区）冲突率极低，所以乐观是对的。</strong></p>
 <p><strong>而读取侧，两个引擎用了完全不同的机制达到同一个效果</strong>：</p>
 <blockquote><strong>「读取也不被迫等待。一个读取者持有它开始时那个快照，而不可变文件不可能在它底下改变。前面 InnoDB 的 undo log 正是为了这个保证而存在的。引擎保存旧的行的版本，好让读取者在写入期间继续工作，而 Iceberg 跳过了保存，因为旧版本就是旧文件。」</strong></blockquote>
-<strong>「Iceberg 跳过了保存，因为旧版本就是旧文件」（Iceberg skips the saving because the old version is the old file）。</strong>
+<p><strong>「Iceberg 跳过了保存，因为旧版本就是旧文件」（Iceberg skips the saving because the old version is the old file）。</strong></p>
 <p><strong>我认为这句话是整篇文章的解释力最强的一句，因为它把 MVCC 的两条实现路线说成了一件很朴素的事</strong>：<strong>InnoDB 要「保存旧版本」（在 undo log 里），因为它就地修改（update in place）；Iceberg 不用「保存」，因为它本来就不改（immutable files）。</strong> <strong>而「不可变」这个属性把整个 MVCC 问题消掉了：</strong> <strong>你不需要保留旧版本，因为你从来没有覆盖过它。</strong></p>
 <p><strong>而写入中途失败的处理，也是同一个属性的直接推论</strong>：</p>
 <blockquote><strong>「一个中途死掉的写入会在我的 lakehouse 里留下孤立的数据文件和一个空快照。没有读取者曾经看到它，而重试是安全的，因为 MERGE 的键让它幂等。在 v1 里我用临时表、反连接，以及成功提交后的删除。在 v2 里我用 MERGE 而不是 INSERT。」</strong></blockquote>
-<strong>「没有读取者曾经看到它」（No reader ever saw it）。</strong> <strong>这就是不可变性的价值：</strong> <strong>一个只写了一半的提交在 InnoDB 里需要清理（临时表 + 反连接 + 删除），而在 Iceberg 里它只是一个没人指向的文件，重试时覆盖掉就行。</strong>
+<p><strong>「没有读取者曾经看到它」（No reader ever saw it）。</strong> <strong>这就是不可变性的价值：</strong> <strong>一个只写了一半的提交在 InnoDB 里需要清理（临时表 + 反连接 + 删除），而在 Iceberg 里它只是一个没人指向的文件，重试时覆盖掉就行。</strong></p>
 <h2>五、那张对照表，以及我读它的方式</h2>
 <p><strong>作者给了 11 个问题的对照。我把它完整保留，因为这是全文最有复用价值的部分</strong>：</p>
-<table>
-<tr><th>问题</th><th>InnoDB（v1）</th><th>Iceberg + Spark + Polaris（v2）</th></tr>
-<tr><td>什么让读取快</td><td><strong>二级 B 树索引，在每次写入时付费</strong></td><td><strong>写入时的元数据，三层剪枝</strong></td></tr>
-<tr><td>一次写入的成本</td><td><strong>行就地更新，加上每个索引</strong></td><td><strong>新的不可变文件，加上一次快照提交</strong></td></tr>
-<tr><td>改分区的成本</td><td><strong>整表重建，几天到一周</strong></td><td><strong>一次元数据变更，split planning 覆盖旧文件</strong></td></tr>
-<tr><td>扫描怎么读列</td><td><strong>整行通过缓冲池</strong></td><td><strong>只读查询点名的列</strong></td></tr>
-<tr><td>并发写入者</td><td><strong>我自己管理的咨询锁</strong></td><td><strong>乐观指针交换，输家重试</strong></td></tr>
-<tr><td>读取者看到什么</td><td><strong>MVCC 行版本</strong></td><td><strong>一个不可变快照</strong></td></tr>
-<tr><td>中途死掉的写入</td><td><strong>临时表、反连接、提交后删除</strong></td><td><strong>孤立文件、无快照、重试幂等</strong></td></tr>
-<tr><td>行数</td><td><strong>跨每一行的索引扫描</strong></td><td><strong>快照摘要、元数据读取</strong></td></tr>
-<tr><td>维护账单</td><td><strong>索引和分区的日常维护</strong></td><td><strong>压缩和快照过期</strong></td></tr>
-</table>
+<table><thead><tr><th>问题</th><th>InnoDB（v1）</th><th>Iceberg + Spark + Polaris（v2）</th></tr></thead><tbody><tr><td>什么让读取快</td><td><strong>二级 B 树索引，在每次写入时付费</strong></td><td><strong>写入时的元数据，三层剪枝</strong></td></tr><tr><td>一次写入的成本</td><td><strong>行就地更新，加上每个索引</strong></td><td><strong>新的不可变文件，加上一次快照提交</strong></td></tr><tr><td>改分区的成本</td><td><strong>整表重建，几天到一周</strong></td><td><strong>一次元数据变更，split planning 覆盖旧文件</strong></td></tr><tr><td>扫描怎么读列</td><td><strong>整行通过缓冲池</strong></td><td><strong>只读查询点名的列</strong></td></tr><tr><td>并发写入者</td><td><strong>我自己管理的咨询锁</strong></td><td><strong>乐观指针交换，输家重试</strong></td></tr><tr><td>读取者看到什么</td><td><strong>MVCC 行版本</strong></td><td><strong>一个不可变快照</strong></td></tr><tr><td>中途死掉的写入</td><td><strong>临时表、反连接、提交后删除</strong></td><td><strong>孤立文件、无快照、重试幂等</strong></td></tr><tr><td>行数</td><td><strong>跨每一行的索引扫描</strong></td><td><strong>快照摘要、元数据读取</strong></td></tr><tr><td>维护账单</td><td><strong>索引和分区的日常维护</strong></td><td><strong>压缩和快照过期</strong></td></tr></tbody></table>
 <p><strong>而我认为这张表最值得注意的不是左边还是右边，是最后一行</strong>：<strong>「维护账单」（The maintenance bill）。</strong> <strong>因为它是唯一一行没有「谁更好」的</strong>：<strong>左边要维护索引和分区，右边要维护压缩（compaction）和快照过期（snapshot expiration）。</strong> <strong>而这恰好呼应了作者自己在别处的一句坦白，也就是那 44 个退役的 <code>metadata.json</code> 文件</strong>：</p>
 <blockquote><strong>「这里是我们罕见地看到 44 个退役的 metadata.json 文件。信不信由你，Postgres 大概在这些文件全新的时候指向过它们每一个。现在它们作为提醒存在，提醒我要设置自动删除旧的 metadata.json。说实话，它们现在是 lakehouse 的一部分了，删掉它们有点不礼貌。」</strong></blockquote>
-<strong>「删掉它们有点不礼貌」（it would be rude to delete them）。</strong> <strong>这句玩笑背后是一个真实的运维债：</strong> <strong>lakehouse 的「不可变性」有一个副作用：每个提交都留一个新文件，而没人自动清理它们。所以那 44 个文件不是 bug，是「你忘了配过期策略」的物证。</strong>
+<p><strong>「删掉它们有点不礼貌」（it would be rude to delete them）。</strong> <strong>这句玩笑背后是一个真实的运维债：</strong> <strong>lakehouse 的「不可变性」有一个副作用：每个提交都留一个新文件，而没人自动清理它们。所以那 44 个文件不是 bug，是「你忘了配过期策略」的物证。</strong></p>
 <p><strong>而另一处他也顺带承认了没做的优化</strong>：</p>
 <blockquote><strong>「我还没在 lakehouse 里用过 <code>WRITE ORDERED BY</code>，因为我当时很高兴 lakehouse 能工作，就没回头去加 <code>WRITE ORDERED BY symbol, time_stamp DESC</code>。注意这正是我第一版用作唯一键的组合。」</strong></blockquote>
-<strong>「注意这正是我第一版用作唯一键的组合」（Notice how it's the same combo my first version used as a unique key）。</strong> <strong>这个观察很有价值：</strong> <strong>他在 v1 里用索引实现的「按 symbol 和时间有序」，在 v2 里需要显式声明 <code>WRITE ORDERED BY</code> 才能得到，而他没有声明。</strong> <strong>也就是说：迁移之后，那个「有序」的属性不会自动跟过来，而它的缺失会直接影响行组的 min/max 剪枝效率。</strong> <strong>这是一个典型的迁移陷阱，而作者自己承认了还没补。</strong>
+<p><strong>「注意这正是我第一版用作唯一键的组合」（Notice how it's the same combo my first version used as a unique key）。</strong> <strong>这个观察很有价值：</strong> <strong>他在 v1 里用索引实现的「按 symbol 和时间有序」，在 v2 里需要显式声明 <code>WRITE ORDERED BY</code> 才能得到，而他没有声明。</strong> <strong>也就是说：迁移之后，那个「有序」的属性不会自动跟过来，而它的缺失会直接影响行组的 min/max 剪枝效率。</strong> <strong>这是一个典型的迁移陷阱，而作者自己承认了还没补。</strong></p>
 <h2>六、我的判断</h2>
 <p><strong>第一，这篇文章真正的价值不在于「OLAP 比 OLTP 好」，而在于它把「引擎选择」还原成了「访问模式的形状」。</strong> <strong>InnoDB 的三个保证（行存、索引、undo log）都是为「按行、按主键、小批量读写」优化的。而分析工作的形状是「按列、大范围、只读」。两者不是先进与落后，是形状不匹配。</strong> <strong>而这一点在作者自己的例子里有最干净的证明：他那个错误设计（日期只在主表里）在</strong>逻辑上<strong>完全正确，它在</strong>物理上<strong>错，而错的原因是他当时不知道自己的查询会长什么样。</strong> <strong>所以我认为迁移的真正触发点不是「数据量到了 100GB」，而是「他终于知道自己的查询形状了」。</strong></p>
 <p><strong>第二，「三层剪枝」这套设计最聪明的地方，是它把一个不可解的问题拆成了三个可解的小问题。</strong> <strong>如果只有一层元数据，那么「在一张有几十万个文件的表里找符合条件的数据」是无解的，因为你必须读完所有元数据。而 Iceberg 的做法是递归地建摘要：行组摘要 → manifest 摘要（含分区值）→ manifest list 摘要（含分区版本）。于是每次查询只需要在每一层读极少量元数据。</strong> <strong>而我认为这个结构的通用性值得强调，因为作者自己也指出来了</strong>：<strong>「这是大多数列式仓库和 lakehouse 背后的通用模型。Snowflake、BigQuery 和 Delta Lake 跑的都是它的某种配方。高层路径是写入时打统计、读任何数据之前先剪枝、列式解码，主要的区别只是厂商之间的名字。学一次意味着学会其中大部分。」</strong></p>
@@ -416,48 +404,9 @@ DROP TEMPORARY TABLE IF EXISTS t;
 <p><strong>第四，关于「8,000 字和 9 个月」这个自我评价，我的判断是它其实偏乐观了。</strong> <strong>因为那 9 个月里真正花时间的不是迁移，是理解。而理解的部分是可迁移的</strong>：<strong>他明确说「学一次意味着学会其中大部分」。而反过来，如果他不理解就迁移，他会得到一个「能跑但和 v1 一样慢」的 v2，因为默认配置下没有 <code>WRITE ORDERED BY</code>、没有分区版本规划、没有定期压缩。</strong> <strong>所以我认为这篇文章的真实结论应该这样表述：从 OLTP 换到 lakehouse，你换掉的不是引擎，是「引擎替你做的决定」。</strong> <strong>InnoDB 替你决定了很多事（B 树怎么维护、MVCC 怎么清理），而 lakehouse 把这些决定交给你，而交给你的时候不会提醒你。</strong></p>
 <blockquote><strong>最后一点是可操作的建议，来自作者这篇复盘的实际内容</strong>：<strong>如果你正在考虑类似的迁移，那么这篇文章里最该先做的一件事不是选引擎，是</strong>把自己的查询形状写下来<strong>：我的分析真正读几列？我的过滤条件是什么？我多久改一次分区？</strong> <strong>因为作者那个 100GB 的教训，根源就是他在写第一版时不知道这些答案。而这个教训的成本，按他自己的说法，是「残酷的」修复过程。</strong> <strong>而反过来，如果你已经知道了查询形状，那么这篇文章那张 11 项对照表可以直接当检查清单用：把每一行换成你自己的数字，答案会自己出现。</strong></blockquote>
 <h2>关键事实速查</h2>
-<table>
-<tr><th>项目</th><th>内容</th></tr>
-<tr><td><strong>文章性质</strong></td><td><strong>个人技术复盘</strong>（marcpaul.io，Marc Paul，<strong>2026-09-14</strong>）：自建股票分析系统 <strong>v1（OLTP）→ v2（OLAP）</strong> 的逐项机制对照</td></tr>
-<tr><td>⭐ <strong>迁移的唯一动机</strong></td><td><strong>「我选择 OLAP 栈是因为一个优化，但我必须理解 lakehouse 的一切才能利用它。」</strong></td></tr>
-<tr><td>⭐ <strong>那个优化的收益</strong></td><td><strong>「我的指标表有 36 列。当一个指标需要 <code>close</code> 和 <code>volume</code> 时，我终于可以说那两列被读了，而其他 34 列留在磁盘上它们该在的地方。只花了我大约 8,000 字和 9 个月。」</strong></td></tr>
-<tr><td><strong>理解成本</strong></td><td><strong>「我的 lakehouse 的查询优化器花了我大约一个月才理解……它是我少数几个无法与自己 OLTP 背景联系起来的概念之一。」</strong></td></tr>
-<tr><td>⭐ <strong>InnoDB 保证 ①</strong></td><td><strong>行把所有列存在一起</strong>：取一根 bar 碰一个磁盘位置（利于摄取）；<strong>「一个需要两列的指标仍然要通过缓冲池取回每一列」</strong></td></tr>
-<tr><td>⭐ <strong>InnoDB 保证 ②</strong></td><td><strong>索引加快读、减慢写</strong>：<strong>「每个索引都是它自己的一棵 B 树，而每次写入必须更新表里所有的 B 树」</strong>；<strong>「非常适合选择性读取，对写入密集的摄取工作非常糟糕」</strong></td></tr>
-<tr><td>⭐ <strong>InnoDB 保证 ③</strong></td><td><strong>undo log 让读写并发</strong>：插入的 undo log <strong>提交时立即清除</strong>；更新/删除的进入 <strong>history list</strong>；<strong>「InnoDB 标记 undo log 在每一个在提交之前或期间开始的会话都完成之后被清除」</strong>；这套系统叫 <strong>MVCC</strong></td></tr>
-<tr><td><strong>MVCC 的人话翻译</strong></td><td><strong>「MVCC 允许插入和更新发生而不阻塞读取。」</strong></td></tr>
-<tr><td>⚠️ <strong>他自己的错误设计</strong></td><td><strong><code>financialdata</code> 原本是唯一持有 <code>datetime</code> 的表</strong>，所有指标表都要 join 回它才知道日期；<strong>「那是我最糟的数据设计之一。一个我在数据库超过 100GB 之后才意识到行不通的设计。修它是残酷的。」</strong></td></tr>
-<tr><td><strong>错误根源（他的自述）</strong></td><td><strong>「当我开始做这个数据库时，我甚至不知道最重要的价格是收盘价。」</strong>；<strong>「我把它用作基表，根据指标『挑选』想要的列，这个想法听起来跟只查询我想要的列、忽略其他列，darn 地相似。」</strong></td></tr>
-<tr><td><strong>v1 的分区决策</strong></td><td><strong><code>PARTITION BY HASH(StockID) PARTITIONS 100</code></strong>；<strong>「如果我想改一个分区，我就得把整张表重新分区一遍，这就是为什么我选择了一个比正常更大的哈希值 100」</strong>；<strong>「约 13,000 个 StockID 被分成 130 个一组，意味着我要过好几年才需要重新分区」</strong></td></tr>
-<tr><td><strong>v1 改分区的代价</strong></td><td><strong>「给一张表分区花了几天到一周」</strong></td></tr>
-<tr><td><strong>补列的做法</strong></td><td>临时表 + 五条 <code>UPDATE ... INNER JOIN</code>；<strong>「每个定时事件只跑这些更新中的一个，其余更新被注释掉」</strong></td></tr>
-<tr><td><strong>v2 栈组成</strong></td><td><strong>Iceberg（表格式）+ Spark（计算）+ Polaris（catalog）+ MinIO（存储）</strong>；<strong>Parquet 文件</strong>；<strong>Polaris 是一个 Postgres 数据库加一个 API</strong></td></tr>
-<tr><td><strong>v2 分区 DDL</strong></td><td><code>USING iceberg PARTITIONED BY (bucket(16, symbol))</code>；<strong>「整个分区的事就是一句 DDL」</strong></td></tr>
-<tr><td>⭐ <strong>分区可后改</strong></td><td><strong>「使用 Iceberg 的一个奢侈之处是它把任何分区都计算并存在元数据里。这意味着如果我想给分区加一列，我在读取时付代价。数据按分区版本分组，每个版本独立剪枝，之后再把剪枝结果合并。这一步叫 split planning。」</strong></td></tr>
-<tr><td>⭐ <strong>三层剪枝（俄罗斯套娃）</strong></td><td><strong>① 行组</strong>（Parquet 内，每列 min/max + null 数）→ <strong>② Manifest</strong>（每列 min/max + null 数 + 每个数据文件的分区值、大小、位置）→ <strong>③ Manifest List</strong>（每个 Manifest 的 min/max 分区值 + <strong>分区版本</strong>）</td></tr>
-<tr><td>⭐ <strong>完整查询路径</strong></td><td><strong>向 Polaris 要指向当前 <code>metadata.json</code> 的指针 → 元数据命名当前快照 → 快照指向 manifest list → 算 symbol 的 bucket，只进那个 bucket → 只检查分区范围包含该 symbol 的 Manifests → 存活的数据文件检查每个行组统计，剪掉不需要的行组 → 解码存活的行组</strong></td></tr>
-<tr><td><strong>delete file 机制</strong></td><td>Manifest 追踪 <strong>Delete Files</strong>（已删除/更新的行）；<strong>「如果表存在 Delete Files，数据文件和 Delete Files 的合并在每次读取时发生。这就是 merge on read。」</strong>；用途是<strong>流式</strong>：<strong>「记下改了什么、以后再算，比立刻改快得多」</strong></td></tr>
-<tr><td><strong>作者对 Iceberg 的点评</strong></td><td><strong>「我保证我没拿赞助（暂时），但天啊 Netflix 真会写软件。」</strong></td></tr>
-<tr><td>⭐ <strong>原子提交的实现</strong></td><td><strong>「那个交换是原子的，而它就是整个提交。」</strong>（Polaris 只接受一次一个更新）</td></tr>
-<tr><td>⭐ <strong>乐观并发</strong></td><td>两个写入者产生两个元数据文件，<strong>快的检查版本匹配后赢得交换</strong>；<strong>慢的看到不匹配，检查数据文件是否相同：不同则把变更重应用到新快照再试，相同则失败并按重试逻辑再试</strong></td></tr>
-<tr><td>⭐ <strong>与 v1 的对照</strong></td><td><strong>「我的 v1 咨询锁用相反的方式解决了同一个竞争，第二个写入者等它的轮次，而不是输掉然后重试。」</strong></td></tr>
-<tr><td>⭐ <strong>读取侧对照</strong></td><td><strong>「InnoDB 的 undo log 正是为了这个保证而存在的。引擎保存旧的行的版本……而 Iceberg 跳过了保存，因为旧版本就是旧文件。」</strong></td></tr>
-<tr><td><strong>写入中途失败</strong></td><td>v1 用<strong>临时表、反连接、成功提交后删除</strong>；v2 留下<strong>孤立数据文件 + 空快照</strong>，<strong>「没有读取者曾经看到它，而重试是安全的，因为 MERGE 的键让它幂等」</strong></td></tr>
-<tr><td><strong>行数怎么算</strong></td><td>v1 <strong>跨每一行的索引扫描</strong>；v2 <strong>快照摘要、元数据读取</strong></td></tr>
-<tr><td>⚠️ <strong>维护账单（唯一没有胜负的一项）</strong></td><td>v1：<strong>索引和分区维护</strong>；v2：<strong>压缩（compaction）和快照过期（snapshot expiration）</strong></td></tr>
-<tr><td>⚠️ <strong>他承认没做的优化</strong></td><td><strong>「我还没在 lakehouse 里用过 <code>WRITE ORDERED BY</code>……没回头去加 <code>WRITE ORDERED BY symbol, time_stamp DESC</code>。注意这正是我第一版用作唯一键的组合。」</strong></td></tr>
-<tr><td>⚠️ <strong>那 44 个文件</strong></td><td><strong>「罕见地看到 44 个退役的 metadata.json 文件……现在它们作为提醒存在，提醒我要设置自动删除旧的 metadata.json。」</strong></td></tr>
-<tr><td><strong>通用性</strong></td><td><strong>「这是大多数列式仓库和 lakehouse 背后的通用模型。Snowflake、BigQuery 和 Delta Lake 跑的都是它的某种配方……学一次意味着学会其中大部分。」</strong></td></tr>
-<tr><td><strong>配套文章</strong></td><td>v1 的调度/worker 池/暂存管线 → airflow 那篇；v2 的 Spark shuffle（<strong>13 个 shuffle 变成 1 个 Exchange</strong>）→ 即将发布；MySQL 复制 → StatefulSet 那篇；<strong>41 个存储过程</strong>在仓库的 legacy 目录</td></tr>
-</table>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td><strong>文章性质</strong></td><td><strong>个人技术复盘</strong>（marcpaul.io，Marc Paul，<strong>2026-09-14</strong>）：自建股票分析系统 <strong>v1（OLTP）→ v2（OLAP）</strong> 的逐项机制对照</td></tr><tr><td>⭐ <strong>迁移的唯一动机</strong></td><td><strong>「我选择 OLAP 栈是因为一个优化，但我必须理解 lakehouse 的一切才能利用它。」</strong></td></tr><tr><td>⭐ <strong>那个优化的收益</strong></td><td><strong>「我的指标表有 36 列。当一个指标需要 <code>close</code> 和 <code>volume</code> 时，我终于可以说那两列被读了，而其他 34 列留在磁盘上它们该在的地方。只花了我大约 8,000 字和 9 个月。」</strong></td></tr><tr><td><strong>理解成本</strong></td><td><strong>「我的 lakehouse 的查询优化器花了我大约一个月才理解……它是我少数几个无法与自己 OLTP 背景联系起来的概念之一。」</strong></td></tr><tr><td>⭐ <strong>InnoDB 保证 ①</strong></td><td><strong>行把所有列存在一起</strong>：取一根 bar 碰一个磁盘位置（利于摄取）；<strong>「一个需要两列的指标仍然要通过缓冲池取回每一列」</strong></td></tr><tr><td>⭐ <strong>InnoDB 保证 ②</strong></td><td><strong>索引加快读、减慢写</strong>：<strong>「每个索引都是它自己的一棵 B 树，而每次写入必须更新表里所有的 B 树」</strong>；<strong>「非常适合选择性读取，对写入密集的摄取工作非常糟糕」</strong></td></tr><tr><td>⭐ <strong>InnoDB 保证 ③</strong></td><td><strong>undo log 让读写并发</strong>：插入的 undo log <strong>提交时立即清除</strong>；更新/删除的进入 <strong>history list</strong>；<strong>「InnoDB 标记 undo log 在每一个在提交之前或期间开始的会话都完成之后被清除」</strong>；这套系统叫 <strong>MVCC</strong></td></tr><tr><td><strong>MVCC 的人话翻译</strong></td><td><strong>「MVCC 允许插入和更新发生而不阻塞读取。」</strong></td></tr><tr><td>⚠️ <strong>他自己的错误设计</strong></td><td><strong><code>financialdata</code> 原本是唯一持有 <code>datetime</code> 的表</strong>，所有指标表都要 join 回它才知道日期；<strong>「那是我最糟的数据设计之一。一个我在数据库超过 100GB 之后才意识到行不通的设计。修它是残酷的。」</strong></td></tr><tr><td><strong>错误根源（他的自述）</strong></td><td><strong>「当我开始做这个数据库时，我甚至不知道最重要的价格是收盘价。」</strong>；<strong>「我把它用作基表，根据指标『挑选』想要的列，这个想法听起来跟只查询我想要的列、忽略其他列，darn 地相似。」</strong></td></tr><tr><td><strong>v1 的分区决策</strong></td><td><strong><code>PARTITION BY HASH(StockID) PARTITIONS 100</code></strong>；<strong>「如果我想改一个分区，我就得把整张表重新分区一遍，这就是为什么我选择了一个比正常更大的哈希值 100」</strong>；<strong>「约 13,000 个 StockID 被分成 130 个一组，意味着我要过好几年才需要重新分区」</strong></td></tr><tr><td><strong>v1 改分区的代价</strong></td><td><strong>「给一张表分区花了几天到一周」</strong></td></tr><tr><td><strong>补列的做法</strong></td><td>临时表 + 五条 <code>UPDATE ... INNER JOIN</code>；<strong>「每个定时事件只跑这些更新中的一个，其余更新被注释掉」</strong></td></tr><tr><td><strong>v2 栈组成</strong></td><td><strong>Iceberg（表格式）+ Spark（计算）+ Polaris（catalog）+ MinIO（存储）</strong>；<strong>Parquet 文件</strong>；<strong>Polaris 是一个 Postgres 数据库加一个 API</strong></td></tr><tr><td><strong>v2 分区 DDL</strong></td><td><code>USING iceberg PARTITIONED BY (bucket(16, symbol))</code>；<strong>「整个分区的事就是一句 DDL」</strong></td></tr><tr><td>⭐ <strong>分区可后改</strong></td><td><strong>「使用 Iceberg 的一个奢侈之处是它把任何分区都计算并存在元数据里。这意味着如果我想给分区加一列，我在读取时付代价。数据按分区版本分组，每个版本独立剪枝，之后再把剪枝结果合并。这一步叫 split planning。」</strong></td></tr><tr><td>⭐ <strong>三层剪枝（俄罗斯套娃）</strong></td><td><strong>① 行组</strong>（Parquet 内，每列 min/max + null 数）→ <strong>② Manifest</strong>（每列 min/max + null 数 + 每个数据文件的分区值、大小、位置）→ <strong>③ Manifest List</strong>（每个 Manifest 的 min/max 分区值 + <strong>分区版本</strong>）</td></tr><tr><td>⭐ <strong>完整查询路径</strong></td><td><strong>向 Polaris 要指向当前 <code>metadata.json</code> 的指针 → 元数据命名当前快照 → 快照指向 manifest list → 算 symbol 的 bucket，只进那个 bucket → 只检查分区范围包含该 symbol 的 Manifests → 存活的数据文件检查每个行组统计，剪掉不需要的行组 → 解码存活的行组</strong></td></tr><tr><td><strong>delete file 机制</strong></td><td>Manifest 追踪 <strong>Delete Files</strong>（已删除/更新的行）；<strong>「如果表存在 Delete Files，数据文件和 Delete Files 的合并在每次读取时发生。这就是 merge on read。」</strong>；用途是<strong>流式</strong>：<strong>「记下改了什么、以后再算，比立刻改快得多」</strong></td></tr><tr><td><strong>作者对 Iceberg 的点评</strong></td><td><strong>「我保证我没拿赞助（暂时），但天啊 Netflix 真会写软件。」</strong></td></tr><tr><td>⭐ <strong>原子提交的实现</strong></td><td><strong>「那个交换是原子的，而它就是整个提交。」</strong>（Polaris 只接受一次一个更新）</td></tr><tr><td>⭐ <strong>乐观并发</strong></td><td>两个写入者产生两个元数据文件，<strong>快的检查版本匹配后赢得交换</strong>；<strong>慢的看到不匹配，检查数据文件是否相同：不同则把变更重应用到新快照再试，相同则失败并按重试逻辑再试</strong></td></tr><tr><td>⭐ <strong>与 v1 的对照</strong></td><td><strong>「我的 v1 咨询锁用相反的方式解决了同一个竞争，第二个写入者等它的轮次，而不是输掉然后重试。」</strong></td></tr><tr><td>⭐ <strong>读取侧对照</strong></td><td><strong>「InnoDB 的 undo log 正是为了这个保证而存在的。引擎保存旧的行的版本……而 Iceberg 跳过了保存，因为旧版本就是旧文件。」</strong></td></tr><tr><td><strong>写入中途失败</strong></td><td>v1 用<strong>临时表、反连接、成功提交后删除</strong>；v2 留下<strong>孤立数据文件 + 空快照</strong>，<strong>「没有读取者曾经看到它，而重试是安全的，因为 MERGE 的键让它幂等」</strong></td></tr><tr><td><strong>行数怎么算</strong></td><td>v1 <strong>跨每一行的索引扫描</strong>；v2 <strong>快照摘要、元数据读取</strong></td></tr><tr><td>⚠️ <strong>维护账单（唯一没有胜负的一项）</strong></td><td>v1：<strong>索引和分区维护</strong>；v2：<strong>压缩（compaction）和快照过期（snapshot expiration）</strong></td></tr><tr><td>⚠️ <strong>他承认没做的优化</strong></td><td><strong>「我还没在 lakehouse 里用过 <code>WRITE ORDERED BY</code>……没回头去加 <code>WRITE ORDERED BY symbol, time_stamp DESC</code>。注意这正是我第一版用作唯一键的组合。」</strong></td></tr><tr><td>⚠️ <strong>那 44 个文件</strong></td><td><strong>「罕见地看到 44 个退役的 metadata.json 文件……现在它们作为提醒存在，提醒我要设置自动删除旧的 metadata.json。」</strong></td></tr><tr><td><strong>通用性</strong></td><td><strong>「这是大多数列式仓库和 lakehouse 背后的通用模型。Snowflake、BigQuery 和 Delta Lake 跑的都是它的某种配方……学一次意味着学会其中大部分。」</strong></td></tr><tr><td><strong>配套文章</strong></td><td>v1 的调度/worker 池/暂存管线 → airflow 那篇；v2 的 Spark shuffle（<strong>13 个 shuffle 变成 1 个 Exchange</strong>）→ 即将发布；MySQL 复制 → StatefulSet 那篇；<strong>41 个存储过程</strong>在仓库的 legacy 目录</td></tr></tbody></table>
 <h2>延伸阅读</h2>
-<ul>
-<li><a href="https://freelamp.com/articles/2026-10-09_sqlite-3-54-released/">SQLite 3.54：一个「够用就好」的数据库如何回应现代需求</a></li>
-<li><a href="https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/">Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</a></li>
-<li><a href="https://freelamp.com/articles/2026-10-16_pg-vectorsearch-prism-index-timescale/">pg_vectorsearch 与 Prism 索引：把向量检索搬进 Postgres 的代价与收益</a></li>
-<li><a href="https://freelamp.com/articles/2026-10-12_ubuntu-myna-speech-to-text-preview/">Myna：把语音输入做成系统级组件，而不是又一个应用</a></li>
-<li><a href="https://marcpaul.io/logs/same-job-two-engines-innodb-and-iceberg-internals/">原文（一手，含完整 DDL 与 MERGE 语句）</a></li>
-</ul>
+<ul><li><a href="https://freelamp.com/articles/2026-10-09_sqlite-3-54-released/" target="_blank" rel="noopener noreferrer">SQLite 3.54：一个「够用就好」的数据库如何回应现代需求</a></li><li><a href="https://freelamp.com/articles/2026-10-19_linux-7-3-release-record-commits-ai-churn/" target="_blank" rel="noopener noreferrer">Linux 7.3 发布：一万八千个提交、三千名开发者，而两篇报道各说一半</a></li><li><a href="https://freelamp.com/articles/2026-10-16_pg-vectorsearch-prism-index-timescale/" target="_blank" rel="noopener noreferrer">pg_vectorsearch 与 Prism 索引：把向量检索搬进 Postgres 的代价与收益</a></li><li><a href="https://freelamp.com/articles/2026-10-12_ubuntu-myna-speech-to-text-preview/" target="_blank" rel="noopener noreferrer">Myna：把语音输入做成系统级组件，而不是又一个应用</a></li><li><a href="https://marcpaul.io/logs/same-job-two-engines-innodb-and-iceberg-internals/" target="_blank" rel="noopener noreferrer">原文（一手，含完整 DDL 与 MERGE 语句）</a></li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

@@ -298,159 +298,127 @@
 <h2>问题：一个布尔开关的代价</h2>
 <p>我在家里的香橙派上跑一个代理客户端，配置里有这么两行：</p>
 <pre><code class="json">"httpProxyPort": 8888,
-"httpProxyListenLAN": true
-</code></pre>
+"httpProxyListenLAN": true</code></pre>
 <p>看起来只是「让内网能用」，对吧？但实际效果是：</p>
-<pre><code class="">LISTEN  0  4096   <em>:8888    </em>:*        ← 通配地址
-</code></pre>
+<pre><code>LISTEN  0  4096   *:8888    *:*        ← 通配地址</code></pre>
 <p><code>*</code> 在 Linux 上意味着<strong>同时监听 IPv4 的 <code>0.0.0.0</code> 和 IPv6 的 <code>[::]</code></strong>。也就是说，这台机器<strong>所有网络接口</strong>上的 8888 都对外服务了，包括那个<strong>公网可达的 IPv6 地址</strong>。</p>
 <p>我从外面测了一下：</p>
-<pre><code class="">$ exec 3<>/dev/tcp/2001:db8::40/8888   → 连接成功
-</code></pre>
+<pre><code>$ exec 3&lt;&gt;/dev/tcp/2001:db8::40/8888   → 连接成功</code></pre>
 <p>而且它不只是"端口开着"，是<strong>真的能用</strong>：</p>
-<pre><code class="">$ curl --socks5-hostname [2001:db8::40]:1080 https://example.com
-HTTP 200
-</code></pre>
+<pre><code>$ curl --socks5-hostname [2001:db8::40]:1080 https://example.com
+HTTP 200</code></pre>
 <p><strong>一个布尔值，把内网服务变成了公网服务。</strong></p>
 <h2>为什么服务本身解决不了</h2>
 <p>我查了这个客户端所有的配置字段（从二进制里把 JSON tag 全提取出来），发现它只有两个选项：</p>
 <pre><code class="json">"httpProxyListenLAN": true,    → 绑 0.0.0.0（+ [::]）
-"httpProxyListenLAN": false,   → 绑 127.0.0.1
-</code></pre>
+"httpProxyListenLAN": false,   → 绑 127.0.0.1</code></pre>
 <p>从程序里的日志字符串也能确认，只有两个硬编码地址：</p>
-<pre><code class="">listening to socks5://0.0.0.0:%d      ← ListenLAN=true
-listening to socks5://127.0.0.1:%d    ← ListenLAN=false
-</code></pre>
+<pre><code>listening to socks5://0.0.0.0:%d      ← ListenLAN=true
+listening to socks5://127.0.0.1:%d    ← ListenLAN=false</code></pre>
 <p><strong>没有「绑定到指定地址」这个选项。</strong></p>
 <p>这是很多服务的通病：它把"监听地址"简化成了一个布尔值，于是你只能在「只有本机能用」和「全世界都能用」之间二选一。</p>
 <p>我在同一台机器上还跑着另一个端口，配置是 <code>socks5ListenLAN: false</code>，所以它老老实实只听 <code>127.0.0.1</code>。<strong>同一个软件，两个端口，两种命运</strong>，差别只在那一个布尔值。</p>
 <h2>解法：退回去，再用 socat 补一个口</h2>
 <p>思路很简单：</p>
-<pre><code class="">让服务只听 127.0.0.1（回到最安全的状态）
+<pre><code>让服务只听 127.0.0.1（回到最安全的状态）
         ↓
-在内网地址上开一个 socat 监听，转发到 127.0.0.1
-</code></pre>
+在内网地址上开一个 socat 监听，转发到 127.0.0.1</code></pre>
 <h3>第一步：服务退回只听本机</h3>
 <pre><code class="diff">- "httpProxyListenLAN": true,
-+ "httpProxyListenLAN": false,
-</code></pre>
++ "httpProxyListenLAN": false,</code></pre>
 <p>改完重启，服务就只听 <code>127.0.0.1:8888</code> 了。</p>
 <h3>第二步：加一个 systemd 单元做内网转发</h3>
 <pre><code class="ini">[Unit]
 Description=mieru HTTP proxy — LAN-only bridge to 127.0.0.1:8888
 After=mieru.service
 Requires=mieru.service
-<p>[Service]
+
+[Service]
 Type=simple
-<h1>只绑内网地址（IPv4），不产生任何 IPv6 监听。</h1>
-<h1>写成 bind=0.0.0.0 就会重新暴露到 IPv6，这点是关键。</h1>
+# 只绑内网地址（IPv4），不产生任何 IPv6 监听。
+# 写成 bind=0.0.0.0 就会重新暴露到 IPv6，这点是关键。
 ExecStart=/usr/bin/socat TCP4-LISTEN:8888,bind=10.20.30.40,fork,reuseaddr TCP4:127.0.0.1:8888
 Restart=always
-RestartSec=2</p>
-<p>[Install]
-WantedBy=multi-user.target
-</code></pre></p>
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target</code></pre>
 <h3>第三步：启用</h3>
 <pre><code class="bash">systemctl daemon-reload
 systemctl restart mieru
 systemctl enable --now mieru-lan-bridge
-<h1>验证</h1>
+
+# 验证
 ss -tlnH | grep 8888
-<h1>  LISTEN  127.0.0.1:8888        ← 服务本身</h1>
-<h1>  LISTEN  10.20.30.40:8888      ← socat 补的内网口</h1>
-<p>ss -tlnH | grep -c "\[::\]:8888"
-<h1>  0                             ← 关键：没有任何 IPv6 监听</h1>
-</code></pre></p>
+#   LISTEN  127.0.0.1:8888        ← 服务本身
+#   LISTEN  10.20.30.40:8888      ← socat 补的内网口
+
+ss -tlnH | grep -c "\[::\]:8888"
+#   0                             ← 关键：没有任何 IPv6 监听</code></pre>
 <p>改造前后对比：</p>
-<table>
-<tr><th></th><th>改造前</th><th>改造后</th></tr>
-<tr><td>本机可用</td><td>✅ <code>127.0.0.1:8888</code></td><td>✅ <code>127.0.0.1:8888</code></td></tr>
-<tr><td>内网可用</td><td>✅</td><td>✅ <code>10.20.30.40:8888</code></td></tr>
-<tr><td><strong>公网 IPv6</strong></td><td>❌ <strong>可达</strong></td><td>✅ <strong>不可达</strong></td></tr>
-</table>
+<table><thead><tr><th></th><th>改造前</th><th>改造后</th></tr></thead><tbody><tr><td>本机可用</td><td>✅ <code>127.0.0.1:8888</code></td><td>✅ <code>127.0.0.1:8888</code></td></tr><tr><td>内网可用</td><td>✅</td><td>✅ <code>10.20.30.40:8888</code></td></tr><tr><td><strong>公网 IPv6</strong></td><td>❌ <strong>可达</strong></td><td>✅ <strong>不可达</strong></td></tr></tbody></table>
 <h2>为什么这样是安全的</h2>
 <p>三个要点，都是我实测确认过的：</p>
-<p><strong>① <code>bind=<内网 IP></code> 不会产生通配监听</strong></p>
+<p><strong>① <code>bind=&lt;内网 IP&gt;</code> 不会产生通配监听</strong></p>
 <p>这是最关键的一点。我做过对照实验：</p>
-<pre><code class="">$ socat TCP4-LISTEN:18888,bind=10.20.30.40,fork ...  &
+<pre><code>$ socat TCP4-LISTEN:18888,bind=10.20.30.40,fork ...  &amp;
 $ ss -tlnH | grep 18888
 LISTEN  0  5  10.20.30.40:18888  0.0.0.0:*              ← 只有内网地址
 $ ss -tlnH | grep -c "\[::\]:18888"
-0                                                       ← IPv6 监听数为 0
-</code></pre>
+0                                                       ← IPv6 监听数为 0</code></pre>
 <p><strong>写具体地址 ≠ 写通配地址。</strong> 如果你图省事写成 <code>bind=0.0.0.0</code>，IPv6 就又暴露了，等于白改。</p>
 <p><strong>② 同一端口可以在不同地址上共存</strong></p>
 <p>这也是实测确认的（方案的可行性前提）：</p>
-<pre><code class="">$ ss -tlnH | grep 18891
+<pre><code>$ ss -tlnH | grep 18891
 LISTEN  127.0.0.1:18891        ← 服务本身
-LISTEN  10.20.30.40:18891      ← socat
-</code></pre>
+LISTEN  10.20.30.40:18891      ← socat</code></pre>
 <p>内核允许这样做，因为监听套接字绑定的是「地址 + 端口」的组合。所以 socat 能在同一个端口号上补一个接口，不会和服务的监听冲突。</p>
 <p><strong>③ 转发链保持在回环内</strong></p>
 <p><code>socat ... TCP4:127.0.0.1:8888</code> 这一端是<strong>连到本机回环</strong>的。所以数据流是：</p>
-<pre><code class="">内网客户端 → 10.20.30.40:8888 (socat) → 127.0.0.1:8888 (服务)
-</code></pre>
+<pre><code>内网客户端 → 10.20.30.40:8888 (socat) → 127.0.0.1:8888 (服务)</code></pre>
 <p>中间的转发不出机器，不经过任何网络接口。</p>
 <h2>这个模式能用在哪些地方</h2>
 <p>只要满足「服务只能选通配或回环」，这套方法就通用：</p>
-<table>
-<tr><th>场景</th><th>服务的选项</th><th>socat 桥</th></tr>
-<tr><td>代理客户端（本文）</td><td><code>listenLAN: true/false</code></td><td>✅</td></tr>
-<tr><td>数据库（如某些默认绑 <code>*</code> 的）</td><td><code>bind-address</code> 有时不好使</td><td>✅</td></tr>
-<tr><td>开发服务器</td><td><code>--host 0.0.0.0</code></td><td>✅</td></tr>
-<tr><td>任何只有「全网/本机」二选一的</td><td>—</td><td>✅</td></tr>
-</table>
+<table><thead><tr><th>场景</th><th>服务的选项</th><th>socat 桥</th></tr></thead><tbody><tr><td>代理客户端（本文）</td><td><code>listenLAN: true/false</code></td><td>✅</td></tr><tr><td>数据库（如某些默认绑 <code>*</code> 的）</td><td><code>bind-address</code> 有时不好使</td><td>✅</td></tr><tr><td>开发服务器</td><td><code>--host 0.0.0.0</code></td><td>✅</td></tr><tr><td>任何只有「全网/本机」二选一的</td><td>—</td><td>✅</td></tr></tbody></table>
 <p><strong>判别方法</strong>：如果 <code>ss -tlnp</code> 里看到某个服务监听在 <code>*:</code> 或 <code>[::]:</code>，而你又只需要它在内网可用，就可以考虑用这个模式把它收回来。</p>
 <h2>顺带说一个更大的问题</h2>
 <p>这次排查让我把整台机器的暴露面过了一遍。实测结果：</p>
-<pre><code class="">tcp  [::]:22          ← SSH（预期）
+<pre><code>tcp  [::]:22          ← SSH（预期）
 udp  *:33679          ← ？
 udp  *:36892          ← ？
 udp  *:52258          ← ？
-udp  *:58417          ← ？
-</code></pre>
+udp  *:58417          ← ？</code></pre>
 <p>那几个随机高端口是别的服务在通配监听。<strong>建议定期做一次这样的审计</strong>：</p>
 <pre><code class="bash"># 列出所有对外（非回环）的监听
 ss -tlnH | awk '{print $4}' | grep -E '^\*:|^\[::\]:|^0\.0\.0\.0:' | sort -u
-<h1>从外部验证是否真的可达（把地址换成你自己的）</h1>
+
+# 从外部验证是否真的可达（把地址换成你自己的）
 for p in 22 80 443 8888; do
-  timeout 3 bash -c "exec 3<>/dev/tcp/2001:db8::40/$p" 2>/dev/null \
-    && echo "$p 可达" || echo "$p 不可达"
-done
-</code></pre>
+  timeout 3 bash -c "exec 3&lt;&gt;/dev/tcp/2001:db8::40/$p" 2&gt;/dev/null \
+    &amp;&amp; echo "$p 可达" || echo "$p 不可达"
+done</code></pre>
 <p><strong>「看着像内网服务」和「真的是内网服务」是两回事</strong>，中间隔着一个布尔值。</p>
 <h2>核心教训</h2>
-<ol>
-<li>1. <strong><code>0.0.0.0</code> 和 <code>*</code> 不是「内网」，是「所有接口」</strong>：在有公网 IPv6 的机器上，它们等价于「公网开放」</li>
-<li>2. <strong>服务的配置能力不足时，用 socat 在下一层补</strong>：不要为了迁就服务的限制而放松安全</li>
-<li>3. <strong><code>bind=<具体地址></code> 是关键</strong>：写成 <code>0.0.0.0</code> 就前功尽弃</li>
-<li>4. <strong>改完一定要验证 IPv6</strong>：<code>ss -tlnH | grep -c "[::]:"</code>，直觉在这里不可靠</li>
-</ol>
+<ol><li><strong><code>0.0.0.0</code> 和 <code>*</code> 不是「内网」，是「所有接口」</strong>：在有公网 IPv6 的机器上，它们等价于「公网开放」</li><li><strong>服务的配置能力不足时，用 socat 在下一层补</strong>：不要为了迁就服务的限制而放松安全</li><li><strong><code>bind=&lt;具体地址&gt;</code> 是关键</strong>：写成 <code>0.0.0.0</code> 就前功尽弃</li><li><strong>改完一定要验证 IPv6</strong>：<code>ss -tlnH | grep -c "[::]:"</code>，直觉在这里不可靠</li></ol>
 <h2>延伸阅读：我写了一本关于 SSH 加固的书</h2>
 <p>这篇文章只处理了一个很窄的切面，<strong>暴露面收敛</strong>。如果你在做的是把 SSH 当成生产入口来管，那要覆盖的东西要多得多。</p>
 <p>我把自己这些年做 SSH 加固的思路整理成了一本开源电子书：</p>
 <blockquote><strong>《SSH 纵深加固：从攻击链到六层防御体系》</strong><br>
 SSH Brute-Force Defense in Depth — 协议层密码学、攻击链分析、六层纵深防御、堡垒机架构与零信任远程访问。</blockquote>
-它的出发点是一个不太乐观的现实：全球任意时刻有 <strong>2000–3000 万个 SSH 服务暴露在公网</strong>（Censys 2023），而一次全 IPv4 的 22 端口扫描，成本不到 1 美元、耗时几分钟。凭证滥用连续多年位居 Verizon DBIR 初始访问向量第一。
+<p>它的出发点是一个不太乐观的现实：全球任意时刻有 <strong>2000–3000 万个 SSH 服务暴露在公网</strong>（Censys 2023），而一次全 IPv4 的 22 端口扫描，成本不到 1 美元、耗时几分钟。凭证滥用连续多年位居 Verizon DBIR 初始访问向量第一。</p>
 <p>网上关于 SSH 加固的教程很多，但大多停在<strong>「改端口 + fail2ban + 禁密码」</strong>这三板斧。这本书想做的是把它做成一套可落地的工程方案：</p>
-<pre><code class="">第 1 层：减少暴露面   — 让攻击者根本找不到你
+<pre><code>第 1 层：减少暴露面   — 让攻击者根本找不到你
 第 2 层：认证加固     — 让攻击者即便找到了也进不来
 第 3 层：访问控制     — 让攻击者即便进来了也不能随便做事
 第 4 层：主动阻断     — 让攻击者反复尝试时付出代价
 第 5 层：入侵检测     — 让攻击者已经进来了能被我们看到
-第 6 层：审计与响应   — 让攻击者造成的损失可追溯、可止血
-</code></pre>
-<p>每一层都有可复制粘贴的配置、脚本和部署指南，并对齐 <strong>CIS Benchmarks · NIST SP 800-53 · DISA STIG · MITRE ATT&CK · PCI DSS 4.0</strong> 等合规框架。上面讲的通配监听、<code>0.0.0.0</code> 的语义、以及 SPA / 零信任远程访问这些话题，在第 1 层和第 3 层里有更系统地展开。</p>
+第 6 层：审计与响应   — 让攻击者造成的损失可追溯、可止血</code></pre>
+<p>每一层都有可复制粘贴的配置、脚本和部署指南，并对齐 <strong>CIS Benchmarks · NIST SP 800-53 · DISA STIG · MITRE ATT&amp;CK · PCI DSS 4.0</strong> 等合规框架。上面讲的通配监听、<code>0.0.0.0</code> 的语义、以及 SPA / 零信任远程访问这些话题，在第 1 层和第 3 层里有更系统地展开。</p>
 <p><strong>在线阅读与下载</strong>（MIT 许可，免费）：</p>
-<ul>
-<li>仓库：<a href="https://github.com/LeisureLinux/ebook-ssh-hardening">github.com/LeisureLinux/ebook-ssh-hardening</a></li>
-<li>HTML 在线版：<a href="https://leisurelinux.github.io/ebook-ssh-hardening/">leisurelinux.github.io/ebook-ssh-hardening</a></li>
-<li>PDF / ePub：仓库的 <a href="https://github.com/LeisureLinux/ebook-ssh-hardening/releases">Releases</a> 页</li>
-</ul>
-如果它帮你把某台机器收紧了，欢迎在仓库里提 issue 补充你遇到的场景。
-<p>---</p>
-<p><em>本文涉及的域名、IP、用户名均已脱敏替换为保留示例值（<code>2001:db8::/32</code> 与 <code>10.20.30.0/24</code> 均为文档/内网保留段）。方案基于一次真实的 IPv6 暴露面收敛整理。</em>
-</p>
+<ul><li>仓库：<a href="https://github.com/LeisureLinux/ebook-ssh-hardening" target="_blank" rel="noopener noreferrer">github.com/LeisureLinux/ebook-ssh-hardening</a></li><li>HTML 在线版：<a href="https://leisurelinux.github.io/ebook-ssh-hardening/" target="_blank" rel="noopener noreferrer">leisurelinux.github.io/ebook-ssh-hardening</a></li><li>PDF / ePub：仓库的 <a href="https://github.com/LeisureLinux/ebook-ssh-hardening/releases" target="_blank" rel="noopener noreferrer">Releases</a> 页</li></ul>
+<p>如果它帮你把某台机器收紧了，欢迎在仓库里提 issue 补充你遇到的场景。</p>
+<hr>
+<p><em>本文涉及的域名、IP、用户名均已脱敏替换为保留示例值（<code>2001:db8::/32</code> 与 <code>10.20.30.0/24</code> 均为文档/内网保留段）。方案基于一次真实的 IPv6 暴露面收敛整理。</em></p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

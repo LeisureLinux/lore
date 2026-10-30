@@ -287,7 +287,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>来源：<a href="https://github.com/microsoft/mxc">microsoft/mxc</a>（MIT，2026-02-06 开源，最后提交 2026-10-09）<br>
+<blockquote>来源：<a href="https://github.com/microsoft/mxc" target="_blank" rel="noopener noreferrer">microsoft/mxc</a>（MIT，2026-02-06 开源，最后提交 2026-10-09）<br>
 本文依据仓库 README 与 <code>docs/</code> 下的后端指南、schema、遥测与生命周期文档整理。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
@@ -302,24 +302,19 @@
 <h2>一、定位：它是库，不是服务</h2>
 <p>仓库描述写得很直白：<strong>Policy-driven, layered isolation and containment</strong>（策略驱动的分层隔离与围堵）。README 的第一句画了它的边界：</p>
 <blockquote>MXC 是一个<strong>构建进你应用的 SDK 依赖</strong>。</blockquote>
-调用关系只有三步：应用给出<strong>容器类型 + 围堵规则 + 工作负载命令</strong>，MXC 校验请求、选择后端、把工作负载放进容器里跑起来。没有常驻控制面，没有要先起的代理。
-<table>
-<tr><th>形态</th><th>内容</th></tr>
-<tr><td>SDK</td><td>Rust <code>mxc-sdk</code>（crates.io）／.NET <code>Microsoft.Mxc.Sdk</code>（NuGet）／Node <code>@microsoft/mxc-sdk</code>（npm）</td></tr>
-<tr><td>非 SDK</td><td>平台执行器二进制 <code>wxc-exec.exe</code>（Windows）、<code>lxc-exec</code>（Linux）、<code>mxc-exec-mac</code>（macOS），吃 JSON 配置</td></tr>
-<tr><td>公共 API</td><td>全部挂在版本化命名空间下：<code>mxc_sdk::v1</code> / <code>Microsoft.Mxc.Sdk.V1</code> / <code>@microsoft/mxc-sdk/v1</code></td></tr>
-<tr><td>构建</td><td>Rust 固定 1.93（<code>src/rust-toolchain.toml</code>），Node 24+</td></tr>
-</table>
+<p>调用关系只有三步：应用给出<strong>容器类型 + 围堵规则 + 工作负载命令</strong>，MXC 校验请求、选择后端、把工作负载放进容器里跑起来。没有常驻控制面，没有要先起的代理。</p>
+<table><thead><tr><th>形态</th><th>内容</th></tr></thead><tbody><tr><td>SDK</td><td>Rust <code>mxc-sdk</code>（crates.io）／.NET <code>Microsoft.Mxc.Sdk</code>（NuGet）／Node <code>@microsoft/mxc-sdk</code>（npm）</td></tr><tr><td>非 SDK</td><td>平台执行器二进制 <code>wxc-exec.exe</code>（Windows）、<code>lxc-exec</code>（Linux）、<code>mxc-exec-mac</code>（macOS），吃 JSON 配置</td></tr><tr><td>公共 API</td><td>全部挂在版本化命名空间下：<code>mxc_sdk::v1</code> / <code>Microsoft.Mxc.Sdk.V1</code> / <code>@microsoft/mxc-sdk/v1</code></td></tr><tr><td>构建</td><td>Rust 固定 1.93（<code>src/rust-toolchain.toml</code>），Node 24+</td></tr></tbody></table>
 <p>一个细节值得注意：<strong>Node 包的根路径不导出任何 API</strong>，必须显式从 <code>/v1</code> 导入。这是刻意的，避免以后加 v2 时又变成「根路径到底指向谁」的经典问题。同理，<strong>SDK 的公开接口与原生 wire 契约是独立版本化的</strong>。</p>
 <p>服务器端一行代码的调用长这样（Node 示例）：</p>
 <pre><code class="ts">import { spawn, type ContainerRequest } from '@microsoft/mxc-sdk/v1';
-<p>const request: ContainerRequest = {
+
+const request: ContainerRequest = {
   command: 'node -e "console.log(\'hello from container\')"',
   network: { egress: { default: 'deny' } },
   timeoutMs: 30_000,
-};</p>
-<p>const child = await spawn(request);
-</code></pre></p>
+};
+
+const child = await spawn(request);</code></pre>
 <p><strong>注意那个 <code>default: 'deny'</code></strong>。这不是示例里随手加的安全装饰，下面会看到它是整个设计的默认前提。</p>
 <h2>二、策略模型：默认全拒，方向分开</h2>
 <p>MXC 的配置是一份 JSON，有<strong>稳定 schema（1.0.0）</strong>和<strong>开发 schema（1.1.0-alpha）</strong>两条线，稳定版给生产用，dev 版包含实验特性且「可能随时变」。</p>
@@ -343,48 +338,23 @@
       "hostLoopback": "deny"
     }
   }
-}
-</code></pre>
+}</code></pre>
 <p>几条设计规则值得单独拎出来：</p>
-<ul>
-<li><strong>省略就是拒绝</strong>。<code>network</code>、<code>network.egress</code>、<code>network.egress.default</code> 任何一个省略，<code>egress.default</code> 解析为 <code>deny</code>；两个 ingress 控制项同样默认 <code>deny</code>；</li>
-<li><strong><code>hostLoopback</code> 独立于 <code>ingress.default</code></strong>。要访问宿主 loopback 必须<strong>显式申请</strong>，不会因为放开了别的就被顺带打开；</li>
-<li><strong>两种出网模型不能混用</strong>。要么用 CIDR + 协议 + 端口的直连规则（后端支持的话），要么用 <code>runtimeConfig.networkProxy</code> 指定一个你自己管理的 HTTP/S 代理端点（此时由代理负责目标过滤）。同时给两个是<strong>非法配置</strong>；</li>
-<li><strong>旧字段被显式拒绝</strong>。<code>0.9.0-alpha</code> 之前的 <code>defaultPolicy</code>、<code>enforcementMode</code>、host lists、<code>allowLocalNetwork</code>、<code>network.proxy</code> 在新契约下<strong>直接报错</strong>，文档还专门写了一句：<strong>只改版本号不等于迁移策略</strong>。</li>
-</ul>
+<ul><li><strong>省略就是拒绝</strong>。<code>network</code>、<code>network.egress</code>、<code>network.egress.default</code> 任何一个省略，<code>egress.default</code> 解析为 <code>deny</code>；两个 ingress 控制项同样默认 <code>deny</code>；</li><li><strong><code>hostLoopback</code> 独立于 <code>ingress.default</code></strong>。要访问宿主 loopback 必须<strong>显式申请</strong>，不会因为放开了别的就被顺带打开；</li><li><strong>两种出网模型不能混用</strong>。要么用 CIDR + 协议 + 端口的直连规则（后端支持的话），要么用 <code>runtimeConfig.networkProxy</code> 指定一个你自己管理的 HTTP/S 代理端点（此时由代理负责目标过滤）。同时给两个是<strong>非法配置</strong>；</li><li><strong>旧字段被显式拒绝</strong>。<code>0.9.0-alpha</code> 之前的 <code>defaultPolicy</code>、<code>enforcementMode</code>、host lists、<code>allowLocalNetwork</code>、<code>network.proxy</code> 在新契约下<strong>直接报错</strong>，文档还专门写了一句：<strong>只改版本号不等于迁移策略</strong>。</li></ul>
 <h3>Windows 后端怎么落实这套策略</h3>
 <p>ProcessContainer 在 OS 级强制路径上给每个容器两个原语，都按容器 SID 作用域，<strong>每次启动不需要 UAC 弹窗</strong>：</p>
-<ul>
-<li><strong>WFP 出网过滤</strong>：默认阻断，再按 IP/网段、协议、端口放行或阻断（IPv4/IPv6 都支持），<strong>显式阻断永远优先于放行</strong>，规则只作用于该容器；</li>
-<li><strong>按容器的 WinHTTP 代理</strong>：把 WinHTTP 栈（含 Chromium 栈）指向一个调用方提供的 loopback 代理容器，同时为依赖环境变量的运行时设置 <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code> 及其小写形式。文档有一句提醒：<code>NO_PROXY</code> 是绕过列表，<strong>不携带代理端点</strong>。</li>
-</ul>
-而 Windows 的 AppContainer 有个 OS 限制：<code>privateNetworkClientServer</code> 是<strong>双向</strong>能力。所以想访问私网就必须 <code>ingress.default: "allow"</code>，而这一开<strong>同时</strong>允许了私网的入向服务流量。文档没有含糊，直接列了四象限矩阵：
-<table>
-<tr><th>egress 默认</th><th>ingress 默认</th><th>AppContainer 能力</th><th>结果</th></tr>
-<tr><td>deny</td><td>deny</td><td>无</td><td>公网与私网流量全拒</td></tr>
-<tr><td>allow</td><td>deny</td><td><code>internetClient</code></td><td>公网出向放行；私网拒绝</td></tr>
-<tr><td>deny</td><td>allow</td><td><code>privateNetworkClientServer</code></td><td>PSEC 用 WFP 阻断出向，允许私网入向；<strong>AppContainer 回退路径会拒绝这个组合</strong>，因为该能力是双向的</td></tr>
-<tr><td>allow</td><td>allow</td><td>两个能力</td><td>公网出向 + 私网双向</td></tr>
-</table>
+<ul><li><strong>WFP 出网过滤</strong>：默认阻断，再按 IP/网段、协议、端口放行或阻断（IPv4/IPv6 都支持），<strong>显式阻断永远优先于放行</strong>，规则只作用于该容器；</li><li><strong>按容器的 WinHTTP 代理</strong>：把 WinHTTP 栈（含 Chromium 栈）指向一个调用方提供的 loopback 代理容器，同时为依赖环境变量的运行时设置 <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code> 及其小写形式。文档有一句提醒：<code>NO_PROXY</code> 是绕过列表，<strong>不携带代理端点</strong>。</li></ul>
+<p>而 Windows 的 AppContainer 有个 OS 限制：<code>privateNetworkClientServer</code> 是<strong>双向</strong>能力。所以想访问私网就必须 <code>ingress.default: "allow"</code>，而这一开<strong>同时</strong>允许了私网的入向服务流量。文档没有含糊，直接列了四象限矩阵：</p>
+<table><thead><tr><th>egress 默认</th><th>ingress 默认</th><th>AppContainer 能力</th><th>结果</th></tr></thead><tbody><tr><td>deny</td><td>deny</td><td>无</td><td>公网与私网流量全拒</td></tr><tr><td>allow</td><td>deny</td><td><code>internetClient</code></td><td>公网出向放行；私网拒绝</td></tr><tr><td>deny</td><td>allow</td><td><code>privateNetworkClientServer</code></td><td>PSEC 用 WFP 阻断出向，允许私网入向；<strong>AppContainer 回退路径会拒绝这个组合</strong>，因为该能力是双向的</td></tr><tr><td>allow</td><td>allow</td><td>两个能力</td><td>公网出向 + 私网双向</td></tr></tbody></table>
 <p>最后一行的那句「回退路径会拒绝这个组合」很关键，它体现的是下一节要讲的拒绝语义。</p>
 <h2>三、九个后端：从进程沙箱到硬件虚拟化</h2>
 <p>MXC 把同一份策略映射到九个后端，范围横跨「一个进程树」到「一台轻量虚拟机」。</p>
-<table>
-<tr><th>运行平台</th><th>默认后端</th><th>其他后端</th></tr>
-<tr><td>Windows 11 x64 / ARM64</td><td><code>processcontainer</code></td><td><code>windows_sandbox</code>\<em>、<code>wslc</code>、<code>microvm</code>\</em>、<code>hyperlight</code>\*、<code>isolation_session</code></td></tr>
-<tr><td>Linux x64 / ARM64</td><td><code>bubblewrap</code></td><td><code>lxc</code>、<code>microvm</code>、<code>hyperlight</code></td></tr>
-<tr><td>macOS ARM64 / x64</td><td><code>seatbelt</code></td><td>无</td></tr>
-</table>
+<table><thead><tr><th>运行平台</th><th>默认后端</th><th>其他后端</th></tr></thead><tbody><tr><td>Windows 11 x64 / ARM64</td><td><code>processcontainer</code></td><td><code>windows_sandbox</code>\<em>、<code>wslc</code>、<code>microvm</code>\</em>、<code>hyperlight</code>\*、<code>isolation_session</code></td></tr><tr><td>Linux x64 / ARM64</td><td><code>bubblewrap</code></td><td><code>lxc</code>、<code>microvm</code>、<code>hyperlight</code></td></tr><tr><td>macOS ARM64 / x64</td><td><code>seatbelt</code></td><td>无</td></tr></tbody></table>
 <p>\* 标记的是<strong>实验性</strong>后端，需要 <code>--experimental</code>。</p>
 <p><strong>Linux 默认 Bubblewrap</strong>：不依赖 root，也不需要容器运行时，用 Linux user namespace 造隔离环境。有个硬性版本底线：因为基线策略要用 <code>--ro-bind-try</code>（bwrap 0.3.1+）和 <code>--clearenv</code>（bwrap 0.5.0+），所以<strong>要求 bwrap 0.5.0 或更新</strong>；平台探测会跑 <code>bwrap --version</code>，低于底线就把后端报为不可用<strong>并带上探测到的版本号</strong>。探测本身有 5 秒超时和每路输出 64 KB 上限，超时会<strong>用 SIGKILL 结束整个进程组</strong>，防止包装脚本和后代进程把探测吊住。</p>
 <p><strong>macOS Seatbelt</strong>：跑在 Apple 内核强制的沙箱里，也就是 Mac App Store 应用用的同一套框架。要求 macOS 15（Sequoia）以上，<strong>不需要 root、不需要守护进程、不需要安装</strong>。实现上把 JSON 策略翻译成 Seatbelt profile，在 <code>fork()</code> 和 <code>exec()</code> 之间用 <code>sandbox_init()</code> 应用，profile 以<strong>字符串</strong>传入，不落临时文件。沙箱的寿命等于被包裹进程树的寿命。</p>
 <p><strong>硬件虚拟化档（实验性）</strong>：</p>
-<table>
-<tr><th>后端</th><th>机制</th><th>开销</th></tr>
-<tr><td><code>microvm</code>（Nanvix）</td><td>Windows 走 WHP，Linux 走 KVM</td><td><strong>~100 ms</strong> 进程启动到 guest 代码执行，常驻内存 <strong>~100 MB</strong></td></tr>
-<tr><td><code>hyperlight</code></td><td>Hyperlight 微虚拟机启动 Unikraft unikernel，由 <code>hyperlight-unikraft</code> crate 在进程内驱动</td><td>每次运行从<strong>热快照</strong>恢复 guest，Linux/Windows 共用一条代码路径</td></tr>
-<tr><td><code>windows_sandbox</code></td><td>Windows Sandbox 提供的 VM 级隔离</td><td>一次性模式每次调用都起一台全新的一次性 VM</td></tr>
-</table>
+<table><thead><tr><th>后端</th><th>机制</th><th>开销</th></tr></thead><tbody><tr><td><code>microvm</code>（Nanvix）</td><td>Windows 走 WHP，Linux 走 KVM</td><td><strong>~100 ms</strong> 进程启动到 guest 代码执行，常驻内存 <strong>~100 MB</strong></td></tr><tr><td><code>hyperlight</code></td><td>Hyperlight 微虚拟机启动 Unikraft unikernel，由 <code>hyperlight-unikraft</code> crate 在进程内驱动</td><td>每次运行从<strong>热快照</strong>恢复 guest，Linux/Windows 共用一条代码路径</td></tr><tr><td><code>windows_sandbox</code></td><td>Windows Sandbox 提供的 VM 级隔离</td><td>一次性模式每次调用都起一台全新的一次性 VM</td></tr></tbody></table>
 <p>Nanvix 那份文档里有两个诚实的注脚：<strong>热启动快照是 Windows 专属</strong>，Linux 每次调用都通过 KVM 冷启动；构建时默认会去下载 Nanvix 的 release 资产，<strong>气隙/密闭构建</strong>要用 <code>NANVIX_BIN</code> 指向预取的二进制目录。</p>
 <h2>四、最有价值的部分：它写清了哪些约束真能强制</h2>
 <p>这是我认为这份文档最值得同行学习的地方。统一抽象最大的风险是<strong>静默降级</strong>：上层以为配了，下层其实没做。MXC 用几种不同手段把这个风险摆到明面上。</p>
@@ -399,54 +369,20 @@
 <h3>5. <code>--audit</code> 会关掉全部沙箱安全</h3>
 <p>为了帮策略作者定位 access denied、反推一个可信工具实际需要哪些文件和能力，MXC 提供了 audit 模式。README 对此的排版是<strong>警告框</strong>：</p>
 <blockquote><code>--audit</code> 会<strong>关闭被分析工作负载的全部沙箱安全</strong>。<strong>永远不要用它运行不可信代码。</strong></blockquote>
-同时它给了更安全的替代路径：<strong>deny-and-record</strong> 式的「记录被拒绝的访问」，既拿到策略线索又不打开沙箱。
+<p>同时它给了更安全的替代路径：<strong>deny-and-record</strong> 式的「记录被拒绝的访问」，既拿到策略线索又不打开沙箱。</p>
 <h3>6. 平台能力的门槛是显式探测，不是假定</h3>
 <p>Bubblewrap 的 Rust 侧把<strong>成功的</strong>探测结果按进程生命周期缓存，<strong>失败的不缓存</strong>，而且执行前会再探一次，理由是防止 PATH 指向的目标在两次之间被换掉、复用旧的探测结论。Node SDK 侧则把 <code>getPlatformSupport()</code> 的完整结果（<strong>包含失败</strong>）缓存到模块生命周期，所以文档会提醒你：<strong>修好宿主环境后要重启 Node 进程</strong>。这些细节说明作者想过「探测结果被缓存后失去时效」的攻击面。</p>
 <h2>五、遥测：管理员只能封禁，不能替用户同意</h2>
 <p>这部分设计得比多数同类项目清楚，值得单列：</p>
-<table>
-<tr><th>项</th><th>值</th></tr>
-<tr><td>范围</td><td><strong>仅 Windows</strong>（MXC 只在 Windows 收集遥测；Linux/macOS 上无事可受限）</td></tr>
-<tr><td>策略位置</td><td><code>HKLM\SOFTWARE\Policies\Mxc</code>，值名 <code>AllowTelemetry</code>，类型 <code>REG_DWORD</code>，机器级</td></tr>
-<tr><td>取值</td><td>缺失 = 由用户自己的选择决定；<code>0</code>（Security/Off）或 <code>1</code>（Required/Basic）= <strong>阻断，MXC 不收集任何数据</strong></td></tr>
-<tr><td>明确不认</td><td>文档写明<strong>刻意不认</strong>每用户级的 <code>HKCU</code> 等价项</td></tr>
-</table>
+<table><thead><tr><th>项</th><th>值</th></tr></thead><tbody><tr><td>范围</td><td><strong>仅 Windows</strong>（MXC 只在 Windows 收集遥测；Linux/macOS 上无事可受限）</td></tr><tr><td>策略位置</td><td><code>HKLM\SOFTWARE\Policies\Mxc</code>，值名 <code>AllowTelemetry</code>，类型 <code>REG_DWORD</code>，机器级</td></tr><tr><td>取值</td><td>缺失 = 由用户自己的选择决定；<code>0</code>（Security/Off）或 <code>1</code>（Required/Basic）= <strong>阻断，MXC 不收集任何数据</strong></td></tr><tr><td>明确不认</td><td>文档写明<strong>刻意不认</strong>每用户级的 <code>HKCU</code> 等价项</td></tr></tbody></table>
 <p>它的核心表述是「<strong>这是个天花板，从来不是一份授权</strong>」（ceiling, never a grant）。也就是说管理员可以收紧，但<strong>不能替用户给出同意</strong>。默认路径上，遥测需要四个条件同时成立：单次运行主动 opt-in、Windows 用户明确同意、管理员策略允许收集、你的应用在请求里打开遥测开关。另外：<strong>本地开源构建不配置向微软上报遥测</strong>，且非 Windows 平台上遥测是 no-op。</p>
 <h2>六、读完之后值得带走的四条</h2>
-<ol>
-<li>1. <strong>统一的隔离抽象，必须带拒绝语义。</strong> 一个策略层的价值，取决于它在后端兑现不了的时候会不会报错。MXC 把「bwrap 在创建前拒绝做不到的请求」写进文档，这是整套设计里最扎实的一处。</li>
-<li>2. <strong>默认值就是产品。</strong> 省略即 <code>deny</code>、<code>hostLoopback</code> 独立申请、显式阻断优先于放行，这几条决定了使用者「忘了配」时的实际安全水位。</li>
-<li>3. <strong>能力差异不能靠读者猜。</strong> 「更弱的部署」「不等价于保证」「尽力而为的拆除」这些句子，比任何安全宣传都更有价值，因为它们直接决定了你该在什么场景下用哪个后端。</li>
-<li>4. <strong>帮人调试的功能，最容易变成安全漏洞。</strong> <code>--audit</code> 关掉全部沙箱保护这件事，作者选择用警告框正面写出来，并同时提供 deny-and-record 这条安全路径。这是处理这类「开发者体验 vs 安全」张力的正确姿势。</li>
-</ol>
-这跟上一篇谈钓鱼防御的结论是同一条：<strong>安全设计的关键不是宣称强度，而是把这一层到底保证什么、不保证什么讲清楚。</strong> MXC 在这一点上做得比它的功能列表更值得看。
+<ol><li><strong>统一的隔离抽象，必须带拒绝语义。</strong> 一个策略层的价值，取决于它在后端兑现不了的时候会不会报错。MXC 把「bwrap 在创建前拒绝做不到的请求」写进文档，这是整套设计里最扎实的一处。</li><li><strong>默认值就是产品。</strong> 省略即 <code>deny</code>、<code>hostLoopback</code> 独立申请、显式阻断优先于放行，这几条决定了使用者「忘了配」时的实际安全水位。</li><li><strong>能力差异不能靠读者猜。</strong> 「更弱的部署」「不等价于保证」「尽力而为的拆除」这些句子，比任何安全宣传都更有价值，因为它们直接决定了你该在什么场景下用哪个后端。</li><li><strong>帮人调试的功能，最容易变成安全漏洞。</strong> <code>--audit</code> 关掉全部沙箱保护这件事，作者选择用警告框正面写出来，并同时提供 deny-and-record 这条安全路径。这是处理这类「开发者体验 vs 安全」张力的正确姿势。</li></ol>
+<p>这跟上一篇谈钓鱼防御的结论是同一条：<strong>安全设计的关键不是宣称强度，而是把这一层到底保证什么、不保证什么讲清楚。</strong> MXC 在这一点上做得比它的功能列表更值得看。</p>
 <h2>关键事实速查</h2>
-<table>
-<tr><th>项目</th><th>内容</th></tr>
-<tr><td>项目</td><td>Microsoft eXecution Container（MXC），MIT</td></tr>
-<tr><td>时间线</td><td>2026-02-06 创建，2026-10-09 最近提交，490 commits</td></tr>
-<tr><td>热度</td><td>2,050 stars / 113 forks / 52 open issues</td></tr>
-<tr><td>定位</td><td>SDK 依赖，不是常驻服务；应用内嵌后拉起沙箱</td></tr>
-<tr><td>SDK</td><td>Rust <code>mxc-sdk</code> / .NET <code>Microsoft.Mxc.Sdk</code> / Node <code>@microsoft/mxc-sdk</code></td></tr>
-<tr><td>执行器</td><td><code>wxc-exec.exe</code>（Win）/ <code>lxc-exec</code>（Linux）/ <code>mxc-exec-mac</code>（macOS）</td></tr>
-<tr><td>后端数</td><td>9（ProcessContainer、Windows Sandbox、LXC、Bubblewrap、Seatbelt、MicroVM/Nanvix、Hyperlight、IsolationSession、WSLC）</td></tr>
-<tr><td>默认后端</td><td>Windows <code>processcontainer</code> / Linux <code>bubblewrap</code> / macOS <code>seatbelt</code></td></tr>
-<tr><td>Schema</td><td>稳定 1.0.0；dev 1.1.0-alpha；方向性网络契约自 0.9.0-alpha；更早契约直接拒绝</td></tr>
-<tr><td>默认策略</td><td>egress/ingress 省略即 deny；<code>hostLoopback</code> 需显式申请；显式阻断优先</td></tr>
-<tr><td>MicroVM 开销</td><td>~100 ms 冷启动（Windows 热快照）、~100 MB 常驻</td></tr>
-<tr><td>遥测</td><td>仅 Windows；需 run opt-in + 用户同意 + 策略允许；管理员不能代用户同意</td></tr>
-<tr><td>⚠️ 注意</td><td><code>--audit</code> 关闭全部沙箱安全，绝不可用于不可信代码；Windows Sandbox 拆除是尽力而为</td></tr>
-</table>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>项目</td><td>Microsoft eXecution Container（MXC），MIT</td></tr><tr><td>时间线</td><td>2026-02-06 创建，2026-10-09 最近提交，490 commits</td></tr><tr><td>热度</td><td>2,050 stars / 113 forks / 52 open issues</td></tr><tr><td>定位</td><td>SDK 依赖，不是常驻服务；应用内嵌后拉起沙箱</td></tr><tr><td>SDK</td><td>Rust <code>mxc-sdk</code> / .NET <code>Microsoft.Mxc.Sdk</code> / Node <code>@microsoft/mxc-sdk</code></td></tr><tr><td>执行器</td><td><code>wxc-exec.exe</code>（Win）/ <code>lxc-exec</code>（Linux）/ <code>mxc-exec-mac</code>（macOS）</td></tr><tr><td>后端数</td><td>9（ProcessContainer、Windows Sandbox、LXC、Bubblewrap、Seatbelt、MicroVM/Nanvix、Hyperlight、IsolationSession、WSLC）</td></tr><tr><td>默认后端</td><td>Windows <code>processcontainer</code> / Linux <code>bubblewrap</code> / macOS <code>seatbelt</code></td></tr><tr><td>Schema</td><td>稳定 1.0.0；dev 1.1.0-alpha；方向性网络契约自 0.9.0-alpha；更早契约直接拒绝</td></tr><tr><td>默认策略</td><td>egress/ingress 省略即 deny；<code>hostLoopback</code> 需显式申请；显式阻断优先</td></tr><tr><td>MicroVM 开销</td><td>~100 ms 冷启动（Windows 热快照）、~100 MB 常驻</td></tr><tr><td>遥测</td><td>仅 Windows；需 run opt-in + 用户同意 + 策略允许；管理员不能代用户同意</td></tr><tr><td>⚠️ 注意</td><td><code>--audit</code> 关闭全部沙箱安全，绝不可用于不可信代码；Windows Sandbox 拆除是尽力而为</td></tr></tbody></table>
 <h2>延伸阅读</h2>
-<ul>
-<li><a href="https://github.com/microsoft/mxc">microsoft/mxc 仓库</a></li>
-<li><a href="https://github.com/microsoft/mxc/blob/main/docs/backends/bwrap/bubblewrap-backend.md">Bubblewrap 后端指南</a></li>
-<li><a href="https://github.com/microsoft/mxc/blob/main/docs/backends/seatbelt/seatbelt-backend.md">Seatbelt 后端指南</a></li>
-<li><a href="https://github.com/microsoft/mxc/blob/main/docs/backends/nanvix/nanvix.md">Nanvix MicroVM 后端</a></li>
-<li><a href="https://github.com/microsoft/mxc/blob/main/docs/schema.md">配置 schema 与方向性网络契约</a></li>
-<li><a href="/articles/2026-10-09_phishing-server-layer-aitm/">本站：钓鱼防御打错了层级：域名封不过来，但服务器藏不住</a></li>
-<li><a href="/articles/2026-09-19_ai-fleet-governance-tools/">本站：守住你的「AI 机群」：16 款治理/护栏/红队平台速览</a></li>
-</ul>
+<ul><li><a href="https://github.com/microsoft/mxc" target="_blank" rel="noopener noreferrer">microsoft/mxc 仓库</a></li><li><a href="https://github.com/microsoft/mxc/blob/main/docs/backends/bwrap/bubblewrap-backend.md" target="_blank" rel="noopener noreferrer">Bubblewrap 后端指南</a></li><li><a href="https://github.com/microsoft/mxc/blob/main/docs/backends/seatbelt/seatbelt-backend.md" target="_blank" rel="noopener noreferrer">Seatbelt 后端指南</a></li><li><a href="https://github.com/microsoft/mxc/blob/main/docs/backends/nanvix/nanvix.md" target="_blank" rel="noopener noreferrer">Nanvix MicroVM 后端</a></li><li><a href="https://github.com/microsoft/mxc/blob/main/docs/schema.md" target="_blank" rel="noopener noreferrer">配置 schema 与方向性网络契约</a></li><li><a href="/articles/2026-10-09_phishing-server-layer-aitm/">本站：钓鱼防御打错了层级：域名封不过来，但服务器藏不住</a></li><li><a href="/articles/2026-09-19_ai-fleet-governance-tools/">本站：守住你的「AI 机群」：16 款治理/护栏/红队平台速览</a></li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

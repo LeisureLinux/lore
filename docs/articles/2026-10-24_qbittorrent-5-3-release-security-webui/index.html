@@ -288,7 +288,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>来源：<a href="https://9to5linux.com/qbittorrent-5-3-bittorrent-client-is-out-as-a-major-update-heres-whats-new">9to5Linux：qBittorrent 5.3 BitTorrent Client Is Out as a Major Update</a>（<strong>Marcus Nestor，2026-10-20</strong>）<br>
+<blockquote>来源：<a href="https://9to5linux.com/qbittorrent-5-3-bittorrent-client-is-out-as-a-major-update-heres-whats-new" target="_blank" rel="noopener noreferrer">9to5Linux：qBittorrent 5.3 BitTorrent Client Is Out as a Major Update</a>（<strong>Marcus Nestor，2026-10-20</strong>）<br>
 一手材料：本文的功能清单与修复条目全部来自 <strong>qBittorrent v5.3.0 官方发布说明</strong>（GitHub Release，<strong>2026-10-20 12:57 UTC</strong>），并逐条回读了相关 PR 的原始描述（PR #24889、#24793、#24869、#24805、#24792 等）。版本节奏实测：<strong>5.2.0（2026-05-03）→ 5.2.1（05-25）→ 5.2.2（06-16）→ 5.2.3（07-07）→ 5.2.4（09-28）→ 5.3.0（10-20）</strong>。<br>
 本文为<strong>解读</strong>。第三节对「为什么这些修复值得优先于功能」的判断是笔者补充。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
@@ -302,143 +302,84 @@
 <h2>一句话结论</h2>
 <p><strong>9to5Linux 的标题落在「这是一次大更新」，而我认为真正的信息量在 changelog 里那几条 <code>WEBUI:</code> 和 <code>BUGFIX:</code> 上。</strong></p>
 <p><strong>因为这一版同时修了两个真正能被利用的问题：</strong></p>
-<blockquote><strong>WebUI: Fix authentication bypass via X-Forwarded-For spoofing（#24889，2026-09-21 合入）</strong></blockquote>>
-<blockquote><strong>When reverse proxy support is enabled, the client address is read from <code>X-Forwarded-For</code>. The code picked the first entry accepted by <code>QHostAddress::isGlobal()</code>, intending to skip past client-supplied entries. But <code>isGlobal()</code> also accepts private addresses, so the leftmost entry, which the client controls, was always chosen.</strong></blockquote>>
-<blockquote><strong>Result: any client that can reach a trusted proxy which appends to the header can send <code>X-Forwarded-For: <whitelisted address></code> and be treated as that address, bypassing the subnet whitelist and evading the failed-login ban.</strong></blockquote>
-<strong>以及一个被明确标注为「用 claude-security 插件找出来」的内存耗尽问题（#24869）：</strong>
+<blockquote><strong>WebUI: Fix authentication bypass via X-Forwarded-For spoofing（#24889，2026-09-21 合入）</strong><br>
+<br>
+<strong>When reverse proxy support is enabled, the client address is read from <code>X-Forwarded-For</code>. The code picked the first entry accepted by <code>QHostAddress::isGlobal()</code>, intending to skip past client-supplied entries. But <code>isGlobal()</code> also accepts private addresses, so the leftmost entry, which the client controls, was always chosen.</strong><br>
+<br>
+<strong>Result: any client that can reach a trusted proxy which appends to the header can send <code>X-Forwarded-For: &lt;whitelisted address&gt;</code> and be treated as that address, bypassing the subnet whitelist and evading the failed-login ban.</strong></blockquote>
+<p><strong>以及一个被明确标注为「用 claude-security 插件找出来」的内存耗尽问题（#24869）：</strong></p>
 <blockquote><strong>「<code>prepareAnnounceResponse()</code> 通过非 const 的 <code>QHash::operator[]</code> 读取 per-torrent 统计，而它会 default-insert。在 <code>event=stopped</code> 路径上，<code>unregisterPeer()</code> 对未知 <code>info_hash</code> 提前返回，于是响应步骤把条目创建了出来 —— 绕过了 <code>registerPeer()</code> 会做的 <code>MAX_TORRENTS</code> 淘汰。这些条目永不回收，所以循环 announce 加上随机新 hash 就能让 <code>m_torrents</code> 无界增长。」</strong></blockquote>
-<strong>所以如果你在 WebUI 前面挂了 Nginx / Caddy / Cloudflare Tunnel 这类反代（这是家用与 NAS 场景最常见的部署方式），这一版不是「锦上添花」，是「该升了」。</strong>
+<p><strong>所以如果你在 WebUI 前面挂了 Nginx / Caddy / Cloudflare Tunnel 这类反代（这是家用与 NAS 场景最常见的部署方式），这一版不是「锦上添花」，是「该升了」。</strong></p>
 <h2>一、版本节奏：5.2 的五个补丁版，和 5.3 的位置</h2>
 <p>实测的发布序列：</p>
-<table>
-<tr><th>版本</th><th>发布日期</th></tr>
-<tr><td>5.2.0</td><td>2026-05-03</td></tr>
-<tr><td>5.2.1</td><td>2026-05-25</td></tr>
-<tr><td>5.2.2</td><td>2026-06-16</td></tr>
-<tr><td>5.2.3</td><td>2026-07-07</td></tr>
-<tr><td>5.2.4</td><td>2026-09-28</td></tr>
-<tr><td><strong>5.3.0</strong></td><td><strong>2026-10-20</strong></td></tr>
-</table>
+<table><thead><tr><th>版本</th><th>发布日期</th></tr></thead><tbody><tr><td>5.2.0</td><td>2026-05-03</td></tr><tr><td>5.2.1</td><td>2026-05-25</td></tr><tr><td>5.2.2</td><td>2026-06-16</td></tr><tr><td>5.2.3</td><td>2026-07-07</td></tr><tr><td>5.2.4</td><td>2026-09-28</td></tr><tr><td><strong>5.3.0</strong></td><td><strong>2026-10-20</strong></td></tr></tbody></table>
 <p><strong>值得注意的是 5.2 后面连着四个补丁版（5.2.1 → 5.2.4），其中 5.2.4 是 2026-09-28</strong>。<strong>我翻了 5.2.4 的 changelog，里面几乎全是 WebUI 与 UI 层的修复，没有安全条目</strong>（例如 <code>Escape add-torrent window title</code>、<code>Use safe property for setting element title</code>、<code>Only open http(s) URLs from RSS articles and search results</code>、以及一个「只在意大利语 locale 下崩溃」的 Preferences 页 bug）。</p>
 <p><strong>这形成一个有意思的对照：5.2.4 在修「WebUI 的 XSS 面」，5.3.0 在修「WebUI 的认证面」。</strong></p>
 <p><strong>而 5.3.0 的功能清单里，「匹配所有分享限速」被放在了第一条 FEATURE（#24043，glassez）。</strong> <strong>9to5Linux 也把它列为头两条之一。</strong> <strong>但这两条其实对普通用户没什么用</strong>：</p>
-<ul>
-<li><strong>「匹配所有分享限速」</strong>：以前是「逐个种子设置全局分享限速」，现在多一个开关，可以「一条规则套到所有种子」。<strong>这个功能解决的是 tracker 场景（PT 站要求全站限速一致）</strong>，普通 BT 用户基本用不上。</li>
-<li><strong>而 IP 段封禁（#23157）虽然实用，但它是新功能，不是修 bug。</strong></li>
-</ul>
-<strong>所以我的判断是：这一版的「价值密度」不在功能列表的前两条，而在 changelog 的中后段。</strong>
+<ul><li><strong>「匹配所有分享限速」</strong>：以前是「逐个种子设置全局分享限速」，现在多一个开关，可以「一条规则套到所有种子」。<strong>这个功能解决的是 tracker 场景（PT 站要求全站限速一致）</strong>，普通 BT 用户基本用不上。</li><li><strong>而 IP 段封禁（#23157）虽然实用，但它是新功能，不是修 bug。</strong></li></ul>
+<p><strong>所以我的判断是：这一版的「价值密度」不在功能列表的前两条，而在 changelog 的中后段。</strong></p>
 <h2>二、必须修的那一条：X-Forwarded-For 认证绕过</h2>
 <p><strong>这是整个 5.3.0 里最值得单独讲的一条，因为它有一个「教科书式的形状」：一个看起来正确的意图，被一个 API 语义细节彻底反转。</strong></p>
 <h3>2.1 原始代码想做什么</h3>
 <p>qBittorrent 的 WebUI 支持「反向代理模式」，此时客户端地址不取 TCP 对端，而是从 <code>X-Forwarded-For</code> 头里解析。</p>
 <p><strong>但一个请求经过多层代理时，<code>X-Forwarded-For</code> 里会有一串地址</strong>：</p>
-<pre><code class="">X-Forwarded-For: <客户端>, <代理1>, <代理2>
-</code></pre>
+<pre><code>X-Forwarded-For: &lt;客户端&gt;, &lt;代理1&gt;, &lt;代理2&gt;</code></pre>
 <p><strong>如果无脑取最左边那一项，就等于完全信任客户端自己填的内容。</strong> <strong>所以原代码想「跳过客户端自己塞的那几项」</strong>：</p>
 <blockquote><strong>The code picked the first entry accepted by <code>QHostAddress::isGlobal()</code>, intending to skip past client-supplied entries.</strong></blockquote>
-<strong>思路是对的：客户端可能伪造私有地址（<code>192.168.x.x</code>、<code>10.x.x.x</code>），所以只接受「全球可路由地址」，把私有地址当作代理地址跳过。</strong>
+<p><strong>思路是对的：客户端可能伪造私有地址（<code>192.168.x.x</code>、<code>10.x.x.x</code>），所以只接受「全球可路由地址」，把私有地址当作代理地址跳过。</strong></p>
 <h3>2.2 但 <code>isGlobal()</code> 也接受私有地址</h3>
 <p><strong>问题出在 Qt 的 <code>QHostAddress::isGlobal()</code> 语义上：它返回 true 的条件不是「不是私有地址」，而是「既不是私有地址，也不是 loopback」。</strong></p>
 <p><strong>换句话说，<code>isGlobal()</code> 里的 "Global" 意思是「不在 loopback 段」，而作者以为它是「可全球路由」。</strong></p>
 <p><strong>于是：</strong></p>
-<ul>
-<li><strong>客户端伪造 <code>X-Forwarded-For: 192.168.1.5</code> → <code>isGlobal()</code> 返回 true（因为它不是 127.0.0.1）→ 被当成「可信的全球地址」直接采信。</strong></li>
-<li><strong>而这一项恰恰是最左边、也就是客户端完全可控的那一项。</strong></li>
-</ul>
-<strong>后果正如 PR 描述所说：</strong>
-<blockquote><strong>any client that can reach a trusted proxy which appends to the header can send <code>X-Forwarded-For: <whitelisted address></code> and be treated as that address, bypassing the subnet whitelist and evading the failed-login ban.</strong></blockquote>
-<strong>两个绕过点值得分开看：</strong>
-<table>
-<tr><th>绕过对象</th><th>说明</th></tr>
-<tr><td><strong>子网白名单（Subnet Whitelist）</strong></td><td>WebUI 可以配置「只允许某个网段访问」。伪造白名单内的地址即直接通过。</td></tr>
-<tr><td><strong>登录失败封禁（IP ban / failed-login ban）</strong></td><td>「同一 IP 登录失败 N 次就封禁」是暴力破解的主要防线。伪造源 IP 等于每次都用新身份试，<strong>无限次重试</strong>。</td></tr>
-</table>
+<ul><li><strong>客户端伪造 <code>X-Forwarded-For: 192.168.1.5</code> → <code>isGlobal()</code> 返回 true（因为它不是 127.0.0.1）→ 被当成「可信的全球地址」直接采信。</strong></li><li><strong>而这一项恰恰是最左边、也就是客户端完全可控的那一项。</strong></li></ul>
+<p><strong>后果正如 PR 描述所说：</strong></p>
+<blockquote><strong>any client that can reach a trusted proxy which appends to the header can send <code>X-Forwarded-For: &lt;whitelisted address&gt;</code> and be treated as that address, bypassing the subnet whitelist and evading the failed-login ban.</strong></blockquote>
+<p><strong>两个绕过点值得分开看：</strong></p>
+<table><thead><tr><th>绕过对象</th><th>说明</th></tr></thead><tbody><tr><td><strong>子网白名单（Subnet Whitelist）</strong></td><td>WebUI 可以配置「只允许某个网段访问」。伪造白名单内的地址即直接通过。</td></tr><tr><td><strong>登录失败封禁（IP ban / failed-login ban）</strong></td><td>「同一 IP 登录失败 N 次就封禁」是暴力破解的主要防线。伪造源 IP 等于每次都用新身份试，<strong>无限次重试</strong>。</td></tr></tbody></table>
 <p><strong>第二点尤其致命，因为 WebUI 本身就是 BT 客户端最常暴露到公网的管理面。</strong></p>
 <h3>2.3 修复方式：从最近一跳往外走</h3>
 <blockquote><strong>The fix walks the header from the nearest hop outwards, skipping trusted proxies; the first remaining hop is the client. A client-supplied entry is only honored if every hop after it is a trusted proxy.</strong></blockquote>
-<strong>新的解析逻辑是「从离服务器最近的一跳开始往客户端方向走，跳过所有受信任代理，第一個剩下的就是客户端」</strong>，并且只有当某一项<strong>之后的每一跳都是可信代理</strong>时，这一项才被承认是客户端提供的。
+<p><strong>新的解析逻辑是「从离服务器最近的一跳开始往客户端方向走，跳过所有受信任代理，第一個剩下的就是客户端」</strong>，并且只有当某一项<strong>之后的每一跳都是可信代理</strong>时，这一项才被承认是客户端提供的。</p>
 <p><strong>这个方向反转是关键：</strong></p>
-<ul>
-<li><strong>旧逻辑：从客户端那一端往里走，试图「猜」哪些是伪造的。</strong></li>
-<li><strong>新逻辑：从服务器这一端往外走，只信任「已配置的可信代理列表」里的跳，其余一律当作客户端。</strong></li>
-</ul>
-<strong>PR 里也诚实写了这个修复带来的行为变化：</strong>
+<ul><li><strong>旧逻辑：从客户端那一端往里走，试图「猜」哪些是伪造的。</strong></li><li><strong>新逻辑：从服务器这一端往外走，只信任「已配置的可信代理列表」里的跳，其余一律当作客户端。</strong></li></ul>
+<p><strong>PR 里也诚实写了这个修复带来的行为变化：</strong></p>
 <blockquote><strong>Behavior change: a setup whose trusted-proxy list omits an intermediate hop now resolves to that hop rather than past it.</strong></blockquote>
-<strong>也就是说，如果你原来的可信代理列表写得不全（比如有两层反代但只填了一层），</strong>升级后解析结果会变成「那一层」而不是「更里面的那层」。<strong> </strong>这属于「更严格」的方向，但升级后仍建议把自己的反代跳数重新核对一遍。**
+<p><strong>也就是说，如果你原来的可信代理列表写得不全（比如有两层反代但只填了一层），</strong>升级后解析结果会变成「那一层」而不是「更里面的那层」。<strong> </strong>这属于「更严格」的方向，但升级后仍建议把自己的反代跳数重新核对一遍。**</p>
 <h3>2.4 顺带一提：<code>Sec-Fetch-Site</code> 交叉站点检测</h3>
 <p>同一次 WebUI 加固里还有一条（#24792、#24970）：</p>
 <blockquote><strong>When both <code>Origin</code> and <code>Referer</code> headers were absent the request was always accepted, so an attacker page could opt out of the Referer check by setting <code>Referrer-Policy: no-referrer</code>. <code>Sec-Fetch-Site</code> is set by the browser and cannot be suppressed or forged by the initiating page.</strong></blockquote>
-<strong>这条的形状和上面那条非常像，也是「安全检查存在，但可以被客户端主动关掉」：</strong>
-<ul>
-<li><strong>旧实现：CSRF 防护依赖 <code>Origin</code> / <code>Referer</code> 头。</strong></li>
-<li><strong>问题：页面可以用 <code>Referrer-Policy: no-referrer</code> 让浏览器不发 <code>Referer</code>，此时 <code>Origin</code> 也缺失 → 旧逻辑「两个都没有就放行」。</strong></li>
-<li><strong>新实现：改用 <code>Sec-Fetch-Site</code>，这个头由浏览器自动设置，攻击页面无法抑制也无法伪造。</strong></li>
-</ul>
-<strong>限制条件 PR 也写明了：</strong>
+<p><strong>这条的形状和上面那条非常像，也是「安全检查存在，但可以被客户端主动关掉」：</strong></p>
+<ul><li><strong>旧实现：CSRF 防护依赖 <code>Origin</code> / <code>Referer</code> 头。</strong></li><li><strong>问题：页面可以用 <code>Referrer-Policy: no-referrer</code> 让浏览器不发 <code>Referer</code>，此时 <code>Origin</code> 也缺失 → 旧逻辑「两个都没有就放行」。</strong></li><li><strong>新实现：改用 <code>Sec-Fetch-Site</code>，这个头由浏览器自动设置，攻击页面无法抑制也无法伪造。</strong></li></ul>
+<p><strong>限制条件 PR 也写明了：</strong></p>
 <blockquote><strong>Browsers only send it to secure origins, so this covers HTTPS and localhost deployments. Clients that don't send it keep the previous permissive path.</strong></blockquote>
-<strong>所以「WebUI 直接用 HTTP 暴露在公网」这个部署方式，在这条上仍然享受不到保护。</strong> <strong>HTTPS（或至少 localhost + 反代）才是这条修复能生效的前提。</strong>
+<p><strong>所以「WebUI 直接用 HTTP 暴露在公网」这个部署方式，在这条上仍然享受不到保护。</strong> <strong>HTTPS（或至少 localhost + 反代）才是这条修复能生效的前提。</strong></p>
 <h2>三、其他三个安全向的修复</h2>
 <h3>3.1 邮件通知的 SMTP 注入（#24793）</h3>
-<blockquote><strong>Control characters in a header value (e.g. a torrent name containing CRLF) could inject MIME headers, and a body line beginning with a dot could end the DATA phase early. Replace characters below 0x20 with a space per RFC 5322 2.2, and dot-stuff the body per RFC 5321 4.5.2.</strong></blockquote>>
-<blockquote><strong>Also discard bytes buffered before STARTTLS instead of parsing them as protected server responses, per RFC 3207 4.2.</strong></blockquote>
-<strong>这条的触发面比想象中宽：控制字符可以藏在「种子名」里。</strong> <strong>而种子名是攻击者可控的</strong>（tracker 上传的元数据），<strong>你一订阅、名字进邮件模板，就可能变成 header 注入。</strong>
+<blockquote><strong>Control characters in a header value (e.g. a torrent name containing CRLF) could inject MIME headers, and a body line beginning with a dot could end the DATA phase early. Replace characters below 0x20 with a space per RFC 5322 2.2, and dot-stuff the body per RFC 5321 4.5.2.</strong><br>
+<br>
+<strong>Also discard bytes buffered before STARTTLS instead of parsing them as protected server responses, per RFC 3207 4.2.</strong></blockquote>
+<p><strong>这条的触发面比想象中宽：控制字符可以藏在「种子名」里。</strong> <strong>而种子名是攻击者可控的</strong>（tracker 上传的元数据），<strong>你一订阅、名字进邮件模板，就可能变成 header 注入。</strong></p>
 <p><strong>三个细节值得记：</strong></p>
-<ul>
-<li><strong>CRLF 注入 MIME 头</strong>：可以伪造额外收件人、伪造 <code>Content-Type</code>、甚至插入 <code>Bcc</code>。</li>
-<li><strong>正文行首的点号（<code>.</code>）</strong>：在 SMTP 的 <code>DATA</code> 阶段，单独一行 <code>.</code> 表示「正文结束」。正文里出现 <code>.\r\n</code> 会被当成结束标记，导致<strong>邮件正文被截断</strong> —— 修复方式是 RFC 5321 4.5.2 要求的 dot-stuffing（行首点号写成两个点）。</li>
-<li><strong>STARTTLS 之前缓冲的字节被丢弃</strong>：RFC 3207 4.2 明确要求在 TLS 握手前，任何来自服务器的可读字节都应视为「明文注入」丢弃。<strong>不丢弃的话，攻击者控制的网络中间人可以提前注入伪造的 SMTP 应答</strong>。</li>
-</ul>
+<ul><li><strong>CRLF 注入 MIME 头</strong>：可以伪造额外收件人、伪造 <code>Content-Type</code>、甚至插入 <code>Bcc</code>。</li><li><strong>正文行首的点号（<code>.</code>）</strong>：在 SMTP 的 <code>DATA</code> 阶段，单独一行 <code>.</code> 表示「正文结束」。正文里出现 <code>.\r\n</code> 会被当成结束标记，导致<strong>邮件正文被截断</strong> —— 修复方式是 RFC 5321 4.5.2 要求的 dot-stuffing（行首点号写成两个点）。</li><li><strong>STARTTLS 之前缓冲的字节被丢弃</strong>：RFC 3207 4.2 明确要求在 TLS 握手前，任何来自服务器的可读字节都应视为「明文注入」丢弃。<strong>不丢弃的话，攻击者控制的网络中间人可以提前注入伪造的 SMTP 应答</strong>。</li></ul>
 <h3>3.2 tracker announce 无认证导致内存无界增长（#24869）</h3>
 <blockquote><strong>This was identified using the claude-security plugin.</strong></blockquote>
-<strong>这一条值得单独提一句，因为它的发现方式本身就是个信号：AI 安全插件在真实项目里抓到了资源耗尽类漏洞。</strong>
+<p><strong>这一条值得单独提一句，因为它的发现方式本身就是个信号：AI 安全插件在真实项目里抓到了资源耗尽类漏洞。</strong></p>
 <p><strong>成因拆开看很清楚：</strong></p>
-<ol>
-<li>1. <strong><code>prepareAnnounceResponse()</code> 用非 const 的 <code>QHash::operator[]</code> 查 per-torrent 统计 → 未命中时会 default-insert 一条。</strong></li>
-<li>2. <strong><code>event=stopped</code> 路径上，<code>unregisterPeer()</code> 对未知 <code>info_hash</code> 提前 return（这本身是对的）。</strong></li>
-<li>3. <strong>于是「先 unregister 失败 → 再 response 时被 operator[] 补出来」这条路径，绕过了 <code>registerPeer()</code> 里的 <code>MAX_TORRENTS</code> 淘汰逻辑。</strong></li>
-<li>4. <strong>而这些被 default-insert 出来的条目没有引用计数，也没有任何过期机制 → 循环 announce 配随机 info_hash，<code>m_torrents</code> 无界增长。</strong></li>
-</ol>
-<strong>PR 里还补了一刀：「同一个 <code>operator[]</code> 也会在最后一个 peer 离开、<code>unregisterPeer()</code> 刚把条目 erase 掉之后立刻把它复活，使得那个 erase 成了死代码。」</strong>
+<ol><li><strong><code>prepareAnnounceResponse()</code> 用非 const 的 <code>QHash::operator[]</code> 查 per-torrent 统计 → 未命中时会 default-insert 一条。</strong></li><li><strong><code>event=stopped</code> 路径上，<code>unregisterPeer()</code> 对未知 <code>info_hash</code> 提前 return（这本身是对的）。</strong></li><li><strong>于是「先 unregister 失败 → 再 response 时被 operator[] 补出来」这条路径，绕过了 <code>registerPeer()</code> 里的 <code>MAX_TORRENTS</code> 淘汰逻辑。</strong></li><li><strong>而这些被 default-insert 出来的条目没有引用计数，也没有任何过期机制 → 循环 announce 配随机 info_hash，<code>m_torrents</code> 无界增长。</strong></li></ol>
+<p><strong>PR 里还补了一刀：「同一个 <code>operator[]</code> 也会在最后一个 peer 离开、<code>unregisterPeer()</code> 刚把条目 erase 掉之后立刻把它复活，使得那个 erase 成了死代码。」</strong></p>
 <p><strong>修复方式是改用 <code>constFind</code> + 局部默认构造的 <code>TorrentStats</code>，并把 <code>ip</code> 参数的长度上限收到 255 字节</strong>（覆盖最大长度 DNS 名字与 IP literal，超长直接拒绝而不是截断 —— 因为 <code>peer.address</code> 是 peer 身份键的一半）。<strong>PR 强调改完后 bencode 响应「byte-identical」，即协议层行为不变。</strong></p>
 <h3>3.3 动态 DNS 走明文 HTTP（#24805）</h3>
 <blockquote><strong>The address published to the user's dynamic DNS provider was read from a cleartext <code>http://</code> response body and then pushed to the provider with the victim's stored credentials, so an on-path attacker could repoint the victim's hostname at their own infrastructure, or pin a stale address to suppress updates.</strong></blockquote>
-<strong>这条是典型的「明文 HTTP 换取便利」的经典代价</strong>：qBittorrent 去问一个 HTTP 端点「我的公网 IP 是多少」，拿到后带着用户凭据提交给 DDNS 服务商。<strong>中间人可以把 IP 换成自己的，把你的域名指向他的机器。</strong>
+<p><strong>这条是典型的「明文 HTTP 换取便利」的经典代价</strong>：qBittorrent 去问一个 HTTP 端点「我的公网 IP 是多少」，拿到后带着用户凭据提交给 DDNS 服务商。<strong>中间人可以把 IP 换成自己的，把你的域名指向他的机器。</strong></p>
 <p><strong>换成 HTTPS 就能修 —— 这条修复本身就是一次「把明文换成加密」的最小改动。</strong></p>
 <h2>四、功能面：哪些是真有用，哪些是「我觉得你用不上」</h2>
 <p>9to5Linux 的功能清单很长，我按「我认为实际价值」重新分了三档。</p>
 <h3>值得你关心的</h3>
-<table>
-<tr><th>功能</th><th>PR</th><th>为什么重要</th></tr>
-<tr><td><strong>IP 段封禁</strong></td><td>#23157</td><td>支持单个 IP、CIDR（<code>127.0.0.0/24</code>）、以及 aMule <code>IpFilter.dat</code> 风格的区间（<code>127.0.0.0 - 127.0.0.255</code>）。<strong>原单 IP 方式保留。</strong></td></tr>
-<tr><td><strong>IP 封禁告警日志</strong></td><td>#24734</td><td>libtorrent 2.1.1 起提供的告警，现在能在 qBittorrent 日志里看到「封了谁、为什么」。<strong>排查「为什么某个 peer 连不上」时非常有用。</strong></td></tr>
-<tr><td><strong><code>magnet</code> 的 <code>so</code> 参数</strong></td><td>#24336</td><td>magnet 链接里可以指定「预选下载哪些文件」。<strong>对多文件种子是刚需（以前只能全下或手动取消）。</strong></td></tr>
-<tr><td><strong>按 infohash 过滤种子列表</strong></td><td>#23829</td><td>手里有一堆 info hash 要核对时，比肉眼比对 hex 靠谱。</td></tr>
-<tr><td><strong>I2P PeX + I2P inbound/outbound 长度方差</strong></td><td>#24870、#24891</td><td>I2P 用户可调（PR 作者自嘲「我没测，我暂时对 I2P 没兴趣」）。</td></tr>
-<tr><td><strong>WebTorrent STUN 服务器设置</strong></td><td>#24837</td><td>把 libtorrent 那个设置暴露出来。<strong>WebTorrent 依赖 STUN 打通 NAT。</strong></td></tr>
-<tr><td><strong>WebUI：RSS 规则导入/导出</strong></td><td>#24842</td><td>之前只能重建。<strong>多实例/多设备之间同步 RSS 订阅终于可行。</strong></td></tr>
-<tr><td><strong>WebUI：搜索标签页跨重启保留</strong></td><td>#23784</td><td>同上，属于「终于做了」。</td></tr>
-<tr><td><strong>WebUI：默认开启虚拟列表</strong></td><td>#23887</td><td>大种子库（几万条）滚动性能。<strong>注意这是「默认变更」，可能影响你的浏览器表现。</strong></td></tr>
-<tr><td><strong>WebUI：会话数量上限</strong></td><td>#24720</td><td>配合上一条，防止会话无限堆积。</td></tr>
-<tr><td><strong>WebUI：暂停/恢复 BitTorrent 会话</strong></td><td>#24269</td><td>运维向的好功能。</td></tr>
-<tr><td><strong><code>allow_multiple_connections_per_pid</code></strong></td><td>#24684</td><td>暴露 libtorrent 2.0.13 的同名设置（<strong>同一 Peer ID 允许多连接</strong>），用来绕开某些 tracker/peer 的连接数限制。</td></tr>
-<tr><td><strong>「单个 peer 最大未完成 block 请求数」</strong></td><td>#24253</td><td>对应 libtorrent 的 <code>max_allowed_in_request_queue</code>。<strong>调低能缓解「被 peer 打死」类问题。</strong></td></tr>
-<tr><td><strong>CET Shadow Stack 兼容标记</strong></td><td>#24905</td><td>仅 x86-64 目标，老 CPU 自动降级为 NOP。<strong>属于「和 2026 年的攻击面同步演进」的常规维护。</strong></td></tr>
-</table>
+<table><thead><tr><th>功能</th><th>PR</th><th>为什么重要</th></tr></thead><tbody><tr><td><strong>IP 段封禁</strong></td><td>#23157</td><td>支持单个 IP、CIDR（<code>127.0.0.0/24</code>）、以及 aMule <code>IpFilter.dat</code> 风格的区间（<code>127.0.0.0 - 127.0.0.255</code>）。<strong>原单 IP 方式保留。</strong></td></tr><tr><td><strong>IP 封禁告警日志</strong></td><td>#24734</td><td>libtorrent 2.1.1 起提供的告警，现在能在 qBittorrent 日志里看到「封了谁、为什么」。<strong>排查「为什么某个 peer 连不上」时非常有用。</strong></td></tr><tr><td><strong><code>magnet</code> 的 <code>so</code> 参数</strong></td><td>#24336</td><td>magnet 链接里可以指定「预选下载哪些文件」。<strong>对多文件种子是刚需（以前只能全下或手动取消）。</strong></td></tr><tr><td><strong>按 infohash 过滤种子列表</strong></td><td>#23829</td><td>手里有一堆 info hash 要核对时，比肉眼比对 hex 靠谱。</td></tr><tr><td><strong>I2P PeX + I2P inbound/outbound 长度方差</strong></td><td>#24870、#24891</td><td>I2P 用户可调（PR 作者自嘲「我没测，我暂时对 I2P 没兴趣」）。</td></tr><tr><td><strong>WebTorrent STUN 服务器设置</strong></td><td>#24837</td><td>把 libtorrent 那个设置暴露出来。<strong>WebTorrent 依赖 STUN 打通 NAT。</strong></td></tr><tr><td><strong>WebUI：RSS 规则导入/导出</strong></td><td>#24842</td><td>之前只能重建。<strong>多实例/多设备之间同步 RSS 订阅终于可行。</strong></td></tr><tr><td><strong>WebUI：搜索标签页跨重启保留</strong></td><td>#23784</td><td>同上，属于「终于做了」。</td></tr><tr><td><strong>WebUI：默认开启虚拟列表</strong></td><td>#23887</td><td>大种子库（几万条）滚动性能。<strong>注意这是「默认变更」，可能影响你的浏览器表现。</strong></td></tr><tr><td><strong>WebUI：会话数量上限</strong></td><td>#24720</td><td>配合上一条，防止会话无限堆积。</td></tr><tr><td><strong>WebUI：暂停/恢复 BitTorrent 会话</strong></td><td>#24269</td><td>运维向的好功能。</td></tr><tr><td><strong><code>allow_multiple_connections_per_pid</code></strong></td><td>#24684</td><td>暴露 libtorrent 2.0.13 的同名设置（<strong>同一 Peer ID 允许多连接</strong>），用来绕开某些 tracker/peer 的连接数限制。</td></tr><tr><td><strong>「单个 peer 最大未完成 block 请求数」</strong></td><td>#24253</td><td>对应 libtorrent 的 <code>max_allowed_in_request_queue</code>。<strong>调低能缓解「被 peer 打死」类问题。</strong></td></tr><tr><td><strong>CET Shadow Stack 兼容标记</strong></td><td>#24905</td><td>仅 x86-64 目标，老 CPU 自动降级为 NOP。<strong>属于「和 2026 年的攻击面同步演进」的常规维护。</strong></td></tr></tbody></table>
 <h3>明显是特定人群的</h3>
-<ul>
-<li><strong>「匹配所有分享限速」（#24043）</strong>：PT 站/私有 tracker 场景。</li>
-<li><strong>I2P 相关两项</strong>：暗网用户。</li>
-<li><strong>Windows 专属</strong>：默认应用设置按钮、托盘图标跟随系统配色。</li>
-<li><strong>macOS 专属</strong>：状态栏图标跟随系统外观（#24775）、修复 LineEdit 暗角伪影、删除快捷键改成 macOS 习惯。</li>
-</ul>
+<ul><li><strong>「匹配所有分享限速」（#24043）</strong>：PT 站/私有 tracker 场景。</li><li><strong>I2P 相关两项</strong>：暗网用户。</li><li><strong>Windows 专属</strong>：默认应用设置按钮、托盘图标跟随系统配色。</li><li><strong>macOS 专属</strong>：状态栏图标跟随系统外观（#24775）、修复 LineEdit 暗角伪影、删除快捷键改成 macOS 习惯。</li></ul>
 <h3>「改了默认行为」的（升级时值得留意）</h3>
-<ul>
-<li><strong>WebUI 虚拟列表默认开启</strong>（#23887）。</li>
-<li><strong>WebUI 允许跨源访问 webroot</strong>（#24379）—— <strong>这条要读一下再决定要不要开。</strong></li>
-<li><strong>「不再覆盖没有写权限的配置文件」（#23817）</strong>：以前会尝试覆盖然后失败，现在直接不写。<strong>如果你用只读挂载跑 qBittorrent，升级后行为更干净。</strong></li>
-<li><strong>插件版本号规则放宽</strong>（#25017）：允许插件用 SemVer，也允许只用单个版本号段。</li>
-<li><strong>其他</strong>：移除过时的设置键、Python 最低版本要求上调、默认 <code>DiskQueueSize</code> 对齐 libtorrent 2.1。</li>
-</ul>
+<ul><li><strong>WebUI 虚拟列表默认开启</strong>（#23887）。</li><li><strong>WebUI 允许跨源访问 webroot</strong>（#24379）—— <strong>这条要读一下再决定要不要开。</strong></li><li><strong>「不再覆盖没有写权限的配置文件」（#23817）</strong>：以前会尝试覆盖然后失败，现在直接不写。<strong>如果你用只读挂载跑 qBittorrent，升级后行为更干净。</strong></li><li><strong>插件版本号规则放宽</strong>（#25017）：允许插件用 SemVer，也允许只用单个版本号段。</li><li><strong>其他</strong>：移除过时的设置键、Python 最低版本要求上调、默认 <code>DiskQueueSize</code> 对齐 libtorrent 2.1。</li></ul>
 <h2>五、一个容易被跳过的点：这次 changelog 里没有 CVE 编号</h2>
 <p><strong>我查了 qBittorrent 仓库的 issue 搜索，<code>CVE</code> 相关只有一条 2023 年的历史条目</strong>；<strong>这次 5.3.0 的发布说明里，所有安全向条目都以 <code>BUGFIX:</code> / <code>WEBUI:</code> 前缀出现，没有一条挂 CVE 号。</strong></p>
 <p><strong>这不代表这些不是安全问题</strong> —— 恰恰相反，#24889（认证绕过）、#24793（SMTP 注入）、#24869（资源耗尽）<strong>在技术性质上完全够格走 CVE 流程</strong>。</p>
@@ -446,47 +387,22 @@
 <p><strong>所以对 qBittorrent 这类项目，「订阅上游 release」比「等发行版 CVE 通告」更靠谱。</strong></p>
 <h2>六、升级建议</h2>
 <p><strong>如果你满足下面任一条，建议尽快升到 5.3.0：</strong></p>
-<ul>
-<li><strong>WebUI 前面挂了反向代理</strong>（Nginx / Caddy / Cloudflare Tunnel / 群晖反向代理 / 各类 NAS 面板）—— <strong>这是认证绕过的前提条件。</strong></li>
-<li><strong>WebUI 暴露在公网</strong> —— 叠加 <code>Sec-Fetch-Site</code> 那条，HTTP 明文部署享受不到保护。</li>
-<li><strong>开启了邮件通知</strong> —— SMTP 注入的触发面包含种子名。</li>
-<li><strong>开着 tracker announce 端口</strong>（qBittorrent 默认开放 TCP/UDP 6881）—— 内存无界增长那条直接命中。</li>
-<li><strong>用着动态 DNS</strong> —— 明文 HTTP 那条。</li>
-</ul>
-<strong>如果都不满足</strong>，5.3.0 依然值得升，因为：
-<ul>
-<li><strong>5.2.4 之后到 5.3.0 之间隔了将近一个月，而 5.2.x 后面连着四个补丁版说明这个项目处在高频修 bug 的状态</strong>；</li>
-<li><strong>功能面上 IP 段封禁、magnet <code>so</code>、RSS 导入导出、搜索标签持久化都是「用上就回不去」的类型。</strong></li>
-</ul>
-<strong>Linux 上最省事的还是 AppImage</strong>，9to5Linux 提到的就是这条路径：
+<ul><li><strong>WebUI 前面挂了反向代理</strong>（Nginx / Caddy / Cloudflare Tunnel / 群晖反向代理 / 各类 NAS 面板）—— <strong>这是认证绕过的前提条件。</strong></li><li><strong>WebUI 暴露在公网</strong> —— 叠加 <code>Sec-Fetch-Site</code> 那条，HTTP 明文部署享受不到保护。</li><li><strong>开启了邮件通知</strong> —— SMTP 注入的触发面包含种子名。</li><li><strong>开着 tracker announce 端口</strong>（qBittorrent 默认开放 TCP/UDP 6881）—— 内存无界增长那条直接命中。</li><li><strong>用着动态 DNS</strong> —— 明文 HTTP 那条。</li></ul>
+<p><strong>如果都不满足</strong>，5.3.0 依然值得升，因为：</p>
+<ul><li><strong>5.2.4 之后到 5.3.0 之间隔了将近一个月，而 5.2.x 后面连着四个补丁版说明这个项目处在高频修 bug 的状态</strong>；</li><li><strong>功能面上 IP 段封禁、magnet <code>so</code>、RSS 导入导出、搜索标签持久化都是「用上就回不去」的类型。</strong></li></ul>
+<p><strong>Linux 上最省事的还是 AppImage</strong>，9to5Linux 提到的就是这条路径：</p>
 <pre><code class="sh">chmod +x qbittorrent-5.3.0-x86_64.AppImage
-./qbittorrent-5.3.0-x86_64.AppImage
-</code></pre>
+./qbittorrent-5.3.0-x86_64.AppImage</code></pre>
 <p><strong>升级后我建议做的三件事：</strong></p>
-<ol>
-<li>1. <strong>核对反向代理的可信代理列表</strong>（因为修复后解析方向变了，见 2.3）。</li>
-<li>2. <strong>确认 WebUI 的访问入口走 HTTPS 或 localhost</strong>（否则 <code>Sec-Fetch-Site</code> 那条不生效）。</li>
-<li>3. <strong>看一眼日志里新的 IP 封禁告警</strong>，借机清理一遍 peer 列表。</li>
-</ol>
+<ol><li><strong>核对反向代理的可信代理列表</strong>（因为修复后解析方向变了，见 2.3）。</li><li><strong>确认 WebUI 的访问入口走 HTTPS 或 localhost</strong>（否则 <code>Sec-Fetch-Site</code> 那条不生效）。</li><li><strong>看一眼日志里新的 IP 封禁告警</strong>，借机清理一遍 peer 列表。</li></ol>
 <h2>七、一句话收尾</h2>
 <p><strong>5.3.0 的功能清单是给普通用户看的，changelog 中段是给部署者看的。</strong></p>
 <p><strong>而这一版的真正分界线在于：「qBittorrent 的 WebUI 在反代后面」这个组合，在 5.3.0 之前是</strong>一个可以远程绕过子网白名单和登录封禁的组合<strong>。</strong></p>
 <p><strong>修它的方式也值得记一下：不是加一层新的检查，而是把「从不可信端往里猜」换成「从可信端往外数」—— 同一个功能，方向一换，漏洞就没了。</strong></p>
 <h2>Sources</h2>
-<ul>
-<li>9to5Linux 报道：https://9to5linux.com/qbittorrent-5-3-bittorrent-client-is-out-as-a-major-update-heres-whats-new</li>
-<li>官方发布说明（v5.3.0）：https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.3.0</li>
-<li>WebUI 认证绕过修复 PR #24889：https://github.com/qbittorrent/qBittorrent/pull/24889</li>
-<li><code>Sec-Fetch-Site</code> 交叉站点检测 PR #24792 / #24970</li>
-<li>SMTP 注入修复 PR #24793：https://github.com/qbittorrent/qBittorrent/pull/24793</li>
-<li>tracker announce 内存增长 PR #24869：https://github.com/qbittorrent/qBittorrent/pull/24869</li>
-<li>动态 DNS 改用 HTTPS PR #24805</li>
-<li>IP 段封禁 PR #23157、magnet <code>so</code> 参数 PR #24336、IP 封禁告警日志 PR #24734</li>
-<li>官方下载页：https://www.qbittorrent.org/download</li>
-</ul>
----
-<p>（说明：本文所有版本号、日期、PR 编号与修复描述均来自上游仓库与 PR 原文的一手核对；「哪些值得升级」「解读」部分为笔者判断。）
-</p>
+<ul><li>9to5Linux 报道：<a href="https://9to5linux.com/qbittorrent-5-3-bittorrent-client-is-out-as-a-major-update-heres-whats-new" target="_blank" rel="noopener noreferrer">https://9to5linux.com/qbittorrent-5-3-bittorrent-client-is-out-as-a-major-update-heres-whats-new</a></li><li>官方发布说明（v5.3.0）：<a href="https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.3.0" target="_blank" rel="noopener noreferrer">https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.3.0</a></li><li>WebUI 认证绕过修复 PR #24889：<a href="https://github.com/qbittorrent/qBittorrent/pull/24889" target="_blank" rel="noopener noreferrer">https://github.com/qbittorrent/qBittorrent/pull/24889</a></li><li><code>Sec-Fetch-Site</code> 交叉站点检测 PR #24792 / #24970</li><li>SMTP 注入修复 PR #24793：<a href="https://github.com/qbittorrent/qBittorrent/pull/24793" target="_blank" rel="noopener noreferrer">https://github.com/qbittorrent/qBittorrent/pull/24793</a></li><li>tracker announce 内存增长 PR #24869：<a href="https://github.com/qbittorrent/qBittorrent/pull/24869" target="_blank" rel="noopener noreferrer">https://github.com/qbittorrent/qBittorrent/pull/24869</a></li><li>动态 DNS 改用 HTTPS PR #24805</li><li>IP 段封禁 PR #23157、magnet <code>so</code> 参数 PR #24336、IP 封禁告警日志 PR #24734</li><li>官方下载页：<a href="https://www.qbittorrent.org/download" target="_blank" rel="noopener noreferrer">https://www.qbittorrent.org/download</a></li></ul>
+<hr>
+<p>（说明：本文所有版本号、日期、PR 编号与修复描述均来自上游仓库与 PR 原文的一手核对；「哪些值得升级」「解读」部分为笔者判断。）</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

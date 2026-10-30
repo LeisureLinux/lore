@@ -281,7 +281,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>原文：<a href="https://www.phoronix.com/review/near-10-sec-kernel-build">Approaching A 10 Second Linux Kernel Build</a>（Phoronix，Michael Larabel，2026-09-24），两页评测。本文为<strong>译文 + 技术拆解</strong>，重点还原「如何逼近 10 秒」的硬件与软件账，并明确一个边界：<strong>10 秒目前是预期目标而非已达成数字</strong>。</blockquote>
+<blockquote>原文：<a href="https://www.phoronix.com/review/near-10-sec-kernel-build" target="_blank" rel="noopener noreferrer">Approaching A 10 Second Linux Kernel Build</a>（Phoronix，Michael Larabel，2026-09-24），两页评测。本文为<strong>译文 + 技术拆解</strong>，重点还原「如何逼近 10 秒」的硬件与软件账，并明确一个边界：<strong>10 秒目前是预期目标而非已达成数字</strong>。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
       <span class="tc-ad-label">推广</span>
@@ -295,47 +295,24 @@
 <h2>背景：内核构建为什么值得单独做基准</h2>
 <p>编译 Linux 内核是 Phoronix 跑了 22 年的保留基准。有意思的现象是：内核代码量在 AI/LLM 时代持续膨胀，但<strong>构建时间反而逐年下降</strong>——这靠的是「更猛的 CPU」与「更聪明的构建系统」两条腿。</p>
 <p>软件侧的关键变量，是 <strong>Linux MM 开发者 Lorenzo Stoakes</strong> 的一组优化内核构建时间的补丁系列：他<strong>借助 AI/LLM</strong> 定位了 Kbuild 里大量<strong>削弱并行度</strong>的瓶颈（即构建过程本可并行却被串行化卡住的地方）。此前已有两波收益：</p>
-<ul>
-<li><strong>Linux 7.4</strong> 的 Kbuild 改进：干净构建快约 <strong>36%</strong>，增量构建快约 <strong>70%</strong>（对应 <code>Faster-Kernel-Builds-AI-v2</code> 与 <code>Linux-Kbuild-Faster-v3</code> 两篇）。</li>
-<li>本次实测基于 <strong>v4 补丁系列</strong>（2026-09-23 发到 LKML：<code>20260923-build-speedup-v4-0-73128809a4a4@kernel.org</code>）。</li>
-</ul>
-Stoakes 的补丁说明里给过一个参照：在一台<strong>双路 AMD EPYC 9754（Bergamo）</strong> 服务器上用 GCC，defconfig 构建时间从 <strong>28 秒降到 20 秒</strong>。
+<ul><li><strong>Linux 7.4</strong> 的 Kbuild 改进：干净构建快约 <strong>36%</strong>，增量构建快约 <strong>70%</strong>（对应 <code>Faster-Kernel-Builds-AI-v2</code> 与 <code>Linux-Kbuild-Faster-v3</code> 两篇）。</li><li>本次实测基于 <strong>v4 补丁系列</strong>（2026-09-23 发到 LKML：<code>20260923-build-speedup-v4-0-73128809a4a4@kernel.org</code>）。</li></ul>
+<p>Stoakes 的补丁说明里给过一个参照：在一台<strong>双路 AMD EPYC 9754（Bergamo）</strong> 服务器上用 GCC，defconfig 构建时间从 <strong>28 秒降到 20 秒</strong>。</p>
 <h2>硬件账：这次实测用了什么</h2>
 <p>Phoronix 在<strong>双路 EPYC 9575F</strong> 上跑了实测，配置相当克制——<strong>没有用 RAM 盘（TMPFS）、没有做任何激进调优</strong>，就是库存 Ubuntu 26.04 LTS：</p>
-<table>
-<tr><th>项</th><th>规格</th></tr>
-<tr><td>CPU</td><td>双路 <strong>AMD EPYC 9575F</strong>（每路 64 核 / 128 线程）</td></tr>
-<tr><td>频率</td><td>单核 boost <strong>5.0 GHz</strong>，全核 boost <strong>4.5 GHz</strong></td></tr>
-<tr><td>L3</td><td>每路 <strong>256 MB</strong>（共 512 MB）</td></tr>
-<tr><td>内存</td><td><strong>24 × 64 GB DDR5-6400 = 1.5 TB</strong></td></tr>
-<tr><td>存储</td><td>单块 <strong>Samsung PM1743 3.84 TB PCIe Gen5 NVMe SSD</strong>，EXT4</td></tr>
-<tr><td>系统</td><td>库存 <strong>Ubuntu 26.04 LTS</strong></td></tr>
-</table>
+<table><thead><tr><th>项</th><th>规格</th></tr></thead><tbody><tr><td>CPU</td><td>双路 <strong>AMD EPYC 9575F</strong>（每路 64 核 / 128 线程）</td></tr><tr><td>频率</td><td>单核 boost <strong>5.0 GHz</strong>，全核 boost <strong>4.5 GHz</strong></td></tr><tr><td>L3</td><td>每路 <strong>256 MB</strong>（共 512 MB）</td></tr><tr><td>内存</td><td><strong>24 × 64 GB DDR5-6400 = 1.5 TB</strong></td></tr><tr><td>存储</td><td>单块 <strong>Samsung PM1743 3.84 TB PCIe Gen5 NVMe SSD</strong>，EXT4</td></tr><tr><td>系统</td><td>库存 <strong>Ubuntu 26.04 LTS</strong></td></tr></tbody></table>
 <p>为什么是 9575F 而不是核心数更高的型号？文章点出一个反直觉事实：<strong>只要编译器还不能并行编译单个源文件，最高的核心数未必最适合构建服务器</strong>。GCC 早年有过 <code>-fparallel-jobs</code> 的尝试，但多年过去仍未落地。所以构建瓶颈在<strong>构建编排的并行度</strong>，而非裸核心数——9575F 的高频率 + 128 线程在此比「堆核心」更划算。</p>
 <p>（文中也预告了更猛的<strong> EPYC 9686F（Venice）</strong>：96 核 / 192 线程、5.0 GHz boost、384 MB L3、配 MRDIMM-12800 与 PCIe Gen6 存储——这正是 Larabel 赌「能跨过 10 秒」的硬件。）</p>
 <h2>软件账：Kbuild 补丁做了什么</h2>
 <p>补丁系列本身没有公开逐行细节，但文章给出了它的<strong>性质与目标</strong>：</p>
-<ol>
-<li>1. <strong>定位 Kbuild 的并行瓶颈</strong>：内核构建是一棵巨大的依赖树，很多环节传统上被串行化（如某些递归 make、依赖探测、生成头文件的前置步骤），补丁把其中可并行却被卡住的部分解开。</li>
-<li>2. <strong>AI 辅助找瓶颈</strong>：Stoakes 明确借助 LLM 来发现这些「降低并行潜力」的代码路径——人写的补丁，AI 找靶点。</li>
-<li>3. <strong>收益与 CPU 无关</strong>：文章强调，这套 pending 补丁<strong>无论你用什么 CPU、干净构建还是增量构建，都能成比例地缩短时间</strong>——它是构建系统的普适改进，不是某颗 CPU 的特例。</li>
-</ol>
+<ol><li><strong>定位 Kbuild 的并行瓶颈</strong>：内核构建是一棵巨大的依赖树，很多环节传统上被串行化（如某些递归 make、依赖探测、生成头文件的前置步骤），补丁把其中可并行却被卡住的部分解开。</li><li><strong>AI 辅助找瓶颈</strong>：Stoakes 明确借助 LLM 来发现这些「降低并行潜力」的代码路径——人写的补丁，AI 找靶点。</li><li><strong>收益与 CPU 无关</strong>：文章强调，这套 pending 补丁<strong>无论你用什么 CPU、干净构建还是增量构建，都能成比例地缩短时间</strong>——它是构建系统的普适改进，不是某颗 CPU 的特例。</li></ol>
 <h2>实测数字</h2>
 <p>Phoronix 在 EPYC 9575F 2P 上用 <code>Timed Linux Kernel Compilation</code> 基准（pts/build-linux-kernel）跑了 defconfig 与 allmodconfig 两种配置，并对比了「默认频率」与「AMD power determinism 模式」：</p>
-<ul>
-<li><strong>defconfig（x86_64 默认配置）</strong>：</li>
-</ul>  - 基线（库存 Ubuntu 26.04，无补丁）：约 <strong>20 秒</strong>（9575F 2P 在 openbenchmarking 上长期是 defconfig 最快平台，通常 ~20 秒）。
-  - 叠加 v4 补丁：从 <strong>22 秒降到 15~17 秒</strong>。
-  - 再开 <strong>AMD power determinism 模式</strong>（一种把各核心拉到一致、可预测频率的调优）：最快一次 <strong>15 秒</strong>——一个<strong>干净的 x86_64 defconfig 内核，15 秒编完</strong>。
-<ul>
-<li><strong>allmodconfig（编进所有 x86_64 相关模块）</strong>：</li>
-</ul>  - 这套 pending 补丁砍掉了 <strong>30 秒以上</strong>的构建时间；在高端服务器上，<strong>allmodconfig 终于逼近 2 分钟</strong>。
+<ul><li><strong>defconfig（x86_64 默认配置）</strong>：<ul><li>基线（库存 Ubuntu 26.04，无补丁）：约 <strong>20 秒</strong>（9575F 2P 在 openbenchmarking 上长期是 defconfig 最快平台，通常 ~20 秒）。</li><li>叠加 v4 补丁：从 <strong>22 秒降到 15~17 秒</strong>。</li><li>再开 <strong>AMD power determinism 模式</strong>（一种把各核心拉到一致、可预测频率的调优）：最快一次 <strong>15 秒</strong>——一个<strong>干净的 x86_64 defconfig 内核，15 秒编完</strong>。</li></ul></li><li><strong>allmodconfig（编进所有 x86_64 相关模块）</strong>：<ul><li>这套 pending 补丁砍掉了 <strong>30 秒以上</strong>的构建时间；在高端服务器上，<strong>allmodconfig 终于逼近 2 分钟</strong>。</li></ul></li></ul>
 <h2>边界与解读</h2>
 <p><strong>1. 标题的「10 秒」是预期，不是成绩。</strong> 当前实测最好成绩是 15 秒；文章把 10 秒押在尚未上市的 EPYC 9686F + MRDIMM + PCIe Gen6 上。所以准确说法是「<strong>逼近 10 秒</strong>」，而非「达成 10 秒」。这也呼应了前作《Linux 7.4 内核构建或快 36%》里 AI 找瓶颈、人写补丁的主线——构建系统的边际收益还在持续释放。</p>
 <p><strong>2. 收益结构是「编排并行度」而非「堆硬件」。</strong> 这篇文章最有价值的工程启示是：当编译器还不能把一个 <code>.c</code> 并行化成多份时，<strong>构建时间的第一杠杆是 Kbuild 的并行化质量</strong>，而不是无脑加核心。9575F 选高频率而非最高核心数，正是这个判断的体现。</p>
 <p><strong>3. 对内核开发者的实际意义。</strong> defconfig 15 秒、allmodconfig 逼近 2 分钟，意味着 bisect 回归、反复干净构建的迭代成本大幅下降——尤其是 allmodconfig 省下的 30+ 秒，对需要全模块编译验证的维护者来说是直接的生产力。而这是<strong>软件补丁</strong>带来的，会向下游发行版普适传播。</p>
-<p><strong>4. 为什么值得记。</strong> 内核在变大，但构建在变快——这个反直觉现象的根因（Kbuild 并行化 + 高频率多核 CPU + AI 辅助定位瓶颈）本身就是 2026 年「AI 用于审查/优化、而非写代码」叙事的一块硬证据，与同期 <code>coding-assistants.rst</code>、Sashiko 等主线同源。
-</p>
+<p><strong>4. 为什么值得记。</strong> 内核在变大，但构建在变快——这个反直觉现象的根因（Kbuild 并行化 + 高频率多核 CPU + AI 辅助定位瓶颈）本身就是 2026 年「AI 用于审查/优化、而非写代码」叙事的一块硬证据，与同期 <code>coding-assistants.rst</code>、Sashiko 等主线同源。</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

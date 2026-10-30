@@ -292,7 +292,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>来源：<a href="https://stalw.art/blog/stalwart-1-0/">Stalwart 官方博客：Stalwart v1.0</a>（<strong>2026-10-26 16 min read</strong>，作者 <strong>Mauro D.</strong>，GitHub <code>mdecimus</code>）<br>
+<blockquote>来源：<a href="https://stalw.art/blog/stalwart-1-0/" target="_blank" rel="noopener noreferrer">Stalwart 官方博客：Stalwart v1.0</a>（<strong>2026-10-26 16 min read</strong>，作者 <strong>Mauro D.</strong>，GitHub <code>mdecimus</code>）<br>
 实测仓库元信息（2026-10-27 抓取）：<strong><code>stalwartlabs/stalwart</code></strong>，<strong>15,351 stars / 1,020 forks / 54 open issues / 86 subscribers</strong>，创建于 <strong>2023-03-06</strong>，主语言 <strong>Rust</strong>；<strong><code>stalwartlabs/mail-parser</code> 472 stars，创建于 2021-10-03</strong>（即博客里说的「第一个 commit」）；<strong><code>stalwartlabs/encodify</code> 4 stars，创建于 2026-09-28</strong>（本次新拆分出来的编码库）；<strong><code>stalwartlabs/benchmarks</code> 1 star，创建于 2026-10-25</strong>（本次新公开的基准仓库）。<br>
 许可：<strong>AGPL-3.0 + Stalwart Enterprise License v1 双许可</strong>（Community Edition 页面说明）。<br>
 本文为<strong>解读</strong>。第八节的评价为笔者补充。</blockquote>
@@ -308,208 +308,142 @@
 <p><strong>Stalwart 1.0 的技术内核，可以用一句话概括：它把「邮件服务器的性能瓶颈在哪里」这个问题，用 profiler 逐层拆开，然后在每一层都做了两件事 —— 把逐字节的循环换成 SIMD/SWAR，把「多一次数据库往返」换成「少一次往返」。</strong></p>
 <p><strong>而这次发布真正标定的分水岭不是性能，是 schema 冻结：</strong></p>
 <blockquote><strong>「第二个目标是数据本身的稳定性：最终确定数据库 schema，以便从今往后，升级 Stalwart 意味着安装一个新版本，仅此而已，不需要早期版本中那些破坏性的迁移。」</strong></blockquote>
-<strong>—— 对自托管邮件服务器运营者来说，这句话的分量可能超过所有 benchmark 数字。因为升级一次邮件服务器的风险，从来不在性能，在于「迁移会不会把我的用户搞掉」。</strong>
+<p><strong>—— 对自托管邮件服务器运营者来说，这句话的分量可能超过所有 benchmark 数字。因为升级一次邮件服务器的风险，从来不在性能，在于「迁移会不会把我的用户搞掉」。</strong></p>
 <h2>一、起点：一个 Rust 库，和一个五年的跨度</h2>
 <p><strong>官方博客的开头把整个项目压缩成了一段历史：</strong></p>
 <blockquote><strong>「五年前，2021 年 10 月 3 日，第一个 commit 落在了一个叫 mail-parser 的小仓库里。那是一个用 Rust 写的邮件解析库，仅此而已。在接下来的五年里，它长成了一个完整的邮件与协作服务器，包含 JMAP、IMAP、POP3、SMTP、CalDAV、CardDAV 和 WebDAV，一个垃圾邮件过滤器，集群，以及对半打儿存储后端的支持。」</strong></blockquote>
-<strong>⭐ 我认为「五年」这个跨度本身值得停下来想一想。</strong>
+<p><strong>⭐ 我认为「五年」这个跨度本身值得停下来想一想。</strong></p>
 <p><strong>对比一下：Postfix 是 1998 年的第一个 commit，Dovecot 是 2000 年的。</strong> <strong>而 Stalwart 是 2021 年。</strong></p>
 <p><strong>⭐ 也就是说：</strong> <strong>在「自托管邮件服务器」这个已经被 Postfix + Dovecot 统治了二十多年的领域里，一个 2021 年起步的项目，在 2026 年宣布自己比这套组合更快 —— 并且给出了可复现的完整基准。</strong></p>
 <p><strong>⭐ 而作者用的是「我们」而不是「我」：</strong></p>
 <blockquote><strong>「这全部要感谢社区：每一个提 issue 的人、每一个发补丁的人、每一个在论坛里回答问题的人，或者把邮件托付给 Stalwart 的人。」</strong></blockquote>
-<strong>—— 而 Stalwart 团队本身规模很小：博客署名只有 Mauro D. 一人，GitHub 仓库 86 个 subscriber。</strong>
+<p><strong>—— 而 Stalwart 团队本身规模很小：博客署名只有 Mauro D. 一人，GitHub 仓库 86 个 subscriber。</strong></p>
 <h2>二、⭐ SIMD 与 SWAR：把「逐字节找分隔符」变成硬件级操作</h2>
 <p><strong>这一节是整个 v1.0 的技术核心，而它的洞察非常朴素。</strong></p>
 <p><strong>官方对问题的描述：</strong></p>
 <blockquote><strong>「一个邮件服务器会在寻找特定字节上花掉惊人的时间份额：一个 header 行的结尾、一个 MIME 边界、quoted-printable 正文里的等号、一个 IMAP tag 结尾的空格。</strong>一次一个字节地做这些，对一封 10 MB 的消息来说就是大量的循环迭代。<strong>」</strong></blockquote>
-<strong>⭐ 换句话说：邮件服务器大量的 CPU 时间花在「找某个字符」上，而不是在「解析结构」上。</strong>
+<p><strong>⭐ 换句话说：邮件服务器大量的 CPU 时间花在「找某个字符」上，而不是在「解析结构」上。</strong></p>
 <p><strong>而两种技术的分工，官方讲得很清楚：</strong></p>
-<blockquote><strong>「</strong>SIMD<strong>（Single Instruction, Multiple Data）使用现代处理器的宽向量寄存器（x86-64 上的 SSE2、SSSE3 和 AVX2，ARM 上的 NEON），用单条指令比较或转换 16 或 32 个字节。</strong>」**</blockquote>>
-<blockquote><strong>「</strong>SWAR<strong>（SIMD Within A Register）用普通的 64 位整数应用同样的思路：少数精心挑选的算术和位运算，一次测试一个字的全部八个字节。</strong>它不需要任何特殊指令，所以在任何 CPU 上都能工作。<strong>」</strong></blockquote>
-<strong>⭐ 「SWAR 不需要特殊指令，所以在任何 CPU 上都能工作」这一点很重要</strong> —— <strong>它意味着 Stalwart 不必为了性能放弃对老 CPU 的支持。</strong> <strong>对一个邮件服务器来说这不是小事，因为邮件服务器恰恰是那些跑在老旧 VPS、树莓派、NAS 上最多的场景。</strong>
+<blockquote><strong>「</strong>SIMD<strong>（Single Instruction, Multiple Data）使用现代处理器的宽向量寄存器（x86-64 上的 SSE2、SSSE3 和 AVX2，ARM 上的 NEON），用单条指令比较或转换 16 或 32 个字节。</strong>」**<br>
+<br>
+<strong>「</strong>SWAR<strong>（SIMD Within A Register）用普通的 64 位整数应用同样的思路：少数精心挑选的算术和位运算，一次测试一个字的全部八个字节。</strong>它不需要任何特殊指令，所以在任何 CPU 上都能工作。<strong>」</strong></blockquote>
+<p><strong>⭐ 「SWAR 不需要特殊指令，所以在任何 CPU 上都能工作」这一点很重要</strong> —— <strong>它意味着 Stalwart 不必为了性能放弃对老 CPU 的支持。</strong> <strong>对一个邮件服务器来说这不是小事，因为邮件服务器恰恰是那些跑在老旧 VPS、树莓派、NAS 上最多的场景。</strong></p>
 <h3>2.1 两个同时到 1.0 的底层库</h3>
 <p><strong>官方明确说这两个库「与服务器一起到达 1.0」：</strong></p>
-<table>
-<tr><th>库</th><th>做什么</th><th>官方给的对比数字</th></tr>
-<tr><td><strong>mail-parser 1.0</strong></td><td>邮件解析，<strong>从零重写</strong></td><td>比 Rust <code>mailparse</code> <strong>快 3 倍</strong>；比 Dovecot 自家解析器 <strong>快 9 倍</strong>；比 libEtPan!、VMime、GMime <strong>快 15–31 倍</strong></td></tr>
-<tr><td><strong>encodify</strong>（新）</td><td>Base64 / Base32 / quoted-printable 编解码</td><td>解码 MIME 包裹的 Base64 附件比标准 <code>base64</code> crate <strong>快 22 倍</strong>（AMD EPYC）；quoted-printable 解码比 <code>quoted_printable</code> crate <strong>快 9 倍</strong></td></tr>
-</table>
+<table><thead><tr><th>库</th><th>做什么</th><th>官方给的对比数字</th></tr></thead><tbody><tr><td><strong>mail-parser 1.0</strong></td><td>邮件解析，<strong>从零重写</strong></td><td>比 Rust <code>mailparse</code> <strong>快 3 倍</strong>；比 Dovecot 自家解析器 <strong>快 9 倍</strong>；比 libEtPan!、VMime、GMime <strong>快 15–31 倍</strong></td></tr><tr><td><strong>encodify</strong>（新）</td><td>Base64 / Base32 / quoted-printable 编解码</td><td>解码 MIME 包裹的 Base64 附件比标准 <code>base64</code> crate <strong>快 22 倍</strong>（AMD EPYC）；quoted-printable 解码比 <code>quoted_printable</code> crate <strong>快 9 倍</strong></td></tr></tbody></table>
 <p><strong>⭐ mail-parser 的 1.0 有几个值得记的实现细节：</strong></p>
 <blockquote><strong>「SIMD kernel 定位 MIME 边界和 header 字段，SWAR 处理 header 名称，解析后的消息存放在少数几个扁平向量里，而</strong>正文只在有人真的去读它的时候才解码<strong>。</strong>」**</blockquote>
-<strong>⭐ 「正文只在有人真的去读它的时候才解码」这一条是典型的</strong>延迟解码（lazy decode）<strong>优化</strong> —— 而它对邮件服务器意义重大：<strong>因为绝大多数邮件的正文从不被任何人读</strong>（人只看摘要、只看附件、或者只被过滤器扫一遍）。**
+<p><strong>⭐ 「正文只在有人真的去读它的时候才解码」这一条是典型的</strong>延迟解码（lazy decode）<strong>优化</strong> —— 而它对邮件服务器意义重大：<strong>因为绝大多数邮件的正文从不被任何人读</strong>（人只看摘要、只看附件、或者只被过滤器扫一遍）。**</p>
 <p><strong>⭐ 而「每个 CPU 专属 kernel 都在运行时被选中，且每一个都针对纯标量参考实现做过 fuzz」这一条，是我认为最值得学的工程习惯：</strong></p>
 <p><strong>—— 用一个「慢但显然正确」的标量实现做参考，然后 fuzz 所有快实现。</strong> <strong>这比「写一堆测试用例然后祈祷」强得多。</strong></p>
 <h3>2.2 协议层同样受益</h3>
 <p><strong>官方列出的清单：</strong></p>
-<ul>
-<li><strong>IMAP 命令解析器</strong> —— 现在是<strong>表驱动</strong>的，扫描整段字节而不是逐字符走状态机</li>
-<li><strong>SMTP 命令解析器</strong></li>
-<li><strong>JMAP 背后的 JSON 解析器</strong></li>
-<li><strong>垃圾邮件过滤器的分词器</strong></li>
-<li><strong>HTML 转文本转换器</strong></li>
-<li><strong>变长整数编解码器</strong></li>
-<li><strong>日志序列化器</strong></li>
-<li><strong>⭐ 甚至表达式语言</strong>（管理员用来做路由和过滤决策的）—— 现在编译成紧凑字节码，对常见比较有专门指令，并在<strong>回收的内存 arena</strong> 里求值</li>
-</ul>
-<strong>⭐ 最后那条值得单拎：</strong> <strong>「把表达式语言编译成字节码」是典型的「把解释器换成编译器」优化</strong> —— 而「在回收的内存 arena 里求值」消除了每次求值的分配开销。**
+<ul><li><strong>IMAP 命令解析器</strong> —— 现在是<strong>表驱动</strong>的，扫描整段字节而不是逐字符走状态机</li><li><strong>SMTP 命令解析器</strong></li><li><strong>JMAP 背后的 JSON 解析器</strong></li><li><strong>垃圾邮件过滤器的分词器</strong></li><li><strong>HTML 转文本转换器</strong></li><li><strong>变长整数编解码器</strong></li><li><strong>日志序列化器</strong></li><li><strong>⭐ 甚至表达式语言</strong>（管理员用来做路由和过滤决策的）—— 现在编译成紧凑字节码，对常见比较有专门指令，并在<strong>回收的内存 arena</strong> 里求值</li></ul>
+<p><strong>⭐ 最后那条值得单拎：</strong> <strong>「把表达式语言编译成字节码」是典型的「把解释器换成编译器」优化</strong> —— 而「在回收的内存 arena 里求值」消除了每次求值的分配开销。**</p>
 <p><strong>⭐ 而 Stalwart 最有特色的「表达式语言」（用 <code>if</code>/<code>then</code>/<code>else</code> 写过滤与路由规则）出现在 v0.16 的 changelog 里大量修复中</strong> —— 包括：</p>
-<blockquote><strong>「入站节流、出站节流和队列配额的 <code>match</code> 表达式会求值它们的 <code>if</code>/<code>then</code> 条件。」</strong>（这是一个 bug —— 说明条件此前没被求值）</blockquote>>
-<blockquote><strong>「<code>is_local_address()</code> 和 <code>is_local_domain()</code> 表达式函数不匹配用大写字母书写的地址或域名。」</strong>（大小写敏感 bug）</blockquote>
-<strong>⭐ 我认为这个细节很能说明问题：Stalwart 把「过滤规则」做成了</strong>一等公民的语言<strong>，而不是散落在配置文件的各个布尔开关里。</strong> <strong>而正因为它是一等语言，它才会有自己的编译器、自己的字节码、自己的 arena —— 以及自己的一整类 bug（条件没被求值、大小写不匹配）。</strong>
+<blockquote><strong>「入站节流、出站节流和队列配额的 <code>match</code> 表达式会求值它们的 <code>if</code>/<code>then</code> 条件。」</strong>（这是一个 bug —— 说明条件此前没被求值）<br>
+<br>
+<strong>「<code>is_local_address()</code> 和 <code>is_local_domain()</code> 表达式函数不匹配用大写字母书写的地址或域名。」</strong>（大小写敏感 bug）</blockquote>
+<p><strong>⭐ 我认为这个细节很能说明问题：Stalwart 把「过滤规则」做成了</strong>一等公民的语言<strong>，而不是散落在配置文件的各个布尔开关里。</strong> <strong>而正因为它是一等语言，它才会有自己的编译器、自己的字节码、自己的 arena —— 以及自己的一整类 bug（条件没被求值、大小写不匹配）。</strong></p>
 <h2>三、⭐ 存储层：把「往返次数」当成一等指标</h2>
 <p><strong>官方说得很直接：</strong></p>
 <blockquote><strong>「快速解析是浪费的，如果每个请求随后都还在等数据库。所以我们在 Stalwart 如何与存储对话上花了同样长的时间。」</strong></blockquote>
-<strong>通用改动：</strong>
-<ul>
-<li><strong>标识符在同一个使用它们的事务里分配</strong> —— <strong>「这从每次消息投递中移除了一整轮往返」</strong>；</li>
-<li><strong>读-改-写更新</strong>（加一个关键词、往搜索索引追加）—— <strong>在存储后端内部作为 merge 操作执行</strong>；</li>
-<li><strong>存储对象用 zstd 压缩，并使用专门在邮件、日历、联系人数据上训练出来的字典</strong>。</li>
-</ul>
-<strong>⭐ 「专门训练的 zstd 字典」这一条是那种只有实测才知道有意义的优化</strong> —— 通用字典对邮件正文的压缩率明显不如针对邮件语料训练的字典。**
+<p><strong>通用改动：</strong></p>
+<ul><li><strong>标识符在同一个使用它们的事务里分配</strong> —— <strong>「这从每次消息投递中移除了一整轮往返」</strong>；</li><li><strong>读-改-写更新</strong>（加一个关键词、往搜索索引追加）—— <strong>在存储后端内部作为 merge 操作执行</strong>；</li><li><strong>存储对象用 zstd 压缩，并使用专门在邮件、日历、联系人数据上训练出来的字典</strong>。</li></ul>
+<p><strong>⭐ 「专门训练的 zstd 字典」这一条是那种只有实测才知道有意义的优化</strong> —— 通用字典对邮件正文的压缩率明显不如针对邮件语料训练的字典。**</p>
 <h3>3.1 每个后端单独调优</h3>
-<table>
-<tr><th>后端</th><th>官方说的调优</th></tr>
-<tr><td><strong>RocksDB</strong></td><td>每类数据放进<strong>按访问方式配置的 column family</strong>，点查用 <strong>bloom filter</strong>，扫描用<strong>大 block</strong>，compaction 针对 churn 数据调优；<strong>热计数器（如队列配额）分散在最多 256 个槽位上以避免写冲突</strong></td></tr>
-<tr><td><strong>PostgreSQL / MySQL</strong></td><td>预生成并缓存 prepared statement、分块迭代带自动重试、每次写更少往返</td></tr>
-<tr><td><strong>FoundationDB</strong></td><td>事务需要的读<strong>在并行窗口里预取</strong>，大值分块组装</td></tr>
-<tr><td><strong>SQLite</strong></td><td>page size、cache、内存映射、WAL 设置按邮件负载调优</td></tr>
-</table>
+<table><thead><tr><th>后端</th><th>官方说的调优</th></tr></thead><tbody><tr><td><strong>RocksDB</strong></td><td>每类数据放进<strong>按访问方式配置的 column family</strong>，点查用 <strong>bloom filter</strong>，扫描用<strong>大 block</strong>，compaction 针对 churn 数据调优；<strong>热计数器（如队列配额）分散在最多 256 个槽位上以避免写冲突</strong></td></tr><tr><td><strong>PostgreSQL / MySQL</strong></td><td>预生成并缓存 prepared statement、分块迭代带自动重试、每次写更少往返</td></tr><tr><td><strong>FoundationDB</strong></td><td>事务需要的读<strong>在并行窗口里预取</strong>，大值分块组装</td></tr><tr><td><strong>SQLite</strong></td><td>page size、cache、内存映射、WAL 设置按邮件负载调优</td></tr></tbody></table>
 <p><strong>⭐ RocksDB 那条「热计数器分散在 256 个槽位」是一个典型的分布式系统技巧</strong> —— <strong>队列配额这类全局计数器是写冲突的热点，打散到多个槽位再在读时求和，就用空间换吞吐。</strong></p>
 <p><strong>⭐ 而 FoundationDB 那条「并行窗口预取」是典型的「把串行 IO 变成并行 IO」</strong> —— 但要注意它的前提是 FDB 本身的事务模型允许在事务内做这种预取。**</p>
 <h3>3.2 缓存子系统：让大部分 IMAP 操作不碰数据库</h3>
 <blockquote><strong>「每个账户的消息索引以紧凑打包的形式保存在内存中，IMAP 排序、线程化、标记获取、按消息属性搜索和重同步，现在都由这个缓存回答，几乎或完全不读数据库。非常大的账户有自己的缓存层级和内存预算，缓存快照可以换出到本地磁盘、Redis 或 blob store，而不是重建。」</strong></blockquote>
-<strong>⭐ 「重同步（resynchronisation）」这一条是 IMAP 的一个经典性能陷阱</strong> —— 客户端重连后要问「有什么变化」，如果这个要走全表扫描就是灾难。<strong>而把它变成内存操作，是 IMAP 服务器最值钱的一类优化。</strong>
+<p><strong>⭐ 「重同步（resynchronisation）」这一条是 IMAP 的一个经典性能陷阱</strong> —— 客户端重连后要问「有什么变化」，如果这个要走全表扫描就是灾难。<strong>而把它变成内存操作，是 IMAP 服务器最值钱的一类优化。</strong></p>
 <p><strong>⭐ 而「缓存快照可以换出到本地磁盘、Redis 或 blob store」这条，则让「缓存」不再是「重启就冷启动」的负担。</strong></p>
 <h2>四、⭐ 新的搜索引擎：从「一个词一个位图」到「带词位置的分块倒排」</h2>
 <p><strong>这一节是 v1.0 里最容易被忽略、但对用户体验影响最大的改动。</strong></p>
 <p><strong>旧设计的缺陷，官方说得很直接：</strong></p>
 <blockquote><strong>「旧设计每个词存一个位图，没有词位置的概念。」</strong></blockquote>
-<strong>新设计：</strong>
+<p><strong>新设计：</strong></p>
 <blockquote><strong>「新的引擎把倒排（postings）按 65,536 个文档为一块存储，并为每条消息保留词位置。这让真正的短语搜索成为可能，也让在单个邮箱内的搜索只读取那个邮箱触及的块。它索引词干和前缀，用 zstd 压缩数据，并通过带并发控制、重试和重建的后台队列索引新邮件。」</strong></blockquote>
-<strong>⭐ 三个技术点各自解决一个问题：</strong>
-<table>
-<tr><th>改动</th><th>解决的问题</th></tr>
-<tr><td><strong>保留词位置</strong></td><td><strong>短语搜索</strong>（"project deadline" 不能匹配 "deadline of the project"）</td></tr>
-<tr><td><strong>按 65,536 文档分块</strong></td><td><strong>搜索范围收敛</strong> —— 搜一个邮箱只读那个邮箱触及的块，而不是全库</td></tr>
-<tr><td><strong>索引词干和前缀</strong></td><td>搜索体验（搜 "deploy" 能找到 "deployment"、"deployed"）</td></tr>
-</table>
+<p><strong>⭐ 三个技术点各自解决一个问题：</strong></p>
+<table><thead><tr><th>改动</th><th>解决的问题</th></tr></thead><tbody><tr><td><strong>保留词位置</strong></td><td><strong>短语搜索</strong>（"project deadline" 不能匹配 "deadline of the project"）</td></tr><tr><td><strong>按 65,536 文档分块</strong></td><td><strong>搜索范围收敛</strong> —— 搜一个邮箱只读那个邮箱触及的块，而不是全库</td></tr><tr><td><strong>索引词干和前缀</strong></td><td>搜索体验（搜 "deploy" 能找到 "deployment"、"deployed"）</td></tr></tbody></table>
 <p><strong>⭐ 而那个官方给的数字非常惊人：</strong></p>
 <blockquote><strong>「在一个 25 万封邮件的邮箱上，对每封邮件正文做全文搜索现在返回时间低于 4 毫秒。」</strong></blockquote>
-<strong>—— 而且在后面的对比里，同一个操作在 Dovecot 上是 136 毫秒。</strong>
+<p><strong>—— 而且在后面的对比里，同一个操作在 Dovecot 上是 136 毫秒。</strong></p>
 <h2>五、⭐⭐ 压测实验室：把「优化」变成「可回归的流程」</h2>
 <p><strong>这一节是整个发布里我认为最有价值、也最值得其他项目抄的部分。</strong></p>
 <h3>5.1 实验室的规模</h3>
 <blockquote><strong>「我们建立了一个专门的基准与压力测试实验室来配合这次发布。它运行在 Microsoft Azure 上，跨越 30 多个区域，最多 18 个完整测试实验室并行运行，同时有数百个 vCPU 忙碌。」</strong></blockquote>
-<strong>测试目录覆盖 35 类测试，分布在 550 多个独立测试单元上：</strong>
-<ul>
-<li><strong>协议</strong>：IMAP、JMAP（含 EventSource 与 WebSocket 推送）、SMTP 入站/提交/中继、CalDAV、CardDAV、WebDAV</li>
-<li><strong>存储</strong>：PostgreSQL、FoundationDB、RocksDB 作为数据存储，Redis 作为内存存储，S3 与文件系统作为 blob store，以及<strong>三节点集群在混合负载下</strong></li>
-<li><strong>大数据集</strong>：160 万封邮件、75 万个日历与联系人条目、500 个账户；<strong>单个邮箱 100 万、200 万、500 万封邮件</strong>；单服务器 10 万个账户；<strong>1000 万封邮件的队列</strong>；<strong>100 万份 DMARC 与 TLS 报告的洪泛</strong></li>
-<li><strong>风暴与滥用</strong>：<strong>每秒 2 万次新连接</strong>、批量登录、每账户数千个 IDLE 与推送订阅者、恶意与畸形消息、slow-loris 客户端、超长 literal</li>
-<li><strong>六小时浸泡测试</strong>，寻找内存增长、缓存漂移与慢泄漏，<strong>包括一个往 MTA 里灌了超过 1000 万封邮件的</strong></li>
-</ul>
-<strong>⭐ 我认为「160 万封邮件 + 100 万账户 + 1000 万封队列」这组数字尤其能说明问题</strong> —— <strong>因为这已经不是一个「跑个 demo」的规模，而是一个真实 ISP 会遇到的量级。</strong>
+<p><strong>测试目录覆盖 35 类测试，分布在 550 多个独立测试单元上：</strong></p>
+<ul><li><strong>协议</strong>：IMAP、JMAP（含 EventSource 与 WebSocket 推送）、SMTP 入站/提交/中继、CalDAV、CardDAV、WebDAV</li><li><strong>存储</strong>：PostgreSQL、FoundationDB、RocksDB 作为数据存储，Redis 作为内存存储，S3 与文件系统作为 blob store，以及<strong>三节点集群在混合负载下</strong></li><li><strong>大数据集</strong>：160 万封邮件、75 万个日历与联系人条目、500 个账户；<strong>单个邮箱 100 万、200 万、500 万封邮件</strong>；单服务器 10 万个账户；<strong>1000 万封邮件的队列</strong>；<strong>100 万份 DMARC 与 TLS 报告的洪泛</strong></li><li><strong>风暴与滥用</strong>：<strong>每秒 2 万次新连接</strong>、批量登录、每账户数千个 IDLE 与推送订阅者、恶意与畸形消息、slow-loris 客户端、超长 literal</li><li><strong>六小时浸泡测试</strong>，寻找内存增长、缓存漂移与慢泄漏，<strong>包括一个往 MTA 里灌了超过 1000 万封邮件的</strong></li></ul>
+<p><strong>⭐ 我认为「160 万封邮件 + 100 万账户 + 1000 万封队列」这组数字尤其能说明问题</strong> —— <strong>因为这已经不是一个「跑个 demo」的规模，而是一个真实 ISP 会遇到的量级。</strong></p>
 <h3>5.2 剖析方法</h3>
 <blockquote><strong>「全程做了性能剖析。用 <code>perf</code> 采样 CPU 时间并转成火焰图，off-CPU 分析显示线程在哪里等待锁和 IO，用 jemalloc 和 heaptrack 剖析堆，还有一个特殊的插桩构建</strong>逐命令统计数据存储往返次数<strong>，这样我们就能精确看到哪些请求不该那么频繁地打到数据库。每个修复都要在匹配的机器上与上一个构建对比测量之后才被接受。」</strong></blockquote>
-<strong>⭐ 「逐命令统计数据存储往返次数」这个插桩非常聪明</strong> —— <strong>它把「性能」这个模糊目标变成了一个</strong>可计数、可断言的指标<strong>。</strong> <strong>而「每个修复都要在匹配机器上与上一版对比测量之后才被接受」是一条非常值得学的流程纪律</strong> —— <strong>它防止了「我本地快了 0.1%」这类提交进入主干。</strong>
+<p><strong>⭐ 「逐命令统计数据存储往返次数」这个插桩非常聪明</strong> —— <strong>它把「性能」这个模糊目标变成了一个</strong>可计数、可断言的指标<strong>。</strong> <strong>而「每个修复都要在匹配机器上与上一版对比测量之后才被接受」是一条非常值得学的流程纪律</strong> —— <strong>它防止了「我本地快了 0.1%」这类提交进入主干。</strong></p>
 <h3>5.3 实验室抓到了什么</h3>
 <blockquote><strong>「这一周期的第一轮完整跑动找出了 64 个问题，修复后重新测试。第二轮重跑了全部内容，又修了 33 个。」</strong></blockquote>
-<strong>⭐ 也就是说：一轮「全面跑」就抓出 64 个问题，两轮合计 97 个。</strong> <strong>这些不是什么边角 bug，而是实打实的性能与稳定性缺陷。</strong>
+<p><strong>⭐ 也就是说：一轮「全面跑」就抓出 64 个问题，两轮合计 97 个。</strong> <strong>这些不是什么边角 bug，而是实打实的性能与稳定性缺陷。</strong></p>
 <p><strong>官方给的几个例子：</strong></p>
-<table>
-<tr><th>问题</th><th>修复前</th><th>修复后</th></tr>
-<tr><td><strong>重新打开一个 500 万封邮件的邮箱</strong></td><td>61 ms</td><td><strong>0.21 ms</strong></td></tr>
-<tr><td><strong>500 万封邮件账户上的一个 JMAP 查询</strong></td><td>3.3 秒</td><td><strong>12 ms</strong></td></tr>
-<tr><td><strong>RocksDB 上的入站邮件峰值吞吐</strong></td><td>9,690 封/秒</td><td><strong>18,394 封/秒</strong>（接近翻倍）</td></tr>
-<tr><td><strong>一个内存问题：进程占用高达 9.6 GB，而实际堆不到 0.4 GB</strong></td><td>已修复</td><td><strong>六小时浸泡测试中内存保持平坦</strong></td></tr>
-</table>
+<table><thead><tr><th>问题</th><th>修复前</th><th>修复后</th></tr></thead><tbody><tr><td><strong>重新打开一个 500 万封邮件的邮箱</strong></td><td>61 ms</td><td><strong>0.21 ms</strong></td></tr><tr><td><strong>500 万封邮件账户上的一个 JMAP 查询</strong></td><td>3.3 秒</td><td><strong>12 ms</strong></td></tr><tr><td><strong>RocksDB 上的入站邮件峰值吞吐</strong></td><td>9,690 封/秒</td><td><strong>18,394 封/秒</strong>（接近翻倍）</td></tr><tr><td><strong>一个内存问题：进程占用高达 9.6 GB，而实际堆不到 0.4 GB</strong></td><td>已修复</td><td><strong>六小时浸泡测试中内存保持平坦</strong></td></tr></tbody></table>
 <p><strong>⭐ 「进程占用 9.6 GB 而实际堆不到 0.4 GB」这一条特别有意思</strong> —— <strong>它意味着有 9.2 GB 的东西不是「堆」，而是别的内存区域。</strong> <strong>在 Rust 里这通常意味着 jemalloc 的 arena 保留、或者大块的 mmap 没归还、或者（更糟）某种 unsafe 造成的未定义行为。</strong> <strong>而这类问题</strong>只在长时间浸泡测试里才会暴露<strong> —— 短跑永远看不出来。</strong></p>
 <h3>5.4 ⭐ 而最重要的一句是关于「持续性」</h3>
 <blockquote><strong>「这个实验室不是为这次发布而设的一次性努力。它现在是 Stalwart 内部测试方式的一部分：每个未来的发布在出货前都要经过同样的基准与压力测试轮次，</strong>所以性能收益会保持为收益<strong>。」</strong></blockquote>
-<strong>⭐ 「所以性能收益会保持为收益」—— 这句话是软件工程里最难得的承诺。</strong>
+<p><strong>⭐ 「所以性能收益会保持为收益」—— 这句话是软件工程里最难得的承诺。</strong></p>
 <p><strong>因为性能退化是开源项目最常见的死法：一年半载之后，因为某个 PR 加了一行日志、一个库换了版本、一个新特性引入了额外拷贝，辛辛苦苦攒下的性能就悄悄还回去了。</strong> <strong>而把它变成「每次发布都要过的流程」，才是真正的护栏。</strong></p>
 <h2>六、⭐⭐ 对比 Postfix + Dovecot：38 项里赢了 35 项</h2>
 <p><strong>这一节是标题的来源，官方把方法论写得很清楚：</strong></p>
 <blockquote><strong>「两者都跑在完全相同的 Azure 服务器上（8 个 AMD EPYC Zen 5 vCPU，32 GiB 内存，本地 NVMe 存储），加载相同的 1000 个邮箱加上三个最多 25 万封邮件的大邮箱，接收完全相同的工作：接收邮件、投递它、把它提供给 IMAP 客户端。加密、密码哈希和全文搜索在两边配置相同，两个系统在</strong>同一硬件上交替测量<strong>。」</strong></blockquote>
-<strong>⭐ 「交替测量（measured alternately）」这一条是基准测试的基本纪律</strong> —— <strong>避免温度、邻居负载、缓存状态带来的系统性偏差。</strong>
+<p><strong>⭐ 「交替测量（measured alternately）」这一条是基准测试的基本纪律</strong> —— <strong>避免温度、邻居负载、缓存状态带来的系统性偏差。</strong></p>
 <h3>6.1 具体结果</h3>
 <blockquote><strong>「Stalwart 在 38 项主要对比中的 35 项更快。」</strong></blockquote>
-<strong>IMAP（对 Dovecot）：</strong>
-<ul>
-<li><strong>15 项日常客户端操作中 14 项更快，快 1.4 到 19 倍</strong></li>
-<li><strong>带完整 TLS 握手的登录：5.1 ms vs 28 ms</strong></li>
-<li><strong>取 1 MB 消息：快 6 倍</strong></li>
-<li><strong>INBOX 线程化：快 5 倍</strong></li>
-<li><strong>移动或删除 100 封消息：快 18–19 倍</strong></li>
-</ul>
-<strong>SMTP（对 Postfix）：</strong>
-<ul>
-<li><strong>接收一封消息快 3.6 到 12 倍</strong></li>
-<li><strong>持续吞吐：5,445 封/秒 vs Postfix 的 723</strong></li>
-</ul>
-<strong>投递：</strong>
-<ul>
-<li><strong>消息对 IMAP 客户端可见：早 16 倍</strong></li>
-<li><strong>IDLE 等待中的客户端被通知：3.3 ms vs 半秒</strong></li>
-</ul>
-<strong>负载：</strong>
-<ul>
-<li><strong>每秒并发 IMAP 会话多 5.4 倍</strong></li>
-<li><strong>中继邮件多 3.8 倍才开始变慢</strong></li>
-</ul>
-<strong>⭐ 而「差距随邮箱规模扩大」这一点最关键：</strong>
+<p><strong>IMAP（对 Dovecot）：</strong></p>
+<ul><li><strong>15 项日常客户端操作中 14 项更快，快 1.4 到 19 倍</strong></li><li><strong>带完整 TLS 握手的登录：5.1 ms vs 28 ms</strong></li><li><strong>取 1 MB 消息：快 6 倍</strong></li><li><strong>INBOX 线程化：快 5 倍</strong></li><li><strong>移动或删除 100 封消息：快 18–19 倍</strong></li></ul>
+<p><strong>SMTP（对 Postfix）：</strong></p>
+<ul><li><strong>接收一封消息快 3.6 到 12 倍</strong></li><li><strong>持续吞吐：5,445 封/秒 vs Postfix 的 723</strong></li></ul>
+<p><strong>投递：</strong></p>
+<ul><li><strong>消息对 IMAP 客户端可见：早 16 倍</strong></li><li><strong>IDLE 等待中的客户端被通知：3.3 ms vs 半秒</strong></li></ul>
+<p><strong>负载：</strong></p>
+<ul><li><strong>每秒并发 IMAP 会话多 5.4 倍</strong></li><li><strong>中继邮件多 3.8 倍才开始变慢</strong></li></ul>
+<p><strong>⭐ 而「差距随邮箱规模扩大」这一点最关键：</strong></p>
 <blockquote><strong>「在 25 万封邮件的邮箱上，对每封邮件正文做全文搜索在 Stalwart 里是 3.75 ms，在 Dovecot 里是 136 ms；移动或删除 25,000 封消息在 Stalwart 里约 0.1 秒，在 Dovecot 里是 24 到 34 秒 —— </strong>快 200 多倍<strong>。」</strong></blockquote>
 <h3>6.2 ⭐ Dovecot 赢的那三项，是同一类操作</h3>
 <p><strong>官方诚实地指出了输掉的三项：</strong></p>
 <blockquote><strong>「Dovecot 赢下的那三项测试都是同一个操作：一次性把邮箱里的所有邮件标记为已读。」</strong></blockquote>
-<strong>⭐ 我认为这个「输了什么」的坦率程度，比「赢了多少」更值得注意。</strong> <strong>而从技术上说，这一类操作（批量 flag 更新）在 Dovecot 里走的是完全不同的路径</strong> —— <strong>它不需要重写每个邮件的 flag 记录，而是可以做一次目录级操作。</strong> <strong>而 Stalwart 的实现是按消息逐个更新。</strong>
+<p><strong>⭐ 我认为这个「输了什么」的坦率程度，比「赢了多少」更值得注意。</strong> <strong>而从技术上说，这一类操作（批量 flag 更新）在 Dovecot 里走的是完全不同的路径</strong> —— <strong>它不需要重写每个邮件的 flag 记录，而是可以做一次目录级操作。</strong> <strong>而 Stalwart 的实现是按消息逐个更新。</strong></p>
 <p><strong>⭐ 这提示了一个对架构师有用的点：</strong><strong>「批量操作」是一个独立的性能维度</strong>，<strong>而不是「单条操作快」的简单延伸。</strong></p>
 <h3>6.3 ⭐ 为什么这个对比很重要</h3>
 <p><strong>官方这段分析是全文最有说服力的商业论证：</strong></p>
 <blockquote><strong>「只测了 Postfix 和 Dovecot，但他们不是随便两个产品。他们是几乎每一个流行的自托管邮件服务器底下的引擎：GitHub 上超过 10,000 star 的每一个开源 docker 化邮件服务器，包括 docker-mailserver 和 mailcow，跑的都是 Postfix 和 Dovecot，Mail-in-a-Box 也是如此。</strong>击败这个组合，几乎就等于击败了互联网上大多数自托管邮件背后的那套栈。<strong>」</strong></blockquote>
-<strong>⭐ 而这一段我认为写得非常克制，值得学：</strong>
+<p><strong>⭐ 而这一段我认为写得非常克制，值得学：</strong></p>
 <blockquote><strong>「不要光听我们说。每一个脚本、配置、测试场景和原始结果都在 benchmarks 仓库里，连同方法论和一份坦白的注意事项清单，比如两个系统在磁盘同步行为上的差异。任何有 Azure 账号的人都可以配置同样的服务器并运行整套测试。」</strong></blockquote>
-<strong>—— 「一份坦白的注意事项清单」这一句尤其好。</strong> <strong>大多数厂商基准文章只给结论，而这里明确说「我们列出了对我们不利的差异」。</strong>
+<p><strong>—— 「一份坦白的注意事项清单」这一句尤其好。</strong> <strong>大多数厂商基准文章只给结论，而这里明确说「我们列出了对我们不利的差异」。</strong></p>
 <p><strong>⭐ 而实测的一个小细节：那个 benchmarks 仓库是 </strong>2026-10-25 创建的<strong>（也就是发布前一天），1 star，Shell 语言。</strong> <strong>这意味着它是</strong>刚刚<strong>公开的</strong> —— 而这既是加分项（可复现），也是需要观察的项（一个刚公开的基准仓库，第三方验证还需要时间）。**</p>
 <h2>七、⭐ 迁移：两个断点必须提前知道</h2>
 <p><strong>v1.0 冻结了 schema，代价是「一次性的」：</strong></p>
 <blockquote><strong>「Stalwart v1.0 使用新的数据库布局，现有数据必须迁移过去。v1.0 服务器打不开早期版本创建的存储。」</strong></blockquote>
-<strong>而官方对「过去升级曾经不顺」这件事是认的：</strong>
+<p><strong>而官方对「过去升级曾经不顺」这件事是认的：</strong></p>
 <blockquote><strong>「我们知道过去有些升级不太顺当，我们认真对待了这一点。这次迁移被设计和测试为尽可能平滑，</strong>而且它是同类迁移的最后一次<strong>：schema 现在稳定了，未来版本将就地升级。」</strong></blockquote>
 <h3>7.1 两条迁移路径</h3>
-<table>
-<tr><th>路径</th><th>适用</th><th>机制</th></tr>
-<tr><td><strong>stalwart-migrate 工具</strong></td><td>从 v0.16 升级（需先到 v0.16.27）</td><td><strong>只读旧存储</strong>，把数据复制到新的空 v1.0 存储；<strong>增量迁移</strong>（第一次复制时 v0.16 继续服务用户），<strong>唯一的停机是最后那次短复制</strong>；保留账户与消息 ID、IMAP UID、变更历史，<strong>所以 IMAP/JMAP 客户端不需要重新下载任何东西</strong></td></tr>
-<tr><td><strong>迁移代理 + Vandelay</strong></td><td>从 v0.15 及更早，或想一个一个迁用户</td><td><strong>迁移代理</strong>坐在新旧两台前面，按账户归属路由；<strong>Vandelay</strong> 逐个增量复制账户；<strong>每个账户的切换只是映射表里改一行</strong>，该用户零停机，旧服务器保留完整副本直到你决定退役；<strong>同一套流程也适用于从 Dovecot 和 Postfix 迁到 Stalwart</strong></td></tr>
-</table>
+<table><thead><tr><th>路径</th><th>适用</th><th>机制</th></tr></thead><tbody><tr><td><strong>stalwart-migrate 工具</strong></td><td>从 v0.16 升级（需先到 v0.16.27）</td><td><strong>只读旧存储</strong>，把数据复制到新的空 v1.0 存储；<strong>增量迁移</strong>（第一次复制时 v0.16 继续服务用户），<strong>唯一的停机是最后那次短复制</strong>；保留账户与消息 ID、IMAP UID、变更历史，<strong>所以 IMAP/JMAP 客户端不需要重新下载任何东西</strong></td></tr><tr><td><strong>迁移代理 + Vandelay</strong></td><td>从 v0.15 及更早，或想一个一个迁用户</td><td><strong>迁移代理</strong>坐在新旧两台前面，按账户归属路由；<strong>Vandelay</strong> 逐个增量复制账户；<strong>每个账户的切换只是映射表里改一行</strong>，该用户零停机，旧服务器保留完整副本直到你决定退役；<strong>同一套流程也适用于从 Dovecot 和 Postfix 迁到 Stalwart</strong></td></tr></tbody></table>
 <p><strong>⭐ 「映射表里改一行」这个设计的优雅之处在于：它让「切换一个用户」成为一个</strong>原子操作<strong>，而不是一个需要协调多个系统的过程。</strong></p>
 <p><strong>⭐ 而「同一套流程也适用于从 Dovecot 和 Postfix 迁到 Stalwart」这一句，对想替换现有邮件栈的运营者是关键信息。</strong></p>
 <h3>7.2 ⭐⭐ 两个必须提前知道的断点</h3>
 <p><strong>① 集群现在强制要 Redis</strong></p>
 <blockquote><strong>「集群协调器现在需要一个基于 Redis 的内存存储（Redis、Redis Cluster 或 Redis Sentinel）。早期版本可以回退到数据存储，但那样在负载下很慢，这个回退已被移除。单节点部署会得到一个内置的本地内存存储。」</strong></blockquote>
-<strong>—— 这是一个硬性 breaking change。</strong> <strong>如果你的集群当前是「Redis 缺失时退化到主存储」，升级后它会直接起不来。</strong>
+<p><strong>—— 这是一个硬性 breaking change。</strong> <strong>如果你的集群当前是「Redis 缺失时退化到主存储」，升级后它会直接起不来。</strong></p>
 <p><strong>② ⭐⭐ OAuth 转向 open public client profile</strong></p>
 <p><strong>这一条我认为是整篇博客里</strong>对未来影响最大<strong>、而最容易被忽略的变更：</strong></p>
 <blockquote><strong>「OAuth 现在遵循 open public client profile。Stalwart 现在完全强制实施 OAuth Profile for Open Public Clients —— 这个新兴标准让任何邮件客户端无需预先注册就能登录任何邮件服务器。Stalwart 自己的授权服务器开箱即用地支持它。</strong>许多外部身份提供商还不支持这个 profile 要求的全部内容<strong>，比如动态客户端注册，一些客户端也还没有请求所需的 scopes。」</strong></blockquote>
-<strong>⭐ 而官方还给出了「现在就该行动」的具体理由：</strong>
+<p><strong>⭐ 而官方还给出了「现在就该行动」的具体理由：</strong></p>
 <blockquote><strong>「如果你依赖外部身份提供商，现在是好时机去要求他们支持它。</strong>这很快就会变得重要：流行的邮件客户端，包括 Apple Mail，正在采用这个 profile，而一旦它们这么做，它们的用户将无法对不合规的 provider 进行认证。<strong>」</strong></blockquote>
-<strong>⭐ 「Apple Mail 正在采用这个 profile」这句话，是整篇博客里最有战略价值的一句</strong> —— <strong>因为它意味着这条从草案变成事实的时间表，比多数人预期的要快。</strong>
+<p><strong>⭐ 「Apple Mail 正在采用这个 profile」这句话，是整篇博客里最有战略价值的一句</strong> —— <strong>因为它意味着这条从草案变成事实的时间表，比多数人预期的要快。</strong></p>
 <p><strong>⭐ 而且官方给了兜底：</strong></p>
 <blockquote><strong>「如果你的外部身份提供商不合规，Stalwart 的 token 检查可以通过 OIDC 目录上的兼容性设置放宽，自担风险，因为每一项都削弱一项安全检查。这些设置主要是为了让 WebUI 这类 web 客户端继续工作。</strong>」**</blockquote>
-<strong>—— 注意官方自己的措辞：「自担风险」和「每一项都削弱一项安全检查」。</strong> <strong>这和「方便」是完全不同的框架。</strong>
+<p><strong>—— 注意官方自己的措辞：「自担风险」和「每一项都削弱一项安全检查」。</strong> <strong>这和「方便」是完全不同的框架。</strong></p>
 <p><strong>③ WebUI 的 client id 机制变化</strong></p>
 <blockquote><strong>「WebUI 不再使用固定的 client id，而是用一个 Client ID Metadata Document —— 一个描述该 client 的 URL —— 向身份提供商表明身份。一些身份提供商还不支持这个。」</strong></blockquote>
 <h2>八、⭐ 其他值得记的新特性</h2>
-<table>
-<tr><th>特性</th><th>说明</th></tr>
-<tr><td><strong>⭐ 文档内容全文检索</strong></td><td><strong>从 PDF、MS Office（docx/xlsx/pptx）、OpenDocument（odt/ods/odp）、EPUB、RTF 中提取并索引文本</strong>，邮件附件与文件存储都支持。<strong>「搜一个短语，现在能找到去年那封邮件附带的合同，而不只是提到它的那封邮件。」</strong> 提取器<strong>用 Rust 从零编写，不依赖任何外部文档库</strong>，并在<strong>严格的体积与复杂度限制</strong>下处理每个文档，<strong>所以恶意或畸形文件无法耗尽服务器</strong></td></tr>
-<tr><td><strong>文件存储全文检索</strong></td><td>加上带分区状态、重试、重建的索引队列</td></tr>
-<tr><td><strong>JMAP Object Metadata</strong></td><td>覆盖邮件、邮箱、日历、联系人、文件等；以及 IMAP METADATA（RFC 5464）</td></tr>
-<tr><td><strong>⭐ 后量子 DKIM2</strong></td><td><strong>ML-DSA-44 与 Ed25519 的复合签名</strong>，用于 DKIM2</td></tr>
-<tr><td><strong>OAuth / OIDC 增强</strong></td><td>Client ID Metadata Documents、按客户端的 scopes、<strong>用户可撤销的已连接应用列表</strong>、audience 匹配、opaque token 校验、无 scope token 策略</td></tr>
-<tr><td><strong>存储与运维</strong></td><td><strong>单节点部署的内置内存存储</strong>、Azure Blob Storage 更多认证方式、<strong>LDAP 副服务器做故障转移</strong>、缓冲数据内存预算、<strong>每一次出站 HTTP 请求的 SSRF 防护</strong>、可配置的客户端 IP 来源与可信代理跳数</td></tr>
-<tr><td><strong>AI 模型与 AI 垃圾邮件分类器</strong></td><td>在 <strong>Enterprise edition</strong> 里，支持 OpenAI 兼容、Anthropic、Gemini、Ollama</td></tr>
-</table>
+<table><thead><tr><th>特性</th><th>说明</th></tr></thead><tbody><tr><td><strong>⭐ 文档内容全文检索</strong></td><td><strong>从 PDF、MS Office（docx/xlsx/pptx）、OpenDocument（odt/ods/odp）、EPUB、RTF 中提取并索引文本</strong>，邮件附件与文件存储都支持。<strong>「搜一个短语，现在能找到去年那封邮件附带的合同，而不只是提到它的那封邮件。」</strong> 提取器<strong>用 Rust 从零编写，不依赖任何外部文档库</strong>，并在<strong>严格的体积与复杂度限制</strong>下处理每个文档，<strong>所以恶意或畸形文件无法耗尽服务器</strong></td></tr><tr><td><strong>文件存储全文检索</strong></td><td>加上带分区状态、重试、重建的索引队列</td></tr><tr><td><strong>JMAP Object Metadata</strong></td><td>覆盖邮件、邮箱、日历、联系人、文件等；以及 IMAP METADATA（RFC 5464）</td></tr><tr><td><strong>⭐ 后量子 DKIM2</strong></td><td><strong>ML-DSA-44 与 Ed25519 的复合签名</strong>，用于 DKIM2</td></tr><tr><td><strong>OAuth / OIDC 增强</strong></td><td>Client ID Metadata Documents、按客户端的 scopes、<strong>用户可撤销的已连接应用列表</strong>、audience 匹配、opaque token 校验、无 scope token 策略</td></tr><tr><td><strong>存储与运维</strong></td><td><strong>单节点部署的内置内存存储</strong>、Azure Blob Storage 更多认证方式、<strong>LDAP 副服务器做故障转移</strong>、缓冲数据内存预算、<strong>每一次出站 HTTP 请求的 SSRF 防护</strong>、可配置的客户端 IP 来源与可信代理跳数</td></tr><tr><td><strong>AI 模型与 AI 垃圾邮件分类器</strong></td><td>在 <strong>Enterprise edition</strong> 里，支持 OpenAI 兼容、Anthropic、Gemini、Ollama</td></tr></tbody></table>
 <p><strong>⭐ 我认为「每一次出站 HTTP 请求的 SSRF 防护」这一条在 2026 年格外值得注意</strong> —— <strong>因为「AI agent 会任意发 HTTP 请求」这件事，正在让 SSRF 从「Web 应用的漏洞」变成「agent 运行时的基础设施需求」。</strong></p>
 <p><strong>⭐ 而「后量子 DKIM2 用 ML-DSA-44 + Ed25519 复合签名」这条，是我在邮件服务器里第一次见到后量子签名进入实际部署路径</strong> —— <strong>而不是停留在实验分支。</strong></p>
 <h2>九、⭐ 我的评价</h2>
@@ -528,7 +462,7 @@
 <p><strong>② benchmarks 仓库是发布前一天才创建的。</strong> <strong>可复现性是加分项，但第三方独立验证还需要时间。</strong></p>
 <p><strong>③ ⭐ 而「Stalwart Enterprise License v1 + AGPL-3.0 双许可」这个结构，值得运营者留意。</strong> <strong>Community 页面说得很清楚：</strong></p>
 <blockquote><strong>「AGPL-3.0 的义务只在修改后的服务器版本自身被再分发或作为网络服务提供时适用；运行未修改的 Stalwart，或在内部使用，不触发任何源码披露要求。」</strong></blockquote>
-<strong>—— 这个措辞把「SaaS 陷阱」处理得相当明确。</strong> <strong>而它也意味着：如果你</strong>修改<strong> Stalwart 并对外提供服务，AGPL 义务就适用了。</strong> <strong>同时 NLnet 的两笔资助（NGI0 Entrust Fund 与 NGI Zero Core，来自欧盟 Next Generation Internet 计划）意味着这个项目有公共资金背景</strong> —— <strong>这在邮件服务器领域是一件值得知道的事。</strong>
+<p><strong>—— 这个措辞把「SaaS 陷阱」处理得相当明确。</strong> <strong>而它也意味着：如果你</strong>修改<strong> Stalwart 并对外提供服务，AGPL 义务就适用了。</strong> <strong>同时 NLnet 的两笔资助（NGI0 Entrust Fund 与 NGI Zero Core，来自欧盟 Next Generation Internet 计划）意味着这个项目有公共资金背景</strong> —— <strong>这在邮件服务器领域是一件值得知道的事。</strong></p>
 <h3>9.3 ⭐ 最后一个观察：这个领域正在被重新洗牌</h3>
 <p><strong>⭐ 把两件事放在一起看：</strong></p>
 <p><strong>① 邮件服务器这个领域二十多年来是 Postfix + Dovecot 的天下，几乎没有新玩家能进来。</strong></p>
@@ -539,20 +473,9 @@
 <p><strong>—— 这才是 Stalwart 真正的结构性优势：它不是「一个更快的 IMAP 服务器」，而是「一个把现代协议当成一等公民的新架构」。</strong></p>
 <p><strong>⭐ 而这带来的一个直接后果，我在本文已经写过：</strong> <strong>OAuth open public client profile 正在成为现实</strong>（Apple Mail 正在采用）。<strong>一个自己实现授权服务器、且开箱支持这个 profile 的邮件服务器，在这场迁移里天然占优。</strong></p>
 <h2>Sources</h2>
-<ul>
-<li>Stalwart 官方博客：Stalwart v1.0 — The Fastest Mail Server on the Planet（2026-10-26，作者 Mauro D.）：https://stalw.art/blog/stalwart-1-0/</li>
-<li>主仓库：https://github.com/stalwartlabs/stalwart</li>
-<li>mail-parser（项目起点）：https://github.com/stalwartlabs/mail-parser</li>
-<li>encodify（本次新拆分）：https://github.com/stalwartlabs/encodify</li>
-<li>benchmarks 仓库（本次新公开）：https://github.com/stalwartlabs/benchmarks</li>
-<li>Community Edition 许可说明：https://stalw.art/open-source</li>
-<li>架构页：https://stalw.art/architecture</li>
-<li>Releases：https://github.com/stalwartlabs/stalwart/releases</li>
-<li>Changelog：https://github.com/stalwartlabs/stalwart/blob/main/CHANGELOG.md</li>
-</ul>
----
-<p>（说明：所有引号内内容为官方博客与官方页面原文引用；第九节的评价与「Postfix+Dovecot 对比的条件」分析为笔者补充。<strong>8 vCPU / 32 GiB 单节点、AES/密码哈希/全文搜索配置相同、交替测量</strong> 等测试条件均引自官方原文。）
-</p>
+<ul><li>Stalwart 官方博客：Stalwart v1.0 — The Fastest Mail Server on the Planet（2026-10-26，作者 Mauro D.）：<a href="https://stalw.art/blog/stalwart-1-0/" target="_blank" rel="noopener noreferrer">https://stalw.art/blog/stalwart-1-0/</a></li><li>主仓库：<a href="https://github.com/stalwartlabs/stalwart" target="_blank" rel="noopener noreferrer">https://github.com/stalwartlabs/stalwart</a></li><li>mail-parser（项目起点）：<a href="https://github.com/stalwartlabs/mail-parser" target="_blank" rel="noopener noreferrer">https://github.com/stalwartlabs/mail-parser</a></li><li>encodify（本次新拆分）：<a href="https://github.com/stalwartlabs/encodify" target="_blank" rel="noopener noreferrer">https://github.com/stalwartlabs/encodify</a></li><li>benchmarks 仓库（本次新公开）：<a href="https://github.com/stalwartlabs/benchmarks" target="_blank" rel="noopener noreferrer">https://github.com/stalwartlabs/benchmarks</a></li><li>Community Edition 许可说明：<a href="https://stalw.art/open-source" target="_blank" rel="noopener noreferrer">https://stalw.art/open-source</a></li><li>架构页：<a href="https://stalw.art/architecture" target="_blank" rel="noopener noreferrer">https://stalw.art/architecture</a></li><li>Releases：<a href="https://github.com/stalwartlabs/stalwart/releases" target="_blank" rel="noopener noreferrer">https://github.com/stalwartlabs/stalwart/releases</a></li><li>Changelog：<a href="https://github.com/stalwartlabs/stalwart/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">https://github.com/stalwartlabs/stalwart/blob/main/CHANGELOG.md</a></li></ul>
+<hr>
+<p>（说明：所有引号内内容为官方博客与官方页面原文引用；第九节的评价与「Postfix+Dovecot 对比的条件」分析为笔者补充。<strong>8 vCPU / 32 GiB 单节点、AES/密码哈希/全文搜索配置相同、交替测量</strong> 等测试条件均引自官方原文。）</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

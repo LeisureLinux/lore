@@ -279,7 +279,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>本文是对开源项目 <a href="https://greaber.github.io/syq/">syq</a>（作者 greaber，Rust 编写，MIT 许可，当前版本 0.5.2）的研究笔记，技术细节与基准数据来自官方文档与独立基准站点 syq-bench（2026 年 9 月版本）。</blockquote>
+<blockquote>本文是对开源项目 <a href="https://greaber.github.io/syq/" target="_blank" rel="noopener noreferrer">syq</a>（作者 greaber，Rust 编写，MIT 许可，当前版本 0.5.2）的研究笔记，技术细节与基准数据来自官方文档与独立基准站点 syq-bench（2026 年 9 月版本）。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
       <span class="tc-ad-label">推广</span>
@@ -288,17 +288,11 @@
       </a>
     </div>
 
-rsync 1996 年诞生，三十年里几乎没遇到过正经挑战者。最近冒出来的 <strong>syq</strong>（读作 "sick"）却直接把话挑明：跨洋传 1 GB 大文件，比 rsync 快 <strong>8.82 倍</strong>；本地复制 17 GB 文件夹，快 5 倍；往 NFS 网络盘写 2.5 万个小文件，快 8 倍。
+<p>rsync 1996 年诞生，三十年里几乎没遇到过正经挑战者。最近冒出来的 <strong>syq</strong>（读作 "sick"）却直接把话挑明：跨洋传 1 GB 大文件，比 rsync 快 <strong>8.82 倍</strong>；本地复制 17 GB 文件夹，快 5 倍；往 NFS 网络盘写 2.5 万个小文件，快 8 倍。</p>
 <p>这不是 PPT 项目——Rust 写的、MIT 许可、能直接在现有 rsync 命令前面加个 <code>syq</code> 前缀跑。它凭什么敢这么快？拆开看，答案其实很工程：<strong>不是发明了什么新算法，而是把 rsync 三十年没舍得扔的几个单点瓶颈，挨个炸掉。</strong></p>
 <h2>一、先看数字：四个场景全部碾压</h2>
 <p>syq-bench 是独立基准站，四类典型负载，每轮跑 3 次取平均：</p>
-<table>
-<tr><th>场景</th><th>负载</th><th>syq</th><th>rsync</th><th>syq 优势</th></tr>
-<tr><td>跨洋传大文件（德国→美东）</td><td>1.07 GB 单文件</td><td>159.1 MB/s</td><td>18.0 MB/s</td><td><strong>8.82×</strong></td></tr>
-<tr><td>本地单盘复制（Hetzner/ext4）</td><td>16,000 文件 / 17.18 GB</td><td>3.77 GB/s</td><td>754.2 MB/s</td><td>5.0×</td></tr>
-<tr><td>小文件写网络盘（NFS）</td><td>25,000 文件 / 104.8 MB</td><td>19.2 MB/s</td><td>2.4 MB/s</td><td>8.0×</td></tr>
-<tr><td>校验无变更目录（德国→美东）</td><td>100,000 文件，零传输</td><td>6.28 s</td><td>12.1 s</td><td>1.92×</td></tr>
-</table>
+<table><thead><tr><th>场景</th><th>负载</th><th>syq</th><th>rsync</th><th>syq 优势</th></tr></thead><tbody><tr><td>跨洋传大文件（德国→美东）</td><td>1.07 GB 单文件</td><td>159.1 MB/s</td><td>18.0 MB/s</td><td><strong>8.82×</strong></td></tr><tr><td>本地单盘复制（Hetzner/ext4）</td><td>16,000 文件 / 17.18 GB</td><td>3.77 GB/s</td><td>754.2 MB/s</td><td>5.0×</td></tr><tr><td>小文件写网络盘（NFS）</td><td>25,000 文件 / 104.8 MB</td><td>19.2 MB/s</td><td>2.4 MB/s</td><td>8.0×</td></tr><tr><td>校验无变更目录（德国→美东）</td><td>100,000 文件，零传输</td><td>6.28 s</td><td>12.1 s</td><td>1.92×</td></tr></tbody></table>
 <p>注意场景一里还有一组更关键的数字：syq 走 SSH 数据通道时是 <strong>87.2 MB/s</strong>，切到自己的 TCP 通道立刻变成 <strong>159.1 MB/s</strong>。这组对照把"快"的来源拆得清清楚楚——下面逐层解释。</p>
 <h2>二、快的四层拆解</h2>
 <h3>第 1 层：连同一个文件都要并行</h3>
@@ -313,26 +307,16 @@ rsync 1996 年诞生，三十年里几乎没遇到过正经挑战者。最近冒
 <p>一句话总结它的速度公式：<strong>并行分块 × 绕开 SSH 单流 × 多 worker × 放弃 delta 计算</strong>。每一项都是工程决策，没有魔法。</p>
 <h2>三、代价清单：它扔掉了什么</h2>
 <p>快不是免费的，官方"rsync 兼容性"页面列明不支持：</p>
-<ul>
-<li>rsync filter rules（过滤规则）</li>
-<li>硬链接（hard links）</li>
-<li>ACL / xattrs</li>
-<li>稀疏文件（sparse files）</li>
-<li>rolling-checksum deltas</li>
-</ul>
-用硬链接做增量备份（rsync + <code>--link-dest</code> 那套经典玩法）的用户直接被挡在门外；需要保留扩展属性的系统目录同步也不行。迁移前必须逐项核对。
+<ul><li>rsync filter rules（过滤规则）</li><li>硬链接（hard links）</li><li>ACL / xattrs</li><li>稀疏文件（sparse files）</li><li>rolling-checksum deltas</li></ul>
+<p>用硬链接做增量备份（rsync + <code>--link-dest</code> 那套经典玩法）的用户直接被挡在门外；需要保留扩展属性的系统目录同步也不行。迁移前必须逐项核对。</p>
 <p>另外两个架构层面的代价：</p>
-<ul>
-<li><strong>数据通道要开端口</strong>：防火墙得放行 47600–47699，或者接受回落到 SSH 的慢速模式；</li>
-<li><strong>自有协议 + 自有加密栈</strong>：SSH 协议三十年审计积累，syq 的加密实现只有不到一年——官方提供 <code>--tcp-plain</code>（可信网络禁加密）本身就说明攻击面是真实存在的。</li>
-</ul>
+<ul><li><strong>数据通道要开端口</strong>：防火墙得放行 47600–47699，或者接受回落到 SSH 的慢速模式；</li><li><strong>自有协议 + 自有加密栈</strong>：SSH 协议三十年审计积累，syq 的加密实现只有不到一年——官方提供 <code>--tcp-plain</code>（可信网络禁加密）本身就说明攻击面是真实存在的。</li></ul>
 <h2>我们的解读</h2>
 <p><strong>1. "快"的真相是 architectural debt 的清算。</strong> rsync 的单流模型在 1996 年是对的——那时网络是瓶颈，delta 计算省下的字节远比 CPU 值钱。三十年后网络带宽涨了四个数量级，CPU 单线程没涨多少，瓶颈就翻转了。syq 的全部设计都指向同一个洞察：<strong>高带宽时代，瓶颈从"传多少字节"变成了"单流能不能喂饱管道"</strong>。这是典型的瓶颈迁移驱动的架构重写。</p>
 <p><strong>2. 放弃 delta 是大胆且正确的取舍。</strong> delta 的真正价值域是"慢链路 + 大文件 + 小改动"，典型如当年的拨号和远程办公。如今同步大多是"首次全量 + 后续增删"或开发迭代场景，整文件重传配合良好的一致性检查往往更划算。当然，如果你的场景是"跨洋同步一个 50 GB 虚拟机镜像、每天只改 1%"，rsync 的 delta 仍然是不可替代的——syq 自己也承认这一点。</p>
 <p><strong>3. rsync 的护城河不在速度。</strong> 三十年的正确性验证、全球服务器预装零成本、硬链接增量备份、filter 规则生态——这些才是 rsync 真正的壁垒。syq 的定位很聪明：不正面争夺"唯一同步工具"，而是吃下 rsync 在现代硬件上表现最差的场景（跨洋大文件、海量小文件、NFS）。</p>
 <p><strong>4. 运维视角的采用建议。</strong> 备份海量小文件到 NFS、跨机房搬大镜像、开发机与构建机同步 workspace——这些 syq 的甜蜜点值得立刻纳入工具箱；<code>--link-dest</code> 硬链接备份、需要保留 ACL/xattrs 的系统同步，继续用 rsync。两者并存完全合理：syq 甚至允许 <code>syq rsync -av ...</code> 直接套在旧命令外层渐进迁移。</p>
-<p><strong>5. 别忽视它的生产方式。</strong> 仓库里 CLAUDE.md、AGENTS.md 齐备，提交信息大量标注 AI 协作（Co-Authored-By），文档站的质量达到商业产品水准。一个"人 + AI"的小团队，现在能把工程密度做到这种程度——对单人维护的国产化工具链项目，这是比基准数字更值得琢磨的信号。
-</p>
+<p><strong>5. 别忽视它的生产方式。</strong> 仓库里 CLAUDE.md、AGENTS.md 齐备，提交信息大量标注 AI 协作（Co-Authored-By），文档站的质量达到商业产品水准。一个"人 + AI"的小团队，现在能把工程密度做到这种程度——对单人维护的国产化工具链项目，这是比基准数字更值得琢磨的信号。</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

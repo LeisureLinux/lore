@@ -299,137 +299,104 @@
 <p>家用路由器默认给你 <code>.lan</code>，mDNS 用 <code>.local</code>，老企业内网挂着 <code>.corp</code> / <code>.home</code> —— 这些名字<strong>都没有任何官方保障</strong>。</p>
 <p>其中 <strong><code>.local</code></strong> 有标准但<strong>只能用于 mDNS</strong>；<strong><code>.home.arpa</code></strong> 是唯一"现在就有 RFC"的普通 DNS 家庭域名；<strong><code>.corp</code> / <code>.home</code> / <code>.mail</code></strong> 已经被 ICANN <strong>冻结委派</strong>（因为使用量太大，一旦委派就是全球性事故）；而 <strong><code>.lan</code></strong> —— <strong>连冻结都没有，它只是还没轮到被委派</strong>。</p>
 <p>2024 年 7 月，ICANN 董事会正式保留了一个新的私有用途顶级域 <strong><code>.internal</code></strong>，目标是<strong>让所有人从 <code>.lan</code> / <code>.corp</code> / <code>.home</code> 这类未保留的名字上迁移走</strong>。</p>
-<p>---</p>
+<hr>
 <h2>一、先看权威数据：IANA 特殊用途域名登记表</h2>
 <p>判断一个域名"用在哪儿是否安全"，唯一权威来源是 <strong>IANA 的特殊用途域名登记表</strong>（Special-Use Domain Names，依据 RFC 6761）。</p>
 <p>我把完整列表拉了下来，<strong>只有两个"内网用途"的域名被正式登记</strong>：</p>
-<table>
-<tr><th>域名</th><th>引用</th><th>状态</th></tr>
-<tr><td><strong><code>home.arpa.</code></strong></td><td><strong>RFC 8375</strong></td><td>✅ Standards Track（2018）</td></tr>
-<tr><td><strong><code>local.</code></strong></td><td><strong>RFC 6762</strong></td><td>✅ Standards Track（mDNS）</td></tr>
-</table>
+<table><thead><tr><th>域名</th><th>引用</th><th>状态</th></tr></thead><tbody><tr><td><strong><code>home.arpa.</code></strong></td><td><strong>RFC 8375</strong></td><td>✅ Standards Track（2018）</td></tr><tr><td><strong><code>local.</code></strong></td><td><strong>RFC 6762</strong></td><td>✅ Standards Track（mDNS）</td></tr></tbody></table>
 <p><strong>而下面这些全部未登记：</strong></p>
-<table>
-<tr><th>域名</th><th>IANA 登记</th><th>引用</th></tr>
-<tr><td><code>.lan</code></td><td>❌ 无</td><td>—</td></tr>
-<tr><td><code>.corp</code></td><td>❌ 无</td><td>—</td></tr>
-<tr><td><code>.home</code></td><td>❌ 无</td><td>—</td></tr>
-<tr><td><code>.internal</code></td><td>⏳ 暂未登记</td><td>ICANN 已保留（2024-07）</td></tr>
-<tr><td><code>.private</code></td><td>❌ 无</td><td>—</td></tr>
-</table>
+<table><thead><tr><th>域名</th><th>IANA 登记</th><th>引用</th></tr></thead><tbody><tr><td><code>.lan</code></td><td>❌ 无</td><td>—</td></tr><tr><td><code>.corp</code></td><td>❌ 无</td><td>—</td></tr><tr><td><code>.home</code></td><td>❌ 无</td><td>—</td></tr><tr><td><code>.internal</code></td><td>⏳ 暂未登记</td><td>ICANN 已保留（2024-07）</td></tr><tr><td><code>.private</code></td><td>❌ 无</td><td>—</td></tr></tbody></table>
 <h3>根区实测</h3>
 <p>"未登记"到底意味着什么？我直接问了根服务器：</p>
 <pre><code class="bash">$ dig lan       NS @198.41.0.4     # → status: NXDOMAIN
 $ dig corp      NS @198.41.0.4     # → status: NXDOMAIN
 $ dig home      NS @198.41.0.4     # → status: NXDOMAIN
 $ dig internal  NS @198.41.0.4     # → status: NXDOMAIN
-$ dig arpa      NS @198.41.0.4     # → a.ns.arpa.   [status: NOERROR]  ← 唯一例外
-</code></pre>
+$ dig arpa      NS @198.41.0.4     # → a.ns.arpa.   [status: NOERROR]  ← 唯一例外</code></pre>
 <p><strong>注意 <code>NXDOMAIN</code> 前面还有 <code>aa</code> 标志</strong>（Authoritative Answer）：</p>
-<pre><code class="">$ dig lan NS @198.41.0.4 | grep flags
+<pre><code>$ dig lan NS @198.41.0.4 | grep flags
 ;; flags: qr aa rd; QUERY: 1, ANSWER: 0, AUTHORITY: 1
-              ^^
-</code></pre>
+              ^^</code></pre>
 <p><strong>根区是"权威地"告诉你 <code>.lan</code> 不存在</strong> —— 这是确定性否定，不是"我懒得理你"。</p>
 <p><strong>这也解释了</strong>为什么内网监控里会出现 <code>printer.lan.lan</code>、<code>nas.lan.lan</code> 这类畸形查询 —— 客户端拿到 NXDOMAIN 后还会继续 devolution 叠加后缀，一路问到根。</p>
-<p>---</p>
+<hr>
 <h2>二、逐个解析</h2>
 <h3><code>.local</code> —— ✅ 有标准，但<strong>只能用于 mDNS</strong></h3>
 <p><strong>RFC 6762（Multicast DNS）</strong> 的规定很明确：</p>
 <blockquote>This document specifies that the DNS top-level domain <strong>".local." is a special domain with special semantics</strong>, namely that any fully qualified name ending in ".local." is <strong>link-local</strong>, and names within this domain are <strong>meaningful only on the link where they originate</strong>.</blockquote>
-<strong>机制是这样的：</strong>
-<pre><code class="">任何 .local 查询 → 不走普通 DNS 单播
-                 → 发到 mDNS 组播地址 224.0.0.251（IPv4）/ FF02::FB（IPv6）
-</code></pre>
+<p><strong>机制是这样的：</strong></p>
+<pre><code>任何 .local 查询 → 不走普通 DNS 单播
+                 → 发到 mDNS 组播地址 224.0.0.251（IPv4）/ FF02::FB（IPv6）</code></pre>
 <p><strong>⚠️ 这里有个非常常见的误用。</strong></p>
 <p>很多家用路由器把 <code>.local</code> 配成<strong>普通 DNS 域</strong>（在 dnsmasq / unbound 里写 A 记录）—— 这<strong>违背了 RFC 6762</strong>。</p>
-<table>
-<tr><th>正确用法</th><th>错误用法</th></tr>
-<tr><td><code>.local</code> + Avahi / mDNS</td><td><code>.local</code> + 普通 DNS 记录</td></tr>
-<tr><td>客户端发组播查询</td><td>客户端发单播查询，或被 mDNS 抢答</td></tr>
-</table>
+<table><thead><tr><th>正确用法</th><th>错误用法</th></tr></thead><tbody><tr><td><code>.local</code> + Avahi / mDNS</td><td><code>.local</code> + 普通 DNS 记录</td></tr><tr><td>客户端发组播查询</td><td>客户端发单播查询，或被 mDNS 抢答</td></tr></tbody></table>
 <p><strong>如果你同时在跑 Avahi 和一条 DNS A 记录</strong>，会遇到"有时能解析、有时不能"的诡异现象 —— 因为 mDNS 和传统 DNS 在抢答同一个名字。</p>
 <p><strong>结论</strong>：<code>.local</code> 可以用，<strong>但规规矩矩交给 mDNS</strong>。别把它当普通内网域名。</p>
-<p>---</p>
+<hr>
 <h3><code>home.arpa.</code> —— ✅ <strong>唯一有 RFC 的普通 DNS 家庭域名</strong></h3>
 <p><strong>RFC 8375（Standards Track，2018 年）</strong>：</p>
 <blockquote>'home.arpa.' is designated for <strong>non-unique use in residential home networks</strong>.</blockquote>
-<strong>为什么是 <code>.arpa</code> 而不是大家更喜欢的 <code>.home</code>？</strong> RFC 里说得很直白：
-<blockquote>This document <strong>corrects an error in RFC 7788</strong> by replacing '.home' with 'home.arpa.' as the default domain name for homenets.</blockquote>>
-<blockquote><strong>'.home' was selected as the most user-friendly option; however, there are existing uses of '.home' that may be in conflict with this use.</strong></blockquote>
-<strong>更关键的一句：</strong>
+<p><strong>为什么是 <code>.arpa</code> 而不是大家更喜欢的 <code>.home</code>？</strong> RFC 里说得很直白：</p>
+<blockquote>This document <strong>corrects an error in RFC 7788</strong> by replacing '.home' with 'home.arpa.' as the default domain name for homenets.<br>
+<br>
+<strong>'.home' was selected as the most user-friendly option; however, there are existing uses of '.home' that may be in conflict with this use.</strong></blockquote>
+<p><strong>更关键的一句：</strong></p>
 <blockquote>No such process is available for requesting a similar delegation in the root at the request of the IETF, <strong>which does not administer that zone</strong>. As a result, <strong>all unregistered uses of '.home'</strong> ...</blockquote>
-<strong>翻译一下这段话的分量</strong>：
-<pre><code class="">IETF 管不了根区（根区归 ICANN）
+<p><strong>翻译一下这段话的分量</strong>：</p>
+<pre><code>IETF 管不了根区（根区归 ICANN）
   ↓
 所以 IETF 无法阻止 .home 将来被委派给某个商业注册局
   ↓
 为了安全，只能退到 .arpa
   ↓
-因为 .arpa 由 IETF 自己管理，永远不会被商业化委派
-</code></pre>
+因为 .arpa 由 IETF 自己管理，永远不会被商业化委派</code></pre>
 <p><strong>这就是 <code>.arpa</code> 的特殊地位</strong> —— 它是唯一一个根区里有 NS 记录的"特殊用途"TLD（其他如 <code>test</code> / <code>example</code> / <code>invalid</code> 都是 NXDOMAIN）。</p>
 <p><strong>所以：家庭网络如果要一个"永远安全"的名字，<code>home.arpa</code> 是唯一答案。</strong></p>
-<p>---</p>
+<hr>
 <h3><code>.lan</code> —— ⚠️ <strong>最流行，但零保障</strong></h3>
 <p><strong>未登记、未保留、根区 NXDOMAIN。</strong></p>
 <p><strong>为什么它这么流行？</strong></p>
-<ul>
-<li><strong>短</strong>（三个字母，手机上也少敲两下）</li>
-<li><strong>语义直观</strong>（Local Area Network）</li>
-<li>家用路由器固件（OpenWrt 及多个品牌）默认用它</li>
-<li>各类内网教程里到处是 <code>something.lan</code></li>
-</ul>
-<strong>ICANN 公开征询时，确实有人力挺 <code>.lan</code>：</strong>
-<blockquote>I suggest to use <strong><code>.lan</code> instead of <code>.internal</code> or <code>.private</code></strong>. <code>.lan</code> is much faster and easier to type, especially on mobile devices.</blockquote>>
-<blockquote><code>.lan</code> is the abbreviation of "Local Area Network" so it would make perfect sense.</blockquote>
-<strong>但最终 ICANN 选了 <code>.internal</code>。</strong>
+<ul><li><strong>短</strong>（三个字母，手机上也少敲两下）</li><li><strong>语义直观</strong>（Local Area Network）</li><li>家用路由器固件（OpenWrt 及多个品牌）默认用它</li><li>各类内网教程里到处是 <code>something.lan</code></li></ul>
+<p><strong>ICANN 公开征询时，确实有人力挺 <code>.lan</code>：</strong></p>
+<blockquote>I suggest to use <strong><code>.lan</code> instead of <code>.internal</code> or <code>.private</code></strong>. <code>.lan</code> is much faster and easier to type, especially on mobile devices.<br>
+<br>
+<code>.lan</code> is the abbreviation of "Local Area Network" so it would make perfect sense.</blockquote>
+<p><strong>但最终 ICANN 选了 <code>.internal</code>。</strong></p>
 <p><strong>风险在哪</strong>：<strong>没有任何机构承诺不委派 <code>.lan</code>。</strong> 它和 <code>.corp</code> / <code>.home</code> 不同 —— 那两个至少被"冻结"了，而 <code>.lan</code> <strong>连冻结都没有</strong>，只是"恰好还没轮到"。</p>
-<p>---</p>
+<hr>
 <h3><code>.corp</code> / <code>.home</code> / <code>.mail</code> —— ⛔ <strong>已被明确冻结委派</strong></h3>
 <p><strong>这三个有过著名的事故。</strong></p>
 <p>首轮新 gTLD 计划（New gTLD Program）期间，<strong>企业内网对这三个名字的使用量太大</strong>，导致：</p>
-<ul>
-<li>大量内部查询<strong>泄漏到根服务器</strong></li>
-<li>如果 ICANN 把它们委派出去，<strong>全球企业会在同一天集体撞车</strong></li>
-</ul>
-<strong>结果</strong>：ICANN <strong>停止了这些字符串的委派</strong>（halt delegation）。
+<ul><li>大量内部查询<strong>泄漏到根服务器</strong></li><li>如果 ICANN 把它们委派出去，<strong>全球企业会在同一天集体撞车</strong></li></ul>
+<p><strong>结果</strong>：ICANN <strong>停止了这些字符串的委派</strong>（halt delegation）。</p>
 <p><strong>⚠️ 但"冻结"不等于"永久保留"：</strong></p>
-<pre><code class="">这是 ICANN 的【政策决定】，不是技术保证
+<pre><code>这是 ICANN 的【政策决定】，不是技术保证
   ↓
 理论上未来可能解冻
   ↓
 而且 SSAC-113 明确建议：
   与其让企业继续挤在这些未保留的名字上
-  不如给他们一个正式保留的 .internal
-</code></pre>
+  不如给他们一个正式保留的 .internal</code></pre>
 <p><strong>所以 <code>.corp</code> / <code>.home</code> 现在"能用"，但这是</strong>借来的时间<strong>。</strong></p>
-<p>---</p>
+<hr>
 <h3><code>.internal</code> —— ⭐ <strong>ICANN 给出的官方答案</strong></h3>
 <p><strong>这是最近最重要的变化。</strong></p>
-<table>
-<tr><th>时间</th><th>事件</th></tr>
-<tr><td>2020-09</td><td><strong>SSAC-113</strong>（ICANN 安全与稳定咨询委员会）建议保留一个私有用途 TLD</td></tr>
-<tr><td>2024-01</td><td>ICANN 公开征询候选字符串</td></tr>
-<tr><td><strong>2024-07</strong></td><td><strong>ICANN 董事会决议保留 <code>.internal</code></strong></td></tr>
-<tr><td>2025–2026</td><td>IETF 起草 <code>draft-davies-internal-tld</code>（最新 <strong>-06</strong>，2026 年 5 月）</td></tr>
-</table>
+<table><thead><tr><th>时间</th><th>事件</th></tr></thead><tbody><tr><td>2020-09</td><td><strong>SSAC-113</strong>（ICANN 安全与稳定咨询委员会）建议保留一个私有用途 TLD</td></tr><tr><td>2024-01</td><td>ICANN 公开征询候选字符串</td></tr><tr><td><strong>2024-07</strong></td><td><strong>ICANN 董事会决议保留 <code>.internal</code></strong></td></tr><tr><td>2025–2026</td><td>IETF 起草 <code>draft-davies-internal-tld</code>（最新 <strong>-06</strong>，2026 年 5 月）</td></tr></tbody></table>
 <p><strong>草案的作者阵容很说明问题：</strong></p>
-<pre><code class="">K. Davies       ← IANA
+<pre><code>K. Davies       ← IANA
 A. McConachie   ← ICANN
-W. Kumari       ← Google
-</code></pre>
+W. Kumari       ← Google</code></pre>
 <p><strong>IANA + ICANN + Google 联合署名</strong> —— 这不是社区提案，这是<strong>官方意志</strong>。</p>
 <p><strong>草案的核心承诺：</strong></p>
 <blockquote>... the "internal" top-level domain is <strong>reserved from being used in the global DNS</strong> it <strong>MUST NOT appear in the DNS root zone</strong> except to the minimum extent necessary.</blockquote>
-<strong><code>MUST NOT appear in the root zone</code></strong> —— 这是<strong>永久保留</strong>的保证。
+<p><strong><code>MUST NOT appear in the root zone</code></strong> —— 这是<strong>永久保留</strong>的保证。</p>
 <p><strong>目标也很明确</strong>（ICANNWiki）：</p>
 <blockquote>with the aim of steering operators away from undelegated choices such as <strong><code>.corp</code>, <code>.home</code> or <code>.lan</code></strong> that might later collide with public delegations.</blockquote>
-<strong>⚠️ 目前状态</strong>：<strong>草案还没成为 RFC</strong>（最新 <code>-06</code>，2026 年 11 月过期），所以 <code>.internal</code> <strong>还没有进入 IANA 登记表</strong>。但 <strong>ICANN 董事会已经批准保留</strong>，方向是确定的。
-<p>---</p>
+<p><strong>⚠️ 目前状态</strong>：<strong>草案还没成为 RFC</strong>（最新 <code>-06</code>，2026 年 11 月过期），所以 <code>.internal</code> <strong>还没有进入 IANA 登记表</strong>。但 <strong>ICANN 董事会已经批准保留</strong>，方向是确定的。</p>
+<hr>
 <h2>三、风险到底有多大：三种真实场景</h2>
 <h3>风险 1：查询泄漏到公网（最常见）</h3>
-<pre><code class="">内网用 .lan
+<pre><code>内网用 .lan
   ↓
 笔记本带出公司，连咖啡厅 WiFi
   ↓
@@ -437,69 +404,56 @@ W. Kumari       ← Google
   ↓
 公司 DNS 不可达 → 查询泄漏到公网根服务器
   ↓
-攻击者看到你的内网命名（信息泄露）
-</code></pre>
+攻击者看到你的内网命名（信息泄露）</code></pre>
 <p><strong>这不是假设。</strong> 内网 DNS 服务器的查询日志里就能看到这类泄漏的查询（<code>*.lan</code> 之类的 NXDOMAIN），而且都是打到根服务器才回来。</p>
 <h3>风险 2：名字碰撞 → MitM（最严重）</h3>
 <p><strong>这是 US-CERT 专门发过警报的场景（TA16-144A）：</strong></p>
-<pre><code class="">某天 .lan 被委派给某注册局
+<pre><code>某天 .lan 被委派给某注册局
   ↓
 攻击者注册 printer.lan 或 nas.lan
   ↓
 你的员工在外网时解析到攻击者的 IP
   ↓
-流量被劫持（中间人攻击）
-</code></pre>
+流量被劫持（中间人攻击）</code></pre>
 <p><strong>US-CERT 原话：</strong></p>
-<blockquote>Web Proxy Auto-Discovery (WPAD) DNS queries that are intended for resolution on <strong>private or enterprise DNS servers have been observed reaching public DNS servers</strong>.</blockquote>>
-<blockquote><strong>Opportunistic domain registrants could abuse these collisions</strong> by configuring external proxies for network traffic and enabling <strong>man-in-the-middle (MitM) attacks</strong> across the Internet.</blockquote>
-<strong>Verisign 的实测数据</strong>：约 <strong>2000 万条/天</strong>的脆弱查询在公网上出现。
+<blockquote>Web Proxy Auto-Discovery (WPAD) DNS queries that are intended for resolution on <strong>private or enterprise DNS servers have been observed reaching public DNS servers</strong>.<br>
+<br>
+<strong>Opportunistic domain registrants could abuse these collisions</strong> by configuring external proxies for network traffic and enabling <strong>man-in-the-middle (MitM) attacks</strong> across the Internet.</blockquote>
+<p><strong>Verisign 的实测数据</strong>：约 <strong>2000 万条/天</strong>的脆弱查询在公网上出现。</p>
 <h3>风险 3：证书体系冲突</h3>
-<pre><code class="">内网用 .lan，自签证书签给 ca.lan
+<pre><code>内网用 .lan，自签证书签给 ca.lan
   ↓
 某天 .lan 成为公共 TLD
   ↓
 你的内网 CA 和公网 CA 体系冲突
   ↓
-浏览器警告、TLS 失败、内部服务集体不可用
-</code></pre>
-<p>---</p>
+浏览器警告、TLS 失败、内部服务集体不可用</code></pre>
+<hr>
 <h2>四、家庭网络 vs 企业内部</h2>
-<table>
-<tr><th>场景</th><th><code>.lan</code> 安全性</th><th>说明</th></tr>
-<tr><td><strong>纯家庭网络</strong></td><td>⚠️ 尚可接受</td><td>设备少、风险窗口小，但<strong>仍建议换</strong></td></tr>
-<tr><td><strong>企业内网</strong></td><td>❌ <strong>不推荐</strong></td><td>设备多、笔记本会带出、合规要求高</td></tr>
-</table>
+<table><thead><tr><th>场景</th><th><code>.lan</code> 安全性</th><th>说明</th></tr></thead><tbody><tr><td><strong>纯家庭网络</strong></td><td>⚠️ 尚可接受</td><td>设备少、风险窗口小，但<strong>仍建议换</strong></td></tr><tr><td><strong>企业内网</strong></td><td>❌ <strong>不推荐</strong></td><td>设备多、笔记本会带出、合规要求高</td></tr></tbody></table>
 <h3>企业内部还有一条：Active Directory 的域该叫什么</h3>
 <p><strong>这是微软自己给过建议的地方。</strong></p>
 <p><strong>不要</strong>用 <code>.corp</code>、<code>.local</code>、<code>.lan</code> 这类未保留的名字做 AD 域。原因：</p>
-<ol>
-<li>1. <strong><code>ad.local</code> 类域名会和 mDNS 打架</strong> —— Windows 客户端可能会把 <code>.local</code> 的查询发给 mDNS</li>
-<li>2. <strong><code>.corp</code> / <code>.home</code> 有委派风险</strong> —— 一旦委派，企业所有机器的 Kerberos / LDAP 都会冲突</li>
-<li>3. <strong>证书链冲突</strong> —— 内部 CA 签的 <code>.corp</code> 证书未来可能与公网冲突</li>
-</ol>
-<strong>微软的建议</strong>：用<strong>你真正拥有的域名</strong>下的子域，例如：
-<pre><code class="">你的公网域名: example.com（你注册并控制的）
-AD 域:        ad.example.com  或  corp.example.com
-</code></pre>
+<ol><li><strong><code>ad.local</code> 类域名会和 mDNS 打架</strong> —— Windows 客户端可能会把 <code>.local</code> 的查询发给 mDNS</li><li><strong><code>.corp</code> / <code>.home</code> 有委派风险</strong> —— 一旦委派，企业所有机器的 Kerberos / LDAP 都会冲突</li><li><strong>证书链冲突</strong> —— 内部 CA 签的 <code>.corp</code> 证书未来可能与公网冲突</li></ol>
+<p><strong>微软的建议</strong>：用<strong>你真正拥有的域名</strong>下的子域，例如：</p>
+<pre><code>你的公网域名: example.com（你注册并控制的）
+AD 域:        ad.example.com  或  corp.example.com</code></pre>
 <p><strong>为什么这样安全</strong>：因为 <code>example.com</code> 在<strong>你手里</strong>，它的任何子域都不会被别人注册 —— 不存在"未来被委派"的问题。</p>
 <p><strong>代价</strong>：需要一点额外配置（内网 DNS 对 <code>ad.example.com</code> 做本地权威，不要泄漏到公网），但这比"某天域名被抢注"便宜得多。</p>
-<p>---</p>
+<hr>
 <h2>五、给不同场景的建议</h2>
 <h3>家庭网络</h3>
 <p><strong>推荐 <code>home.arpa</code></strong> —— 唯一"现在就有 RFC 保障"的选项。</p>
 <pre><code class="conf">local=/home.arpa/
 address=/router.home.arpa/192.168.1.1
-address=/nas.home.arpa/192.168.1.10
-</code></pre>
+address=/nas.home.arpa/192.168.1.10</code></pre>
 <p><strong>次选 <code>.internal</code></strong> —— ICANN 官方方向，但客户端支持度还不明确（浏览器、路由器固件未必认）。</p>
 <p><strong>如果已经在用 <code>.lan</code></strong>：不必急着迁移（见下）。</p>
 <h3>企业内部</h3>
 <p><strong>优先用你自己拥有的公网域名的子域</strong>：</p>
-<pre><code class="">ad.example.com          ← AD 域
+<pre><code>ad.example.com          ← AD 域
 internal.example.com    ← 内部服务
-*.corp.example.com      ← 或其他你控制的结构
-</code></pre>
+*.corp.example.com      ← 或其他你控制的结构</code></pre>
 <p><strong>理由</strong>：这是<strong>唯一不会有名字碰撞风险</strong>的方案，因为根区里那条委派链在<strong>你自己手里</strong>。</p>
 <h3>如果已经在用 <code>.lan</code> / <code>.corp</code> / <code>.home</code></h3>
 <p><strong>迁移成本很高</strong>（改 DNS、DHCP、证书、所有客户端配置）。<strong>所以第一步不是迁移，而是隔离。</strong></p>
@@ -510,34 +464,19 @@ local-zone: "lan." static
 local-data: "lan. 3600 IN SOA ns.lan. hostmaster.lan. 1 3600 900 604800 86400"
 local-data: "lan. 3600 IN NS ns.lan."
 local-data: "ns.lan. 3600 IN A 192.168.1.1"
-<h1>具体记录</h1>
-local-data: "router.lan. 3600 IN A 192.168.1.1"
-</code></pre>
+
+# 具体记录
+local-data: "router.lan. 3600 IN A 192.168.1.1"</code></pre>
 <p><strong><code>static</code> 和 <code>transparent</code> 的区别是关键：</strong></p>
-<table>
-<tr><th>类型</th><th>未定义的名字</th><th>是否向上游查询</th></tr>
-<tr><td><strong><code>transparent</code></strong></td><td>有记录就答，<strong>没有就转发上游</strong></td><td>✅ <strong>会泄漏</strong></td></tr>
-<tr><td><strong><code>static</code></strong></td><td><strong>全部本地权威</strong>，未定义即 NXDOMAIN</td><td>❌ <strong>永不外泄</strong></td></tr>
-</table>
+<table><thead><tr><th>类型</th><th>未定义的名字</th><th>是否向上游查询</th></tr></thead><tbody><tr><td><strong><code>transparent</code></strong></td><td>有记录就答，<strong>没有就转发上游</strong></td><td>✅ <strong>会泄漏</strong></td></tr><tr><td><strong><code>static</code></strong></td><td><strong>全部本地权威</strong>，未定义即 NXDOMAIN</td><td>❌ <strong>永不外泄</strong></td></tr></tbody></table>
 <p><strong>验证生效</strong>（看 <code>aa</code> 标志）：</p>
 <pre><code class="bash">$ dig nosuch.lan @192.168.1.1 | grep flags
-;; flags: qr aa rd ra          ← 有 aa = 本地权威，没碰上游
-</code></pre>
+;; flags: qr aa rd ra          ← 有 aa = 本地权威，没碰上游</code></pre>
 <p><strong>这一个改动的价值，比换域名大得多</strong> —— 它直接切断了"查询泄漏"和"名字碰撞劫持"两条攻击路径。</p>
-<p>---</p>
+<hr>
 <h2>六、一张表总结</h2>
-<table>
-<tr><th>域名</th><th>官方状态</th><th>泄漏风险</th><th>碰撞风险</th><th>推荐度</th></tr>
-<tr><td><strong><code>home.arpa</code></strong></td><td>✅ RFC 8375</td><td>无（<code>.arpa</code> 永不委派）</td><td>无</td><td>⭐⭐⭐⭐⭐</td></tr>
-<tr><td><strong><code>internal</code></strong></td><td>⏳ ICANN 已保留（草案中）</td><td>无（承诺不委派）</td><td>无</td><td>⭐⭐⭐⭐⭐</td></tr>
-<tr><td><strong><code>local</code></strong></td><td>✅ RFC 6762</td><td>无</td><td>无</td><td>⭐⭐⭐（<strong>仅限 mDNS</strong>）</td></tr>
-<tr><td><strong><code>.lan</code></strong></td><td>❌ 无</td><td><strong>有</strong></td><td><strong>有</strong></td><td>⭐⭐</td></tr>
-<tr><td><strong><code>.corp</code></strong></td><td>❌ 无（已冻结委派）</td><td>有</td><td>低（已冻结）</td><td>⭐⭐</td></tr>
-<tr><td><strong><code>.home</code></strong></td><td>❌ 无（已冻结委派）</td><td>有</td><td>低（已冻结）</td><td>⭐⭐</td></tr>
-<tr><td><strong><code>.private</code></strong></td><td>❌ 无</td><td>有</td><td>有</td><td>⭐</td></tr>
-<tr><td><strong><code>ad.example.com</code></strong></td><td>✅ 你自己的域</td><td>无</td><td><strong>无</strong></td><td>⭐⭐⭐⭐⭐（企业）</td></tr>
-</table>
-<p>---</p>
+<table><thead><tr><th>域名</th><th>官方状态</th><th>泄漏风险</th><th>碰撞风险</th><th>推荐度</th></tr></thead><tbody><tr><td><strong><code>home.arpa</code></strong></td><td>✅ RFC 8375</td><td>无（<code>.arpa</code> 永不委派）</td><td>无</td><td>⭐⭐⭐⭐⭐</td></tr><tr><td><strong><code>internal</code></strong></td><td>⏳ ICANN 已保留（草案中）</td><td>无（承诺不委派）</td><td>无</td><td>⭐⭐⭐⭐⭐</td></tr><tr><td><strong><code>local</code></strong></td><td>✅ RFC 6762</td><td>无</td><td>无</td><td>⭐⭐⭐（<strong>仅限 mDNS</strong>）</td></tr><tr><td><strong><code>.lan</code></strong></td><td>❌ 无</td><td><strong>有</strong></td><td><strong>有</strong></td><td>⭐⭐</td></tr><tr><td><strong><code>.corp</code></strong></td><td>❌ 无（已冻结委派）</td><td>有</td><td>低（已冻结）</td><td>⭐⭐</td></tr><tr><td><strong><code>.home</code></strong></td><td>❌ 无（已冻结委派）</td><td>有</td><td>低（已冻结）</td><td>⭐⭐</td></tr><tr><td><strong><code>.private</code></strong></td><td>❌ 无</td><td>有</td><td>有</td><td>⭐</td></tr><tr><td><strong><code>ad.example.com</code></strong></td><td>✅ 你自己的域</td><td>无</td><td><strong>无</strong></td><td>⭐⭐⭐⭐⭐（企业）</td></tr></tbody></table>
+<hr>
 <h2>七、核心结论</h2>
 <p><strong>1. <code>.local</code> 可以，但只能交给 mDNS。</strong> 它被 RFC 6762 保留为链路本地——用普通 DNS 配它是误用，会造成"时而能解析时而不能"的诡异现象。</p>
 <p><strong>2. <code>home.arpa</code> 是家庭网络唯一有 RFC 保障的普通 DNS 域名。</strong> RFC 8375 明确写了为什么放弃 <code>.home</code>：IETF 管不了根区，无法阻止 <code>.home</code> 未来被委派。</p>
@@ -546,9 +485,8 @@ local-data: "router.lan. 3600 IN A 192.168.1.1"
 <p><strong>5. <code>.lan</code> 是这批里最没有保障的。</strong> 它既没有 IANA 登记，也没有进入冻结名单 —— 它只是"恰好还没轮到被委派"。<strong>这是明确的风险。</strong></p>
 <p><strong>6. 企业内网最安全的做法是"用你自己拥有的域名的子域"</strong> —— 因为那意味着委派链在你手里，不存在碰撞可能。</p>
 <p><strong>7. 但最重要的不是换域名，而是"是否隔离"。</strong> 把内网域设为本地权威（<code>static</code>），比迁移到新域名重要得多 —— 它一步切断泄漏和劫持两条路径。</p>
-<p>---</p>
-<p><em>本文所有域名状态均通过 IANA 特殊用途域名登记表（Special-Use Domain Names Registry）与根服务器实测核验（<code>dig <tld> NS @198.41.0.4</code>）。文中 IP、主机名均已替换为文档或内网保留段。</em>
-</p>
+<hr>
+<p><em>本文所有域名状态均通过 IANA 特殊用途域名登记表（Special-Use Domain Names Registry）与根服务器实测核验（<code>dig &lt;tld&gt; NS @198.41.0.4</code>）。文中 IP、主机名均已替换为文档或内网保留段。</em></p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

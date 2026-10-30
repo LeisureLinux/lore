@@ -283,9 +283,9 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>主要来源：<a href="https://www.csoonline.com/article/4234229/over-1500-npm-packages-exposed-by-trusted-publishing-validation-flaw.html">CSO Online：Over 1,500 npm packages exposed by Trusted Publishing validation flaw</a>（2026-10-13，作者 Shweta Sharma）<br>
-一手材料：<a href="https://github.blog/changelog/2026-10-02-unvalidated-npm-trusted-publishing-configurations-now-expire/">GitHub Changelog：Unvalidated npm trusted publishing configurations now expire</a>（2026-10-02）、<a href="https://docs.npmjs.com/trusted-publishers">npm 官方文档：Trusted publishers</a><br>
-补充报道：<a href="https://www.helpnetsecurity.com/2026/10/13/slugfest-npm-trusted-publishing-flaw">Help Net Security</a>、<a href="https://thehackernews.com/2026/10/github-tightens-npm-publishing-after.html">The Hacker News</a><br>
+<blockquote>主要来源：<a href="https://www.csoonline.com/article/4234229/over-1500-npm-packages-exposed-by-trusted-publishing-validation-flaw.html" target="_blank" rel="noopener noreferrer">CSO Online：Over 1,500 npm packages exposed by Trusted Publishing validation flaw</a>（2026-10-13，作者 Shweta Sharma）<br>
+一手材料：<a href="https://github.blog/changelog/2026-10-02-unvalidated-npm-trusted-publishing-configurations-now-expire/" target="_blank" rel="noopener noreferrer">GitHub Changelog：Unvalidated npm trusted publishing configurations now expire</a>（2026-10-02）、<a href="https://docs.npmjs.com/trusted-publishers" target="_blank" rel="noopener noreferrer">npm 官方文档：Trusted publishers</a><br>
+补充报道：<a href="https://www.helpnetsecurity.com/2026/10/13/slugfest-npm-trusted-publishing-flaw" target="_blank" rel="noopener noreferrer">Help Net Security</a>、<a href="https://thehackernews.com/2026/10/github-tightens-npm-publishing-after.html" target="_blank" rel="noopener noreferrer">The Hacker News</a><br>
 本文为<strong>译文 + 解读</strong>。第二节对「名字 vs ID」这个根因的拆解、第四节对修复方案的评价是笔者补充的部分。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
@@ -302,86 +302,51 @@
 <h3>正常的 Trusted Publishing 是怎么工作的</h3>
 <p><strong>npm 的 Trusted Publishing 允许包维护者通过 OIDC（OpenID Connect）从自动化流水线发布版本</strong>，<strong>目的是避免长期有效的发布凭证</strong>（也就是别再往 CI 里塞 npm token）。<strong>npm 官方文档对验证过程的描述是</strong>：</p>
 <blockquote><strong>一个新创建的受信任发布者配置，必须在 2 天内完成第一次成功发布。</strong> <strong>第一次成功发布验证了这个配置，并把它绑定到仓库的不可变身份（immutable identity）。</strong></blockquote>
-<strong>而问题就出在这个「绑定」在修复之前到底绑到了什么。</strong>
+<p><strong>而问题就出在这个「绑定」在修复之前到底绑到了什么。</strong></p>
 <h3>缺陷：绑定到了一个可以被重新占用的名字</h3>
 <p><strong>Bloom 的发现是</strong>：<strong>npm 的信任配置依赖的是 GitHub 仓库的 owner/name（人类可读的名字），而不是它不可变的数字 ID。</strong></p>
 <p><strong>而 GitHub 仓库的名字是可以变的</strong>：</p>
-<table>
-<tr><th>仓库操作</th><th>后果</th></tr>
-<tr><td><strong>改名（rename）</strong></td><td>旧名字空出来</td></tr>
-<tr><td><strong>转移（transfer）</strong></td><td>旧路径可能空出来</td></tr>
-<tr><td><strong>删除（delete）</strong></td><td>旧名字可以被别人重新创建</td></tr>
-</table>
+<table><thead><tr><th>仓库操作</th><th>后果</th></tr></thead><tbody><tr><td><strong>改名（rename）</strong></td><td>旧名字空出来</td></tr><tr><td><strong>转移（transfer）</strong></td><td>旧路径可能空出来</td></tr><tr><td><strong>删除（delete）</strong></td><td>旧名字可以被别人重新创建</td></tr></tbody></table>
 <p><strong>于是攻击路径是</strong>：<strong>找一个已经被放弃的仓库名 → 在那个地址创建自己的仓库 → 配置一个文件名符合预期的工作流（GitHub Actions workflow） → 由于 npm 只核对了仓库名与工作流文件名、而没有校验那个永久的仓库 ID → 拿到该包的有效发布凭证。</strong></p>
 <p><strong>值得注意的几点</strong>：</p>
-<ul>
-<li><strong>攻击不需要攻破合法维护者的 GitHub 账号，也不需要偷他们的 npm 凭证。</strong> 它继承的是<strong>别人留下的信任关系</strong>；</li>
-<li><strong>攻击者可以继承一个「包」的发布权，而这个包的维护者完全不知情</strong>；</li>
-<li><strong>研究者是在自己控制的包上演示成功的</strong>：<strong>从一个属于另一个组织的 GitHub 仓库发布了一个新版本</strong>。</li>
-</ul>
+<ul><li><strong>攻击不需要攻破合法维护者的 GitHub 账号，也不需要偷他们的 npm 凭证。</strong> 它继承的是<strong>别人留下的信任关系</strong>；</li><li><strong>攻击者可以继承一个「包」的发布权，而这个包的维护者完全不知情</strong>；</li><li><strong>研究者是在自己控制的包上演示成功的</strong>：<strong>从一个属于另一个组织的 GitHub 仓库发布了一个新版本</strong>。</li></ul>
 <h2>二、根因：把「名字」当成了「身份」</h2>
 <p><strong>我认为这个缺陷值得写一篇，不是因为它影响面大（1500 个包），而是因为它是一个可以推广的失效模式。</strong></p>
 <p><strong>核心问题一句话</strong>：<strong>名字是可变的、可被重新取得的标识符；而身份需要是不变的、不可被继承的。</strong> 当系统用前者代替后者时，<strong>攻击者攻击的就不再是「你是谁」，而是「你曾经叫什么」。</strong></p>
 <p><strong>而这个失效模式之所以常见，是因为「用名字」在实现上简单得多</strong>：</p>
-<table>
-<tr><th></th><th><strong>用名字（slug）</strong></th><th><strong>用不可变 ID</strong></th></tr>
-<tr><td><strong>人类可读</strong></td><td>✅ 配置里直接看懂</td><td>❌ 一串数字，需要额外查表</td></tr>
-<tr><td><strong>实现复杂度</strong></td><td>低（字符串比较）</td><td>中（需要保存、校验、处理迁移）</td></tr>
-<tr><td><strong>用户改名的后果</strong></td><td><strong>信任关系静默漂移</strong></td><td>需要显式迁移流程</td></tr>
-<tr><td><strong>攻击面</strong></td><td><strong>名字可被重新占用</strong></td><td>名字变了也追得到原身份</td></tr>
-</table>
+<table><thead><tr><th></th><th><strong>用名字（slug）</strong></th><th><strong>用不可变 ID</strong></th></tr></thead><tbody><tr><td><strong>人类可读</strong></td><td>✅ 配置里直接看懂</td><td>❌ 一串数字，需要额外查表</td></tr><tr><td><strong>实现复杂度</strong></td><td>低（字符串比较）</td><td>中（需要保存、校验、处理迁移）</td></tr><tr><td><strong>用户改名的后果</strong></td><td><strong>信任关系静默漂移</strong></td><td>需要显式迁移流程</td></tr><tr><td><strong>攻击面</strong></td><td><strong>名字可被重新占用</strong></td><td>名字变了也追得到原身份</td></tr></tbody></table>
 <p><strong>换句话说，用 slug 换来的是「配置好懂」，代价是「信任可以被继承」。</strong> <strong>而在供应链安全这个场景里，「好懂」明显不值得这个代价。</strong></p>
 <p><strong>而 npm 的修复方案恰好印证了这个判断</strong>：<strong>GitHub 没有去改 URL 的结构，而是改成了「未验证配置 48 小时后过期」</strong>：<strong>也就是说，它用「时间」这个不可伪造的量，去弥补「名字」这个可伪造的量。</strong></p>
 <h3>修复的具体内容（GitHub 官方 changelog）</h3>
-<blockquote><strong>未验证的 npm 受信任发布配置在创建 48 小时后过期，不再能授权发布。</strong> <strong>这限制了信任一个会变更所有者的仓库名或项目名的风险。</strong></blockquote>>
-<blockquote><strong>你的配置在第一次成功发布之后就被验证、并免于过期。</strong> <strong>变更仓库或项目身份需要建立一个带全新 48 小时验证窗口的新信任关系</strong>：<strong>普通编辑不会重启这个期限。</strong></blockquote>>
-<blockquote><strong>如果你的配置过期了，请重建它以开始新的 48 小时窗口。</strong> <strong>已过期的配置在受信任发布者设置里仍然可见，但不计入每包的上限。</strong> <strong>包上的其他有效配置不受影响。</strong></blockquote>
-<strong>另外一项收紧</strong>（同一天）：
+<blockquote><strong>未验证的 npm 受信任发布配置在创建 48 小时后过期，不再能授权发布。</strong> <strong>这限制了信任一个会变更所有者的仓库名或项目名的风险。</strong><br>
+<br>
+<strong>你的配置在第一次成功发布之后就被验证、并免于过期。</strong> <strong>变更仓库或项目身份需要建立一个带全新 48 小时验证窗口的新信任关系</strong>：<strong>普通编辑不会重启这个期限。</strong><br>
+<br>
+<strong>如果你的配置过期了，请重建它以开始新的 48 小时窗口。</strong> <strong>已过期的配置在受信任发布者设置里仍然可见，但不计入每包的上限。</strong> <strong>包上的其他有效配置不受影响。</strong></blockquote>
+<p><strong>另外一项收紧</strong>（同一天）：</p>
 <blockquote><strong>npm 现在还会拒绝来自 GitHub Actions <code>issue_comment</code> 事件的受信任发布 token</strong>，<strong>这与已有的 <code>pull_request_target</code> 限制一致</strong>。<strong>如果受影响，请把发布迁移到允许的事件上，例如 <code>push</code>、<code>release</code> 或 <code>workflow_dispatch</code>。</strong></blockquote>
-<strong>我认为这两项措施的判断力都值得肯定</strong>：
-<ul>
-<li><strong>48 小时窗口的设计有讲究</strong>：<strong>它不是一个「必须立刻发布」的苛刻限制</strong>（2 天足够一个正常的工作流跑完），<strong>但它把「配置好之后放着不管」这个状态消灭了</strong>。<strong>因为「未验证的、长期存在的信任配置」正是攻击者可以利用的存量</strong>；</li>
-<li><strong>「普通编辑不重启期限」这个细节很关键</strong>：<strong>它堵住了「改一下配置就刷新窗口」这个绕过</strong>，<strong>只有变更仓库或项目身份才会重新计时</strong>；</li>
-<li><strong>拒绝 <code>issue_comment</code> 事件这个改动指向的是另一类风险</strong>：<strong>在可以被外部用户触发的事件上授予发布能力，本身就是危险的</strong>（<code>pull_request_target</code> 的限制是同一逻辑的更早版本）。</li>
-</ul>
+<p><strong>我认为这两项措施的判断力都值得肯定</strong>：</p>
+<ul><li><strong>48 小时窗口的设计有讲究</strong>：<strong>它不是一个「必须立刻发布」的苛刻限制</strong>（2 天足够一个正常的工作流跑完），<strong>但它把「配置好之后放着不管」这个状态消灭了</strong>。<strong>因为「未验证的、长期存在的信任配置」正是攻击者可以利用的存量</strong>；</li><li><strong>「普通编辑不重启期限」这个细节很关键</strong>：<strong>它堵住了「改一下配置就刷新窗口」这个绕过</strong>，<strong>只有变更仓库或项目身份才会重新计时</strong>；</li><li><strong>拒绝 <code>issue_comment</code> 事件这个改动指向的是另一类风险</strong>：<strong>在可以被外部用户触发的事件上授予发布能力，本身就是危险的</strong>（<code>pull_request_target</code> 的限制是同一逻辑的更早版本）。</li></ul>
 <h2>三、影响面：1500 个包，以及「不公布名单」这个决定</h2>
 <p><strong>Bloom 的研究者扫描了整个 registry，报告的数字是</strong>：</p>
-<table>
-<tr><th>指标</th><th>数值</th></tr>
-<tr><td><strong>潜在受影响的包</strong></td><td><strong>1500 多个</strong></td></tr>
-<tr><td><strong>合计下载量</strong></td><td><strong>超过 1000 万次</strong></td></tr>
-<tr><td><strong>月下载量</strong></td><td><strong>超过 100 万次</strong></td></tr>
-<tr><td><strong>单包最高月下载量</strong></td><td><strong>超过 20 万次</strong></td></tr>
-<tr><td><strong>包的类型</strong></td><td><strong>包括安全扫描器、认证工具和密码学库</strong></td></tr>
-</table>
+<table><thead><tr><th>指标</th><th>数值</th></tr></thead><tbody><tr><td><strong>潜在受影响的包</strong></td><td><strong>1500 多个</strong></td></tr><tr><td><strong>合计下载量</strong></td><td><strong>超过 1000 万次</strong></td></tr><tr><td><strong>月下载量</strong></td><td><strong>超过 100 万次</strong></td></tr><tr><td><strong>单包最高月下载量</strong></td><td><strong>超过 20 万次</strong></td></tr><tr><td><strong>包的类型</strong></td><td><strong>包括安全扫描器、认证工具和密码学库</strong></td></tr></tbody></table>
 <p><strong>最后那一项值得单独说</strong>：<strong>受影响的包括安全工具与密码学库</strong>。<strong>这是一个反复出现的讽刺</strong>：<strong>用于保护其他软件的组件，其自身的供应链往往同样脆弱。</strong></p>
 <p><strong>而这里有一个我认为需要留意的地方</strong>：<strong>Bloom 选择不公布受影响的包名。</strong></p>
 <p><strong>这个决定让修复变得更难</strong>：</p>
 <blockquote><strong>Bloom 没有公布受影响的包名，所以 npm 包的使用者无法对照名单自查。</strong></blockquote>
-<strong>他们给的替代方案是</strong>：<strong>用户可以核实某个包的 provenance attestation（来源证明）里指明的仓库，是否就是该项目本来应该来自的那个仓库。</strong> <strong>而研究者也提示：npm 的 GitLab 受信任发布集成有同样的弱点。</strong>
+<p><strong>他们给的替代方案是</strong>：<strong>用户可以核实某个包的 provenance attestation（来源证明）里指明的仓库，是否就是该项目本来应该来自的那个仓库。</strong> <strong>而研究者也提示：npm 的 GitLab 受信任发布集成有同样的弱点。</strong></p>
 <p><strong>我对「不公布名单」的看法是</strong>：<strong>这是一个可以理解的取舍，但也确实把验证责任推给了下游。</strong> <strong>不公布的理由通常是不想让名单变成攻击地图</strong>（尤其考虑到部分包可能仍未被加固），<strong>但对使用者来说，唯一可用的动作变成了「逐个核实 provenance」，而这在一个有数百个直接依赖的项目里几乎没有可操作性。</strong></p>
 <p><strong>所以这里更实用的推论是</strong>：<strong>如果你的依赖树里有依赖 Trusted Publishing 发布的包，那么你实际的防线不是「查名单」，而是「检查你自己怎么消费依赖」</strong>（第四节展开）。</p>
 <h2>四、为什么 AI 编码代理放大了这类问题</h2>
 <p><strong>这是报告中我认为最重要的一节，因为它讨论的不是这个具体漏洞，而是它造成后果的通道。</strong></p>
 <p><strong>Bloom 给了一组实测数字</strong>（来自数十个组织）：</p>
-<table>
-<tr><th>场景</th><th>每月由代理安装的包数</th></tr>
-<tr><td><strong>典型终端</strong></td><td><strong>约 70 个</strong></td></tr>
-<tr><td><strong>开发者机器</strong></td><td><strong>约 350 个</strong></td></tr>
-<tr><td>⚠️ 口径说明</td><td><strong>这些数字只算直接安装，不含传递依赖</strong></td></tr>
-</table>
+<table><thead><tr><th>场景</th><th>每月由代理安装的包数</th></tr></thead><tbody><tr><td><strong>典型终端</strong></td><td><strong>约 70 个</strong></td></tr><tr><td><strong>开发者机器</strong></td><td><strong>约 350 个</strong></td></tr><tr><td>⚠️ 口径说明</td><td><strong>这些数字只算直接安装，不含传递依赖</strong></td></tr></tbody></table>
 <p><strong>而他们给出的机制描述很准确</strong>：</p>
 <blockquote><strong>代理会自行解析依赖、倾向于取最新版本、并且很少检查一个包的来源。</strong> <strong>一个通过被重新占用的 slug 发布的恶意版本会被拉进来，并且在没有人在环的情况下运行。</strong></blockquote>
-<strong>以及那句最该被引用的</strong>：
+<p><strong>以及那句最该被引用的</strong>：</p>
 <blockquote><strong>一个被劫持的包不再需要找到一个开发者。它只需要成为代理所选择的那一个包。</strong></blockquote>
-<strong>我认为这句话概括了一个真实的变化</strong>：
-<table>
-<tr><th></th><th>传统依赖引入路径</th><th>代理引入依赖的路径</th></tr>
-<tr><td><strong>谁做决定</strong></td><td>开发者（有上下文、可能看一眼仓库）</td><td><strong>代理（按依赖求解结果选版本）</strong></td></tr>
-<tr><td><strong>看什么</strong></td><td>可能看下载量、维护者、更新时间</td><td><strong>解析版本约束，取最新</strong></td></tr>
-<tr><td><strong>检查来源</strong></td><td>有时会</td><td><strong>很少</strong></td></tr>
-<tr><td><strong>出错的可见性</strong></td><td>开发者记得自己加了什么</td><td><strong>依赖树自动变化，人可能没注意</strong></td></tr>
-</table>
+<p><strong>我认为这句话概括了一个真实的变化</strong>：</p>
+<table><thead><tr><th></th><th>传统依赖引入路径</th><th>代理引入依赖的路径</th></tr></thead><tbody><tr><td><strong>谁做决定</strong></td><td>开发者（有上下文、可能看一眼仓库）</td><td><strong>代理（按依赖求解结果选版本）</strong></td></tr><tr><td><strong>看什么</strong></td><td>可能看下载量、维护者、更新时间</td><td><strong>解析版本约束，取最新</strong></td></tr><tr><td><strong>检查来源</strong></td><td>有时会</td><td><strong>很少</strong></td></tr><tr><td><strong>出错的可见性</strong></td><td>开发者记得自己加了什么</td><td><strong>依赖树自动变化，人可能没注意</strong></td></tr></tbody></table>
 <p><strong>而这里有一条容易被忽略的因果</strong>：<strong>这类漏洞的「可利用性」其实一直被「人工引入依赖很慢」这个摩擦保护着。</strong> <strong>要利用它，攻击者需要有人恰好愿意装那个包、且在某个时间窗内。</strong> <strong>而代理把这个摩擦降到了接近零</strong>：<strong>它们的安装量和频率（每月 70 到 350 个）远超人工操作，而且它们对「这个包该不该来自这个仓库」这件事没有任何判断依据。</strong></p>
 <p><strong>所以我认为这件事真正的教训不在 npm，而在于</strong>：<strong>任何依赖「人工审查会拦住它」这一前提的供应链防护，在代理大规模引入依赖之后都需要重新评估。</strong></p>
 <h3>顺带说一条相关的行业动向</h3>
@@ -391,21 +356,11 @@
 <p><strong>先说清紧急程度</strong>：<strong>修复已于 10 月 2 日上线，且披露时没有观察到在野利用。所以这不是一个需要紧急响应的事件</strong>，而是一次<strong>需要回头审查配置的提醒</strong>。</p>
 <h3>如果你是包维护者（用 Trusted Publishing）</h3>
 <p><strong>Bloom 与 npm 官方给出的动作是一致的</strong>：</p>
-<ol>
-<li>1. <strong>审计你的受信任发布配置</strong>（<code>npm trust list</code>）；</li>
-<li>2. <strong>确认列表里每个受信任的仓库名，仍然解析到一个你自己控制的仓库</strong>；</li>
-<li>3. <strong>对指向已改名或已转移仓库的绑定，删除并重建</strong>；</li>
-<li>4. <strong>在删除一个仓库之前，先移除对应的绑定</strong>（顺序很重要：<strong>先解绑，再删库</strong>，否则你会把一个可以被占用的名字留在信任配置里）；</li>
-<li>5. <strong>把发布事件迁移到允许的事件上</strong>（<code>push</code>、<code>release</code>、<code>workflow_dispatch</code>），<strong>不要用 <code>issue_comment</code> 或 <code>pull_request_target</code></strong>；</li>
-<li>6. <strong>官方推荐再加一层</strong>：<strong>在包的 Settings → Publishing access 里选择「要求双因素认证并禁止 token」</strong>，<strong>即在启用受信任发布者之后，顺手把传统 token 发布通道关掉</strong>。</li>
-</ol>
+<ol><li><strong>审计你的受信任发布配置</strong>（<code>npm trust list</code>）；</li><li><strong>确认列表里每个受信任的仓库名，仍然解析到一个你自己控制的仓库</strong>；</li><li><strong>对指向已改名或已转移仓库的绑定，删除并重建</strong>；</li><li><strong>在删除一个仓库之前，先移除对应的绑定</strong>（顺序很重要：<strong>先解绑，再删库</strong>，否则你会把一个可以被占用的名字留在信任配置里）；</li><li><strong>把发布事件迁移到允许的事件上</strong>（<code>push</code>、<code>release</code>、<code>workflow_dispatch</code>），<strong>不要用 <code>issue_comment</code> 或 <code>pull_request_target</code></strong>；</li><li><strong>官方推荐再加一层</strong>：<strong>在包的 Settings → Publishing access 里选择「要求双因素认证并禁止 token」</strong>，<strong>即在启用受信任发布者之后，顺手把传统 token 发布通道关掉</strong>。</li></ol>
 <h3>如果你是使用者</h3>
 <p><strong>这里要诚实说明一个限制</strong>：<strong>因为 Bloom 没有公布名单，你无法对照检查</strong>。<strong>所以可行的动作只有两条</strong>：</p>
-<ol>
-<li>1. <strong>核实 provenance</strong>：<strong>检查一个包的 provenance attestation 里指明的仓库，是否是该包本来应该来自的那个仓库</strong>。<strong>这适合用在关键依赖上，但不适合全树扫描</strong>；</li>
-<li>2. <strong>控制引入面</strong>（我认为这条更实际）：<strong>对依赖安装施加策略</strong>，尤其是<strong>代理驱动的安装</strong>：<strong>比如把「谁能装什么」变成显式规则，而不是让代理自由解析</strong>。</li>
-</ol>
-<strong>对使用 AI 编码代理的团队，我建议直接把这条当成一项配置要求</strong>：<strong>给代理的依赖安装行为加策略约束，并让依赖变更可见</strong>（例如要求 lockfile 变更必须进入 diff 审查）。<strong>因为报告里那句「一个被劫持的包只需要成为代理所选择的那一个包」，说的正是「没有任何人在看」这个状态。</strong>
+<ol><li><strong>核实 provenance</strong>：<strong>检查一个包的 provenance attestation 里指明的仓库，是否是该包本来应该来自的那个仓库</strong>。<strong>这适合用在关键依赖上，但不适合全树扫描</strong>；</li><li><strong>控制引入面</strong>（我认为这条更实际）：<strong>对依赖安装施加策略</strong>，尤其是<strong>代理驱动的安装</strong>：<strong>比如把「谁能装什么」变成显式规则，而不是让代理自由解析</strong>。</li></ol>
+<p><strong>对使用 AI 编码代理的团队，我建议直接把这条当成一项配置要求</strong>：<strong>给代理的依赖安装行为加策略约束，并让依赖变更可见</strong>（例如要求 lockfile 变更必须进入 diff 审查）。<strong>因为报告里那句「一个被劫持的包只需要成为代理所选择的那一个包」，说的正是「没有任何人在看」这个状态。</strong></p>
 <h2>六、我的判断</h2>
 <p><strong>第一，这是一个「用名字代替身份」的经典失效，而它的推广价值大于它的影响面。</strong> <strong>1500 个包、1000 万次下载是具体的损失面</strong>，<strong>但真正值得记的是那个抽象</strong>：<strong>当一个系统用可变的、可被重新取得的标识符来代表不变的身份时，身份就可以被继承。</strong> <strong>而攻击者攻击的就不再是「你是谁」，而是「你曾经叫什么」。</strong></p>
 <p><strong>这一类问题在别处也出现过</strong>：<strong>域名过期后被人抢注</strong>、<strong>包名相似抢注（typosquatting）</strong>、<strong>子域名接管</strong>：<strong>它们的共同点都是「标识符的生命周期比信任关系的生命周期短」。</strong> <strong>而修复的方向也总是一样的：要么让标识符不可被重新取得，要么让信任随标识符的失效而失效。</strong> <strong>GitHub 这次选了后者（48 小时过期）。</strong></p>
@@ -415,37 +370,9 @@
 <p><strong>第四，一个我认为需要留意的长期问题。</strong> <strong>这类事件的最佳修复是「公布受影响名单 + 强制轮换信任关系」</strong>，<strong>而 Bloom 选择了不公布包名。</strong> <strong>这个选择有它的道理（避免名单变成攻击地图），但它把验证成本转移给了每一个下游使用者</strong>：<strong>而下游可用的手段只有「逐个核实 provenance」，这在几百个依赖的规模上不现实。</strong></p>
 <p><strong>所以现实是</strong>：<strong>这类缺陷的真实防线，最终落在「你怎么消费依赖」而不是「你怎么检查别人的包」上。</strong> <strong>而这恰恰是代理使用场景里最薄的一环。</strong></p>
 <h2>关键事实速查</h2>
-<table>
-<tr><th>项目</th><th>内容</th></tr>
-<tr><td>缺陷代号</td><td><strong>SlugFest</strong>（Bloom Security 命名）</td></tr>
-<tr><td><strong>根因</strong></td><td><strong>npm 用人类可读的 GitHub 仓库 owner/name（slug）核验受信任发布者，而不是仓库不可变的数字 ID</strong></td></tr>
-<tr><td><strong>攻击路径</strong></td><td><strong>占用一个已被改名/转移/删除的仓库名 → 在该地址建仓库 → 配置文件名符合预期的工作流 → 拿到不属于自己的包的发布凭证</strong></td></tr>
-<tr><td>⚠️ 攻击前提</td><td><strong>不需要攻破合法维护者的 GitHub 或 npm 账号，也不需要偷凭证</strong>；继承的是别人留下的信任关系</td></tr>
-<tr><td>验证情况</td><td><strong>研究者在自己控制的包上演示成功</strong>：<strong>从一个属于另一个组织的 GitHub 仓库发布了一个新版本</strong></td></tr>
-<tr><td>影响面</td><td><strong>1500 多个潜在受影响的包</strong>；<strong>合计下载量超 1000 万次</strong>；<strong>月下载超 100 万次</strong>；<strong>单包最高月下载超 20 万次</strong></td></tr>
-<tr><td>⚠️ 包的类型</td><td><strong>包括安全扫描器、认证工具与密码学库</strong></td></tr>
-<tr><td><strong>修复（2026-10-02）</strong></td><td><strong>未验证的受信任发布配置在创建 48 小时后过期，不再能授权发布</strong>；<strong>第一次成功发布后配置被验证并免于过期</strong>；<strong>变更仓库/项目身份需要全新的 48 小时窗口；普通编辑不重启期限</strong>；<strong>过期配置仍可见但不计入每包上限</strong></td></tr>
-<tr><td>同日另一项收紧</td><td><strong>npm 拒绝来自 GitHub Actions <code>issue_comment</code> 事件的受信任发布 token</strong>（与已有的 <code>pull_request_target</code> 限制一致）；<strong>应改用 <code>push</code>、<code>release</code> 或 <code>workflow_dispatch</code></strong></td></tr>
-<tr><td>⚠️ 名单未公布</td><td><strong>Bloom 不公布受影响的包名</strong>，使用者无法对照自查；<strong>替代方案是核实包的 provenance attestation 指向的仓库</strong></td></tr>
-<tr><td>⚠️ 同类问题</td><td><strong>研究者指出 npm 的 GitLab 受信任发布集成有同样的弱点</strong></td></tr>
-<tr><td>在野利用</td><td><strong>未观察到（截至披露）</strong>；Myers 称是否有人在野利用过「未知」</td></tr>
-<tr><td><strong>AI 代理放大效应</strong></td><td><strong>实测（数十个组织）：典型终端每月约 70 个代理安装的包，开发者机器约 350 个</strong>（仅直接安装，不含传递依赖）</td></tr>
-<tr><td><strong>关键引语</strong></td><td><strong>「一个被劫持的包不再需要找到一个开发者。它只需要成为代理所选择的那一个包。」</strong></td></tr>
-<tr><td>代理行为特征</td><td><strong>自行解析依赖、倾向取最新版本、很少检查包来源</strong> → <strong>恶意版本被拉进来并在无人介入下运行</strong></td></tr>
-<tr><td>相关行业动向</td><td><strong>npm v12 计划默认阻止安装脚本、Git 依赖与远程源</strong>（registry 的一次重大信任模型重设计）</td></tr>
-<tr><td>⚠️ 一条结构性观察</td><td><strong>Trusted Publishing（OIDC）验证的是「谁构建了这个包」，而不是「构建时仓库里是什么代码」</strong></td></tr>
-<tr><td><strong>维护者动作</strong></td><td><strong><code>npm trust list</code> 审计</strong>；<strong>确认每个受信任仓库名仍解析到自己控制的仓库</strong>；<strong>对已改名/转移的绑定删除重建</strong>；<strong>删仓库前先解绑</strong>；<strong>迁移到允许的发布事件</strong>；<strong>建议启用「要求 2FA 并禁止 token」</strong></td></tr>
-</table>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>缺陷代号</td><td><strong>SlugFest</strong>（Bloom Security 命名）</td></tr><tr><td><strong>根因</strong></td><td><strong>npm 用人类可读的 GitHub 仓库 owner/name（slug）核验受信任发布者，而不是仓库不可变的数字 ID</strong></td></tr><tr><td><strong>攻击路径</strong></td><td><strong>占用一个已被改名/转移/删除的仓库名 → 在该地址建仓库 → 配置文件名符合预期的工作流 → 拿到不属于自己的包的发布凭证</strong></td></tr><tr><td>⚠️ 攻击前提</td><td><strong>不需要攻破合法维护者的 GitHub 或 npm 账号，也不需要偷凭证</strong>；继承的是别人留下的信任关系</td></tr><tr><td>验证情况</td><td><strong>研究者在自己控制的包上演示成功</strong>：<strong>从一个属于另一个组织的 GitHub 仓库发布了一个新版本</strong></td></tr><tr><td>影响面</td><td><strong>1500 多个潜在受影响的包</strong>；<strong>合计下载量超 1000 万次</strong>；<strong>月下载超 100 万次</strong>；<strong>单包最高月下载超 20 万次</strong></td></tr><tr><td>⚠️ 包的类型</td><td><strong>包括安全扫描器、认证工具与密码学库</strong></td></tr><tr><td><strong>修复（2026-10-02）</strong></td><td><strong>未验证的受信任发布配置在创建 48 小时后过期，不再能授权发布</strong>；<strong>第一次成功发布后配置被验证并免于过期</strong>；<strong>变更仓库/项目身份需要全新的 48 小时窗口；普通编辑不重启期限</strong>；<strong>过期配置仍可见但不计入每包上限</strong></td></tr><tr><td>同日另一项收紧</td><td><strong>npm 拒绝来自 GitHub Actions <code>issue_comment</code> 事件的受信任发布 token</strong>（与已有的 <code>pull_request_target</code> 限制一致）；<strong>应改用 <code>push</code>、<code>release</code> 或 <code>workflow_dispatch</code></strong></td></tr><tr><td>⚠️ 名单未公布</td><td><strong>Bloom 不公布受影响的包名</strong>，使用者无法对照自查；<strong>替代方案是核实包的 provenance attestation 指向的仓库</strong></td></tr><tr><td>⚠️ 同类问题</td><td><strong>研究者指出 npm 的 GitLab 受信任发布集成有同样的弱点</strong></td></tr><tr><td>在野利用</td><td><strong>未观察到（截至披露）</strong>；Myers 称是否有人在野利用过「未知」</td></tr><tr><td><strong>AI 代理放大效应</strong></td><td><strong>实测（数十个组织）：典型终端每月约 70 个代理安装的包，开发者机器约 350 个</strong>（仅直接安装，不含传递依赖）</td></tr><tr><td><strong>关键引语</strong></td><td><strong>「一个被劫持的包不再需要找到一个开发者。它只需要成为代理所选择的那一个包。」</strong></td></tr><tr><td>代理行为特征</td><td><strong>自行解析依赖、倾向取最新版本、很少检查包来源</strong> → <strong>恶意版本被拉进来并在无人介入下运行</strong></td></tr><tr><td>相关行业动向</td><td><strong>npm v12 计划默认阻止安装脚本、Git 依赖与远程源</strong>（registry 的一次重大信任模型重设计）</td></tr><tr><td>⚠️ 一条结构性观察</td><td><strong>Trusted Publishing（OIDC）验证的是「谁构建了这个包」，而不是「构建时仓库里是什么代码」</strong></td></tr><tr><td><strong>维护者动作</strong></td><td><strong><code>npm trust list</code> 审计</strong>；<strong>确认每个受信任仓库名仍解析到自己控制的仓库</strong>；<strong>对已改名/转移的绑定删除重建</strong>；<strong>删仓库前先解绑</strong>；<strong>迁移到允许的发布事件</strong>；<strong>建议启用「要求 2FA 并禁止 token」</strong></td></tr></tbody></table>
 <h2>延伸阅读</h2>
-<ul>
-<li><a href="https://www.csoonline.com/article/4234229/over-1500-npm-packages-exposed-by-trusted-publishing-validation-flaw.html">CSO Online：Over 1,500 npm packages exposed by Trusted Publishing validation flaw</a></li>
-<li><a href="https://github.blog/changelog/2026-10-02-unvalidated-npm-trusted-publishing-configurations-now-expire/">GitHub Changelog：Unvalidated npm trusted publishing configurations now expire</a></li>
-<li><a href="https://docs.npmjs.com/trusted-publishers">npm 官方文档：Trusted publishers</a></li>
-<li><a href="https://www.helpnetsecurity.com/2026/10/13/slugfest-npm-trusted-publishing-flaw">Help Net Security：npm Trusted Publishing flaw exposed 1,500+ npm packages to takeover</a></li>
-<li><a href="/articles/2026-08-04_hazy-hawk-dns-subdomain-hijack/">本站：被遗忘的 DNS 记录，正在给骗局开路：Hazy Hawk 子域名劫持全拆解</a></li>
-<li><a href="/articles/2026-10-09_phishing-server-layer-aitm/">本站：钓鱼防御打错了层级：域名封不过来，但服务器藏不住</a></li>
-<li><a href="/articles/2026-09-19_ai-fleet-governance-tools/">本站：守住你的「AI 机群」：16 款治理/护栏/红队平台速览</a></li>
-</ul>
+<ul><li><a href="https://www.csoonline.com/article/4234229/over-1500-npm-packages-exposed-by-trusted-publishing-validation-flaw.html" target="_blank" rel="noopener noreferrer">CSO Online：Over 1,500 npm packages exposed by Trusted Publishing validation flaw</a></li><li><a href="https://github.blog/changelog/2026-10-02-unvalidated-npm-trusted-publishing-configurations-now-expire/" target="_blank" rel="noopener noreferrer">GitHub Changelog：Unvalidated npm trusted publishing configurations now expire</a></li><li><a href="https://docs.npmjs.com/trusted-publishers" target="_blank" rel="noopener noreferrer">npm 官方文档：Trusted publishers</a></li><li><a href="https://www.helpnetsecurity.com/2026/10/13/slugfest-npm-trusted-publishing-flaw" target="_blank" rel="noopener noreferrer">Help Net Security：npm Trusted Publishing flaw exposed 1,500+ npm packages to takeover</a></li><li><a href="/articles/2026-08-04_hazy-hawk-dns-subdomain-hijack/">本站：被遗忘的 DNS 记录，正在给骗局开路：Hazy Hawk 子域名劫持全拆解</a></li><li><a href="/articles/2026-10-09_phishing-server-layer-aitm/">本站：钓鱼防御打错了层级：域名封不过来，但服务器藏不住</a></li><li><a href="/articles/2026-09-19_ai-fleet-governance-tools/">本站：守住你的「AI 机群」：16 款治理/护栏/红队平台速览</a></li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

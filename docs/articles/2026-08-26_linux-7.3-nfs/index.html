@@ -280,14 +280,13 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-
 <blockquote><strong>原始出处</strong>：Phoronix + LKML NFS client + NFSD pull requests<br>
 <strong>发布日期</strong>：2026 年 8 月 26 日（合并窗口接近结束）<br>
 <strong>作者</strong>：Trond Myklebust（NFS 客户端维护者，Hammerspace）、Chuck Lever（NFSD 维护者）<br>
 <strong>关键 PR</strong>：<br>
   - 客户端：[GIT PULL] Please pull NFS client fixes for Linux 7.3（Trond Myklebust）<br>
   - 服务端：[GIT PULL NFSD updates for v7.3]（Chuck Lever）<br>
-<strong>Phoronix 报道</strong>：https://www.phoronix.com/news/Linux-7.3-NFS<br>
+<strong>Phoronix 报道</strong>：<a href="https://www.phoronix.com/news/Linux-7.3-NFS" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/Linux-7.3-NFS</a><br>
 <strong>翻译/解读</strong>：LeisureLinux<br>
 <strong>关键词</strong>：Linux 7.3 NFS、CB_NOTIFY、目录委派、NFSv4.2 缓存控制、pernode 线程池、flexfiles 数据服务器</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
@@ -300,182 +299,86 @@
 
 <h2>引言：服务端为主，客户端为辅</h2>
 <p>Linux 7.3 合并窗口接近关闭，NFS 客户端与服务端的 pull request 都已合入。这次的特点是<strong>两端各干各的，没有统一主题</strong>：</p>
-<ul>
-<li><strong>服务端（NFSD）</strong>这一波最重磅：支持 NFSv4.1 <strong>目录委派</strong>（CB_NOTIFY 回调 + FSNOTIFY），同时把传统服务线程池换成 <strong>per-node 模型</strong>。</li>
-<li><strong>客户端（NFS）</strong>这一波以 bug fix 为主，亮点是 <strong>NFS/localio 的 I/O 提交优化</strong>与 <strong>NFSv4.2 新增"禁止客户端缓存"语义</strong>。</li>
-</ul>
-服务端侧重"新功能 + 性能优化"，客户端侧重"稳定性 + 一处可见的性能提升"。两端加起来<strong>约 200+ 文件改动、6000+ 新增 / 1700+ 删除</strong>——服务端更重，客户端更轻。
-<p>---</p>
+<ul><li><strong>服务端（NFSD）</strong>这一波最重磅：支持 NFSv4.1 <strong>目录委派</strong>（CB_NOTIFY 回调 + FSNOTIFY），同时把传统服务线程池换成 <strong>per-node 模型</strong>。</li><li><strong>客户端（NFS）</strong>这一波以 bug fix 为主，亮点是 <strong>NFS/localio 的 I/O 提交优化</strong>与 <strong>NFSv4.2 新增"禁止客户端缓存"语义</strong>。</li></ul>
+<p>服务端侧重"新功能 + 性能优化"，客户端侧重"稳定性 + 一处可见的性能提升"。两端加起来<strong>约 200+ 文件改动、6000+ 新增 / 1700+ 删除</strong>——服务端更重，客户端更轻。</p>
+<hr>
 <h2>一、整体改动规模</h2>
-<table>
-<tr><th>维度</th><th>客户端 (NFS)</th><th>服务端 (NFSD)</th></tr>
-<tr><td><strong>维护者</strong></td><td>Trond Myklebust</td><td>Chuck Lever</td></tr>
-<tr><td><strong>commit 数</strong></td><td>约 100+</td><td>约 300+</td></tr>
-<tr><td><strong>核心主题</strong></td><td>bug fix + I/O 优化</td><td>CB_NOTIFY + pernode + netlink 统计</td></tr>
-<tr><td><strong>新功能</strong></td><td>NFSv4.2 缓存控制、NFS/localio I/O 优化</td><td>NFSv4.1 目录委派、pernode 线程模型、netlink stats</td></tr>
-<tr><td><strong>新协议文档</strong></td><td>nfs4_1.x</td><td>nfsd.yaml + nfs4_1.x</td></tr>
-</table>
-<p>---</p>
+<table><thead><tr><th>维度</th><th>客户端 (NFS)</th><th>服务端 (NFSD)</th></tr></thead><tbody><tr><td><strong>维护者</strong></td><td>Trond Myklebust</td><td>Chuck Lever</td></tr><tr><td><strong>commit 数</strong></td><td>约 100+</td><td>约 300+</td></tr><tr><td><strong>核心主题</strong></td><td>bug fix + I/O 优化</td><td>CB_NOTIFY + pernode + netlink 统计</td></tr><tr><td><strong>新功能</strong></td><td>NFSv4.2 缓存控制、NFS/localio I/O 优化</td><td>NFSv4.1 目录委派、pernode 线程模型、netlink stats</td></tr><tr><td><strong>新协议文档</strong></td><td>nfs4_1.x</td><td>nfsd.yaml + nfs4_1.x</td></tr></tbody></table>
+<hr>
 <h2>二、服务端：CB_NOTIFY + 目录委派</h2>
 <h3>2.1 背景</h3>
 <p>NFSv4.1 引入的"委派"（delegation）让服务端把文件 / 目录的操作授权给客户端独占访问，避免所有操作都回服务端。NFSv4.0/4.1 支持<strong>文件委派</strong>，但<strong>目录委派</strong>一直缺位——服务端没法高效感知"目录里有谁加了 / 删了 / 改名"。</p>
 <p>这次补齐的关键是 <strong>CB_NOTIFY</strong> 回调（RFC 8881bis 草案里的扩展）：</p>
-<ul>
-<li>服务端用内核的 <strong>FSNOTIFY</strong> 机制监控目录。</li>
-<li>当目录被修改（添加 / 删除 / 重命名 / 属性变更）时，服务端立即回调客户端，让客户端取消之前持有的目录委派。</li>
-</ul>
-效果：客户端拿到的目录视图始终和服务端真实状态一致，避免缓存过期。
+<ul><li>服务端用内核的 <strong>FSNOTIFY</strong> 机制监控目录。</li><li>当目录被修改（添加 / 删除 / 重命名 / 属性变更）时，服务端立即回调客户端，让客户端取消之前持有的目录委派。</li></ul>
+<p>效果：客户端拿到的目录视图始终和服务端真实状态一致，避免缓存过期。</p>
 <h3>2.2 实现细节</h3>
 <p>服务端这次的改动横跨 fsnotify 标记、回调编码、通知处理等多个层面：</p>
-<ul>
-<li><code>nfsd: allow nfsd to get a dir lease with an ignore mask</code> — 给目录租赁加忽略位。</li>
-<li><code>nfsd: update the fsnotify mark when setting or removing a dir delegation</code> — fsnotify 标记同步。</li>
-<li><code>nfsd: add callback encoding and decoding linkages for CB_NOTIFY</code> — 回调编解码。</li>
-<li><code>nfsd: add notification handlers for dir events</code> — 事件处理。</li>
-<li><code>nfsd: apply the notify mask to the delegation when requested</code> — 通知掩码应用。</li>
-<li><code>nfsd: send basic file attributes in CB_NOTIFY</code> — 回传属性。</li>
-</ul>
+<ul><li><code>nfsd: allow nfsd to get a dir lease with an ignore mask</code> — 给目录租赁加忽略位。</li><li><code>nfsd: update the fsnotify mark when setting or removing a dir delegation</code> — fsnotify 标记同步。</li><li><code>nfsd: add callback encoding and decoding linkages for CB_NOTIFY</code> — 回调编解码。</li><li><code>nfsd: add notification handlers for dir events</code> — 事件处理。</li><li><code>nfsd: apply the notify mask to the delegation when requested</code> — 通知掩码应用。</li><li><code>nfsd: send basic file attributes in CB_NOTIFY</code> — 回传属性。</li></ul>
 <h3>2.3 其他服务端改动</h3>
 <p>服务端这一波远不止 CB_NOTIFY。Chuck Lever 拉了一批改动：</p>
-<ul>
-<li><strong>pernode 线程池取代传统服务线程池</strong>：内核开发者认为 per-node 模式更适合现代多 socket、多节点主机的 NFS 工作负载。</li>
-<li><strong>新增 <code>sunrpc: route to a populated pool in svc_pool_for_cpu()</code></strong> — 保证 auto-distribute 时每个 pool 有至少一个线程。</li>
-<li><strong>NFSv4 回调操作按 netns 计数</strong>：<code>nfsd: count NFSv4 callback operations per netns</code> + 通过 netlink 暴露。</li>
-<li><strong>NFSv4 异步 COPY 改造</strong>：<code>nfsd: split nfsd4_copy into transient and durable async copy objects</code>，把 copy offload stateid 提升为一等公民（first-class nfs4_stid）。</li>
-<li><strong>多批 bug fix</strong>：包含 UAF、stale stateid、copy-notify 状态校验、xattr 派生错误处理等。</li>
-</ul>
+<ul><li><strong>pernode 线程池取代传统服务线程池</strong>：内核开发者认为 per-node 模式更适合现代多 socket、多节点主机的 NFS 工作负载。</li><li><strong>新增 <code>sunrpc: route to a populated pool in svc_pool_for_cpu()</code></strong> — 保证 auto-distribute 时每个 pool 有至少一个线程。</li><li><strong>NFSv4 回调操作按 netns 计数</strong>：<code>nfsd: count NFSv4 callback operations per netns</code> + 通过 netlink 暴露。</li><li><strong>NFSv4 异步 COPY 改造</strong>：<code>nfsd: split nfsd4_copy into transient and durable async copy objects</code>，把 copy offload stateid 提升为一等公民（first-class nfs4_stid）。</li><li><strong>多批 bug fix</strong>：包含 UAF、stale stateid、copy-notify 状态校验、xattr 派生错误处理等。</li></ul>
 <h3>2.4 lockd 修复</h3>
 <p>服务端还附了一批 lockd（NFS 文件锁服务）的修复：</p>
-<ul>
-<li>Michael Bommarito：nlm_inspect_file 跨 nfsd_ssc_lock 释放的 walk 重启。</li>
-<li>NeilBrown：<code>nfsd4_create_file()</code> 的 fh_compose 错 dentry 修复、<code>nfsd_file_do_acquire()</code> 不使用未打开文件。</li>
-<li>Nikol Kuklev：<code>nfsd4_setattr</code> 委派时间戳属性的 NULL deref 修复。</li>
-<li>Olga Kornievskaia：<strong>NLMv4 GRANTED_MSG</strong> 处理修复。</li>
-<li>Oscar Ou：nlmsvc_match_ip() 互换参数修复、保留同一 owner 的多个 NLM_SHARE grants。</li>
-<li>Robbie Ko：NFSv2/3 SETATTR/CREATE 时间字段越界拒绝；统一 NSEC_PER_SEC 使用。</li>
-<li>Scott Mayhew：write_threads() 错误返回值修正。</li>
-<li>Zhenghang Xiao：委派释放时设 SC_STATUS_FREED。</li>
-</ul>
----
+<ul><li>Michael Bommarito：nlm_inspect_file 跨 nfsd_ssc_lock 释放的 walk 重启。</li><li>NeilBrown：<code>nfsd4_create_file()</code> 的 fh_compose 错 dentry 修复、<code>nfsd_file_do_acquire()</code> 不使用未打开文件。</li><li>Nikol Kuklev：<code>nfsd4_setattr</code> 委派时间戳属性的 NULL deref 修复。</li><li>Olga Kornievskaia：<strong>NLMv4 GRANTED_MSG</strong> 处理修复。</li><li>Oscar Ou：nlmsvc_match_ip() 互换参数修复、保留同一 owner 的多个 NLM_SHARE grants。</li><li>Robbie Ko：NFSv2/3 SETATTR/CREATE 时间字段越界拒绝；统一 NSEC_PER_SEC 使用。</li><li>Scott Mayhew：write_threads() 错误返回值修正。</li><li>Zhenghang Xiao：委派释放时设 SC_STATUS_FREED。</li></ul>
+<hr>
 <h2>三、客户端：I/O 优化 + NFSv4.2 缓存控制</h2>
 <h3>3.1 NFS/localio I/O 提交优化</h3>
 <p>NFS/localio 是 6.12 起支持的优化路径——客户端和服务端在同一台机器时绕开网络栈直读本地页缓存。Linux 7.3 这次优化集中在<strong>内存非压力路径下的 I/O 提交</strong>：</p>
-<pre><code class="plaintext">"optimise I/O submission when not doing memory reclaim"
-</code></pre>
+<pre><code class="plaintext">"optimise I/O submission when not doing memory reclaim"</code></pre>
 <p>也就是说，常规路径下 I/O 提交更快。这对<strong>本地 NFS 部署 + 大量小 I/O 场景</strong>（如容器镜像分发、CI artifact 缓存）有直接收益。</p>
 <p>同时移除 <code>nfs_local_commit</code> 里的重复 wait 代码（<code>NFS/localio: Remove duplicate wait code</code>）。</p>
 <h3>3.2 NFSv4.2 缓存控制</h3>
 <p>新加服务端指示：让服务端主动告知客户端"这部分文件数据<strong>不允许</strong>客户端缓存"。对应的客户端支持：</p>
-<pre><code class="plaintext">"NFSv4.2: Allow the server to specify that file data may not be cached"
-</code></pre>
+<pre><code class="plaintext">"NFSv4.2: Allow the server to specify that file data may not be cached"</code></pre>
 <p>服务端管理员可以更精细地控制<strong>强一致性敏感</strong>的文件，避免缓存造成的过期数据问题。对<strong>数据库文件、实时生成的报告</strong>这种场景有意义。</p>
 <h3>3.3 一批 bug fix</h3>
 <p>Trond Myklebust 拉的客户端修复，按主题分：</p>
-<p><strong>Stable fixes</strong>：
-<ul>
-<li>SunRPC client code use-after-free 修复</li>
-<li>NFSv4 委派哈希表泄漏</li>
-<li>lockd lockowner 分配失败的 NULL deref</li>
-<li>SunRPC TLS 握手完成竞态</li>
-<li>NFSv4.1/pNFS layout 仍使用判断错误符号检查</li>
-<li>NFSv4.1 pnfs_layout_process() layout segment 泄漏</li>
-</ul>
-<strong>其他修复</strong>：
-<ul>
-<li>SunRPC：rpcbind client NULL 检查、共享 socket 回调加 <code>READ_ONCE/WRITE_ONCE</code> 注解</li>
-<li>NFSv4：<code>nfs_inode_set_delegation()</code> 错误路径应返回 delegation</li>
-<li>NFSv4：使用 <code>clear_and_wake_up_bit()</code> 替代手工逻辑</li>
-<li>NFSv4：<code>nfs4_alloc_client()</code> 错误路径释放 IDR 分配</li>
-<li>NFS：<code>nfs_inode_remove_request()</code> 在 NULL 检查前的 folio 解引用修复</li>
-<li>NFS：延迟委派返回修复</li>
-<li>NFSv4：与 umount 竞态的状态管理器修复</li>
-<li>pNFS/blocklayout：parse failure 上的设备泄漏</li>
-<li>pNFS：在 layout recall 时若服务端不要求，避免取消 in-flight I/O</li>
-<li>NFSv4/flexfiles：报告取消的 I/O 为 layout error</li>
-<li>NFSv4/flexfiles：NFSv4.0 数据服务器的 NULL deref 修复</li>
-<li>NFSv4：<code>nfs4_delete_lease()</code> 错误参数修复</li>
-<li>NFSv3：<code>nfs_atomic_open_v23()</code> 几个 symlink 问题修复</li>
-<li>NFSv4.1：回调代码未初始化变量修复</li>
-<li>NFSv4.2：LAYOUTSTATS send buffer exhaustion 修复</li>
-</ul>
-<strong>功能与清理</strong>：
-<ul>
-<li>NFSv4.2：服务端指示文件数据不可缓存</li>
-<li>NFS/localio：I/O 提交优化</li>
-<li>NFS/localio：移除 <code>nfs_local_commit</code> 重复 wait 代码</li>
-<li>NFSv4/flexfiles：支持 loosely coupled NFSv4.x 数据服务器</li>
-<li>NFSv4/pnfs：数据服务器缓存按 NFS 版本键控</li>
-</ul>
----</p>
+<p><strong>Stable fixes</strong>：</p>
+<ul><li>SunRPC client code use-after-free 修复</li><li>NFSv4 委派哈希表泄漏</li><li>lockd lockowner 分配失败的 NULL deref</li><li>SunRPC TLS 握手完成竞态</li><li>NFSv4.1/pNFS layout 仍使用判断错误符号检查</li><li>NFSv4.1 pnfs_layout_process() layout segment 泄漏</li></ul>
+<p><strong>其他修复</strong>：</p>
+<ul><li>SunRPC：rpcbind client NULL 检查、共享 socket 回调加 <code>READ_ONCE/WRITE_ONCE</code> 注解</li><li>NFSv4：<code>nfs_inode_set_delegation()</code> 错误路径应返回 delegation</li><li>NFSv4：使用 <code>clear_and_wake_up_bit()</code> 替代手工逻辑</li><li>NFSv4：<code>nfs4_alloc_client()</code> 错误路径释放 IDR 分配</li><li>NFS：<code>nfs_inode_remove_request()</code> 在 NULL 检查前的 folio 解引用修复</li><li>NFS：延迟委派返回修复</li><li>NFSv4：与 umount 竞态的状态管理器修复</li><li>pNFS/blocklayout：parse failure 上的设备泄漏</li><li>pNFS：在 layout recall 时若服务端不要求，避免取消 in-flight I/O</li><li>NFSv4/flexfiles：报告取消的 I/O 为 layout error</li><li>NFSv4/flexfiles：NFSv4.0 数据服务器的 NULL deref 修复</li><li>NFSv4：<code>nfs4_delete_lease()</code> 错误参数修复</li><li>NFSv3：<code>nfs_atomic_open_v23()</code> 几个 symlink 问题修复</li><li>NFSv4.1：回调代码未初始化变量修复</li><li>NFSv4.2：LAYOUTSTATS send buffer exhaustion 修复</li></ul>
+<p><strong>功能与清理</strong>：</p>
+<ul><li>NFSv4.2：服务端指示文件数据不可缓存</li><li>NFS/localio：I/O 提交优化</li><li>NFS/localio：移除 <code>nfs_local_commit</code> 重复 wait 代码</li><li>NFSv4/flexfiles：支持 loosely coupled NFSv4.x 数据服务器</li><li>NFSv4/pnfs：数据服务器缓存按 NFS 版本键控</li></ul>
+<hr>
 <h2>四、对 Linux 7.3 NFS 的整体评价</h2>
 <h3>4.1 服务端是大头</h3>
 <p>Linux 7.3 的 NFSD 改动<strong>远大于客户端</strong>：</p>
-<ul>
-<li><strong>目录委派</strong>补齐 NFSv4.1 的设计意图（文件委派 + 目录委派 = 一致的客户端缓存视图）。</li>
-<li><strong>pernode 线程模型</strong>让 NFS 服务在 NUMA-aware 主机上跑得更高效。</li>
-<li><strong>netlink 统计暴露</strong>让 Prometheus 监控 NFS 服务状态成为可能（之前只能用 <code>/proc/net/rpc/nfsd</code>）。</li>
-</ul>
+<ul><li><strong>目录委派</strong>补齐 NFSv4.1 的设计意图（文件委派 + 目录委派 = 一致的客户端缓存视图）。</li><li><strong>pernode 线程模型</strong>让 NFS 服务在 NUMA-aware 主机上跑得更高效。</li><li><strong>netlink 统计暴露</strong>让 Prometheus 监控 NFS 服务状态成为可能（之前只能用 <code>/proc/net/rpc/nfsd</code>）。</li></ul>
 <h3>4.2 客户端以稳定为主</h3>
 <p>客户端的"大特性"是 NFSv4.2 缓存控制，但这是<strong>协议层语义</strong>的扩展，客户端实现简单。剩下都是 bug fix——但每一个都对生产环境重要（NFSv4 委派泄漏、pNFS layout segment 泄漏、copy offload 状态校验等都是运维会撞到的问题）。</p>
 <h3>4.3 实战影响</h3>
-<table>
-<tr><th>场景</th><th>服务端 7.3 影响</th><th>客户端 7.3 影响</th></tr>
-<tr><td><strong>本地 NFS（容器 / VM）</strong></td><td>pernode 线程模型更友好</td><td>NFS/localio I/O 提交优化</td></tr>
-<tr><td><strong>网络 NFS（共享存储）</strong></td><td>目录委派改善客户端缓存一致性</td><td>一批稳定性修复</td></tr>
-<tr><td><strong>数据库场景（NFSv4.2）</strong></td><td>服务端可发"禁止缓存"</td><td>客户端支持新语义</td></tr>
-<tr><td><strong>多客户端高并发</strong></td><td>pernode 模型减少锁竞争</td><td>flexfiles 数据服务器版本键控</td></tr>
-<tr><td><strong>异步 COPY 链路</strong></td><td>first-class stateid</td><td>LAYOUTSTATS buffer 修复</td></tr>
-</table>
-<p>---</p>
+<table><thead><tr><th>场景</th><th>服务端 7.3 影响</th><th>客户端 7.3 影响</th></tr></thead><tbody><tr><td><strong>本地 NFS（容器 / VM）</strong></td><td>pernode 线程模型更友好</td><td>NFS/localio I/O 提交优化</td></tr><tr><td><strong>网络 NFS（共享存储）</strong></td><td>目录委派改善客户端缓存一致性</td><td>一批稳定性修复</td></tr><tr><td><strong>数据库场景（NFSv4.2）</strong></td><td>服务端可发"禁止缓存"</td><td>客户端支持新语义</td></tr><tr><td><strong>多客户端高并发</strong></td><td>pernode 模型减少锁竞争</td><td>flexfiles 数据服务器版本键控</td></tr><tr><td><strong>异步 COPY 链路</strong></td><td>first-class stateid</td><td>LAYOUTSTATS buffer 修复</td></tr></tbody></table>
+<hr>
 <h2>五、Trond 给 Linus 的 commit message 风波</h2>
 <p>这次客户端 pull 在邮件列表里还有个小插曲——Trond 的 commit message 写得过于简洁，Linus 吐槽：</p>
 <blockquote>"For example, just to look at that first bullet point: why have that 'SunRPC:' thing at all? It adds no value. This is a NFS client merge message, and the line goes on to say 'fixes for the sunrpc client code'."</blockquote>
 <blockquote>"Please don't make me do that. Give me that overview of what happened and what matters. And it's ok to say 'And misc fixes' for things that really doesn't matter and people who care should just look at the individual commits."</blockquote>
-Linus 自己做了点编辑才合并。维护者风格的差异在这里挺有意思——Linux 内核合并窗口对 commit message 质量有要求。
-<p>---</p>
+<p>Linus 自己做了点编辑才合并。维护者风格的差异在这里挺有意思——Linux 内核合并窗口对 commit message 质量有要求。</p>
+<hr>
 <h2>六、关注下一个版本</h2>
 <p>Linux 7.3 NFS 这波落地后，下一步看点：</p>
-<ul>
-<li><strong>目录委派（CB_NOTIFY）</strong>在生产环境的实际一致性效果——是否能减少客户端的缓存过期问题。</li>
-<li><strong>pernode 线程模型</strong>是否需要进一步调优（不同 NUMA 拓扑下的表现）。</li>
-<li><strong>netlink stats</strong>能否在监控体系里铺开（Prometheus exporter、Netdata 插件等）。</li>
-<li><strong>flexfiles loosely coupled 数据服务器</strong>——这是 pNFS 灵活性提升的重要一步，后续版本会有更多场景适配。</li>
-</ul>
----
+<ul><li><strong>目录委派（CB_NOTIFY）</strong>在生产环境的实际一致性效果——是否能减少客户端的缓存过期问题。</li><li><strong>pernode 线程模型</strong>是否需要进一步调优（不同 NUMA 拓扑下的表现）。</li><li><strong>netlink stats</strong>能否在监控体系里铺开（Prometheus exporter、Netdata 插件等）。</li><li><strong>flexfiles loosely coupled 数据服务器</strong>——这是 pNFS 灵活性提升的重要一步，后续版本会有更多场景适配。</li></ul>
+<hr>
 <h2>七、对运维的影响</h2>
 <h3>7.1 服务端升级</h3>
-<ul>
-<li><strong>NFS 服务端升级到 7.3 后</strong>，会自动启用 pernode 线程模型，无需配置。</li>
-<li><strong>目录委派</strong>默认开启（前提是 NFSv4.1+）。</li>
-<li><strong>监控集成</strong>：如果有 Prometheus NFS exporter，建议升级到支持 netlink stats 的版本。</li>
-</ul>
+<ul><li><strong>NFS 服务端升级到 7.3 后</strong>，会自动启用 pernode 线程模型，无需配置。</li><li><strong>目录委派</strong>默认开启（前提是 NFSv4.1+）。</li><li><strong>监控集成</strong>：如果有 Prometheus NFS exporter，建议升级到支持 netlink stats 的版本。</li></ul>
 <h3>7.2 客户端升级</h3>
-<ul>
-<li><strong>NFS 客户端升级到 7.3 后</strong>立即拿到所有稳定性修复（特别推荐有 pNFS / NFSv4 委派 / 异步 COPY 场景的环境升级）。</li>
-<li><strong>NFS/localio 优化</strong>对容器 / VM 镜像分发场景有可见收益。</li>
-<li><strong>NFSv4.2 缓存控制</strong>需要服务端 + 客户端都升级到 7.3 才生效。</li>
-</ul>
+<ul><li><strong>NFS 客户端升级到 7.3 后</strong>立即拿到所有稳定性修复（特别推荐有 pNFS / NFSv4 委派 / 异步 COPY 场景的环境升级）。</li><li><strong>NFS/localio 优化</strong>对容器 / VM 镜像分发场景有可见收益。</li><li><strong>NFSv4.2 缓存控制</strong>需要服务端 + 客户端都升级到 7.3 才生效。</li></ul>
 <h3>7.3 测试建议</h3>
 <pre><code class="bash"># 服务端：观察目录委派是否生效
 cat /proc/fs/nfsd/threads
 nfsstat -s
-<h1>客户端：观察 NFS/localio 路径</h1>
+
+# 客户端：观察 NFS/localio 路径
 cat /sys/fs/nfs/localio
 cat /proc/mounts | grep nfs
-<h1>监控 netlink 暴露的 NFSv4 回调统计（如果工具支持）</h1>
-nfsd-client-event  # nfs-ganesha 或第三方工具
-</code></pre>
-<p>---</p>
+
+# 监控 netlink 暴露的 NFSv4 回调统计（如果工具支持）
+nfsd-client-event  # nfs-ganesha 或第三方工具</code></pre>
+<hr>
 <p><strong>参考资料</strong>：</p>
-<ol>
-<li>1. Phoronix Linux 7.3 NFS：https://www.phoronix.com/news/Linux-7.3-NFS</li>
-<li>2. LKML NFS client pull：[GIT PULL] Please pull NFS client fixes for Linux 7.3</li>
-<li>3. LKML NFSD pull：[GIT PULL NFSD updates for v7.3]</li>
-<li>4. pbxscience 解读：Linux 7.3 Merges NFS Improvements</li>
-<li>5. Linux 7.3 源码：https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git</li>
-<li>6. Linux NFS 客户端仓库：git://git.linux-nfs.org/projects/trondmy/linux-nfs.git</li>
-</ol>
----
+<ol><li>Phoronix Linux 7.3 NFS：<a href="https://www.phoronix.com/news/Linux-7.3-NFS" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/Linux-7.3-NFS</a></li><li>LKML NFS client pull：[GIT PULL] Please pull NFS client fixes for Linux 7.3</li><li>LKML NFSD pull：[GIT PULL NFSD updates for v7.3]</li><li>pbxscience 解读：Linux 7.3 Merges NFS Improvements</li><li>Linux 7.3 源码：<a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git" target="_blank" rel="noopener noreferrer">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git</a></li><li>Linux NFS 客户端仓库：git://git.linux-nfs.org/projects/trondmy/linux-nfs.git</li></ol>
+<hr>
 <p><em>本文基于 Phoronix 报道、LKML NFS client + NFSD pull request 与社区资料整理，旨在为中国开发者提供快速理解和参考。</em></p>
 <p><em>作者观点不代表任何厂商立场，仅供技术讨论参考。NFS 7.3 服务端与客户端改动规模差异较大，性能数据依工作负载与硬件配置可能有所差异。</em></p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">

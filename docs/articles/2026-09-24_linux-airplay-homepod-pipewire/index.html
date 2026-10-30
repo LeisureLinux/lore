@@ -285,90 +285,66 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<p>
-需求很简单：一台 Debian 机器上存了几十 GB 的 mp3，想把它推到房间里的 HomePod 音箱播放。原以为是个「点一下就行」的小事，结果一路从 <code>atvremote</code> 试到 <code>mpv</code>、再到升级 PipeWire，中间撞上一个极其隐蔽的「播到 35 秒突然没声」的坑。这篇文章把整个过程和背后的原理完整记录下来。</p>
+<p>需求很简单：一台 Debian 机器上存了几十 GB 的 mp3，想把它推到房间里的 HomePod 音箱播放。原以为是个「点一下就行」的小事，结果一路从 <code>atvremote</code> 试到 <code>mpv</code>、再到升级 PipeWire，中间撞上一个极其隐蔽的「播到 35 秒突然没声」的坑。这篇文章把整个过程和背后的原理完整记录下来。</p>
 <p>先说结论：<strong>最终解法是把 PipeWire 从 1.4.2 升到 1.4.9（走 trixie-backports），断流问题彻底消失</strong>。下面按时间线复盘，每一步都讲清楚「为什么这么走、原理是什么、踩了什么坑」。</p>
-<p>---</p>
+<hr>
 <h2>一、起点：atvremote（pyatv）方案</h2>
 <p>最早用的是 <code>atvremote</code>，它是 <code>pyatv</code> 库附带的命令行工具，通过 Apple 的私有协议（AirPlay / MediaRemote）控制 Apple TV 和 HomePod。当时的 <code>play.sh</code> 长这样：</p>
 <pre><code class="bash">#!/bin/bash
 MDIR="$HOME/Music"
 if [ -r "$1" ]; then
-	atvremote -n StudyRoom stream_file="$1" 2>/dev/null
+	atvremote -n StudyRoom stream_file="$1" 2&gt;/dev/null
 	exit
 fi
-! find ${MDIR} -name "*.mp3" | shuf | xargs -I {} atvremote -n StudyRoom stream_file={} 2>/dev/null && echo "exit with error"
-</code></pre>
+! find ${MDIR} -name "*.mp3" | shuf | xargs -I {} atvremote -n StudyRoom stream_file={} 2&gt;/dev/null &amp;&amp; echo "exit with error"</code></pre>
 <p>这个方案<strong>能出声</strong>，但有几个问题：</p>
-<ol>
-<li>1. <strong>每首歌重建一次 AirPlay 会话</strong>。<code>find | shuf | xargs -I {}</code> 会对每一首 mp3 单独起一个 <code>atvremote stream_file</code> 进程，意味着每首歌之间都要重新握手、重新建流，曲目切换有停顿，还容易丢歌首。</li>
-<li>2. <strong>错误被 <code>2>/dev/null</code> 吞掉</strong>。失败静默，出问题看不到原因。</li>
-<li>3. <strong><code>! ... && echo</code> 的逻辑反直觉</strong>，实际是失败才提示，但读起来像"成功才提示"。</li>
-</ol>
-更重要的是，<code>atvremote stream_file</code> 走的是 pyatv 的 AirPlay 推流路径，它<strong>自己管理 RTSP 会话</strong>，虽然能播，但它是「每首一个进程」的黑盒，无法做播放列表、无法暂停切歌，也无法显示封面歌词。
+<ol><li><strong>每首歌重建一次 AirPlay 会话</strong>。<code>find | shuf | xargs -I {}</code> 会对每一首 mp3 单独起一个 <code>atvremote stream_file</code> 进程，意味着每首歌之间都要重新握手、重新建流，曲目切换有停顿，还容易丢歌首。</li><li><strong>错误被 <code>2&gt;/dev/null</code> 吞掉</strong>。失败静默，出问题看不到原因。</li><li><strong><code>! ... &amp;&amp; echo</code> 的逻辑反直觉</strong>，实际是失败才提示，但读起来像"成功才提示"。</li></ol>
+<p>更重要的是，<code>atvremote stream_file</code> 走的是 pyatv 的 AirPlay 推流路径，它<strong>自己管理 RTSP 会话</strong>，虽然能播，但它是「每首一个进程」的黑盒，无法做播放列表、无法暂停切歌，也无法显示封面歌词。</p>
 <p>所以下一步自然是想换成 mpv——Linux 上最顺手的播放器，有键盘控制、有图形界面、能播列表。</p>
-<p>---</p>
+<hr>
 <h2>二、换 mpv：撞上「35 秒断流」</h2>
 <p>mpv 本身不直接支持 AirPlay 输出，但它能通过 PipeWire 输出音频。PipeWire 有一个 <code>raop-sink</code> 模块（RAOP = Remote Audio Output Protocol，即 AirPlay 的底层协议），能把 HomePod 变成系统里一个普通的音频 sink。于是脚本改成：</p>
 <pre><code class="bash">SINK=$(pactl list short sinks | awk '/raop_sink/{print $2; exit}')
-mpv --audio-device="pipewire/$SINK" --no-video --shuffle "${files[@]}"
-</code></pre>
+mpv --audio-device="pipewire/$SINK" --no-video --shuffle "${files[@]}"</code></pre>
 <p>这一换，问题来了：<strong>播放约 35 秒后，音乐还在走（进度条在动、sink 显示 RUNNING），但 HomePod 没声音了</strong>。</p>
 <p>这个现象非常反直觉——「看起来一切正常，但就是没声」。要定位它，得先理解 AirPlay 的协议结构。</p>
-<p>---</p>
+<hr>
 <h2>三、原理：为什么「还在播」但「没声」</h2>
 <p>AirPlay（RAOP）推流分<strong>两条独立通道</strong>：</p>
-<table>
-<tr><th>通道</th><th>协议</th><th>作用</th><th>断了会怎样</th></tr>
-<tr><td><strong>控制通道</strong></td><td>RTSP over TCP（端口 7000）</td><td>握手、协商编码、音量同步、时间戳对齐</td><td>音频流变成「无头」数据，HomePod 不再出声</td></tr>
-<tr><td><strong>音频通道</strong></td><td>RTP over UDP</td><td>承载 PCM/ALAC 音频数据</td><td>直接没声，但 sink 会报错</td></tr>
-</table>
+<table><thead><tr><th>通道</th><th>协议</th><th>作用</th><th>断了会怎样</th></tr></thead><tbody><tr><td><strong>控制通道</strong></td><td>RTSP over TCP（端口 7000）</td><td>握手、协商编码、音量同步、时间戳对齐</td><td>音频流变成「无头」数据，HomePod 不再出声</td></tr><tr><td><strong>音频通道</strong></td><td>RTP over UDP</td><td>承载 PCM/ALAC 音频数据</td><td>直接没声，但 sink 会报错</td></tr></tbody></table>
 <p>关键在这里：<strong>两条通道是独立的</strong>。当 HomePod 把控制通道（TCP 7000）断掉后，音频通道（UDP）可能还在发——于是本机的 mpv 看到 sink 还在 RUNNING、进度还在走，就以为一切正常；但 HomePod 那边已经因为失去控制通道而停止出声了。</p>
 <p>这正是「还在播但没声」的根因。日志证实了这一点：</p>
-<pre><code class="">mod.raop-sink: sess.latency.msec 250.000000 should be an integer multiple of rtp.ptime 7.755102
+<pre><code>mod.raop-sink: sess.latency.msec 250.000000 should be an integer multiple of rtp.ptime 7.755102
 mod.raop-sink: error -32 (断开的管道)
-mod.raop-sink: error sending control packet: -9
-</code></pre>
-<ul>
-<li><code>error -32</code> = EPIPE，控制通道（RTSP/TCP）被对端断开；</li>
-<li><code>error -9</code> = EBADF，之后模块还在往一个已失效的 socket 写数据，每秒刷一次。</li>
-</ul>
-而 <code>-9</code> 那条日志最迷惑人：它刷得很凶，让人以为是网络抖动，其实它只是「控制通道已死」的<strong>后续症状</strong>，不是根因。
-<p>---</p>
+mod.raop-sink: error sending control packet: -9</code></pre>
+<ul><li><code>error -32</code> = EPIPE，控制通道（RTSP/TCP）被对端断开；</li><li><code>error -9</code> = EBADF，之后模块还在往一个已失效的 socket 写数据，每秒刷一次。</li></ul>
+<p>而 <code>-9</code> 那条日志最迷惑人：它刷得很凶，让人以为是网络抖动，其实它只是「控制通道已死」的<strong>后续症状</strong>，不是根因。</p>
+<hr>
 <h2>四、深挖根因：HomePod 主动断连接</h2>
 <p>为了确认不是网络问题，我做了一个关键观察——盯着 TCP 7000 连接的状态：</p>
-<pre><code class="">[11:37:16] sink=RUNNING tcp7000=1
+<pre><code>[11:37:16] sink=RUNNING tcp7000=1
 [11:37:18] sink=RUNNING tcp7000=0   # 控制通道断了
-[11:37:20] sink=RUNNING tcp7000=0
-</code></pre>
+[11:37:20] sink=RUNNING tcp7000=0</code></pre>
 <p>约 35 秒后，<code>tcp7000</code> 从 1 变 0——控制通道被断开，但 sink 依然是 RUNNING、mpv 依然在播。这坐实了「控制通道静默断开、音频通道假活」的判断。</p>
 <p>社区里有人进一步抓包确认：<strong>是 HomePod 主动终止控制通道</strong>（TCP 7000），断连后 HomePod 还会发 mDNS cache-flush 包——这是「协议层拒绝连接」的明确信号。也就是说，<strong>不是网络抖动，是 PipeWire 的 raop-sink 实现与 HomePod 的 AirPlay 协议不兼容</strong>，HomePod 在约 30 秒后撤掉了会话。</p>
 <p>其中一个关键线索是日志里的加密类型：</p>
-<ul>
-<li>PipeWire 1.4.2 的 raop-sink 默认 <code>raop.encryption.type = none</code>；</li>
-<li>而 HomePod 要求 <strong>SAP25（FairPlay）加密</strong>的 AirPlay 会话。</li>
-</ul>
-加密协商对不上，HomePod 就在 keep-alive 超时后断掉了连接。这解释了为什么调 <code>raop.latency.ms</code> 参数「只能多撑几秒」——治标不治本，真正的病根在加密协商。
-<p>---</p>
+<ul><li>PipeWire 1.4.2 的 raop-sink 默认 <code>raop.encryption.type = none</code>；</li><li>而 HomePod 要求 <strong>SAP25（FairPlay）加密</strong>的 AirPlay 会话。</li></ul>
+<p>加密协商对不上，HomePod 就在 keep-alive 超时后断掉了连接。这解释了为什么调 <code>raop.latency.ms</code> 参数「只能多撑几秒」——治标不治本，真正的病根在加密协商。</p>
+<hr>
 <h2>五、绕行：raop_play 稳定，但没有图形界面</h2>
 <p>在确认 PipeWire 的 raop-sink 是病根后，我先找了一个绕行方案：<code>raop_play</code>（Rust 写的独立 AirPlay 推流工具）。用 <code>ffmpeg</code> 把 mp3 解码成 PCM 喂给它：</p>
 <pre><code class="bash">ffmpeg -re -f concat -safe 0 -i playlist.txt -f s16le -acodec pcm_s16le -ar 44100 -ac 2 - \
-  | raop_play -v 50 -p 7000 192.168.68.158 -
-</code></pre>
+  | raop_play -v 50 -p 7000 192.168.68.158 -</code></pre>
 <p>实测这个方案<strong>稳定播了 150 秒零断流</strong>——因为 <code>raop_play</code> 自己正确实现了 HomePod 需要的加密握手和 keep-alive。</p>
 <p>但它有两个致命缺点：</p>
-<ol>
-<li>1. <strong>没有图形界面</strong>，看不到封面、歌词、进度；</li>
-<li>2. <strong>音量/暂停/切歌都要自己写</strong>（后来补了个 <code>hpctl</code> 控制音量，但暂停切歌做不了）。</li>
-</ol>
-所以问题又绕回来了：<strong>想要 mpv 的体验，就必须让 PipeWire 的 raop-sink 修好</strong>。
-<p>---</p>
+<ol><li><strong>没有图形界面</strong>，看不到封面、歌词、进度；</li><li><strong>音量/暂停/切歌都要自己写</strong>（后来补了个 <code>hpctl</code> 控制音量，但暂停切歌做不了）。</li></ol>
+<p>所以问题又绕回来了：<strong>想要 mpv 的体验，就必须让 PipeWire 的 raop-sink 修好</strong>。</p>
+<hr>
 <h2>六、最终解：升级 PipeWire 1.4.2 → 1.4.9</h2>
 <p>这时候做了个决定性的验证：编译最新的 PipeWire master（当时是 1.7.0），发现它的 raop-sink <strong>自动选择了 <code>fp_sap25</code> 加密</strong>：</p>
-<pre><code class="">mod.raop-discover: loading module args:'{... "raop.encryption.type":"fp_sap25" ...}'
-</code></pre>
+<pre><code>mod.raop-discover: loading module args:'{... "raop.encryption.type":"fp_sap25" ...}'</code></pre>
 <p>这证明上游<strong>已经修了 HomePod 的加密协商问题</strong>——只是 Debian trixie 的 1.4.2 太旧，没吃到这个修复。</p>
-<p>于是走 <strong>trixie-backports</strong> 源，把 PipeWire 全家桶从 1.4.2 升到 <strong>1.4.9</strong>（backports 官方打包，依赖 <code>libc6 >= 2.38</code> 与旧版一致，不拉高基础库，风险低、可回滚）。</p>
+<p>于是走 <strong>trixie-backports</strong> 源，把 PipeWire 全家桶从 1.4.2 升到 <strong>1.4.9</strong>（backports 官方打包，依赖 <code>libc6 &gt;= 2.38</code> 与旧版一致，不拉高基础库，风险低、可回滚）。</p>
 <p>升级后，<code>mpv → PipeWire raop-sink → HomePod</code> 的断流问题<strong>彻底消失</strong>。</p>
 <p><strong>升级脚本</strong>（回滚脚本同理，显式降回 1.4.2 即可）：</p>
 <pre><code class="bash">sudo apt-get update
@@ -377,21 +353,16 @@ sudo apt-get install -y -t trixie-backports \
     libpipewire-0.3-0t64 libpipewire-0.3-modules libpipewire-0.3-common \
     libspa-0.2-modules libspa-0.2-bluetooth gstreamer1.0-pipewire \
     wireplumber libwireplumber-0.5-0
-<p>systemctl --user restart pipewire.service pipewire-pulse.service wireplumber.service
-</code></pre></p>
+
+systemctl --user restart pipewire.service pipewire-pulse.service wireplumber.service</code></pre>
 <p>这里有个关键决策点：<strong>为什么用 backports 而不是 sid？</strong> 因为 sid 的 1.6.9 可能连带拉高 glibc 等基础库，风险大；而 backports 的 1.4.9 是官方为 trixie 专门打包的，依赖干净，<code>apt-get -s</code> 模拟安装显示「升级 15 个、新增 0、卸载 0」。</p>
-<p>---</p>
+<hr>
 <h2>七、彩蛋：图形窗口 + 封面 + 歌词</h2>
 <p>升级完成后，顺手把播放体验也补全了。mpv 原生就支持显示内嵌封面（attached_pic 会被识别为 <code>Image</code> 视频轨）和加载同名 <code>.lrc</code> 歌词（<code>sub-auto=fuzzy</code>）：</p>
 <pre><code class="bash">mpv --no-config --audio-device="pipewire/$SINK" \
-    --force-window=yes --sub-auto=fuzzy --shuffle "${files[@]}"
-</code></pre>
-<ul>
-<li><code>--force-window=yes</code>：弹出图形窗口；</li>
-<li>去掉 <code>--no-video</code>：让内嵌封面显示出来；</li>
-<li><code>--sub-auto=fuzzy</code>：自动加载与 mp3 同名的 <code>.lrc</code> 歌词，按时间高亮滚动。</li>
-</ul>
-实测验证：<code>Image --vid=1 "Album cover" (png 1280x720)</code> + <code>Subs --sid=1 'lrc' (text)</code> + <code>sink RUNNING</code>，封面、歌词、声音三者齐活。
+    --force-window=yes --sub-auto=fuzzy --shuffle "${files[@]}"</code></pre>
+<ul><li><code>--force-window=yes</code>：弹出图形窗口；</li><li>去掉 <code>--no-video</code>：让内嵌封面显示出来；</li><li><code>--sub-auto=fuzzy</code>：自动加载与 mp3 同名的 <code>.lrc</code> 歌词，按时间高亮滚动。</li></ul>
+<p>实测验证：<code>Image --vid=1 "Album cover" (png 1280x720)</code> + <code>Subs --sid=1 'lrc' (text)</code> + <code>sink RUNNING</code>，封面、歌词、声音三者齐活。</p>
 <blockquote>一个小坑：<code>--audio-display</code> 在 mpv 0.40 里是三态选项，<code>--audio-display=yes</code> 会报错、裸写 <code>--audio-display</code> 又要求参数。实际上它默认就开启，<strong>根本不用显式指定</strong>——只要别加 <code>--no-video</code> 就行。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
@@ -401,39 +372,15 @@ sudo apt-get install -y -t trixie-backports \
       </a>
     </div>
 
----
+<hr>
 <h2>八、总结</h2>
 <h3>各方案对比</h3>
-<table>
-<tr><th>方案</th><th>断流</th><th>图形界面</th><th>封面/歌词</th><th>暂停切歌</th><th>结论</th></tr>
-<tr><td>atvremote（pyatv）</td><td>无（但每首歌重连）</td><td>无</td><td>无</td><td>无</td><td>起步方案，体验差</td></tr>
-<tr><td>mpv + PipeWire 1.4.2</td><td><strong>35s 必断</strong></td><td>有</td><td>有</td><td>有</td><td>病根在 raop-sink 加密协商</td></tr>
-<tr><td>raop_play（独立推流）</td><td>无</td><td>无</td><td>无</td><td>无</td><td>稳定但体验残缺</td></tr>
-<tr><td><strong>mpv + PipeWire 1.4.9</strong></td><td><strong>无</strong></td><td><strong>有</strong></td><td><strong>有</strong></td><td><strong>有</strong></td><td><strong>最终解</strong></td></tr>
-</table>
+<table><thead><tr><th>方案</th><th>断流</th><th>图形界面</th><th>封面/歌词</th><th>暂停切歌</th><th>结论</th></tr></thead><tbody><tr><td>atvremote（pyatv）</td><td>无（但每首歌重连）</td><td>无</td><td>无</td><td>无</td><td>起步方案，体验差</td></tr><tr><td>mpv + PipeWire 1.4.2</td><td><strong>35s 必断</strong></td><td>有</td><td>有</td><td>有</td><td>病根在 raop-sink 加密协商</td></tr><tr><td>raop_play（独立推流）</td><td>无</td><td>无</td><td>无</td><td>无</td><td>稳定但体验残缺</td></tr><tr><td><strong>mpv + PipeWire 1.4.9</strong></td><td><strong>无</strong></td><td><strong>有</strong></td><td><strong>有</strong></td><td><strong>有</strong></td><td><strong>最终解</strong></td></tr></tbody></table>
 <h3>方法论沉淀</h3>
-<ol>
-<li>1. <strong>「还在播但没声」要想到双通道协议</strong>。AirPlay 的控制通道（RTSP/TCP）和音频通道（RTP/UDP）独立，控制通道断了音频通道可能假活，这是这类「假正常」的经典来源。</li>
-</ol>
-<ol>
-<li>2. <strong>日志里的 <code>-9</code>（EBADF）是症状不是根因</strong>。它表示「往失效的 socket 写数据」，真正要追的是它之前的 <code>-32</code>（EPIPE）——那是连接被对端断开的时刻。</li>
-</ol>
-<ol>
-<li>3. <strong>加密协商是 HomePod 断连的根因</strong>。PipeWire 1.4.2 用 <code>none</code>，HomePod 要 SAP25；1.4.9 修复了自动选择。升级比调 latency 参数有效得多。</li>
-</ol>
-<ol>
-<li>4. <strong>Debian 升级优先 backports 而非 sid</strong>。backports 是官方为当前发行版打包的、依赖干净可回滚；sid 可能拉高基础库，风险不可控。</li>
-</ol>
-<ol>
-<li>5. <strong>先看代码再动手、改动可回滚</strong>。这次升级全程保留了回滚脚本和版本清单，出问题随时能退回 1.4.2。</li>
-</ol>
+<ol><li><strong>「还在播但没声」要想到双通道协议</strong>。AirPlay 的控制通道（RTSP/TCP）和音频通道（RTP/UDP）独立，控制通道断了音频通道可能假活，这是这类「假正常」的经典来源。</li><li><strong>日志里的 <code>-9</code>（EBADF）是症状不是根因</strong>。它表示「往失效的 socket 写数据」，真正要追的是它之前的 <code>-32</code>（EPIPE）——那是连接被对端断开的时刻。</li><li><strong>加密协商是 HomePod 断连的根因</strong>。PipeWire 1.4.2 用 <code>none</code>，HomePod 要 SAP25；1.4.9 修复了自动选择。升级比调 latency 参数有效得多。</li><li><strong>Debian 升级优先 backports 而非 sid</strong>。backports 是官方为当前发行版打包的、依赖干净可回滚；sid 可能拉高基础库，风险不可控。</li><li><strong>先看代码再动手、改动可回滚</strong>。这次升级全程保留了回滚脚本和版本清单，出问题随时能退回 1.4.2。</li></ol>
 <h3>最终可用的脚本</h3>
-<ul>
-<li><code>newplay.sh</code>：mpv 弹窗播放 + 封面 + 歌词，声音走 HomePod；</li>
-<li><code>hpctl</code>：独立的音量控制命令（<code>hpctl up/down/vol N/mute</code>），与播放并行。</li>
-</ul>
-至此，从「点一下」到「点一下真的能用」，中间隔着一个协议加密协商的坑。希望这篇复盘能帮到下一个想在 Linux 上推流到 HomePod 的人。
-
+<ul><li><code>newplay.sh</code>：mpv 弹窗播放 + 封面 + 歌词，声音走 HomePod；</li><li><code>hpctl</code>：独立的音量控制命令（<code>hpctl up/down/vol N/mute</code>），与播放并行。</li></ul>
+<p>至此，从「点一下」到「点一下真的能用」，中间隔着一个协议加密协商的坑。希望这篇复盘能帮到下一个想在 Linux 上推流到 HomePod 的人。</p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

@@ -280,9 +280,8 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-
-<blockquote><strong>原文出处</strong>：<a href="https://www.phoronix.com/news/AMD-Zen-5-Mispredict-Cost">GCC Patch Adjusting AMD Zen 5 Misprediction Cost Nets 12% Win In Benchmark</a> — Michael Larabel, Phoronix, 2026-08-23<br>
-<strong>一手补丁</strong>：<a href="https://gcc.gnu.org/pipermail/gcc-patches/2026-August/728535.html">gcc-patches 邮件列表，Venkataramanan Kumar (AMD)，2026-08</a><br>
+<blockquote><strong>原文出处</strong>：<a href="https://www.phoronix.com/news/AMD-Zen-5-Mispredict-Cost" target="_blank" rel="noopener noreferrer">GCC Patch Adjusting AMD Zen 5 Misprediction Cost Nets 12% Win In Benchmark</a> — Michael Larabel, Phoronix, 2026-08-23<br>
+<strong>一手补丁</strong>：<a href="https://gcc.gnu.org/pipermail/gcc-patches/2026-August/728535.html" target="_blank" rel="noopener noreferrer">gcc-patches 邮件列表，Venkataramanan Kumar (AMD)，2026-08</a><br>
 本文为基于原始报道的二次解读，非逐字翻译。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
@@ -292,32 +291,30 @@
       </a>
     </div>
 
-"改两行代码，性能提升 12%。"——这种话放在营销号里多半是标题党，但这次它是真的，而且出自 GCC 编译器本身。
+<p>"改两行代码，性能提升 12%。"——这种话放在营销号里多半是标题党，但这次它是真的，而且出自 GCC 编译器本身。</p>
 <p>AMD 编译器工程师 Venkataramanan Kumar 最近向 GCC 提交了一个只有两行的补丁，把 Zen 4 和 Zen 5 在 GCC 内部"成本表"里的<strong>分支预测错误成本</strong>上调了 3 个单位。结果在 SPEC CPU 2017 的 <code>544.nab_r</code> 基准上，Zen 5 涨了 12%，Zen 4 涨了 9%。</p>
 <p>这事儿有意思的地方，不在于"两行代码多神"，而在于它暴露了一个长期被忽视的事实：<strong>编译器对现代 CPU 分支预测代价的估计，早就过时了。</strong></p>
 <h2>一、编译器里的"成本表"到底是什么？</h2>
 <p>GCC 在生成代码时，并不是照着 C 代码逐句翻译。它对每一种 CPU 微架构都维护着一张<strong>成本表（cost table）</strong>，里面量化了各类操作的"代价"——加法、乘法、load/store、分支、cmov（条件传送）各值多少 cycles。</p>
 <p>为什么需要它？因为同一个语义，编译器可以写成不同的形态。最典型的就是"分支 vs 条件传送"：</p>
 <pre><code class="c">// 写法 A：普通分支
-if (a > b)
+if (a &gt; b)
     x = a;
 else
     x = b;
-<p>// 写法 B：条件传送（无分支）
-x = (a > b) ? a : b;   // 通常编译为 cmov
-</code></pre></p>
+
+// 写法 B：条件传送（无分支）
+x = (a &gt; b) ? a : b;   // 通常编译为 cmov</code></pre>
 <p>写法 A 有分支：如果 CPU 预测错了，流水线要被冲刷（flush），白跑几十个周期。写法 B 用 <code>cmov</code>，没有分支，但会<strong>两条路都算一遍</strong>再挑一个结果，增加了一些数据依赖和吞吐量开销。</p>
 <p>那么编译器该选哪个？它看成本表：如果"分支预测失败一次的代价"被估得很低，编译器就觉得"赌一把分支也划算"，于是保留分支；如果这张表里分支失败的代价被估得足够高，编译器就会更积极地把分支改写成 <code>cmov</code>，从而避免预测失败带来的流水线停顿。</p>
 <p>GCC 里这个参数就叫 <strong>分支预测错误成本（branch misprediction cost）</strong>，在 x86 后端用 <code>COSTS_N_INSNS(n)</code> 来表示"相当于 n 条指令的代价"。</p>
 <h2>二、那两行代码到底改了什么</h2>
 <p>补丁的本质，就是把 Zen 4 / Zen 5 成本表里这个参数从 <code>COSTS_N_INSNS(2)</code> 抬到 <code>COSTS_N_INSNS(2) + 3</code>，也就是上调 3 个单位（约相当于多估了 3 条指令的代价）：</p>
 <pre><code class="diff"> // 概念性 diff（Zen 4 / Zen 5 成本表，节选自补丁意图）
-<ul>
-<li> /<em> Branch misprediction cost.  </em>/ COSTS_N_INSNS (2)</li>
-</ul>+  /<em> Branch misprediction cost.  </em>/ COSTS_N_INSNS (2) + 3
-</code></pre>
+-  /* Branch misprediction cost.  */ COSTS_N_INSNS (2)
++  /* Branch misprediction cost.  */ COSTS_N_INSNS (2) + 3</code></pre>
 <blockquote>注：上面是基于补丁说明与 Phoronix 报道还原的"意图性 diff"，精确的变量名、行号与上下文以 GCC 邮件列表里的原始提交为准。</blockquote>
-就这么一点改动，编译器在面向 Zen 4 / Zen 5 生成代码时，会<strong>更激进地把分支转换成条件传送</strong>，从而减少因预测失败导致的流水线清空。
+<p>就这么一点改动，编译器在面向 Zen 4 / Zen 5 生成代码时，会<strong>更激进地把分支转换成条件传送</strong>，从而减少因预测失败导致的流水线清空。</p>
 <h2>三、为什么是现在？因为流水线越来越深</h2>
 <p>分支预测是现代高性能 CPU 的命门。CPU 不能等 <code>if</code> 的条件算出来才去取下面的指令——那太慢了。它会在条件就绪之前就"赌"一个方向，提前把指令灌进流水线。赌对了，畅通无阻；赌错了，整条流水线里已经预取、译码、执行的指令全部作废，重新来过。</p>
 <p>这个"赌错"的代价，正比于流水线的深度。Zen 4 / Zen 5 的流水线比十年前的 CPU 深得多，一次预测失败的惩罚早已不是 GCC 成本表里那个老旧预设值能代表的。换句话说：<strong>硬件进化了，编译器里的那张表却还停留在老认知</strong>，于是编译器一直过度保留了本该被消除的分支。</p>
@@ -325,43 +322,26 @@ x = (a > b) ? a : b;   // 通常编译为 cmov
 <h2>四、12% 从哪来：544.nab_r 是个什么基准</h2>
 <p>成绩来自 SPEC CPU 2017 的 <code>544.nab_r</code>。NAB 是 <strong>Nucleic Acid Builder（核酸构建器）</strong> 的缩写，一个分子建模领域的科学计算程序。它是 SPEC 里出了名的<strong>分支密集、数据依赖复杂</strong>的用例——正好是"分支 vs cmov 权衡"最敏感的那类负载。</p>
 <p>测试条件也值得注意：补丁作者在 <code>-O3 -march=native -flto</code> 下测得 Zen 5 +12%、Zen 4 +9%。<code>-march=native</code> 让编译器针对本机微架构调优（也就是用上这张成本表），<code>-flto</code> 做全程序优化，给 if-conversion 这类跨函数变换留足空间。</p>
-<table>
-<tr><th>补丁 / 平台</th><th>基准</th><th>提升</th><th>调优方式</th></tr>
-<tr><td>AMD（Venkataramanan Kumar）Zen 5</td><td>544.nab_r</td><td><strong>+12%</strong></td><td><code>-O3 -march=native -flto</code></td></tr>
-<tr><td>AMD Zen 4</td><td>544.nab_r</td><td><strong>+9%</strong></td><td>同上</td></tr>
-<tr><td>Intel（Lili Cui）Granite Rapids</td><td>544.nab_r</td><td><strong>+12.7%</strong></td><td>通用 x86 调优</td></tr>
-<tr><td>Intel（Lili Cui）Zen 5</td><td>544.nab_r</td><td><strong>+12.1%</strong></td><td>通用 x86 调优</td></tr>
-</table>
+<table><thead><tr><th>补丁 / 平台</th><th>基准</th><th>提升</th><th>调优方式</th></tr></thead><tbody><tr><td>AMD（Venkataramanan Kumar）Zen 5</td><td>544.nab_r</td><td><strong>+12%</strong></td><td><code>-O3 -march=native -flto</code></td></tr><tr><td>AMD Zen 4</td><td>544.nab_r</td><td><strong>+9%</strong></td><td>同上</td></tr><tr><td>Intel（Lili Cui）Granite Rapids</td><td>544.nab_r</td><td><strong>+12.7%</strong></td><td>通用 x86 调优</td></tr><tr><td>Intel（Lili Cui）Zen 5</td><td>544.nab_r</td><td><strong>+12.1%</strong></td><td>通用 x86 调优</td></tr></tbody></table>
 <p>需要泼盆冷水：这 12% 是<strong>单基准</strong>的成绩。编译器的成本表调优一向是"对着 SPEC 调"，其他负载未必都有这么夸张的增益；但 SPEC 本就是这类调优的事实标准基准，能在一个用例上白捡 12%，已经足够诱人。</p>
 <h2>五、这不是 AMD 独创，Intel 两个月前就干过</h2>
 <p>有意思的是，这次"上调 3 个单位"的思路并非 AMD 首创。早在 <strong>2026 年 6 月</strong>，Intel 软件工程师 <strong>Lili Cui</strong> 就向 GCC 的<strong>通用 x86 调优</strong>提交了一个一行改动，用了<strong>完全相同</strong>的理由：现代 CPU 流水线更深，分支预测失败更贵，所以把通用成本表里的分支预测成本也上调 3。</p>
 <p>那个补丁的战绩是：Granite Rapids <strong>+12.7%</strong>、Zen 5 <strong>+12.1%</strong>（同样在 544.nab_r 上）。而且它是改的<strong>通用 x86/x86-64 调优</strong>——也就是说，哪怕你没开 <code>-march=native</code>、只用通用调优，也能吃到这波红利。该补丁已合入 GCC Git，预计随明年的 <strong>GCC 17</strong> 稳定版发布。</p>
-<blockquote>参考：<a href="https://www.phoronix.com/news/GCC-x86-Generic-Mispredict">GCC's Generic x86 Tuning Change Begins Benefiting Modern Intel & AMD CPUs</a> — Michael Larabel, Phoronix, 2026-06-24</blockquote>
-一个 AMD 工程师、一个 Intel 工程师，分别在 CPU 专用成本表和通用成本表上，用同一种推理拿到了几乎一样的数字。这恰恰说明：<strong>问题不在某家 CPU，而在 GCC 那张成本表本身已经普遍低估了分支预测的代价。</strong>
+<blockquote>参考：<a href="https://www.phoronix.com/news/GCC-x86-Generic-Mispredict" target="_blank" rel="noopener noreferrer">GCC's Generic x86 Tuning Change Begins Benefiting Modern Intel &amp; AMD CPUs</a> — Michael Larabel, Phoronix, 2026-06-24</blockquote>
+<p>一个 AMD 工程师、一个 Intel 工程师，分别在 CPU 专用成本表和通用成本表上，用同一种推理拿到了几乎一样的数字。这恰恰说明：<strong>问题不在某家 CPU，而在 GCC 那张成本表本身已经普遍低估了分支预测的代价。</strong></p>
 <h2>六、真正的故事：编译器调优，永远慢硬件半拍</h2>
 <p>把两件事放一起看，更有意思的是 Phoronix 在 AMD 那篇里的点评：</p>
 <blockquote>AMD 现在比过去更早地把新 CPU 目标送进 GCC/Clang（Zen 6 去年 12 月就进了 GCC 16），但<strong>成本表调优</strong>这块，仍然是他们可以做得更好的地方——Znver5 和 Znver6 在 GCC 里至今很大程度上还在沿用 Znver4 的成本表信息，各种微调往往要等硬件发布后好几个月才补上。考虑到 GCC 漫长的发布周期，这种时机常常很尴尬。</blockquote>
-这戳中了一个行业老问题：<strong>硬件出厂了，编译器还没学会怎么榨干它。</strong> GCC 一年一个大版本，一个成本表的校准从提交到进稳定版、再到被发行版打包默认采用，往往要跨好几个季度。等普通用户用上"正确"的成本表时，这块 CPU 都快退市了。
+<p>这戳中了一个行业老问题：<strong>硬件出厂了，编译器还没学会怎么榨干它。</strong> GCC 一年一个大版本，一个成本表的校准从提交到进稳定版、再到被发行版打包默认采用，往往要跨好几个季度。等普通用户用上"正确"的成本表时，这块 CPU 都快退市了。</p>
 <p>所以"两行代码换 12%"的爽文背后，是 AMD/Intel 工程师事后补课的身影——而且补的，还是上一个架构（Znver4）留下来的老表。</p>
 <h2>七、作为使用者，现在能做什么</h2>
-<ul>
-<li><strong>直接用 <code>-march=native</code></strong>：这么简单一行，就能让编译器针对你手头的 Zen 4/5 选用正确的成本表与指令集。很多"为什么我的程序没跑满 CPU"的谜题，答案就是忘了开它（当然要权衡可移植性）。</li>
-<li><strong>等 GCC 17（或 16.3 反向移植）</strong>：Venkataramanan Kumar 的这个补丁目前在邮件列表审核中，若无意外会进明年的 GCC 17 特性版，并可能<strong>反向移植到 GCC 16.3</strong> 小版本。</li>
-<li><strong>想自己验证？</strong> 可以对比 <code>gcc -O3 -march=native</code> 与加了 <code>-fno-if-conversion</code> / <code>-fno-if-conversion2</code> 的生成代码——后者会抑制分支到 cmov 的变换，你能直接看到"少做了多少 cmov"，以及它对应的性能差异。用 <code>-O2 -S</code> 把汇编码导出来，搜 <code>cmov</code> 看密度，是理解这件事最直观的方式。</li>
-<li><strong>别只盯 SPEC</strong>：12% 是 544.nab_r 一个用例。你的真实负载里分支密集、预测困难的热点，才更可能从这波调优里受益。</li>
-</ul>
+<ul><li><strong>直接用 <code>-march=native</code></strong>：这么简单一行，就能让编译器针对你手头的 Zen 4/5 选用正确的成本表与指令集。很多"为什么我的程序没跑满 CPU"的谜题，答案就是忘了开它（当然要权衡可移植性）。</li><li><strong>等 GCC 17（或 16.3 反向移植）</strong>：Venkataramanan Kumar 的这个补丁目前在邮件列表审核中，若无意外会进明年的 GCC 17 特性版，并可能<strong>反向移植到 GCC 16.3</strong> 小版本。</li><li><strong>想自己验证？</strong> 可以对比 <code>gcc -O3 -march=native</code> 与加了 <code>-fno-if-conversion</code> / <code>-fno-if-conversion2</code> 的生成代码——后者会抑制分支到 cmov 的变换，你能直接看到"少做了多少 cmov"，以及它对应的性能差异。用 <code>-O2 -S</code> 把汇编码导出来，搜 <code>cmov</code> 看密度，是理解这件事最直观的方式。</li><li><strong>别只盯 SPEC</strong>：12% 是 544.nab_r 一个用例。你的真实负载里分支密集、预测困难的热点，才更可能从这波调优里受益。</li></ul>
 <h2>八、结语</h2>
 <p>一行成本表参数，撬动 12% 的基准成绩。这个故事最迷人的地方，不是"编译器好神"，而是它提醒我们：<strong>现代 CPU 的性能，有很大一部分是被软件"默认配置"白白浪费掉的。</strong> 当 Zen 5 的流水线已经深到分支预测失败的代价远超旧表预设时，只要有人把那个数字从 2 改成 2+3，被埋没的性能就自己浮出来了。</p>
 <p>对于爱折腾的人来说，这大概就是自由软件最好玩的地方：机器里藏着多少没被唤醒的算力，往往只差一个你能读、能改、能重编译的补丁。</p>
-<p>---</p>
+<hr>
 <h2>参考文献</h2>
-<ul>
-<li>Phoronix — <a href="https://www.phoronix.com/news/AMD-Zen-5-Mispredict-Cost">GCC Patch Adjusting AMD Zen 5 Misprediction Cost Nets 12% Win In Benchmark</a>（Michael Larabel, 2026-08-23）</li>
-<li>GCC 邮件列表 — <a href="https://gcc.gnu.org/pipermail/gcc-patches/2026-August/728535.html">Venkataramanan Kumar 的补丁提交（gcc-patches, 2026-08）</a></li>
-<li>Phoronix — <a href="https://www.phoronix.com/news/GCC-x86-Generic-Mispredict">GCC's Generic x86 Tuning Change Begins Benefiting Modern Intel & AMD CPUs</a>（Michael Larabel, 2026-06-24，Intel Lili Cui 的通用 x86 改动）</li>
-<li>SPEC CPU 2017 — <a href="https://www.spec.org/cpu2017/">544.nab_r（Nucleic Acid Builder）基准说明</a>（官方基准套件）</li>
-<li>GCC 手册 — <a href="https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html">x86 调优选项与 -march / -mtune</a>（成本表如何被 <code>-march</code>/<code>-mtune</code> 选择）</li>
-</ul>
+<ul><li>Phoronix — <a href="https://www.phoronix.com/news/AMD-Zen-5-Mispredict-Cost" target="_blank" rel="noopener noreferrer">GCC Patch Adjusting AMD Zen 5 Misprediction Cost Nets 12% Win In Benchmark</a>（Michael Larabel, 2026-08-23）</li><li>GCC 邮件列表 — <a href="https://gcc.gnu.org/pipermail/gcc-patches/2026-August/728535.html" target="_blank" rel="noopener noreferrer">Venkataramanan Kumar 的补丁提交（gcc-patches, 2026-08）</a></li><li>Phoronix — <a href="https://www.phoronix.com/news/GCC-x86-Generic-Mispredict" target="_blank" rel="noopener noreferrer">GCC's Generic x86 Tuning Change Begins Benefiting Modern Intel &amp; AMD CPUs</a>（Michael Larabel, 2026-06-24，Intel Lili Cui 的通用 x86 改动）</li><li>SPEC CPU 2017 — <a href="https://www.spec.org/cpu2017/" target="_blank" rel="noopener noreferrer">544.nab_r（Nucleic Acid Builder）基准说明</a>（官方基准套件）</li><li>GCC 手册 — <a href="https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html" target="_blank" rel="noopener noreferrer">x86 调优选项与 -march / -mtune</a>（成本表如何被 <code>-march</code>/<code>-mtune</code> 选择）</li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

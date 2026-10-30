@@ -283,7 +283,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>原文：<a href="https://www.phoronix.com/news/Linux-ZRAM-Rework-Savings">Linux's ZRAM Reworked For Greater Memory Savings, Better Performance</a>（Phoronix，2026-10-05，作者 Michael Larabel）。本文为<strong>译文 + 解读</strong>。</blockquote>
+<blockquote>原文：<a href="https://www.phoronix.com/news/Linux-ZRAM-Rework-Savings" target="_blank" rel="noopener noreferrer">Linux's ZRAM Reworked For Greater Memory Savings, Better Performance</a>（Phoronix，2026-10-05，作者 Michael Larabel）。本文为<strong>译文 + 解读</strong>。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
       <span class="tc-ad-label">推广</span>
@@ -299,55 +299,47 @@
 <h3>问题一：优先级反转，读被写挡住</h3>
 <p>这是补丁作者本人在邮件里解释的核心问题，值得完整引述：</p>
 <blockquote>「zcomp 部分主要是在解决<strong>某些配置下出现的优先级反转问题</strong>。在 zcomp 里，我们<strong>一直把读上下文和写上下文放在同一个 per-CPU 流里</strong>。有了可抢占的 zram，这就成了麻烦：<strong>一个更高优先级的读操作可以抢占写操作</strong>，而那个写操作<strong>可能持有流锁</strong>；由于压缩流被这个被抢占的写操作锁着，<strong>读操作就被挡在了同一把流锁上</strong>。」</blockquote>
-<strong>这段描述的因果链比较绕，拆开看</strong>：
-<ol>
-<li>1. 内核里，<strong>读操作（解压）的优先级高于写操作（压缩）</strong>：因为读往往是缺页处理的一部分，用户进程正等着；</li>
-<li>2. 但<strong>读和写共用同一个 per-CPU 压缩流，也就共用同一把锁</strong>；</li>
-<li>3. 于是出现经典的优先级反转：<strong>高优先级任务（读）被低优先级任务（写）持有的锁阻塞</strong>，而低优先级任务又没法被调度回来放锁；</li>
-<li>4. <strong>结果是「优先」二字失效</strong>：本该优先的读，被迫等写。</li>
-</ol>
+<p><strong>这段描述的因果链比较绕，拆开看</strong>：</p>
+<ol><li>内核里，<strong>读操作（解压）的优先级高于写操作（压缩）</strong>：因为读往往是缺页处理的一部分，用户进程正等着；</li><li>但<strong>读和写共用同一个 per-CPU 压缩流，也就共用同一把锁</strong>；</li><li>于是出现经典的优先级反转：<strong>高优先级任务（读）被低优先级任务（写）持有的锁阻塞</strong>，而低优先级任务又没法被调度回来放锁；</li><li><strong>结果是「优先」二字失效</strong>：本该优先的读，被迫等写。</li></ol>
 <h3>作者给出的解法：读写本来就不该共用流</h3>
 <p>关键论证是这一句：</p>
 <blockquote>「然而，<strong>我们没有任何理由让读上下文和写上下文共享并争抢同一个流</strong>，因为<strong>读（解压）和写（压缩）路径是完全独立的，它们从不触碰对方的缓冲区</strong>。因此，我们可以把压缩流<strong>拆成 per-CPU 读流和 per-CPU 写流</strong>，这样读和写就不会再互相阻塞了。」</blockquote>
 <blockquote>作者还特别注明：<strong>这个想法来自 Barry Song</strong>。（kudos 在开源邮件列表里通常标注真实贡献者，这点值得留意。）</blockquote>
-<strong>为什么「互不触碰缓冲区」是关键论据</strong>：把两个东西拆开需要证明「拆开是安全的」。作者的论据不是「拆开更快」，而是<strong>「它们本来就没有数据依赖」</strong>。既然读写路径不共享缓冲区，那么共用一个流就是<strong>纯粹的历史包袱，而非设计需要</strong>。
+<p><strong>为什么「互不触碰缓冲区」是关键论据</strong>：把两个东西拆开需要证明「拆开是安全的」。作者的论据不是「拆开更快」，而是<strong>「它们本来就没有数据依赖」</strong>。既然读写路径不共享缓冲区，那么共用一个流就是<strong>纯粹的历史包袱，而非设计需要</strong>。</p>
 <h3>问题二：重压缩流的分配浪费</h3>
 <p>这是<strong>内存节省的真正来源</strong>，作者解释得很清楚：</p>
 <blockquote>「系列里的最后一个补丁<strong>建立在读写流解耦之上</strong>，<strong>重做了二级流的处理方式</strong>。二级压缩流<strong>只被重压缩使用</strong>，而重压缩<strong>由设备锁串行化</strong>，也就是说它是<strong>单线程的</strong>。然而，<strong>我们仍然按 per-CPU 分配二级流</strong>（我们需要允许对重压缩后的对象进行并发读）。<strong>因为现在有了专用的读/写流</strong>，我们可以<strong>分配一个单例压缩上下文（用于重压缩），同时仍然保有 per-CPU 的解压上下文</strong>。这在<strong>某些后端和配置下（例如 zstd、deflate、lz4hc）能省下相当可观的内存</strong>。」</blockquote>
-<strong>这段话里的账要这么算</strong>：
-<table>
-<tr><th>项</th><th>旧行为</th><th>新行为</th></tr>
-<tr><td>二级流（重压缩用）</td><td><strong>按 per-CPU 分配</strong></td><td><strong>单例</strong></td></tr>
-<tr><td>实际并发使用</td><td><strong>同一时刻只用一个</strong>（重压缩被设备锁串行化）</td><td>仍是一个</td></tr>
-<tr><td>浪费</td><td><strong><code>num_online_cpus() - 1</code> 个流白分配</strong></td><td>消除</td></tr>
-<tr><td>解压上下文</td><td>复用二级流</td><td><strong>仍保持 per-CPU</strong></td></tr>
-</table>
+<p><strong>这段话里的账要这么算</strong>：</p>
+<table><thead><tr><th>项</th><th>旧行为</th><th>新行为</th></tr></thead><tbody><tr><td>二级流（重压缩用）</td><td><strong>按 per-CPU 分配</strong></td><td><strong>单例</strong></td></tr><tr><td>实际并发使用</td><td><strong>同一时刻只用一个</strong>（重压缩被设备锁串行化）</td><td>仍是一个</td></tr><tr><td>浪费</td><td><strong><code>num_online_cpus() - 1</code> 个流白分配</strong></td><td>消除</td></tr><tr><td>解压上下文</td><td>复用二级流</td><td><strong>仍保持 per-CPU</strong></td></tr></tbody></table>
 <p><strong>所以省下来的不是「一个新算法」，而是「每个优先级列表上都存在的、按 CPU 数倍增的空转分配」</strong>。作者特别点名的 <strong>zstd、deflate、lz4hc</strong> 是<strong>每个流的工作内存占用较大</strong>的后端：这些算法的 per-stream 状态越大，省得越多。</p>
 <blockquote>还有一个关键点：<strong>作者强调解压上下文仍然保持 per-CPU</strong>。也就是说这次是<strong>「把不需要 per-CPU 的东西收成单例」</strong>，而不是无脑减少并发度。<strong>压缩能省内存的地方省，解压该有的并发保留</strong>。这是个有取舍的设计，不是一刀切的激进简化。</blockquote>
 <h2>二、省了多少？性能提升多少？</h2>
 <p><strong>内存</strong>：官方说法是<strong>「每个上下文、每个 CPU 从两位数 KB 到三位数 KB」</strong>（double digits KB to triple digits KB）。Phoronix 补了一句很实在的话：<strong>「在 per-context 和 per-CPU 核心的基础上，这些改进有叠加效应。」</strong></p>
 <p><strong>性能</strong>：作者原话是「<strong>解耦读和写能在合成测试上带来明显的性能提升</strong>」（noticeable performance improvements on synthetic tests）。Phoronix 的说法更积极一些：拆分后端代码「<strong>显示出也能带来一些大幅改进的能力</strong>」。</p>
 <blockquote>⚠️ <strong>注意措辞的分寸</strong>：作者说的是「<strong>合成测试（synthetic tests）</strong>上明显」。<strong>这通常是内存管理类补丁的标准表述</strong>：合成测试能隔离变量，但<strong>真实负载（尤其是 swap 压力、编译、浏览器多标签）能否复现同样幅度，需要等更全面的基准或实际落地后再看</strong>。Phoronix 的「massive improvements」是媒体转述时的语气强化。</blockquote>
-<strong>现状</strong>：<strong>补丁已送 LKML 评审</strong>。也就是说，<strong>还没合入，还没到你我机器上</strong>。
+<p><strong>现状</strong>：<strong>补丁已送 LKML 评审</strong>。也就是说，<strong>还没合入，还没到你我机器上</strong>。</p>
 <h2>三、结合本机实测：zram 到底在替你干多少活</h2>
 <p>抽象讨论不如看真机。笔者手上这台机器的 zram 状态如下：</p>
-<pre><code class="">$ swapon --show
+<pre><code>$ swapon --show
 NAME        TYPE      SIZE USED PRIO
 /dev/zram0  partition 7.7G 2.4G  100     ← zram 交换，已用 2.4G
-<p>$ cat /sys/block/zram0/comp_algorithm
-lzo-rle lzo lz4 lz4hc [zstd] deflate 842   ← 当前选中 zstd</p>
-<p>$ uname -r
-7.2.8-x64v3-xanmod1
-</code></pre></p>
+
+$ cat /sys/block/zram0/comp_algorithm
+lzo-rle lzo lz4 lz4hc [zstd] deflate 842   ← 当前选中 zstd
+
+$ uname -r
+7.2.8-x64v3-xanmod1</code></pre>
 <p><strong>几个可以立刻对着看的点</strong>：</p>
 <p><strong>1. 这机器正在用 zstd 作为 zram 压缩算法</strong>，而作者点名的「内存节省明显」的后端里<strong>恰好就有 zstd</strong>。这类后端<strong>每个流的工作内存较大</strong>（zstd 的窗口/哈希表），所以「按 CPU 数白分配的二级流」在这里的绝对浪费是<strong>偏大</strong>的一档。</p>
 <p><strong>2. <code>2.4G</code> 已用</strong>说明 zram 不是摆设，它在<strong>真实承压</strong>。一台 16 核机器上，per-CPU 的流数量本身就是 16 份；<strong>如果二级流也按 CPU 分配，那就是 16 份里只有 1 份在用</strong>。</p>
 <p><strong>3. 算法列表里有 <code>lz4hc</code> 和 <code>deflate</code></strong>，也在作者列举的受益名单里。这意味着<strong>如果按文档启用多级压缩（<code>CONFIG_ZRAM_MULTI_COMP</code> + <code>recomp_algorithm</code>）做「空闲页重压缩」</strong>，二级流的分配方式就直接决定这项功能的<strong>内存性价比</strong>。</p>
-<blockquote><strong>从「重压缩」的机制能看出为什么二级流的浪费特别刺眼</strong>：zram 的多级压缩允许配置<strong>最多 4 个算法</strong>（1 主 + 3 副），副算法用更慢但压缩率更高的算法去<strong>重压「压缩得不理想的页」或「空闲冷页」</strong>。这套机制<strong>本身就是为了省内存</strong>，结果它自己的辅助数据结构却按 CPU 数倍地浪费内存，这个矛盾正是补丁要消除的。</blockquote>>
-<blockquote>参考内核文档里重压缩的用法（<code>/sys/block/zramX/recompress</code>）：<br>
-<pre><code class="bash">> # 空闲页重压缩，只处理大于 3000 字节的页<br>
-echo "type=idle threshold=3000 priority=1" > /sys/block/zramX/recompress<br>
-</code></pre><br>
+<blockquote><strong>从「重压缩」的机制能看出为什么二级流的浪费特别刺眼</strong>：zram 的多级压缩允许配置<strong>最多 4 个算法</strong>（1 主 + 3 副），副算法用更慢但压缩率更高的算法去<strong>重压「压缩得不理想的页」或「空闲冷页」</strong>。这套机制<strong>本身就是为了省内存</strong>，结果它自己的辅助数据结构却按 CPU 数倍地浪费内存，这个矛盾正是补丁要消除的。<br>
+<br>
+参考内核文档里重压缩的用法（<code>/sys/block/zramX/recompress</code>）：<br>
+<code>`</code>bash<br>
+# 空闲页重压缩，只处理大于 3000 字节的页<br>
+echo "type=idle threshold=3000 priority=1" &gt; /sys/block/zramX/recompress<br>
+<code>`</code><br>
 文档里还有一句实用提醒：<strong>「建议总是显式指定 <code>priority</code> 参数」</strong>：因为同一算法可以以不同优先级注册多次（参数不同），用 <code>algo</code> 名字去选可能选错。</blockquote>
 <h2>四、解读</h2>
 <p><strong>1. 这是一次「架构债清偿」，不是功能新增。</strong></p>
@@ -357,24 +349,11 @@ echo "type=idle threshold=3000 priority=1" > /sys/block/zramX/recompress<br>
 <p>「省几十到几百 KB」听起来很小。但<strong>优先级反转是正确性问题，不是性能问题</strong>：读操作（通常是缺页路径）<strong>本该优先</strong>，却因为和写共用一把锁而被阻塞。<strong>在内存吃紧、swap 频繁的机器上，这种阻塞会表现为「明明有 zram，系统还是会卡顿」</strong>。而这类症状很难归因到「读写共享流」这个根因上。</p>
 <p><strong>换句话说：真正让这次重构有价值的是「读不再被写挡住」，省内存是顺带。</strong></p>
 <p><strong>3. 媒体叙事与补丁本意的温差，值得留一分清醒。</strong></p>
-<p>对照两边的措辞：
-<ul>
-<li><strong>作者</strong>：「合成测试上明显的性能提升」、「某些后端和配置下省下相当可观的内存」，<strong>限定条件写得很清楚</strong>；</li>
-<li><strong>标题/媒体</strong>：「Greater Memory Savings, Better Performance」、正文里更进一步的「massive improvements」。</li>
-</ul>
-<strong>这不是说媒体夸大</strong>。Phoronix 的转述基本忠实。但<strong>读者要自己分清：「合成测试上明显」和「你日常会感觉快」是两件事</strong>。内存管理补丁尤其如此，它的收益高度依赖<strong>你的负载是否恰好压在那个路径上</strong>。</p>
+<p>对照两边的措辞：</p>
+<ul><li><strong>作者</strong>：「合成测试上明显的性能提升」、「某些后端和配置下省下相当可观的内存」，<strong>限定条件写得很清楚</strong>；</li><li><strong>标题/媒体</strong>：「Greater Memory Savings, Better Performance」、正文里更进一步的「massive improvements」。</li></ul>
+<p><strong>这不是说媒体夸大</strong>。Phoronix 的转述基本忠实。但<strong>读者要自己分清：「合成测试上明显」和「你日常会感觉快」是两件事</strong>。内存管理补丁尤其如此，它的收益高度依赖<strong>你的负载是否恰好压在那个路径上</strong>。</p>
 <p><strong>4. 给运维的实际建议。</strong></p>
-<ul>
-<li><strong>现在</strong>：<strong>什么都不用做</strong>。补丁还在 LKML，没进任何稳定版。你机器上的 zram 行为不变。</li>
-<li><strong>值得关注</strong>：如果你<strong>大规模用 zram 做 swap</strong>（尤其是容器密度高、或内存超卖的虚拟化宿主），这类「按 CPU 数倍增的小额浪费」<strong>在整机尺度上会放大</strong>。可以趁现在记一笔，等补丁落地后<strong>对比同一负载下的 zram 内存占用</strong>。</li>
-<li><strong>如果你已经启用了多级压缩</strong>（<code>CONFIG_ZRAM_MULTI_COMP</code> + 多个 <code>recomp_algorithm</code>），<strong>你是这次改动最直接的受益者</strong>，因为二级流的浪费正是重压缩路径上的开销。</li>
-<li><strong>一个可以顺手做的自查</strong>（不需要新补丁）：</li>
-</ul>  <pre><code class="bash">  cat /sys/block/zram0/comp_algorithm
-  swapon --show
-  # 看内存压缩的实际效益（压缩后大小 / 原始大小）
-  cat /sys/block/zram0/mm_stat
-  </code></pre>
-  <strong><code>mm_stat</code> 的第 1、2 列分别是「原始数据大小」和「压缩后大小」</strong>，两者之比就是你的真实压缩比。<strong>如果这个比值不好看（比如低于 2），先调算法比等内核补丁的收益大得多</strong>：<code>zstd</code> 通常比 <code>lzo-rle</code> 压得好但慢一些，<code>lz4</code> 快但压得差，选哪个取决于你的 CPU 和 I/O 压力在哪一头。
+<ul><li><strong>现在</strong>：<strong>什么都不用做</strong>。补丁还在 LKML，没进任何稳定版。你机器上的 zram 行为不变。</li><li><strong>值得关注</strong>：如果你<strong>大规模用 zram 做 swap</strong>（尤其是容器密度高、或内存超卖的虚拟化宿主），这类「按 CPU 数倍增的小额浪费」<strong>在整机尺度上会放大</strong>。可以趁现在记一笔，等补丁落地后<strong>对比同一负载下的 zram 内存占用</strong>。</li><li><strong>如果你已经启用了多级压缩</strong>（<code>CONFIG_ZRAM_MULTI_COMP</code> + 多个 <code>recomp_algorithm</code>），<strong>你是这次改动最直接的受益者</strong>，因为二级流的浪费正是重压缩路径上的开销。</li><li><strong>一个可以顺手做的自查</strong>（不需要新补丁）：<ul><li><code>`</code>bash</li><li>cat /sys/block/zram0/comp_algorithm</li><li>swapon --show</li><li># 看内存压缩的实际效益（压缩后大小 / 原始大小）</li><li>cat /sys/block/zram0/mm_stat</li><li><code>`</code></li><li><strong><code>mm_stat</code> 的第 1、2 列分别是「原始数据大小」和「压缩后大小」</strong>，两者之比就是你的真实压缩比。<strong>如果这个比值不好看（比如低于 2），先调算法比等内核补丁的收益大得多</strong>：<code>zstd</code> 通常比 <code>lzo-rle</code> 压得好但慢一些，<code>lz4</code> 快但压得差，选哪个取决于你的 CPU 和 I/O 压力在哪一头。</li></ul></li></ul>
 <p><strong>5. 放在更大的背景里看。</strong></p>
 <p>Phoronix 开篇那句「<strong>如今内存价格非常高</strong>」是个很实在的注解。<strong>这两年内核社区在内存效率上的投入明显加大</strong>：zram 的流管理、zswap、内存 cgroup 的精算、folio 化改造等等。</p>
 <p><strong>zram 这类技术的意义在于：它是「花 CPU 换内存」的杠杆。</strong> 当内存昂贵而 CPU 相对充裕时，这个杠杆的价值就上升。<strong>这次补丁把杆杠的「固定开销」（流的内存占用、锁竞争）压低了一点</strong>，方向很清楚。</p>

@@ -1,4 +1,3 @@
-import json
 #!/usr/bin/env python3
 """
 FreeLAMP.com 静态站点构建脚本
@@ -10,6 +9,7 @@ import os
 import html
 import re
 import json
+import sys
 import yaml
 from urllib.parse import quote
 from pathlib import Path
@@ -425,7 +425,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
       var map = {{}};
       try {{ map = JSON.parse(localStorage.getItem(KEY) || '{{}}') || {{}}; }} catch (e) {{}}
 
-      function norm(p) {{ return String(p || '').replace(/^\/+|\/+$/g, ''); }}
+      function norm(p) {{ return String(p || '').replace(/^[/]+|[/]+$/g, ''); }}
 
       function apply() {{
         document.querySelectorAll('.comment-link').forEach(function (btn) {{
@@ -836,92 +836,17 @@ TAG_TEMPLATE = """<!DOCTYPE html>
 
 
 
-def _convert_tables(html):
-    """把 GFM 风格 Markdown 表格（连续以 | 开头的行）转换为 HTML <table>"""
-    def _sep(ln):
-        return bool(re.match(r'^\|?[\s:|-]+\|?$', ln)) and '-' in ln
-
-    def _cells(ln):
-        ln = ln.strip()
-        if ln.startswith('|'): ln = ln[1:]
-        if ln.endswith('|'): ln = ln[:-1]
-        return [c.strip() for c in ln.split('|')]
-
-    def _convert(block):
-        lines = block.strip('\n').split('\n')
-        # 找出分隔行（---）索引
-        sep_idx = next((i for i, ln in enumerate(lines) if _sep(ln)), None)
-        rows = [ln for i, ln in enumerate(lines) if i != sep_idx]
-        out = ['<table>']
-        for ri, ln in enumerate(rows):
-            if not ln.strip():
-                continue
-            tag = 'th' if (sep_idx is not None and ri < sep_idx) else 'td'
-            cells_html = ''.join(f'<{tag}>{c}</{tag}>' for c in _cells(ln))
-            out.append(f'<tr>{cells_html}</tr>')
-        out.append('</table>')
-        return '\n'.join(out)
-
-    # 匹配连续以 | 开头的行组成的表格块
-    return re.sub(r'(?:^\|.*\n)+', lambda m: _convert(m.group(0)) + '\n', html, flags=re.MULTILINE)
-
-
-def markdown_to_html(md_content):
-    """简单的 Markdown 转 HTML（支持基本语法）"""
-    html = md_content
-    
-    # 代码块
-    html = re.sub(r'```(\w*)\n(.*?)```', r'<pre><code class="\1">\2</code></pre>', html, flags=re.DOTALL)
-    
-    # 行内代码
-    html = re.sub(r'`([^`]+)`', r'<code>\1</code>', html)
-    
-    # 标题（h1-h6）
-    html = re.sub(r'^###### (.+)$', r'<h6>\1</h6>', html, flags=re.MULTILINE)
-    html = re.sub(r'^##### (.+)$', r'<h5>\1</h5>', html, flags=re.MULTILINE)
-    html = re.sub(r'^#### (.+)$', r'<h4>\1</h4>', html, flags=re.MULTILINE)
-    html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
-    html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
-    html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
-    
-    # 表格（GFM 风格）
-    html = _convert_tables(html)
-    
-    # 粗体
-    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-    
-    # 斜体
-    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
-    
-    # 链接
-    html = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html)
-    
-    # 图片（必须在链接规则之后，否则会被链接规则误吞）
-    html = re.sub(r'<a href="([^"]+)\.(png|jpe?g|svg|gif|webp)">([^<]+)</a>',
-                  lambda m: f'<img src="{m.group(1)}.{m.group(2)}" alt="{m.group(3)}" loading="lazy" decoding="async" style="max-width:100%;height:auto;border-radius:8px;margin:12px 0;">',
-                  html)
-    
-    # 列表（无序 `- ` 与有序 `1. `）
-    html = re.sub(r'^- (.+)$', r'<U>\1</U>', html, flags=re.MULTILINE)
-    html = re.sub(r'^(\d+)\.\s+(.+)$', r'<O>\1. \2</O>', html, flags=re.MULTILINE)
-    html = re.sub(r'(<U>.*?</U>\n?)+', lambda m: '<ul>\n' + ''.join('<li>'+x+'</li>\n' for x in re.findall(r'<U>(.*?)</U>', m.group(0))) + '</ul>', html, flags=re.DOTALL)
-    html = re.sub(r'(<O>.*?</O>\n?)+', lambda m: '<ol>\n' + ''.join('<li>'+x+'</li>\n' for x in re.findall(r'<O>(.*?)</O>', m.group(0))) + '</ol>', html, flags=re.DOTALL)
-    
-    # 引用块（支持连续多行，内容保留行内格式）
-    html = re.sub(
-        r'(?:^> (.+)$(?:\n|\Z))+',
-        lambda m: '<blockquote>' + '<br>\n'.join(re.sub(r'^> ', '', ln) for ln in m.group(0).strip().split('\n')) + '</blockquote>',
-        html, flags=re.MULTILINE)
-
-    # 段落：按空行切分，仅将纯文本块包裹为 <p>，块级元素不包裹
-    _BLOCK = ('<h1','<h2','<h3','<h4','<h5','<h6','<pre','<ul','<ol','<table','<blockquote')
-    html = '\n'.join(
-        (b if b.lstrip().startswith(_BLOCK) else '<p>' + b + '</p>')
-        for b in re.split(r'\n\s*\n', html) if b.strip()
-    )
-    html = re.sub(r'<p>\s*</p>', '', html)
-
-    return html
+# Markdown 渲染：实现在 tools/md_render.py（块级 + 行内两阶段解析）。
+# 旧的实现是一串顺序正则替换，存在几个结构性问题：
+#   - 图片前的多余 "!"（靠「链接规则先转成 <a>、再用正则换回 <img>」实现，必然漏字符）
+#   - 代码块 / 行内代码里的 Markdown 标记被当成真语法处理
+#   - 代码块里的 < > & 未转义
+#   - 有序列表编号重复（<li>1. 第一</li>）
+#   - 多级列表被拆散
+#   - 表格单元格里 \| 转义竖线丢失
+# 新的实现见 tools/md_render.py 的模块文档。
+sys.path.insert(0, str(LORE_DIR / "tools"))
+from md_render import markdown_to_html  # noqa: E402
 
 
 def load_article(article_dir):

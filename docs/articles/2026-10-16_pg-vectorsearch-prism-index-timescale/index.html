@@ -288,7 +288,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>来源：<a href="https://github.com/timescale/pg_vectorsearch">timescale/pg_vectorsearch</a>（<strong>README 与 docs</strong>）<br>
+<blockquote>来源：<a href="https://github.com/timescale/pg_vectorsearch" target="_blank" rel="noopener noreferrer">timescale/pg_vectorsearch</a>（<strong>README 与 docs</strong>）<br>
 仓库实测指标（<strong>2026-10-16</strong>）：<strong>363 stars、13 forks、创建于 2026-01-30、主语言 C、许可 PostgreSQL、最近推送 2026-10-15</strong><br>
 ⚠️ <strong>状态说明</strong>：<strong>README 自己标为 alpha</strong>：<strong>「用于测试，不是生产。预发布版本之间的升级可能无法进行；请计划好删除并重建扩展及其索引。」</strong><br>
 本文为<strong>译文 + 解读</strong>。第一、五节的判断是笔者补充的部分。</blockquote>
@@ -304,51 +304,30 @@
 <p><strong>Timescale（现 TigerData）发布了一个 PostgreSQL 扩展 <code>pg_vectorsearch</code></strong>，<strong>提供「高性能近似最近邻（ANN）搜索」。</strong></p>
 <p><strong>它声称的核心收益是一条对比</strong>：</p>
 <blockquote><strong>「结果是一个索引，在查询和索引构建两方面都显著快于 pgvector 的 IVFFlat 和 HNSW。</strong> <strong>事实上，与基于图的 HNSW 相比，PRISM 在一亿向量数据集上以同等召回率更快，而且实例内存只有四分之一。」</strong></blockquote>
-<strong>而我认为这条新闻里最值得看的不是那个倍数，而是两件事</strong>：
-<table>
-<tr><th>值得看的地方</th><th>为什么</th></tr>
-<tr><td><strong>⭐ 它能在既有的 pgvector 列上直接建索引</strong></td><td><strong>「列不会被重写或复制。」</strong> <strong>这是一个迁移成本的问题，而不是性能问题</strong></td></tr>
-<tr><td><strong>⚠️ README 主动写出的限制</strong></td><td><strong>alpha 状态、<code>prism_rebalance</code> 的当前局限、以及不设 maxLength 之外的取舍</strong></td></tr>
-</table>
+<p><strong>而我认为这条新闻里最值得看的不是那个倍数，而是两件事</strong>：</p>
+<table><thead><tr><th>值得看的地方</th><th>为什么</th></tr></thead><tbody><tr><td><strong>⭐ 它能在既有的 pgvector 列上直接建索引</strong></td><td><strong>「列不会被重写或复制。」</strong> <strong>这是一个迁移成本的问题，而不是性能问题</strong></td></tr><tr><td><strong>⚠️ README 主动写出的限制</strong></td><td><strong>alpha 状态、<code>prism_rebalance</code> 的当前局限、以及不设 maxLength 之外的取舍</strong></td></tr></tbody></table>
 <p><strong>因为一个数据库索引的迁移成本，往往比它的查询性能更重要</strong>：<strong>而如果迁移不需要重写表和改查询，那么它的采用阻力就低得多。</strong></p>
 <h2>一、技术构成：四个部分</h2>
 <p><strong>README 列出四个特性，而我认为它们各自解决的问题不同</strong>：</p>
-<table>
-<tr><th>特性</th><th>内容</th><th>解决什么</th></tr>
-<tr><td><strong>PRISM 索引</strong></td><td><strong>IVF 风格，带层次化路由，面向 1 亿以上向量</strong></td><td><strong>规模和查询速度</strong></td></tr>
-<tr><td><strong>RaBitQ 量化</strong></td><td><strong>「带理论误差界的两阶段搜索」</strong></td><td><strong>内存占用与候选筛选的精度</strong></td></tr>
-<tr><td><strong>SIMD 优化的距离计算</strong></td><td><strong>AVX2、AVX512、NEON</strong></td><td><strong>单次距离计算的吞吐</strong></td></tr>
-<tr><td><strong>动态更新</strong></td><td><strong>插入、更新、删除，配合 <code>prism_rebalance</code> 做 posting-list 分裂</strong></td><td><strong>增量写入</strong></td></tr>
-</table>
+<table><thead><tr><th>特性</th><th>内容</th><th>解决什么</th></tr></thead><tbody><tr><td><strong>PRISM 索引</strong></td><td><strong>IVF 风格，带层次化路由，面向 1 亿以上向量</strong></td><td><strong>规模和查询速度</strong></td></tr><tr><td><strong>RaBitQ 量化</strong></td><td><strong>「带理论误差界的两阶段搜索」</strong></td><td><strong>内存占用与候选筛选的精度</strong></td></tr><tr><td><strong>SIMD 优化的距离计算</strong></td><td><strong>AVX2、AVX512、NEON</strong></td><td><strong>单次距离计算的吞吐</strong></td></tr><tr><td><strong>动态更新</strong></td><td><strong>插入、更新、删除，配合 <code>prism_rebalance</code> 做 posting-list 分裂</strong></td><td><strong>增量写入</strong></td></tr></tbody></table>
 <p><strong>而 README 对 PRISM 的定义很简短</strong>：</p>
 <blockquote><strong>「PRISM（Partitioned Routing Index for Similarity Matching）是一个 PostgreSQL 原生的索引访问方法，概念上类似于 pgvector 的 IVFFlat，但它围绕最先进的量化、路由和分区技术构建。它用 C 实现，以获得高性能并与 PostgreSQL 无缝集成。」</strong></blockquote>
-<strong>「概念上类似 IVFFlat」这句话很重要，因为它划定了技术谱系</strong>：
-<table>
-<tr><th>索引类型</th><th>结构</th><th>特点</th></tr>
-<tr><td><strong>IVFFlat</strong>（<strong>pgvector</strong>）</td><td><strong>倒排文件（聚类中心 + posting list）</strong></td><td><strong>构建快、查询快，但对高维和分布不均的数据召回率下降</strong></td></tr>
-<tr><td><strong>HNSW</strong>（<strong>pgvector</strong>）</td><td><strong>分层可导航小世界图</strong></td><td><strong>召回率高，但内存占用大、构建慢</strong></td></tr>
-<tr><td><strong>PRISM</strong></td><td><strong>层次化质心树 + posting list + 量化</strong></td><td><strong>声称两者兼顾</strong></td></tr>
-</table>
+<p><strong>「概念上类似 IVFFlat」这句话很重要，因为它划定了技术谱系</strong>：</p>
+<table><thead><tr><th>索引类型</th><th>结构</th><th>特点</th></tr></thead><tbody><tr><td><strong>IVFFlat</strong>（<strong>pgvector</strong>）</td><td><strong>倒排文件（聚类中心 + posting list）</strong></td><td><strong>构建快、查询快，但对高维和分布不均的数据召回率下降</strong></td></tr><tr><td><strong>HNSW</strong>（<strong>pgvector</strong>）</td><td><strong>分层可导航小世界图</strong></td><td><strong>召回率高，但内存占用大、构建慢</strong></td></tr><tr><td><strong>PRISM</strong></td><td><strong>层次化质心树 + posting list + 量化</strong></td><td><strong>声称两者兼顾</strong></td></tr></tbody></table>
 <p><strong>也就是说</strong>：<strong>PRISM 站在 IVF 这条线上，但用改进的量化与路由把召回率补上</strong>：<strong>而它的对手 HNSW 是那条「用内存换召回」的路。</strong></p>
 <p><strong>而「用四分之一内存」这个说法正是针对 HNSW 的弱点</strong>：<strong>HNSW 需要在内存里保存整个图结构</strong>（<strong>每个向量的邻居列表</strong>），<strong>而 IVF 只需保存聚类中心和 posting list 里的量化编码。</strong></p>
 <h2>二、那个查询流程值得细看</h2>
 <p><strong>README 给了五步流程，而我认为它是理解「为什么它能省内存还保持召回」的关键</strong>：</p>
 <pre><code class="text">查询流程：
-<ol>
-<li>1. 遍历质心树找到最近的聚类（缓冲缓存）</li>
-<li>2. 扫描 posting list 找候选（缓冲缓存，异步 I/O）</li>
-<li>3. RaBitQ 两阶段过滤：估计 → 误差界 → 重排</li>
-<li>4. 从堆里做全精度重排</li>
-<li>5. 返回 k 个最近邻</li>
-</ol></code></pre>
+1. 遍历质心树找到最近的聚类（缓冲缓存）
+2. 扫描 posting list 找候选（缓冲缓存，异步 I/O）
+3. RaBitQ 两阶段过滤：估计 → 误差界 → 重排
+4. 从堆里做全精度重排
+5. 返回 k 个最近邻</code></pre>
 <p><strong>我认为第 3 步是这整个设计的核心</strong>，<strong>而 README 对它的解释值得完整引用</strong>：</p>
 <blockquote><strong>「向量被 RaBitQ 量化，并以针对 SIMD 距离计算优化的页布局存储在 posting list 里。</strong> <strong>RaBitQ 编码携带误差界，让一次搜索可以排除那些不可能是最近邻的向量，所以需要针对表里保存的全精度向量做重排的向量少得多。」</strong></blockquote>
-<strong>这句话里有两个机制，而它们的作用不同</strong>：
-<table>
-<tr><th>机制</th><th>作用</th></tr>
-<tr><td><strong>量化编码</strong></td><td><strong>把每个向量压缩到很小的存储</strong>（<strong>所以 posting list 能放进内存</strong>）</td></tr>
-<tr><td><strong>误差界</strong></td><td><strong>让搜索可以「排除」候选，而不只是「排序」候选</strong></td></tr>
-</table>
+<p><strong>这句话里有两个机制，而它们的作用不同</strong>：</p>
+<table><thead><tr><th>机制</th><th>作用</th></tr></thead><tbody><tr><td><strong>量化编码</strong></td><td><strong>把每个向量压缩到很小的存储</strong>（<strong>所以 posting list 能放进内存</strong>）</td></tr><tr><td><strong>误差界</strong></td><td><strong>让搜索可以「排除」候选，而不只是「排序」候选</strong></td></tr></tbody></table>
 <p><strong>而第二个机制我认为才是关键的</strong>。 <strong>因为量化本身有一个明显的代价</strong>：<strong>量化后的距离估计不准，所以需要「先粗筛、再精排」</strong>：<strong>而粗筛如果做不准，就会漏掉真正的近邻。</strong></p>
 <p><strong>而「误差界」的作用是</strong>：<strong>它不是给出一个估计值，而是给出一个「上下界」</strong>。 <strong>于是搜索可以做出一类deterministic的判断</strong>：<strong>「这个候选的真实距离，即使在最坏情况下，也大于我当前最好的第 k 个结果」</strong>：<strong>那么它就可以被安全地排除，不需要进入精排。</strong></p>
 <p><strong>也就是说</strong>：<strong>误差界把「量化带来的不确定性」变成了「可计算的排除条件」。</strong> <strong>而这解释了为什么它能在省内存的同时保持召回率</strong>：<strong>因为被排除的候选是</strong>保证<strong>不可能相关的，不是「看起来不太相关」的。</strong></p>
@@ -356,52 +335,34 @@
 <h2>三、迁移路径：它怎么和 pgvector 共存</h2>
 <p><strong>我认为这是整个项目最务实的一个设计，而它在 README 里占了相当篇幅。</strong></p>
 <h3>两条使用路径</h3>
-<table>
-<tr><th>路径</th><th>场景</th><th>是否需要 pgvector</th></tr>
-<tr><td><strong>原生类型</strong></td><td><strong>从零开始，或不用 pgvector</strong></td><td><strong>不需要</strong>。<strong>用 <code>vec32</code>（float32）或 <code>vec16</code>（float16）列</strong></td></tr>
-<tr><td><strong>既有 pgvector 表</strong></td><td><strong>已经有 <code>vector</code> 或 <code>halfvec</code> 列</strong></td><td><strong>需要</strong>。<strong>在既有列上建 PRISM 索引</strong></td></tr>
-</table>
+<table><thead><tr><th>路径</th><th>场景</th><th>是否需要 pgvector</th></tr></thead><tbody><tr><td><strong>原生类型</strong></td><td><strong>从零开始，或不用 pgvector</strong></td><td><strong>不需要</strong>。<strong>用 <code>vec32</code>（float32）或 <code>vec16</code>（float16）列</strong></td></tr><tr><td><strong>既有 pgvector 表</strong></td><td><strong>已经有 <code>vector</code> 或 <code>halfvec</code> 列</strong></td><td><strong>需要</strong>。<strong>在既有列上建 PRISM 索引</strong></td></tr></tbody></table>
 <p><strong>而关键的技术点在这里</strong>：</p>
 <blockquote><strong>「<code>vec32</code> 和 <code>vec16</code> 与 pgvector 的 <code>vector</code> 和 <code>halfvec</code> 二进制兼容，但名字不同，所以两个扩展可以并排安装，甚至在同一 schema 里。」</strong></blockquote>
-<strong>「二进制兼容但名字不同」这个设计值得单独指出，因为它同时解决了两件事</strong>：
-<table>
-<tr><th>需求</th><th>如何满足</th></tr>
-<tr><td><strong>两个扩展共存</strong></td><td><strong>类型名不同，所以不冲突</strong></td></tr>
-<tr><td><strong>在既有列上建索引而不重写</strong></td><td><strong>二进制兼容，所以索引代码可以直接读那些数据</strong></td></tr>
-</table>
+<p><strong>「二进制兼容但名字不同」这个设计值得单独指出，因为它同时解决了两件事</strong>：</p>
+<table><thead><tr><th>需求</th><th>如何满足</th></tr></thead><tbody><tr><td><strong>两个扩展共存</strong></td><td><strong>类型名不同，所以不冲突</strong></td></tr><tr><td><strong>在既有列上建索引而不重写</strong></td><td><strong>二进制兼容，所以索引代码可以直接读那些数据</strong></td></tr></tbody></table>
 <p><strong>而 README 明确说了这一点</strong>：</p>
 <blockquote><strong>「在既有列上建 PRISM 索引。列不会被重写或复制。」</strong></blockquote>
-<strong>而这带来一个我认为很实用的迁移流程</strong>：<strong>它给了一段示例，演示如何在保留 HNSW 索引的同时新建 PRISM 索引，用 <code>EXPLAIN</code> 验证规划器选中了 PRISM，确认满意后再删掉 HNSW。</strong>
+<p><strong>而这带来一个我认为很实用的迁移流程</strong>：<strong>它给了一段示例，演示如何在保留 HNSW 索引的同时新建 PRISM 索引，用 <code>EXPLAIN</code> 验证规划器选中了 PRISM，确认满意后再删掉 HNSW。</strong></p>
 <p><strong>我认为这个「并排建、验证、再删」的流程是这篇文章里最可复用的部分</strong>，<strong>因为它把索引迁移变成了一个可回滚的操作</strong>：</p>
-<table>
-<tr><th>步骤</th><th>状态</th></tr>
-<tr><td><strong>建 PRISM 索引</strong></td><td><strong>两个索引同时存在，查询可能走任一个</strong></td></tr>
-<tr><td><strong>用 EXPLAIN 验证</strong></td><td><strong>确认规划器偏好 PRISM</strong>（<strong>READM 说「PRISM 通常更快，所以规划器应该偏好它」</strong>）</td></tr>
-<tr><td><strong>删掉 HNSW</strong></td><td><strong>释放内存，迁移完成</strong></td></tr>
-</table>
+<table><thead><tr><th>步骤</th><th>状态</th></tr></thead><tbody><tr><td><strong>建 PRISM 索引</strong></td><td><strong>两个索引同时存在，查询可能走任一个</strong></td></tr><tr><td><strong>用 EXPLAIN 验证</strong></td><td><strong>确认规划器偏好 PRISM</strong>（<strong>READM 说「PRISM 通常更快，所以规划器应该偏好它」</strong>）</td></tr><tr><td><strong>删掉 HNSW</strong></td><td><strong>释放内存，迁移完成</strong></td></tr></tbody></table>
 <p><strong>而中间那一步是关键</strong>：<strong>因为规划器是基于成本估计做选择的，所以「哪个索引被选中」这件事可以事先验证</strong>，<strong>而不需要靠切换开关或者在生产上试。</strong></p>
 <p><strong>我认为这个模式可以推广到任何「替换一个被查询计划器使用的组件」的场景</strong>：<strong>如果两者能共存，那么验证可以在不改变系统状态的前提下完成。</strong> <strong>而这把「迁移」从一次性动作变成了一个可观察的过程。</strong></p>
 <h3>操作符类的对应表</h3>
 <p><strong>README 给了一张对应表，而它让迁移变成机械操作</strong>：</p>
-<table>
-<tr><th>距离</th><th>操作符</th><th><code>vec32</code> / <code>vector</code></th><th><code>vec16</code> / <code>halfvec</code></th></tr>
-<tr><td><strong>L2</strong></td><td><strong><code><-></code></strong></td><td><strong><code>vec32_l2_ops</code></strong></td><td><strong><code>vec16_l2_ops</code></strong></td></tr>
-<tr><td><strong>内积</strong></td><td><strong><code><#></code></strong></td><td><strong><code>vec32_ip_ops</code></strong></td><td><strong><code>vec16_ip_ops</code></strong></td></tr>
-<tr><td><strong>余弦</strong></td><td><strong><code><=></code></strong></td><td><strong><code>vec32_cosine_ops</code></strong></td><td><strong><code>vec16_cosine_ops</code></strong></td></tr>
-</table>
+<table><thead><tr><th>距离</th><th>操作符</th><th><code>vec32</code> / <code>vector</code></th><th><code>vec16</code> / <code>halfvec</code></th></tr></thead><tbody><tr><td><strong>L2</strong></td><td><strong><code>&lt;-&gt;</code></strong></td><td><strong><code>vec32_l2_ops</code></strong></td><td><strong><code>vec16_l2_ops</code></strong></td></tr><tr><td><strong>内积</strong></td><td><strong><code>&lt;#&gt;</code></strong></td><td><strong><code>vec32_ip_ops</code></strong></td><td><strong><code>vec16_ip_ops</code></strong></td></tr><tr><td><strong>余弦</strong></td><td><strong><code>&lt;=&gt;</code></strong></td><td><strong><code>vec32_cosine_ops</code></strong></td><td><strong><code>vec16_cosine_ops</code></strong></td></tr></tbody></table>
 <p><strong>而 README 给了一句总结性提示</strong>：</p>
-<blockquote><strong>「当替换一个 HNSW 索引时，pgvector 的 <code>vector_<metric>_ops</code> 映射到 <code>vec32_<metric>_ops</code>，<code>halfvec_<metric>_ops</code> 映射到 <code>vec16_<metric>_ops</code>。」</strong></blockquote>
-<strong>这种「一一对应、名字可机械替换」的做法，是降低迁移摩擦的一个简单而有效的设计。</strong> <strong>它让使用者不需要理解两套操作符类的语义差异</strong>：<strong>只需要按规则改名。</strong>
+<blockquote><strong>「当替换一个 HNSW 索引时，pgvector 的 <code>vector_&lt;metric&gt;_ops</code> 映射到 <code>vec32_&lt;metric&gt;_ops</code>，<code>halfvec_&lt;metric&gt;_ops</code> 映射到 <code>vec16_&lt;metric&gt;_ops</code>。」</strong></blockquote>
+<p><strong>这种「一一对应、名字可机械替换」的做法，是降低迁移摩擦的一个简单而有效的设计。</strong> <strong>它让使用者不需要理解两套操作符类的语义差异</strong>：<strong>只需要按规则改名。</strong></p>
 <h2>四、那三条限制，以及为什么它们值得单独说</h2>
 <p><strong>我认为 README 主动写出的限制比它的性能声明更值得读</strong>，<strong>因为限制说明了一个项目当前的适用边界。</strong></p>
 <h3>限制一：alpha 状态，且升级可能不可行</h3>
 <blockquote><strong>「状态：alpha。用于测试，不是生产。预发布版本之间的升级可能无法进行；请计划好删除并重建扩展及其索引。」</strong></blockquote>
-<strong>「请计划好删除并重建」这句话在数据库语境里分量很重</strong>，<strong>因为它意味着</strong>：<strong>在生产上使用它，就等于接受了「升级时数据索引需要重建」这个前提。</strong>
+<p><strong>「请计划好删除并重建」这句话在数据库语境里分量很重</strong>，<strong>因为它意味着</strong>：<strong>在生产上使用它，就等于接受了「升级时数据索引需要重建」这个前提。</strong></p>
 <p><strong>而对一个一亿向量的索引来说，重建不是小事</strong>（<strong>README 自己在别处提到索引构建是它的强项，但即使很快，那也是一个需要计划的操作</strong>）。 <strong>所以这条限制实际上把它的使用场景限制在了「可以容忍重建」的环境里。</strong></p>
 <h3>限制二：posting list 不会自行分裂</h3>
 <p><strong>这一条我认为是最有技术含量的，因为它描述的是索引的维护语义</strong>：</p>
 <blockquote><strong>「一次插入会追加到它的向量路由到的那个 posting list，所以列表随着行到达而增长，且永不自行分裂。</strong> <strong>除了 <code>REINDEX</code>，<code>prism_rebalance</code> 过程会就地分裂过大的列表。」</strong></blockquote>
-<strong>要理解这条限制，需要先知道 IVF 类索引的一个固有特性</strong>：<strong>它把向量分到若干个「桶」（posting list）里，每个桶对应一个聚类中心。</strong> <strong>而查询时只扫描最近的若干个桶</strong>（<strong>这个数量通常由 <code>nprobe</code> 控制</strong>）。
+<p><strong>要理解这条限制，需要先知道 IVF 类索引的一个固有特性</strong>：<strong>它把向量分到若干个「桶」（posting list）里，每个桶对应一个聚类中心。</strong> <strong>而查询时只扫描最近的若干个桶</strong>（<strong>这个数量通常由 <code>nprobe</code> 控制</strong>）。</p>
 <p><strong>而问题在于</strong>：<strong>如果某个桶无限增长，那么扫描它的成本会线性上升</strong>：<strong>即使它对应的那些向量并不都是近邻。</strong></p>
 <p><strong>在批量构建的 IVF 索引里，这个问题不存在</strong>，<strong>因为聚类是在构建时一次性算好的，桶的大小相对均匀。</strong> <strong>但在持续写入的场景里</strong>，<strong>新增的向量会按「路由规则」被塞进某个桶</strong>，<strong>而有些热点区域的桶会越来越大。</strong></p>
 <p><strong>所以 <code>prism_rebalance</code> 的作用是</strong>：<strong>就地分裂过大的列表</strong>，<strong>把「维护桶的均匀性」变成一个可以主动执行的操作，而不是等 <code>REINDEX</code>。</strong></p>
@@ -414,15 +375,14 @@
 CREATE TABLE items (
     id serial PRIMARY KEY,
     embedding vec32(3) STORAGE PLAIN
-);
-</code></pre>
+);</code></pre>
 <p><strong>这段话揭示了对这个索引设计的一个实际约束</strong>：<strong>因为 PRISM 依赖「全精度重排」这一步</strong>（<strong>查询流程的第 4 步</strong>），<strong>而重排需要从表里读取原始向量</strong>：<strong>如果那些向量被 TOAST 到了外部存储，那么每次重排都会产生一次额外的读取。</strong></p>
 <p><strong>而 README 特别指出「规划器没有把这个额外抓取计入成本」</strong>：<strong>这意味着规划器可能低估了这个查询的实际开销</strong>，<strong>所以在某些情况下会给出过于乐观的计划。</strong></p>
 <p><strong>我认为这条注释值得单独指出来，因为它属于「只有读过实现的人才会知道的坑」</strong>：<strong>而它出现在使用示例的注释里，而不是某个深藏的文档页里。</strong></p>
 <h2>五、我的判断</h2>
 <p><strong>第一，这个项目真正的卖点可能不是性能，而是「不重写表就能换索引」。</strong></p>
 <p><strong>性能声明是可以被质疑的</strong>（<strong>它是一条厂商的基准测试结论，而 README 只给了一句「显著更快」，没有给出具体的召回率-延迟曲线</strong>），<strong>但迁移方式是可以被验证的</strong>：<strong>「列不会被重写或复制」是一句可检验的技术陈述。</strong></p>
-<p><strong>而我认为在数据库这个领域，迁移成本往往是决定采用的真正因素</strong>。 <strong>因为一个索引替换的成本包括</strong>：<strong>停机窗口（如果需要重写表）、查询改写（如果操作符变了）、应用层适配、以及回滚方案。</strong> <strong>而这个项目把前三项都消掉了</strong>：<strong>不重写、不改查询（同一组 <code><-></code>/<code><#></code>/<code><=></code> 操作符）、不改应用（规划器自动选择）。</strong></p>
+<p><strong>而我认为在数据库这个领域，迁移成本往往是决定采用的真正因素</strong>。 <strong>因为一个索引替换的成本包括</strong>：<strong>停机窗口（如果需要重写表）、查询改写（如果操作符变了）、应用层适配、以及回滚方案。</strong> <strong>而这个项目把前三项都消掉了</strong>：<strong>不重写、不改查询（同一组 <code>&lt;-&gt;</code>/<code>&lt;#&gt;</code>/<code>&lt;=&gt;</code> 操作符）、不改应用（规划器自动选择）。</strong></p>
 <p><strong>所以我倾向于把这个项目的采用路径理解为</strong>：<strong>先在既有的 pgvector 表上建一个 PRISM 索引，用 <code>EXPLAIN</code> 确认它被选中，然后比较性能，满意就删掉旧索引，不满意就删掉新的。</strong> <strong>整个过程中，表的数据和查询语句一行都不用改。</strong></p>
 <p><strong>第二，那个「误差界」的机制，是它能在省内存的同时保持召回的原因。</strong></p>
 <p><strong>这一点值得单独强调，因为「量化换内存」这个思路本身不新</strong>：<strong>pgvector 的 <code>halfvec</code> 也是这么做的。</strong> <strong>而 RaBitQ 的区别在于</strong>：<strong>它不只是把向量压缩得更小，还带着「这次估计的误差有多大」这个信息。</strong></p>
@@ -436,49 +396,16 @@ CREATE TABLE items (
 <p><strong>而这也提醒了一件更一般的事</strong>：<strong>当一个新的索引类型声称「更快」时，值得先问它依赖哪些前提</strong>：<strong>而在这个例子里，前提之一就是「全精度向量在本地可读」。</strong></p>
 <p><strong>第四，那三条限制的组合，划出了它当前的适用面。</strong></p>
 <p><strong>把它们放在一起看</strong>：</p>
-<table>
-<tr><th>限制</th><th>排除的场景</th></tr>
-<tr><td><strong>alpha，升级需重建</strong></td><td><strong>不能容忍索引重建的生产环境</strong></td></tr>
-<tr><td><strong>posting list 需显式 rebalance</strong></td><td><strong>写入量大且不能定期跑维护任务的环境</strong></td></tr>
-<tr><td><strong>重排需要全精度读取</strong></td><td><strong>向量被 TOAST 且延迟敏感的场景</strong>（<strong>除非改为 <code>STORAGE PLAIN</code></strong>）</td></tr>
-</table>
+<table><thead><tr><th>限制</th><th>排除的场景</th></tr></thead><tbody><tr><td><strong>alpha，升级需重建</strong></td><td><strong>不能容忍索引重建的生产环境</strong></td></tr><tr><td><strong>posting list 需显式 rebalance</strong></td><td><strong>写入量大且不能定期跑维护任务的环境</strong></td></tr><tr><td><strong>重排需要全精度读取</strong></td><td><strong>向量被 TOAST 且延迟敏感的场景</strong>（<strong>除非改为 <code>STORAGE PLAIN</code></strong>）</td></tr></tbody></table>
 <p><strong>而这三条指向同一个结论</strong>：<strong>它目前适合「能控制维护窗口、且愿意在测试环境先验证」的场景。</strong> <strong>也就是 README 自己说的「用于测试，不是生产」。</strong></p>
 <p><strong>而我认为这个定位对一个新索引类型来说是合理的</strong>，<strong>因为索引这类组件一旦上了生产，回退成本就很高</strong>：<strong>而它需要的验证（召回率与延迟在自己的数据分布上是否达标）只能靠使用者自己跑。</strong></p>
 <p><strong>最后一点，关于这整件事的信息缺口。</strong> <strong>README 没有给出这些数字</strong>：<strong>具体的召回率-延迟曲线</strong>（<strong>只说「同等召回率下更快」</strong>）、<strong>索引构建时间</strong>、<strong>内存占用的绝对值</strong>（<strong>只说四分之一</strong>）、<strong>以及那个基准测试用的数据集与硬件</strong>。</p>
 <p><strong>而这些正是评估「它是否适合我的场景」所需要的。</strong> <strong>所以对这条新闻的准确态度是</strong>：<strong>这是一个值得在测试环境里试的工具，而它的性能声明需要在你的数据上复现。</strong></p>
 <p><strong>而这恰好也是它自己的建议</strong>（<strong>「用于测试，不是生产」</strong>），<strong>所以我认为它在这一点上是诚实的。</strong></p>
 <h2>关键事实速查</h2>
-<table>
-<tr><th>项目</th><th>内容</th></tr>
-<tr><td><strong>仓库</strong></td><td><strong>timescale/pg_vectorsearch</strong></td></tr>
-<tr><td><strong>实测指标（2026-10-16）</strong></td><td><strong>363 stars、13 forks</strong>；<strong>创建于 2026-01-30</strong>；<strong>主语言 C</strong>；<strong>许可 PostgreSQL</strong>；<strong>最近推送 2026-10-15</strong></td></tr>
-<tr><td><strong>⚠️ 状态</strong></td><td><strong>alpha</strong>。<strong>「用于测试，不是生产。预发布版本之间的升级可能无法进行；请计划好删除并重建扩展及其索引。」</strong></td></tr>
-<tr><td><strong>描述</strong></td><td><strong>「一个用于高性能近似最近邻（ANN）搜索的 PostgreSQL 扩展。」</strong></td></tr>
-<tr><td><strong>⭐ 四项特性</strong></td><td><strong>PRISM 索引（1 亿以上向量）</strong>；<strong>RaBitQ 量化（带理论误差界的两阶段搜索）</strong>；<strong>SIMD 优化的距离计算（AVX2、AVX512、NEON）</strong>；<strong>动态更新（插入、更新、删除，配合 <code>prism_rebalance</code> 做 posting-list 分裂）</strong></td></tr>
-<tr><td><strong>⭐ 性能声明</strong></td><td><strong>「一个索引在查询和索引构建两方面都显著快于 pgvector 的 IVFFlat 和 HNSW。事实上，与基于图的 HNSW 相比，PRISM 在一亿向量数据集上以同等召回率更快，而实例内存只有四分之一。」</strong>（⚠️ <strong>README 未给出召回率-延迟曲线、构建时间、绝对内存数字、以及测试用的数据集与硬件</strong>）</td></tr>
-<tr><td><strong>⭐ pgvector 兼容</strong></td><td><strong>可在既有 <code>vector</code>/<code>halfvec</code> 列上直接建 PRISM 索引，「列不会被重写或复制」</strong>；<strong><code>vec32</code>/<code>vec16</code> 与 pgvector 的 <code>vector</code>/<code>halfvec</code> 二进制兼容但名字不同，所以两个扩展可并排安装，甚至同一 schema</strong></td></tr>
-<tr><td><strong>PRISM 的定义</strong></td><td><strong>「Partitioned Routing Index for Similarity Matching」</strong>；<strong>「概念上类似于 pgvector 的 IVFFlat，但围绕最先进的量化、路由和分区技术构建」</strong>；<strong>用 C 实现</strong></td></tr>
-<tr><td><strong>⭐ 查询流程（五步）</strong></td><td><strong>① 遍历质心树找最近聚类（缓冲缓存）→ ② 扫描 posting list 找候选（缓冲缓存，异步 I/O）→ ③ RaBitQ 两阶段过滤：估计 → 误差界 → 重排 → ④ 从堆里做全精度重排 → ⑤ 返回 k 个最近邻</strong></td></tr>
-<tr><td><strong>⭐ 误差界的作用</strong></td><td><strong>「RaBitQ 编码携带误差界，让一次搜索可以排除那些不可能是最近邻的向量，所以需要针对表里保存的全精度向量做重排的向量少得多。」</strong></td></tr>
-<tr><td><strong>操作符类对应</strong></td><td><strong>L2（<code><-></code>）</strong>：<strong><code>vec32_l2_ops</code> / <code>vec16_l2_ops</code></strong>；<strong>内积（<code><#></code>）</strong>：<strong><code>vec32_ip_ops</code> / <code>vec16_ip_ops</code></strong>；<strong>余弦（<code><=></code>）</strong>：<strong><code>vec32_cosine_ops</code> / <code>vec16_cosine_ops</code></strong></td></tr>
-<tr><td><strong>替换规则</strong></td><td><strong>pgvector 的 <code>vector_<metric>_ops</code> 映射到 <code>vec32_<metric>_ops</code>，<code>halfvec_<metric>_ops</code> 映射到 <code>vec16_<metric>_ops</code></strong></td></tr>
-<tr><td><strong>⭐ 推荐的迁移流程</strong></td><td><strong>在保留 HNSW 索引的同时新建 PRISM 索引 → 用 <code>EXPLAIN</code> 验证规划器选中 PRISM → 满意后删除 HNSW</strong></td></tr>
-<tr><td><strong>tuning 默认值</strong></td><td><strong>「默认值是从大规模基准测试调出来的；大多数部署只会调整 <code>prism.nprobe</code>。」</strong>；<strong>示例中 <code>SET prism.nprobe = 40</code>；注释说 0 表示 auto（约 0.95 召回），调高提升召回、调低提升速度</strong></td></tr>
-<tr><td><strong>建立索引前的数据要求</strong></td><td><strong>「先加载数据；索引是在 <code>CREATE INDEX</code> 时按行数确定大小的。500 行足以让规划器使用该索引。」</strong></td></tr>
-<tr><td><strong>⚠️ 维护语义</strong></td><td><strong>「一次插入会追加到它的向量路由到的那个 posting list，所以列表随着行到达而增长，且永不自行分裂。除了 <code>REINDEX</code>，<code>prism_rebalance</code> 过程会就地分裂过大的列表。」</strong>（<strong>README 指向维护指南看当前局限</strong>）</td></tr>
-<tr><td><strong>⚠️ 存储选项提示</strong></td><td><strong>示例注释：<code>PLAIN</code> 保持向量内联；<code>EXTERNAL</code>（默认）会把超过约 2 kB 的值 TOAST 出去，而重排会因此付出一次「规划器没有计入成本」的额外抓取</strong></td></tr>
-<tr><td><strong>构建要求</strong></td><td><strong>PostgreSQL 18+（含开发头文件）</strong>；<strong>GNU C11 编译器（GCC 11+ 或 Clang 14+）</strong>；<strong>Meson 构建系统</strong>；<strong>可选 CBLAS 用于更快的 RaBitQ 编码</strong></td></tr>
-<tr><td><strong>构建方式</strong></td><td><strong><code>meson setup builddir --buildtype=release</code></strong>，<strong>然后 <code>meson install -C builddir</code></strong></td></tr>
-<tr><td><strong>文档页</strong></td><td><strong>Tuning</strong>（<strong>索引参数、GUC、取舍、默认值</strong>）；<strong>Maintenance</strong>（<strong>rebalancing 与分裂 posting list</strong>）；<strong>Architecture</strong>（<strong>高层设计与数据结构</strong>）；<strong>SIMD</strong>（<strong>SIMD 构建选项与距离计算</strong>）；<strong>Development</strong>（<strong>构建选项、测试、CI 脚本</strong>）</td></tr>
-<tr><td><strong>引用的研究</strong></td><td><strong>RaBitQ（SIGMOD 2024）</strong>：<strong>带理论误差界的二值量化</strong>；<strong>SPFresh（SOSP 2023）</strong>：<strong>LIRE 协议用于增量更新</strong>；<strong>SPANN（NeurIPS 2021）</strong>：<strong>十亿级 ANN 与边界复制</strong></td></tr>
-</table>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td><strong>仓库</strong></td><td><strong>timescale/pg_vectorsearch</strong></td></tr><tr><td><strong>实测指标（2026-10-16）</strong></td><td><strong>363 stars、13 forks</strong>；<strong>创建于 2026-01-30</strong>；<strong>主语言 C</strong>；<strong>许可 PostgreSQL</strong>；<strong>最近推送 2026-10-15</strong></td></tr><tr><td><strong>⚠️ 状态</strong></td><td><strong>alpha</strong>。<strong>「用于测试，不是生产。预发布版本之间的升级可能无法进行；请计划好删除并重建扩展及其索引。」</strong></td></tr><tr><td><strong>描述</strong></td><td><strong>「一个用于高性能近似最近邻（ANN）搜索的 PostgreSQL 扩展。」</strong></td></tr><tr><td><strong>⭐ 四项特性</strong></td><td><strong>PRISM 索引（1 亿以上向量）</strong>；<strong>RaBitQ 量化（带理论误差界的两阶段搜索）</strong>；<strong>SIMD 优化的距离计算（AVX2、AVX512、NEON）</strong>；<strong>动态更新（插入、更新、删除，配合 <code>prism_rebalance</code> 做 posting-list 分裂）</strong></td></tr><tr><td><strong>⭐ 性能声明</strong></td><td><strong>「一个索引在查询和索引构建两方面都显著快于 pgvector 的 IVFFlat 和 HNSW。事实上，与基于图的 HNSW 相比，PRISM 在一亿向量数据集上以同等召回率更快，而实例内存只有四分之一。」</strong>（⚠️ <strong>README 未给出召回率-延迟曲线、构建时间、绝对内存数字、以及测试用的数据集与硬件</strong>）</td></tr><tr><td><strong>⭐ pgvector 兼容</strong></td><td><strong>可在既有 <code>vector</code>/<code>halfvec</code> 列上直接建 PRISM 索引，「列不会被重写或复制」</strong>；<strong><code>vec32</code>/<code>vec16</code> 与 pgvector 的 <code>vector</code>/<code>halfvec</code> 二进制兼容但名字不同，所以两个扩展可并排安装，甚至同一 schema</strong></td></tr><tr><td><strong>PRISM 的定义</strong></td><td><strong>「Partitioned Routing Index for Similarity Matching」</strong>；<strong>「概念上类似于 pgvector 的 IVFFlat，但围绕最先进的量化、路由和分区技术构建」</strong>；<strong>用 C 实现</strong></td></tr><tr><td><strong>⭐ 查询流程（五步）</strong></td><td><strong>① 遍历质心树找最近聚类（缓冲缓存）→ ② 扫描 posting list 找候选（缓冲缓存，异步 I/O）→ ③ RaBitQ 两阶段过滤：估计 → 误差界 → 重排 → ④ 从堆里做全精度重排 → ⑤ 返回 k 个最近邻</strong></td></tr><tr><td><strong>⭐ 误差界的作用</strong></td><td><strong>「RaBitQ 编码携带误差界，让一次搜索可以排除那些不可能是最近邻的向量，所以需要针对表里保存的全精度向量做重排的向量少得多。」</strong></td></tr><tr><td><strong>操作符类对应</strong></td><td><strong>L2（<code>&lt;-&gt;</code>）</strong>：<strong><code>vec32_l2_ops</code> / <code>vec16_l2_ops</code></strong>；<strong>内积（<code>&lt;#&gt;</code>）</strong>：<strong><code>vec32_ip_ops</code> / <code>vec16_ip_ops</code></strong>；<strong>余弦（<code>&lt;=&gt;</code>）</strong>：<strong><code>vec32_cosine_ops</code> / <code>vec16_cosine_ops</code></strong></td></tr><tr><td><strong>替换规则</strong></td><td><strong>pgvector 的 <code>vector_&lt;metric&gt;_ops</code> 映射到 <code>vec32_&lt;metric&gt;_ops</code>，<code>halfvec_&lt;metric&gt;_ops</code> 映射到 <code>vec16_&lt;metric&gt;_ops</code></strong></td></tr><tr><td><strong>⭐ 推荐的迁移流程</strong></td><td><strong>在保留 HNSW 索引的同时新建 PRISM 索引 → 用 <code>EXPLAIN</code> 验证规划器选中 PRISM → 满意后删除 HNSW</strong></td></tr><tr><td><strong>tuning 默认值</strong></td><td><strong>「默认值是从大规模基准测试调出来的；大多数部署只会调整 <code>prism.nprobe</code>。」</strong>；<strong>示例中 <code>SET prism.nprobe = 40</code>；注释说 0 表示 auto（约 0.95 召回），调高提升召回、调低提升速度</strong></td></tr><tr><td><strong>建立索引前的数据要求</strong></td><td><strong>「先加载数据；索引是在 <code>CREATE INDEX</code> 时按行数确定大小的。500 行足以让规划器使用该索引。」</strong></td></tr><tr><td><strong>⚠️ 维护语义</strong></td><td><strong>「一次插入会追加到它的向量路由到的那个 posting list，所以列表随着行到达而增长，且永不自行分裂。除了 <code>REINDEX</code>，<code>prism_rebalance</code> 过程会就地分裂过大的列表。」</strong>（<strong>README 指向维护指南看当前局限</strong>）</td></tr><tr><td><strong>⚠️ 存储选项提示</strong></td><td><strong>示例注释：<code>PLAIN</code> 保持向量内联；<code>EXTERNAL</code>（默认）会把超过约 2 kB 的值 TOAST 出去，而重排会因此付出一次「规划器没有计入成本」的额外抓取</strong></td></tr><tr><td><strong>构建要求</strong></td><td><strong>PostgreSQL 18+（含开发头文件）</strong>；<strong>GNU C11 编译器（GCC 11+ 或 Clang 14+）</strong>；<strong>Meson 构建系统</strong>；<strong>可选 CBLAS 用于更快的 RaBitQ 编码</strong></td></tr><tr><td><strong>构建方式</strong></td><td><strong><code>meson setup builddir --buildtype=release</code></strong>，<strong>然后 <code>meson install -C builddir</code></strong></td></tr><tr><td><strong>文档页</strong></td><td><strong>Tuning</strong>（<strong>索引参数、GUC、取舍、默认值</strong>）；<strong>Maintenance</strong>（<strong>rebalancing 与分裂 posting list</strong>）；<strong>Architecture</strong>（<strong>高层设计与数据结构</strong>）；<strong>SIMD</strong>（<strong>SIMD 构建选项与距离计算</strong>）；<strong>Development</strong>（<strong>构建选项、测试、CI 脚本</strong>）</td></tr><tr><td><strong>引用的研究</strong></td><td><strong>RaBitQ（SIGMOD 2024）</strong>：<strong>带理论误差界的二值量化</strong>；<strong>SPFresh（SOSP 2023）</strong>：<strong>LIRE 协议用于增量更新</strong>；<strong>SPANN（NeurIPS 2021）</strong>：<strong>十亿级 ANN 与边界复制</strong></td></tr></tbody></table>
 <h2>延伸阅读</h2>
-<ul>
-<li><a href="https://github.com/timescale/pg_vectorsearch">timescale/pg_vectorsearch</a></li>
-<li><a href="/articles/2026-10-14_mesa-torx-yolox-pytorch-npu/">本站：NPU 终于能用 PyTorch 跑了：Mesa 接下这件事，靠的是一条被 AI 加速行业忽略的捷径</a></li>
-<li><a href="/articles/2026-10-15_cloud-hypervisor-54-live-migration/">本站：Cloud Hypervisor 54 承诺「前两个版本可迁移」：把一条口头保证变成了可执行的承诺</a></li>
-<li><a href="/articles/2026-10-16_self-hosting-list-and-buyout-local-tools/">本站：自托管 28 个服务的清单，与一个 €25 买断的文档工具</a></li>
-</ul>
+<ul><li><a href="https://github.com/timescale/pg_vectorsearch" target="_blank" rel="noopener noreferrer">timescale/pg_vectorsearch</a></li><li><a href="/articles/2026-10-14_mesa-torx-yolox-pytorch-npu/">本站：NPU 终于能用 PyTorch 跑了：Mesa 接下这件事，靠的是一条被 AI 加速行业忽略的捷径</a></li><li><a href="/articles/2026-10-15_cloud-hypervisor-54-live-migration/">本站：Cloud Hypervisor 54 承诺「前两个版本可迁移」：把一条口头保证变成了可执行的承诺</a></li><li><a href="/articles/2026-10-16_self-hosting-list-and-buyout-local-tools/">本站：自托管 28 个服务的清单，与一个 €25 买断的文档工具</a></li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

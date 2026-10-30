@@ -286,8 +286,8 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote>原文：<a href="https://www.tomshardware.com/software/linux/new-linux-tech-compresses-memory-in-ram-as-ram-for-452x-speedup-new-cram-method-offers-giant-boost-to-compressed-memory-reads">New Linux tech compresses memory in RAM, as RAM, for 452x speedup</a>（Tom's Hardware，2026-10-07）<br>
-补充来源：<a href="https://www.phoronix.com/news/Linux-CRAM-Compressed-RAM">Phoronix：Meta Developing Compressed RAM "CRAM" For Linux</a>、<a href="https://lpc.events/event/20/contributions/2424/">LPC 2026 议题页</a>、演讲数据的整理与分析<br>
+<blockquote>原文：<a href="https://www.tomshardware.com/software/linux/new-linux-tech-compresses-memory-in-ram-as-ram-for-452x-speedup-new-cram-method-offers-giant-boost-to-compressed-memory-reads" target="_blank" rel="noopener noreferrer">New Linux tech compresses memory in RAM, as RAM, for 452x speedup</a>（Tom's Hardware，2026-10-07）<br>
+补充来源：<a href="https://www.phoronix.com/news/Linux-CRAM-Compressed-RAM" target="_blank" rel="noopener noreferrer">Phoronix：Meta Developing Compressed RAM "CRAM" For Linux</a>、<a href="https://lpc.events/event/20/contributions/2424/" target="_blank" rel="noopener noreferrer">LPC 2026 议题页</a>、演讲数据的整理与分析<br>
 本文为<strong>解读</strong>。第二、三节的演出数据来自公开的演讲材料整理，第三节的「三重限定」与第五节的硬件现状判断是笔者重点补充的部分。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
@@ -301,41 +301,27 @@
 <p>Meta 的工程师 Gregory Price 在布拉格的 <strong>Linux Plumbers Conference 2026</strong>（10 月 5 日）展示了 <strong>CRAM（Compressed RAM）</strong>。它和 zram/zswap 的根本差别不在压缩算法，而在<strong>访问路径</strong>：CRAM 让<strong>硬件直接按缓存行或字节级访问压缩内存</strong>，压缩页<strong>保留在页表里</strong>，读的时候由硬件解压，Linux 不需要把整页搬回普通 DRAM。只读场景下吞吐达到 DRAM 的 <strong>98% 以上</strong>，而 zram 约 <strong>1.1 M ops/s</strong>，两者相去除出了标题里那个 <strong>452 倍</strong>。<strong>但这个数字有三重限定，而且 CRAM 需要的那类硬件目前基本不存在。</strong></p>
 <h2>一、先说清 CRAM 和 zram/zswap 差在哪</h2>
 <p>这三种方案都做「把内存压缩在内存里」，差别在<strong>读回数据时各自要走什么路</strong>：</p>
-<table>
-<tr><th>方案</th><th>数据怎么放</th><th>读回时的动作</th></tr>
-<tr><td><strong>zram 用作 swap</strong></td><td>RAM 里的压缩块设备</td><td>处理缺页异常，解压到普通内存</td></tr>
-<tr><td><strong>zswap</strong></td><td>RAM 里压缩的 swap 页缓存</td><td>处理缺页异常，解压到分配的页</td></tr>
-<tr><td><strong>CRAM</strong></td><td><strong>硬件压缩、可直接访问的内存</strong></td><td><strong>保留可读映射，由硬件解压</strong></td></tr>
-</table>
+<table><thead><tr><th>方案</th><th>数据怎么放</th><th>读回时的动作</th></tr></thead><tbody><tr><td><strong>zram 用作 swap</strong></td><td>RAM 里的压缩块设备</td><td>处理缺页异常，解压到普通内存</td></tr><tr><td><strong>zswap</strong></td><td>RAM 里压缩的 swap 页缓存</td><td>处理缺页异常，解压到分配的页</td></tr><tr><td><strong>CRAM</strong></td><td><strong>硬件压缩、可直接访问的内存</strong></td><td><strong>保留可读映射，由硬件解压</strong></td></tr></tbody></table>
 <p><strong>关键差别是最后一行那个「不再需要分配一个普通内存页作为解压目标」。</strong> CRAM 要求硬件支持<strong>按缓存行或字节级直接访问压缩内存区域</strong>，应用不自己解码数据，硬件把它呈现为一次普通的内存访问。</p>
 <p><strong>另一处架构选择是它暴露给 Linux 的形态</strong>：CRAM 把压缩内存作为一个<strong>私有的 NUMA 节点</strong>提供，而不是一个模拟的块设备。这样做的好处是<strong>内核可以直接复用既有的内存管理机制</strong>（内存迁移、回收、降级 demotion、ballooning），而不必为压缩内存单独写一套路径。</p>
 <p><strong>注意</strong>：不要把这个 CRAM 和几个同名旧东西搞混。有一个 2010 年的论文也叫 <strong>CRAM（Compressed Random Access Memory）</strong>，那是数据结构；有一个 2018 年的硬件论文也叫 <strong>CRAM</strong>，那是学术上的内存控制器压缩设计；Linux 里还有个 <strong>cramfs</strong> 文件系统。本文谈的是 2026 年 LPC 上 Meta 提出的这一个。</p>
 <h2>二、那个 452 倍是怎么算出来的</h2>
 <p>幻灯片里的只读测试数据（取自演讲第 11 页，比值是算出来的）：</p>
-<table>
-<tr><th>访问分布</th><th>CRAM（百万 ops/s）</th><th>DRAM 容量充足（百万 ops/s）</th><th>CRAM / DRAM</th></tr>
-<tr><td>偏斜访问（Zipf 0.99）</td><td><strong>321</strong></td><td>325</td><td>约 <strong>98.8%</strong></td></tr>
-<tr><td>均匀随机</td><td><strong>489</strong></td><td>498</td><td>约 <strong>98.2%</strong></td></tr>
-</table>
+<table><thead><tr><th>访问分布</th><th>CRAM（百万 ops/s）</th><th>DRAM 容量充足（百万 ops/s）</th><th>CRAM / DRAM</th></tr></thead><tbody><tr><td>偏斜访问（Zipf 0.99）</td><td><strong>321</strong></td><td>325</td><td>约 <strong>98.8%</strong></td></tr><tr><td>均匀随机</td><td><strong>489</strong></td><td>498</td><td>约 <strong>98.2%</strong></td></tr></tbody></table>
 <p>而 <strong>zram 约 1.1 M ops/s</strong>。<strong>489 ÷ 1.1 ≈ 444</strong>。也就是说，标题里的「452x」和这份数据大致是同一个量级的取点（不同测试组合可能略有出入）。</p>
 <p><strong>换句话说，「只读数据在 CRAM 里几乎和原生 DRAM 一样快」这个结论是站得住的</strong>：98% 到 99% 的吞吐比，对一个绕过了整条软件解压路径的方案来说，是相当强的结果。</p>
 <h2>三、三重限定：为什么这个数字比它听起来窄得多</h2>
 <p>这是全文最该被认真对待的部分，因为标题里的 452 倍如果脱离限定条件引用，会严重误导容量规划。</p>
 <h3>限定一：这是纯读场景，一加写就急剧缩小</h3>
 <p>压缩数据<strong>不能在原位置修改</strong>。写一个位于 CRAM 里的页，需要<strong>触发缺页异常、把该页迁移回原生 DRAM 节点</strong>、然后才能完成修改。所以写比率一上来，优势就掉得很快：</p>
-<table>
-<tr><th>场景</th><th>CRAM 相对 zram 的倍数</th></tr>
-<tr><td>纯读（导致的 452 倍那组）</td><td><strong>数百倍</strong></td></tr>
-<tr><td>均匀随机，2% 写比率</td><td><strong>约 37 倍</strong></td></tr>
-<tr><td>均匀随机，20% 写比率</td><td><strong>约 5.4 倍</strong></td></tr>
-</table>
+<table><thead><tr><th>场景</th><th>CRAM 相对 zram 的倍数</th></tr></thead><tbody><tr><td>纯读（导致的 452 倍那组）</td><td><strong>数百倍</strong></td></tr><tr><td>均匀随机，2% 写比率</td><td><strong>约 37 倍</strong></td></tr><tr><td>均匀随机，20% 写比率</td><td><strong>约 5.4 倍</strong></td></tr></tbody></table>
 <p><strong>从几百倍到 5.4 倍，中间差的不是一星半点。</strong> 而真实工作负载里，写入是常态而非例外。</p>
 <h3>限定二：偏斜测试里 zram 直接被 OOM 杀掉了</h3>
 <p>在偏斜访问测试中，<strong>zram 在 10% 和 20% 写比率下被内存不足条件终止</strong>。也就是说那两组数据根本不是「两个方案都跑完然后比大小」，而是<strong>一方先崩了</strong>。这种对比不能当作等价比较来读。</p>
 <h3>限定三（最重要）：所有测量都在 DRAM 上完成</h3>
 <p>演讲材料自己对这一点有明确标注：</p>
 <blockquote><strong>所有测量都使用 DRAM，目的是隔离页错误处理的开销。</strong> 因此不应把它们读作展示压缩硬件本身速度或省电收益的产品基准。</blockquote>
-<strong>这句话是整个事件里最关键的限定</strong>。它意味着：那 452 倍展示的是「<strong>CRAM 保留可读映射这个设计，能把软件侧处理削减到什么程度</strong>」，而<strong>不是</strong>「压缩硬件有多快」，也<strong>不是</strong>「能省多少电」。
+<p><strong>这句话是整个事件里最关键的限定</strong>。它意味着：那 452 倍展示的是「<strong>CRAM 保留可读映射这个设计，能把软件侧处理削减到什么程度</strong>」，而<strong>不是</strong>「压缩硬件有多快」，也<strong>不是</strong>「能省多少电」。</p>
 <p><strong>这三个限定的实际含义</strong>：452 倍是一个<strong>关于软件路径开销的实验结论</strong>，不是一个可以拿来做容量与性能规划的产品数据。</p>
 <h2>四、真正有意思的部分：怎么防止「容量幻觉」</h2>
 <p>这一节是 CRAM 设计里最扎实的工程内容，也是我认为比那个倍数更值得读的地方。</p>
@@ -351,19 +337,13 @@
 <p><strong>它更可能先落在哪里？</strong> 目前能看到的相关方向是 <strong>CXL 内存层上的硬件加速压缩引擎</strong>（例如 ZeroPoint Technologies 那类方案，对外展示的是给系统内存层级增加一个「压缩 CXL 内存层」）。</p>
 <p>这里有一个很有意思的旁证。Phoronix 在报道里提到：</p>
 <blockquote><strong>大多数支持 CRAM 所需的单个组件已经在主线（mainline）里了。</strong></blockquote>
-<strong>这句话反过来读很关键</strong>：软件侧的零件基本齐了，<strong>缺的是硬件</strong>。也就是说，CRAM 的现阶段性质是<strong>一个为尚未普及的硬件提前准备好的内核设计</strong>，而不是一个你升级内核就能享受的性能提升。这与我们前几天那篇 EPYC Verano 里看到的模式一致：<strong>标准与软件先到位，等硬件跟上。</strong>
+<p><strong>这句话反过来读很关键</strong>：软件侧的零件基本齐了，<strong>缺的是硬件</strong>。也就是说，CRAM 的现阶段性质是<strong>一个为尚未普及的硬件提前准备好的内核设计</strong>，而不是一个你升级内核就能享受的性能提升。这与我们前几天那篇 EPYC Verano 里看到的模式一致：<strong>标准与软件先到位，等硬件跟上。</strong></p>
 <h2>六、与 zram 那条技术线的关系</h2>
 <p>如果你看过我们 10 月 6 日那篇 <a href="/articles/2026-10-06_zram-streams-rework/">zram 重构读写流</a>，会发现这两件事其实在同一条线上。</p>
 <p><strong>zram 那边的进展是「把现有路径优化得更顺」</strong>：让读写流更简洁、消除优先级反转。</p>
 <p><strong>CRAM 这边是「想办法绕开整条路径」</strong>：既然「缺页异常 → 解压 → 分配一个普通页 → 搬运」这套动作是开销的来源，那就要求硬件能直接读压缩页，让这套动作不再需要。</p>
 <p><strong>两个方向都有价值，但它们的成本和受益面完全不同</strong>：</p>
-<table>
-<tr><th></th><th>zram/zswap 优化</th><th>CRAM</th></tr>
-<tr><td>硬件要求</td><td><strong>无</strong>（纯软件）</td><td><strong>需要能解压的内存硬件</strong></td></tr>
-<tr><td>现在能用吗</td><td><strong>能</strong></td><td><strong>不能</strong></td></tr>
-<tr><td>受益面</td><td>所有 Linux 用户</td><td>未来具备该硬件的平台</td></tr>
-<tr><td>优化对象</td><td>现有软件的路径开销</td><td>绕过软件路径</td></tr>
-</table>
+<table><thead><tr><th></th><th>zram/zswap 优化</th><th>CRAM</th></tr></thead><tbody><tr><td>硬件要求</td><td><strong>无</strong>（纯软件）</td><td><strong>需要能解压的内存硬件</strong></td></tr><tr><td>现在能用吗</td><td><strong>能</strong></td><td><strong>不能</strong></td></tr><tr><td>受益面</td><td>所有 Linux 用户</td><td>未来具备该硬件的平台</td></tr><tr><td>优化对象</td><td>现有软件的路径开销</td><td>绕过软件路径</td></tr></tbody></table>
 <p><strong>所以对今天的运维和内核工程师来说，可执行的结论很朴素</strong>：<strong>继续用 zram/zswap，并且关注它们的持续改进</strong>（Phoronix 的近期列表中就有 Qihoo 360 给 zram 提交的 QPaCE 驱动代码和 zswap 批量化写回的补丁）；把 CRAM 当作一个<strong>方向性信号</strong>记下来，而不是一个待落地的优化项。</p>
 <h2>七、我的判断</h2>
 <p><strong>第一，这个原型的价值在「验证了一件具体的事」。</strong> 它证明了：<strong>只要硬件允许直接访问压缩页，软件侧那套「缺页 + 解压 + 搬回」的开销是可以被整体消除的</strong>，而且消除之后只读吞吐能到 DRAM 的 98%。这是一个干净的结论，比那个倍数本身有价值得多。</p>
@@ -371,31 +351,9 @@
 <p><strong>第三，我最欣赏的部分其实是第三节那三个容量控制机制。</strong> 因为那才是「压缩内存」这件事真正的难点：<strong>不是压得动，而是压完之后你还敢不敢相信自己有多少内存。</strong> 用只读映射限制写、用私有 NUMA 节点限制入口、用 ballooning 动态调容量，这三个机制合起来是在回答一个很实际的问题：当压缩率是一个飘忽不定的数字时，操作系统怎么才能不把自己骗了。</p>
 <p><strong>第四，也是对普通读者最实用的一句</strong>：<strong>你短期内用不上它，而且这不是因为内核没合并。</strong> 门槛在硬件。对你今天的选择来说，zram 和 zswap 依然是对的答案，它们的改进（以及相关补丁）才是你真正能拿到的东西。CRAM 值得记住的理由是它标出了一个方向：<strong>内存压缩的未来可能不在压缩算法，而在于把解压这件事挪进硬件的访问路径里。</strong></p>
 <h2>关键事实速查</h2>
-<table>
-<tr><th>项目</th><th>内容</th></tr>
-<tr><td>事件</td><td>Meta 的 Gregory Price 在 <strong>Linux Plumbers Conference 2026</strong>（布拉格，10 月 5 日）演讲</td></tr>
-<tr><td>CRAM 全称</td><td>Compressed RAM</td></tr>
-<tr><td>核心机制</td><td>硬件支持<strong>缓存行/字节级</strong>直接访问压缩内存；压缩页<strong>保留在页表</strong>里；读由硬件解压</td></tr>
-<tr><td>与 zram/zswap 的差别</td><td>读时<strong>不再需要分配一个普通内存页作为解压目标</strong></td></tr>
-<tr><td>暴露形态</td><td><strong>私有 NUMA 节点</strong>（而非模拟块设备），以复用既有内存管理机制</td></tr>
-<tr><td>只读性能</td><td>CRAM/DRAM 吞吐比：偏斜访问 <strong>98.8%</strong>、均匀随机 <strong>98.2%</strong>（321/325、489/498 M ops/s）</td></tr>
-<tr><td>zram 对照</td><td>约 <strong>1.1 M ops/s</strong>，据此得出标题的 452 倍量级（489 ÷ 1.1 ≈ 444）</td></tr>
-<tr><td>⚠️ 限定一</td><td>纯读场景；加写后，2% 写比率约 <strong>37 倍</strong>、20% 写比率约 <strong>5.4 倍</strong></td></tr>
-<tr><td>⚠️ 限定二</td><td>偏斜测试中 zram 在 10%、20% 写比率下<strong>被 OOM 终止</strong>，非等价比较</td></tr>
-<tr><td>⚠️ 限定三</td><td>演讲明确标注<strong>所有测量都在 DRAM 上完成</strong>，用于隔离缺页开销，<strong>不应作为产品基准或省电结论</strong></td></tr>
-<tr><td>容量控制三机制</td><td>① 进 CRAM 的页映射为<strong>只读</strong>，写即触发缺页并回原 DRAM；② 只在<strong>内存回收</strong>时迁入，目标是<strong>私有 NUMA 节点</strong>；③ <strong>ballooning</strong>：驱动报告实际压缩率并预留内存，可停止接受新页</td></tr>
-<tr><td>⚠️ 硬件门槛</td><td>需要能实时解压、支持缓存行访问的内存硬件，<strong>普通硬件上不存在</strong>；更可能先落在 <strong>CXL 内存层</strong>方案上</td></tr>
-<tr><td>软件侧状态</td><td>Phoronix：<strong>大多数支持 CRAM 所需的组件已在主线</strong></td></tr>
-<tr><td>其他同名混淆</td><td>2010 年论文 CRAM（数据结构）、2018 年论文 CRAM（内存控制器压缩）、cramfs 文件系统，均非本方案</td></tr>
-</table>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>事件</td><td>Meta 的 Gregory Price 在 <strong>Linux Plumbers Conference 2026</strong>（布拉格，10 月 5 日）演讲</td></tr><tr><td>CRAM 全称</td><td>Compressed RAM</td></tr><tr><td>核心机制</td><td>硬件支持<strong>缓存行/字节级</strong>直接访问压缩内存；压缩页<strong>保留在页表</strong>里；读由硬件解压</td></tr><tr><td>与 zram/zswap 的差别</td><td>读时<strong>不再需要分配一个普通内存页作为解压目标</strong></td></tr><tr><td>暴露形态</td><td><strong>私有 NUMA 节点</strong>（而非模拟块设备），以复用既有内存管理机制</td></tr><tr><td>只读性能</td><td>CRAM/DRAM 吞吐比：偏斜访问 <strong>98.8%</strong>、均匀随机 <strong>98.2%</strong>（321/325、489/498 M ops/s）</td></tr><tr><td>zram 对照</td><td>约 <strong>1.1 M ops/s</strong>，据此得出标题的 452 倍量级（489 ÷ 1.1 ≈ 444）</td></tr><tr><td>⚠️ 限定一</td><td>纯读场景；加写后，2% 写比率约 <strong>37 倍</strong>、20% 写比率约 <strong>5.4 倍</strong></td></tr><tr><td>⚠️ 限定二</td><td>偏斜测试中 zram 在 10%、20% 写比率下<strong>被 OOM 终止</strong>，非等价比较</td></tr><tr><td>⚠️ 限定三</td><td>演讲明确标注<strong>所有测量都在 DRAM 上完成</strong>，用于隔离缺页开销，<strong>不应作为产品基准或省电结论</strong></td></tr><tr><td>容量控制三机制</td><td>① 进 CRAM 的页映射为<strong>只读</strong>，写即触发缺页并回原 DRAM；② 只在<strong>内存回收</strong>时迁入，目标是<strong>私有 NUMA 节点</strong>；③ <strong>ballooning</strong>：驱动报告实际压缩率并预留内存，可停止接受新页</td></tr><tr><td>⚠️ 硬件门槛</td><td>需要能实时解压、支持缓存行访问的内存硬件，<strong>普通硬件上不存在</strong>；更可能先落在 <strong>CXL 内存层</strong>方案上</td></tr><tr><td>软件侧状态</td><td>Phoronix：<strong>大多数支持 CRAM 所需的组件已在主线</strong></td></tr><tr><td>其他同名混淆</td><td>2010 年论文 CRAM（数据结构）、2018 年论文 CRAM（内存控制器压缩）、cramfs 文件系统，均非本方案</td></tr></tbody></table>
 <h2>延伸阅读</h2>
-<ul>
-<li><a href="https://www.phoronix.com/news/Linux-CRAM-Compressed-RAM">Phoronix：Meta Developing Compressed RAM "CRAM" For Linux</a></li>
-<li><a href="https://lpc.events/event/20/contributions/2424/">LPC 2026：Compressed RAM 议题页</a></li>
-<li><a href="/articles/2026-10-06_zram-streams-rework/">本站：zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转</a></li>
-<li><a href="/articles/2026-09-14_ebpf-memoization-90-percent/">本站：把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI</a></li>
-<li><a href="/articles/2026-09-16_blk-iocost-bpf-cost-model/">本站：iocost 的七年之约：把 IO 成本模型交给 BPF</a></li>
-</ul>
+<ul><li><a href="https://www.phoronix.com/news/Linux-CRAM-Compressed-RAM" target="_blank" rel="noopener noreferrer">Phoronix：Meta Developing Compressed RAM "CRAM" For Linux</a></li><li><a href="https://lpc.events/event/20/contributions/2424/" target="_blank" rel="noopener noreferrer">LPC 2026：Compressed RAM 议题页</a></li><li><a href="/articles/2026-10-06_zram-streams-rework/">本站：zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转</a></li><li><a href="/articles/2026-09-14_ebpf-memoization-90-percent/">本站：把 eBPF 安全代理的内核 CPU 开销砍掉 90%：靠的是记忆化，不是 AI</a></li><li><a href="/articles/2026-09-16_blk-iocost-bpf-cost-model/">本站：iocost 的七年之约：把 IO 成本模型交给 BPF</a></li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>

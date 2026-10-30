@@ -284,7 +284,7 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-<blockquote><strong>本文结论已被推翻（2026-10-01 更新）。</strong> 文中「501d 的 PSK 是 OEM 黑盒、Linux 侧读不到、无解」的判断是<strong>错的</strong>。正确结论：501d 属 <strong>GM168SEC</strong> 家族，其 PSK 是 per-device 的 DPAPI sealed blob，可以借一台全新 Win11 虚机重新 provision 并解出明文；本机最终<strong>协议层全部打通、录入成功</strong>，卡点在更靠后的<strong>匹配算法</strong>（13 mm² 面积下开源匹配器分不开真假手指）。完整复盘见：<a href="https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/">从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘</a>。下文仍有价值的部分是对 Linux 指纹栈（PAM / fprintd / libfprint / TLS-PSK）的分层拆解，请只把它当作<strong>当时的排查过程记录</strong>来读，PSK 与结论章节以新文为准。</blockquote>
+<blockquote><strong>本文结论已被推翻（2026-10-01 更新）。</strong> 文中「501d 的 PSK 是 OEM 黑盒、Linux 侧读不到、无解」的判断是<strong>错的</strong>。正确结论：501d 属 <strong>GM168SEC</strong> 家族，其 PSK 是 per-device 的 DPAPI sealed blob，可以借一台全新 Win11 虚机重新 provision 并解出明文；本机最终<strong>协议层全部打通、录入成功</strong>，卡点在更靠后的<strong>匹配算法</strong>（13 mm² 面积下开源匹配器分不开真假手指）。完整复盘见：<a href="https://freelamp.com/articles/2026-10-01_goodix-501d-linux-fingerprint-postmortem/" target="_blank" rel="noopener noreferrer">从 PSK 提取到私有引擎逆向：一次 Goodix 27c6:501d 指纹 Linux 适配的完整失败复盘</a>。下文仍有价值的部分是对 Linux 指纹栈（PAM / fprintd / libfprint / TLS-PSK）的分层拆解，请只把它当作<strong>当时的排查过程记录</strong>来读，PSK 与结论章节以新文为准。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
       <span class="tc-ad-label">推广</span>
@@ -298,7 +298,7 @@
 <p>在 Linux 上点亮一个指纹传感器，<strong>远不止「装好驱动」</strong>。它是一条跨用户态、守护进程、驱动库与硬件安全核的信任链：<strong>PAM 决定「谁可以免密」、fprintd 管「怎么和传感器说话」、libfprint 管「驱动与协议」</strong>，而像 Goodix 这种现代传感器，主机和指纹 MCU 之间还跑着一条 <strong>TLS-PSK 加密通道</strong>——密钥是 OEM 在出厂时烧进设备里的，<strong>Linux 侧既读不到、也改不了</strong>。我们这次卡死的地方，恰恰就是这条链最底层的硬件黑盒。</p>
 <h2>指纹登录到底是什么：四层信任链</h2>
 <p>很多人以为「指纹登录」是内核识别手指、PAM 直接放行。实际上它是一个分层解耦的栈，每一层只做自己的事：</p>
-<pre><code class="">┌─────────────────────────────────────────────┐
+<pre><code>┌─────────────────────────────────────────────┐
 │  应用/登录界面 (SDDM greeter / sudo / login)  │   发起认证请求
 ├─────────────────────────────────────────────┤
 │  PAM 栈  (pam_fprintd.so + pam_unix.so ...)   │   决定「认什么、怎么兜底」
@@ -308,28 +308,25 @@
 │  libfprint 库 (驱动: goodixtls52xd 等)        │   认设备 + 协议 + 成像
 ├─────────────────────────────────────────────┤
 │  硬件: 指纹 MCU (自带安全核 + TLS-PSK 通道)    │   真正比对指纹的地方
-└─────────────────────────────────────────────┘
-</code></pre>
+└─────────────────────────────────────────────┘</code></pre>
 <p>关键设计：<strong>指纹模板永远不出硬件</strong>（Match-on-Chip），主机拿到的是「匹配/不匹配」的布尔结果，不是你的指纹图像。这也是为什么这套架构敢用在登录认证上。</p>
 <h2>第一层：PAM 如何挂接指纹</h2>
 <p>PAM（Pluggable Authentication Modules）是 Linux 认证的调度层。指纹不是某个二进制内建的，而是通过模块 <code>pam_fprintd.so</code> 插入。</p>
 <p>Debian 上这套是 <code>pam-auth-update</code> 托管的标准玩法。看 <code>sddm</code> 的 PAM 配置：</p>
 <pre><code class="pam">auth    requisite       pam_nologin.so
 auth    required        pam_succeed_if.so user != root quiet_success
-@include common-auth
-</code></pre>
+@include common-auth</code></pre>
 <p>真正干活的是 <code>@include common-auth</code>，而 <code>common-auth</code> 由 <code>pam-auth-update</code> 生成。<code>pam-auth-update --enable fprintd</code> 会在 <code>common-auth</code> 里注入一行 <code>pam_fprintd.so</code>。因为 <code>sddm</code> 和 <code>sudo</code> 都 <code>@include common-auth</code>，<strong>一次启用，登录和 sudo 同时生效</strong>。</p>
 <p><code>pam_fprintd.so</code> 的语义是 <code>sufficient</code>：指纹验证成功即放行，失败不致命——密码仍是兜底。所以挂指纹不会把自己锁死在门外，这是设计时就要保证的安全属性。</p>
 <h2>第二层：fprintd 守护进程</h2>
 <p><code>fprintd</code> 是一个 D-Bus 服务（<code>net.reactivated.Fprint</code>），<strong>PAM 模块并不直接碰硬件</strong>，而是 через D-Bus 让 fprintd 去操作设备。这样设计的好处是：多个会话（图形登录、sudo、锁屏）共享同一个指纹守护进程，模板存储、设备枚举都集中管理。</p>
-<p>设备枚举通过 <code>libfprint</code> 完成。一块传感器要被 fprintd 看见，前提是 libfprint 里有对应驱动，且驱动的 <code>id_table</code> 认得它的 USB VID:PID。<code>fprintd-list <user></code> 报 <code>No devices available</code>，基本就是这一层没认出设备。</p>
+<p>设备枚举通过 <code>libfprint</code> 完成。一块传感器要被 fprintd 看见，前提是 libfprint 里有对应驱动，且驱动的 <code>id_table</code> 认得它的 USB VID:PID。<code>fprintd-list &lt;user&gt;</code> 报 <code>No devices available</code>，基本就是这一层没认出设备。</p>
 <h2>第三层：libfprint 与驱动</h2>
 <p><code>libfprint</code> 是协议与成像层。每个传感器家族一个驱动，驱动里写死一张 USB 设备表：</p>
 <pre><code class="c">static const FpIdEntry id_table[] = {
-    {.vid = 0x27c6, .pid = 0x521d},   /<em> 官方支持的 52xd 设备 </em>/
-    /<em> 我们的 0x501d 原本不在这里 </em>/
-};
-</code></pre>
+    {.vid = 0x27c6, .pid = 0x521d},   /* 官方支持的 52xd 设备 */
+    /* 我们的 0x501d 原本不在这里 */
+};</code></pre>
 <p>我们的设备是 <strong>Goodix <code>27c6:501d</code></strong>。主线 libfprint 的 <code>goodixmoc</code> 驱动只认 <code>0x5840</code>、<code>0x6xxx</code> 等新 PID，根本不包含 <code>0x501d</code>。社区里有个 fork（<code>djnz00/libfprint</code> 的 <code>goodixtls52xd</code> 驱动）支持 52xd 家族，但它的 <code>id_table</code> 也只列了 <code>0x521d</code>。</p>
 <p><strong>第一步就是把 <code>0x501d</code> 加进 <code>id_table</code></strong>——这一步简单，加一行即可，设备立刻被识别。</p>
 <h2>第四层（重点）：Goodix 的 TLS-PSK 加解密通道</h2>
@@ -341,7 +338,7 @@ auth    required        pam_succeed_if.so user != root quiet_success
 <p>社区逆向项目 <code>goodix-fp-dump</code> 里，每款设备的 PSK 都是<strong>硬编码在源码里的常量</strong>——<code>521d</code> 有 <code>521d</code> 的，<code>5110</code>/<code>5125</code> 各有各的，<strong>没有一个通用值</strong>。这本身就说明：PSK 是 per-device 的黑盒。</p>
 <h3>握手流程：设备识别之后发生了什么</h3>
 <p>设备被认出后，驱动按一个严格的状态机走激活流程。从我们抓到的 fprintd 调试日志可以完整还原：</p>
-<pre><code class="">state 0  NOP 握手
+<pre><code>state 0  NOP 握手
 state 1  使能芯片
 state 2  读固件版本        → "GFUSB_GM168SEC_APP_10034"
 state 3  校验 PSK 标志位    → flags 0xbb020001
@@ -349,47 +346,25 @@ state 4  预设 PSK 读取      → 读出 32 字节 PSK 哈希，与内置 PMK_
 state 5  复位设备
 state 6  读 OTP（一次性可编程区）
 state 7  上传 MCU 配置
-state 8  建立 TLS-PSK 通道  → OpenSSL PSK-AES128-CBC-SHA256
-</code></pre>
+state 8  建立 TLS-PSK 通道  → OpenSSL PSK-AES128-CBC-SHA256</code></pre>
 <p>注意 <strong>state 4 和 state 8 的区别</strong>，这是理解这次失败的核心：</p>
-<ul>
-<li><strong>state 4（PSK 哈希比对）</strong>：设备回传一个 32 字节的「PSK 哈希」，驱动把它和硬编码的 <code>PMK_HASH</code> 做 <code>memcmp</code>。这一步只是<strong>确认这台设备用的是同一套方案</strong>，哈希是公开可比对的设计，不涉密。</li>
-<li><strong>state 8（TLS 握手）</strong>：服务端（OpenSSL <code>s_server</code> 风格的 PSK 回调）需要拿出一个<strong>真实的 32 字节 PSK</strong>，和设备硬件里烧的那份做对称校验。两边必须相等，握手才过。<strong>这份真实 PSK 就是 OEM 黑盒。</strong></li>
-</ul>
-驱动里硬编码的 <code>goodix_52xd_psk_10034</code> 是别人从某台 <code>0x521d</code> 设备逆向出来的真实 PSK。你的 <code>0x501d</code> 硬件里烧的是另一份——所以 state 4 能过（哈希比对用的是算法派生的哈希，我们甚至可以从设备 dump 出真实哈希填进去），但 state 8 必然失败：<strong>TLS 服务端用的 PSK ≠ 设备硬件里的 PSK</strong>。
+<ul><li><strong>state 4（PSK 哈希比对）</strong>：设备回传一个 32 字节的「PSK 哈希」，驱动把它和硬编码的 <code>PMK_HASH</code> 做 <code>memcmp</code>。这一步只是<strong>确认这台设备用的是同一套方案</strong>，哈希是公开可比对的设计，不涉密。</li><li><strong>state 8（TLS 握手）</strong>：服务端（OpenSSL <code>s_server</code> 风格的 PSK 回调）需要拿出一个<strong>真实的 32 字节 PSK</strong>，和设备硬件里烧的那份做对称校验。两边必须相等，握手才过。<strong>这份真实 PSK 就是 OEM 黑盒。</strong></li></ul>
+<p>驱动里硬编码的 <code>goodix_52xd_psk_10034</code> 是别人从某台 <code>0x521d</code> 设备逆向出来的真实 PSK。你的 <code>0x501d</code> 硬件里烧的是另一份——所以 state 4 能过（哈希比对用的是算法派生的哈希，我们甚至可以从设备 dump 出真实哈希填进去），但 state 8 必然失败：<strong>TLS 服务端用的 PSK ≠ 设备硬件里的 PSK</strong>。</p>
 <h2>复盘：我们到底走通了哪几步</h2>
 <p>把这次尝试按信任链拆开，能走通的都走通了，卡死在最后一格：</p>
-<table>
-<tr><th>层</th><th>目标</th><th>结果</th></tr>
-<tr><td>PAM</td><td>识别设备、注入模块</td><td>✅ 设备识别（加 PID）</td></tr>
-<tr><td>fprintd</td><td>守护进程正常</td><td>✅ 编译覆盖库后正常</td></tr>
-<tr><td>libfprint</td><td>驱动认设备 + 固件读出</td><td>✅ 固件 <code>APP_10034</code> 读出</td></tr>
-<tr><td>PSK 哈希比对 (state 4)</td><td>设备真实哈希</td><td>✅ <strong>从设备 dump 出真实 PSK 哈希并填对</strong></td></tr>
-<tr><td>TLS 握手 (state 8)</td><td>真实 PSK 明文</td><td>❌ 设备硬件里的 OEM PSK，Linux 侧不可得</td></tr>
-</table>
+<table><thead><tr><th>层</th><th>目标</th><th>结果</th></tr></thead><tbody><tr><td>PAM</td><td>识别设备、注入模块</td><td>✅ 设备识别（加 PID）</td></tr><tr><td>fprintd</td><td>守护进程正常</td><td>✅ 编译覆盖库后正常</td></tr><tr><td>libfprint</td><td>驱动认设备 + 固件读出</td><td>✅ 固件 <code>APP_10034</code> 读出</td></tr><tr><td>PSK 哈希比对 (state 4)</td><td>设备真实哈希</td><td>✅ <strong>从设备 dump 出真实 PSK 哈希并填对</strong></td></tr><tr><td>TLS 握手 (state 8)</td><td>真实 PSK 明文</td><td>❌ 设备硬件里的 OEM PSK，Linux 侧不可得</td></tr></tbody></table>
 <p>几个值得一提的工程细节（坑）：</p>
-<ul>
-<li><strong>Debian trixie 的 udev 改名</strong>：fork 的 meson 写的是 <code>dependency('udev')</code>，但新 systemd 把 pkg-config 模块名改成了 <code>libudev</code>，得改成 <code>libudev</code> 并显式传 <code>udev_rules_dir</code>（系统没有 <code>udevdir</code> 变量）。</li>
-<li><strong>ProtectHome 导致 symlink 失效</strong>：我们把系统库做成了指向 <code>/home/axu/...</code> 的 symlink，而 <code>fprintd.service</code> 有 <code>ProtectHome=true</code>，systemd 起进程时读不到 <code>/home</code> 下的库，直接 <code>cannot open shared object file</code>。必须 <code>cat</code> 成实体文件进 <code>/usr/lib</code>。</li>
-<li><strong>PSK 哈希其实能从 libfprint 自己抓到</strong>：我们一开始想用 <code>goodix-fp-dump</code> 的 pyusb 脚本读，但它 reset 握手在 USB 层就失败；最后直接在驱动 <code>memcmp</code> 前加一行 <code>fp_dbg</code> 打印 <code>psk</code> 的 hex，重编后从 fprintd 调试日志直接读到——绕开了不通的路。</li>
-</ul>
+<ul><li><strong>Debian trixie 的 udev 改名</strong>：fork 的 meson 写的是 <code>dependency('udev')</code>，但新 systemd 把 pkg-config 模块名改成了 <code>libudev</code>，得改成 <code>libudev</code> 并显式传 <code>udev_rules_dir</code>（系统没有 <code>udevdir</code> 变量）。</li><li><strong>ProtectHome 导致 symlink 失效</strong>：我们把系统库做成了指向 <code>/home/axu/...</code> 的 symlink，而 <code>fprintd.service</code> 有 <code>ProtectHome=true</code>，systemd 起进程时读不到 <code>/home</code> 下的库，直接 <code>cannot open shared object file</code>。必须 <code>cat</code> 成实体文件进 <code>/usr/lib</code>。</li><li><strong>PSK 哈希其实能从 libfprint 自己抓到</strong>：我们一开始想用 <code>goodix-fp-dump</code> 的 pyusb 脚本读，但它 reset 握手在 USB 层就失败；最后直接在驱动 <code>memcmp</code> 前加一行 <code>fp_dbg</code> 打印 <code>psk</code> 的 hex，重编后从 fprintd 调试日志直接读到——绕开了不通的路。</li></ul>
 <h2>为什么到这里就该停手</h2>
 <p>卡在 state 8 之后，理论上还有两条路，但都走不通：</p>
-<ol>
-<li>1. <strong>拿到 <code>0x501d</code> 真实 PSK 明文</strong>——全网（GitHub 仓库、论坛、issues）没有任何人发布过 <code>501d</code> 的 PSK；且如前述，它是 Windows provisioning 烧进设备的密封存储，Linux 侧读不出明文（sealed），社区工具也没有从 <code>501d</code> 现场解出的公开方法。死路。</li>
-<li>2. <strong>刷固件 + reset PSK 到全零</strong>（像 5110/5125 那样）——需要 <code>goodix-fp-dump</code> 对 <code>501d</code> 的固件二进制和 reset 命令序列，而这些只针对已知型号，<code>501d</code> 无对应支持，<strong>盲刷几乎必然变砖</strong>。</li>
-</ol>
-我们最终选择<strong>体面回退</strong>：用官方 <code>libfprint-2-2</code> 的备份覆盖回去，<code>ldconfig</code>、重启 fprintd，系统回到官方 <code>No devices available</code> 的干净状态。PAM 从未成功挂上指纹（<code>enroll</code> 没过），所以登录/ sudo 一直是纯密码，回退零残留。
+<ol><li><strong>拿到 <code>0x501d</code> 真实 PSK 明文</strong>——全网（GitHub 仓库、论坛、issues）没有任何人发布过 <code>501d</code> 的 PSK；且如前述，它是 Windows provisioning 烧进设备的密封存储，Linux 侧读不出明文（sealed），社区工具也没有从 <code>501d</code> 现场解出的公开方法。死路。</li><li><strong>刷固件 + reset PSK 到全零</strong>（像 5110/5125 那样）——需要 <code>goodix-fp-dump</code> 对 <code>501d</code> 的固件二进制和 reset 命令序列，而这些只针对已知型号，<code>501d</code> 无对应支持，<strong>盲刷几乎必然变砖</strong>。</li></ol>
+<p>我们最终选择<strong>体面回退</strong>：用官方 <code>libfprint-2-2</code> 的备份覆盖回去，<code>ldconfig</code>、重启 fprintd，系统回到官方 <code>No devices available</code> 的干净状态。PAM 从未成功挂上指纹（<code>enroll</code> 没过），所以登录/ sudo 一直是纯密码，回退零残留。</p>
 <h2>结论：Linux 指纹支持的边界在哪</h2>
 <p>这次失败给了一个清晰的判断框架：<strong>一个 Goodix 传感器要在 Linux 上可用，需要三件事同时成立——</strong></p>
-<ol>
-<li>1. libfprint 有认它的驱动（加 PID 通常能解决）；</li>
-<li>2. 它的 PSK 哈希方案已知（能从设备 dump 比对）；</li>
-<li>3. <strong>它的真实 PSK 明文被社区逆向出来并硬编码进驱动</strong>——这一步才是真正稀缺的，且是 OEM 黑盒。</li>
-</ol>
-第 3 步缺失的设备，在 Linux 上就属于「无人支持且无可逆解法」。你的 <code>27c6:501d</code> 正是如此。它能识别、固件能读、哈希能比对，但永远过不了 TLS 握手——这不是软件能补的坑，是硬件/厂商的封闭边界。
+<ol><li>libfprint 有认它的驱动（加 PID 通常能解决）；</li><li>它的 PSK 哈希方案已知（能从设备 dump 比对）；</li><li><strong>它的真实 PSK 明文被社区逆向出来并硬编码进驱动</strong>——这一步才是真正稀缺的，且是 OEM 黑盒。</li></ol>
+<p>第 3 步缺失的设备，在 Linux 上就属于「无人支持且无可逆解法」。你的 <code>27c6:501d</code> 正是如此。它能识别、固件能读、哈希能比对，但永远过不了 TLS 握手——这不是软件能补的坑，是硬件/厂商的封闭边界。</p>
 <p>如果哪天你看到有人发了 <code>27c6:501d</code> 的 <code>goodix_52xd_psk_10034</code> 常量，或者 Goodix 开放了 Linux 驱动，这条路可以再捡起来。在那之前，老老实实用密码登录，把精力留给能落地的事。</p>
-<p>---</p>
+<hr>
 <blockquote>我是 {{作者名}}，{{一句话简介}}。如果你觉得这篇复盘对理解 Linux 指纹栈有帮助，欢迎<strong>点赞、在看、转发</strong>三连，我们下篇见。</blockquote>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>

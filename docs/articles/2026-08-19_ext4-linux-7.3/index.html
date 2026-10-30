@@ -281,7 +281,6 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-
 <blockquote><strong>原始出处</strong>：Phoronix + LKML VFS pull request + EXT4 pull request<br>
 <strong>发布日期</strong>：2026 年 8 月 19 日（合并窗口早期）<br>
 <strong>作者</strong>：Christian Brauner（VFS iomap）、Ted Ts'o（EXT4 maintainer）<br>
@@ -289,7 +288,7 @@
   - VFS iomap：[GIT PULL 08/18 for v7.3] vfs iomap（Christian Brauner）<br>
   - EXT4：ext4: use iomap for regular file's buffered I/O path v5（Zhang Yi）<br>
   - EXT4 主 pull：EXT4 feature pull request for Linux 7.3（Ted Ts'o）<br>
-<strong>Phoronix 报道</strong>：https://www.phoronix.com/news/EXT4-Linux-7.3<br>
+<strong>Phoronix 报道</strong>：<a href="https://www.phoronix.com/news/EXT4-Linux-7.3" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/EXT4-Linux-7.3</a><br>
 <strong>翻译/解读</strong>：LeisureLinux<br>
 <strong>关键词</strong>：EXT4 Linux 7.3、IOmap 并行 DIO、parallel direct I/O、ext4_mb_prefetch</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
@@ -302,13 +301,9 @@
 
 <h2>引言：三件套叠在一起</h2>
 <p>EXT4 Linux 7.3 这一波的"性能提升"不是单一改动，而是 <strong>三块独立的工作在合并窗口早期碰头</strong>：</p>
-<ol>
-<li>1. <strong>VFS IOmap 重写</strong>（Christian Brauner）：把 iomap 从 <code>iomap_begin/iomap_end</code> 双回调改成单一的 <code>iomap_next()</code>，彻底切换到 iterator 模型；并补上小 I/O 的简单 DIO 路径。</li>
-<li>2. <strong>EXT4 buffered I/O 切到 iomap</strong>（Zhang Yi）：用 32 个 patch 把 EXT4 buffered read/write/writeback/mmap 路径从 buffer_head 搬到 iomap。</li>
-<li>3. <strong>EXT4 主 pull</strong>（Ted Ts'o）：并行 DIO 写、<code>ext4_mb_prefetch()</code> 用 <code>fallocate()</code> 优化、overwrite 已 up-to-date folio 路径优化、若干稳定性修复。</li>
-</ol>
-三件叠加让 7.3 成为 EXT4 近几年性能收益最大的版本。但要理解每一块的"为什么"，得先回看 IOmap。
-<p>---</p>
+<ol><li><strong>VFS IOmap 重写</strong>（Christian Brauner）：把 iomap 从 <code>iomap_begin/iomap_end</code> 双回调改成单一的 <code>iomap_next()</code>，彻底切换到 iterator 模型；并补上小 I/O 的简单 DIO 路径。</li><li><strong>EXT4 buffered I/O 切到 iomap</strong>（Zhang Yi）：用 32 个 patch 把 EXT4 buffered read/write/writeback/mmap 路径从 buffer_head 搬到 iomap。</li><li><strong>EXT4 主 pull</strong>（Ted Ts'o）：并行 DIO 写、<code>ext4_mb_prefetch()</code> 用 <code>fallocate()</code> 优化、overwrite 已 up-to-date folio 路径优化、若干稳定性修复。</li></ol>
+<p>三件叠加让 7.3 成为 EXT4 近几年性能收益最大的版本。但要理解每一块的"为什么"，得先回看 IOmap。</p>
+<hr>
 <h2>一、IOmap：VFS 层的"地图框架"</h2>
 <h3>1.1 IOmap 是什么</h3>
 <p>IOmap（include/linux/iomap.h）是 VFS 子系统里一个通用的"逻辑文件偏移 → 物理磁盘位置"映射框架。它不归某个文件系统所有——EXT4 / XFS / Btrfs / EXT2 / EROFS / F2FS / GFS2 / HPFS / FUSE / exFAT / ZoneFS / NTFS / NTFS3 / block device mapping 全部用。</p>
@@ -316,99 +311,63 @@
 <pre><code class="c">struct iomap_ops {
     iomap_begin(...);  // 开始一段映射
     iomap_end(...);    // 结束一段映射
-};
-</code></pre>
+};</code></pre>
 <p>调用方 <code>iomap_iter()</code> 通过这两个回调走完一次映射迭代。</p>
 <h3>1.2 老设计的代价</h3>
 <p>老设计里 <code>iomap_iter()</code> 只把 <code>iomap_begin</code> / <code>iomap_end</code> 当<strong>函数指针</strong>用。每一步迭代都是一次间接调用，编译器<strong>不能内联</strong>。</p>
 <p>Joanne Koong 把这一点改成了单一 <code>iomap_next()</code> 回调：</p>
 <pre><code class="c">struct iomap_ops {
     iomap_next(...);   // 完成上一段映射 + 产生下一段
-};
-</code></pre>
-<p>调用方 <code>iomap_iter()</code> 现在能把 <code>->iomap_next</code> 作为<strong>编译期常量</strong>传进来，编译器能直接把它内联。<strong>每次迭代省一次间接调用</strong>，所有支持的文件系统都受益。</p>
+};</code></pre>
+<p>调用方 <code>iomap_iter()</code> 现在能把 <code>-&gt;iomap_next</code> 作为<strong>编译期常量</strong>传进来，编译器能直接把它内联。<strong>每次迭代省一次间接调用</strong>，所有支持的文件系统都受益。</p>
 <h3>1.3 受益范围</h3>
 <p>VFS pull 列出的转换名单：</p>
-<pre><code class="">xfs, btrfs, ext4, ext2, erofs, f2fs, gfs2, hpfs,
- fuse, exfat, zonefs, ntfs, ntfs3, block device mapping
-</code></pre>
+<pre><code>xfs, btrfs, ext4, ext2, erofs, f2fs, gfs2, hpfs,
+ fuse, exfat, zonefs, ntfs, ntfs3, block device mapping</code></pre>
 <p>13 个文件系统 + 块设备层全部切换。commit 数与 diff 规模：</p>
-<pre><code class="">29 files changed, 569 insertions(+), 159 deletions(-)
-</code></pre>
+<pre><code>29 files changed, 569 insertions(+), 159 deletions(-)</code></pre>
 <p>净 +410 行——看着增加不多，但配合下面的 DIO 路径修改是大头。</p>
-<p>---</p>
+<hr>
 <h2>二、小 I/O 简单 DIO 路径：把 1.92M → 2.19M IOPS</h2>
 <h3>2.1 瓶颈来源</h3>
 <p>Bytedance 工程师 Fengnan Chang 发现：PCIe Gen5 NVMe 上跑 4K 随机读时，<strong>单核 io_uring poll mode</strong> 跑到：</p>
-<ul>
-<li>裸块设备：~3.2M IOPS</li>
-<li>经过 EXT4：~1.92M IOPS</li>
-<li>经过 XFS：~1.92M IOPS</li>
-</ul>
-差距 1.28M IOPS。profile 显示 <code>__iomap_dio_rw()</code>、<code>iomap_iter()</code>、<code>iomap_dio_bio_iter()</code>、<code>kfree()</code> 在 top。
+<ul><li>裸块设备：~3.2M IOPS</li><li>经过 EXT4：~1.92M IOPS</li><li>经过 XFS：~1.92M IOPS</li></ul>
+<p>差距 1.28M IOPS。profile 显示 <code>__iomap_dio_rw()</code>、<code>iomap_iter()</code>、<code>iomap_dio_bio_iter()</code>、<code>kfree()</code> 在 top。</p>
 <p>也就是说：<strong>小块 DIO 路径上的开销，被 IOmap 的间接调用 + 多次 kfree + bio 分配路径放大</strong>。</p>
 <h3>2.2 简单 DIO 路径</h3>
 <p>Fengnan Chang 加了一个<strong>轻量级 DIO 路径</strong>，触发条件：</p>
-<ul>
-<li>I/O size ≤ inode blocksize</li>
-<li>文件未加密</li>
-<li>一些列其他限制</li>
-</ul>
-满足时，bio 走专用 bioset，整段 cacheline 对齐单次分配，<strong>完成回调 inline 运行</strong>，没有 <code>kfree</code>、没有间接调用、没有状态机。
+<ul><li>I/O size ≤ inode blocksize</li><li>文件未加密</li><li>一些列其他限制</li></ul>
+<p>满足时，bio 走专用 bioset，整段 cacheline 对齐单次分配，<strong>完成回调 inline 运行</strong>，没有 <code>kfree</code>、没有间接调用、没有状态机。</p>
 <h3>2.3 性能数据（fio 测试）</h3>
-<table>
-<tr><th>队列深度</th><th>libaio</th><th>io_uring</th><th>io_uring poll（QD 256）</th></tr>
-<tr><td><strong>提升</strong></td><td>4%（QD ≥ 64）</td><td>约 5%</td><td>最高 10%</td></tr>
-</table>
+<table><thead><tr><th>队列深度</th><th>libaio</th><th>io_uring</th><th>io_uring poll（QD 256）</th></tr></thead><tbody><tr><td><strong>提升</strong></td><td>4%（QD ≥ 64）</td><td>约 5%</td><td>最高 10%</td></tr></tbody></table>
 <p>EXT4 从 1.92M → <strong>2.19M IOPS</strong>（单核 io_uring poll，4K 随机读）。</p>
 <p>注意这只是单核、单工作负载，<strong>多核线性扩展后差距会更大</strong>。配合下一节的 EXT4 buffered I/O 切 iomap，提升进一步叠加。</p>
-<p>---</p>
+<hr>
 <h2>三、EXT4 buffered I/O 切到 iomap：32 patch 系列</h2>
 <h3>3.1 为什么这次切换重要</h3>
 <p>EXT4 一直是 buffer_head 路径的老用户——EXT3 时代就是这样设计的。但内核整体已经迁移到 iomap 框架，EXT4 是少数剩下的"异类"。Zhang Yi 在 v5 patch 系列里把 buffer_head 路径全部换成 iomap：</p>
-<pre><code class="">Patch 01-03: 简化 truncate，drop 掉 EOF 零块时不必要的 ordered I/O
+<pre><code>Patch 01-03: 简化 truncate，drop 掉 EOF 零块时不必要的 ordered I/O
 Patch 04-21: 扩展 ext4_map_blocks()，实现 iomap buffered read/write/writeback/mmap/部分块零
 Patch 22-30: 处理 unaligned EOF 文件扩展时 zeroing 与 i_disksize 更新的顺序
-Patch 31-32: 启用 iomap buffered I/O 路径
-</code></pre>
+Patch 31-32: 启用 iomap buffered I/O 路径</code></pre>
 <h3>3.2 实测数据</h3>
 <p>测试环境：4 核 VM（Intel Xeon Platinum 8380），150GB RAM-backed virtual-io 块设备。</p>
 <p><strong>写性能</strong>（MiB/s）节选：</p>
-<table>
-<tr><th>配置</th><th>ext4+bh</th><th>ext4+iomap</th><th>delta</th></tr>
-<tr><td>异步 4k</td><td>170</td><td>176</td><td>+4%</td></tr>
-<tr><td>异步 64k</td><td>1816</td><td>1981</td><td>+9%</td></tr>
-<tr><td>异步 1m</td><td>4295</td><td>5780</td><td><strong>+35%</strong></td></tr>
-<tr><td>异步 64k + writeback</td><td>734</td><td>957</td><td><strong>+30%</strong></td></tr>
-<tr><td>异步 1m + writeback</td><td>1460</td><td>1683</td><td>+15%</td></tr>
-<tr><td>异步 64k + RWF_DONTCACHE</td><td>415</td><td>698</td><td><strong>+68%</strong></td></tr>
-<tr><td>异步 1m + RWF_DONTCACHE</td><td>1404</td><td>2883</td><td><strong>+105%</strong></td></tr>
-<tr><td>异步 64k + OW（覆盖写）</td><td>1776</td><td>1867</td><td>+5%</td></tr>
-<tr><td>异步 1m + OW</td><td>4105</td><td>4879</td><td>+19%</td></tr>
-</table>
+<table><thead><tr><th>配置</th><th>ext4+bh</th><th>ext4+iomap</th><th>delta</th></tr></thead><tbody><tr><td>异步 4k</td><td>170</td><td>176</td><td>+4%</td></tr><tr><td>异步 64k</td><td>1816</td><td>1981</td><td>+9%</td></tr><tr><td>异步 1m</td><td>4295</td><td>5780</td><td><strong>+35%</strong></td></tr><tr><td>异步 64k + writeback</td><td>734</td><td>957</td><td><strong>+30%</strong></td></tr><tr><td>异步 1m + writeback</td><td>1460</td><td>1683</td><td>+15%</td></tr><tr><td>异步 64k + RWF_DONTCACHE</td><td>415</td><td>698</td><td><strong>+68%</strong></td></tr><tr><td>异步 1m + RWF_DONTCACHE</td><td>1404</td><td>2883</td><td><strong>+105%</strong></td></tr><tr><td>异步 64k + OW（覆盖写）</td><td>1776</td><td>1867</td><td>+5%</td></tr><tr><td>异步 1m + OW</td><td>4105</td><td>4879</td><td>+19%</td></tr></tbody></table>
 <p><strong>读性能</strong>（MiB/s）节选：</p>
-<table>
-<tr><th>场景</th><th>BS</th><th>ext4+bh</th><th>ext4+iomap</th><th>delta</th></tr>
-<tr><td>READ HOLE</td><td>64k</td><td>2011</td><td>2116</td><td>+5%</td></tr>
-<tr><td>READ DATA（无 page cache）</td><td>64k</td><td>741</td><td>768</td><td>+4%</td></tr>
-<tr><td>READ DATA</td><td>1m</td><td>1143</td><td>1210</td><td>+6%</td></tr>
-</table>
+<table><thead><tr><th>场景</th><th>BS</th><th>ext4+bh</th><th>ext4+iomap</th><th>delta</th></tr></thead><tbody><tr><td>READ HOLE</td><td>64k</td><td>2011</td><td>2116</td><td>+5%</td></tr><tr><td>READ DATA（无 page cache）</td><td>64k</td><td>741</td><td>768</td><td>+4%</td></tr><tr><td>READ DATA</td><td>1m</td><td>1143</td><td>1210</td><td>+6%</td></tr></tbody></table>
 <p><strong>关键结论</strong>：大块 I/O 显著提升（部分场景 +105%），小块同步/非缓存场景轻微回退（-7%~-15%），读性能差异不大。</p>
 <h3>3.3 已观察到的稳定性结论</h3>
 <p>xfstests-bld 在 <code>-g auto / fast_commit / 64k</code> 三种配置下：</p>
-<ul>
-<li><strong>无新增失败</strong>。</li>
-<li>仅一个 known issue：<code>generic/127</code> 偶发失败，根因在 MM 大 folio 拆分逻辑（另修）。</li>
-</ul>
-这意味着切 iomap 的<strong>兼容性已经过 xfstests 验证</strong>，剩下的只是优化空间。
-<p>---</p>
+<ul><li><strong>无新增失败</strong>。</li><li>仅一个 known issue：<code>generic/127</code> 偶发失败，根因在 MM 大 folio 拆分逻辑（另修）。</li></ul>
+<p>这意味着切 iomap 的<strong>兼容性已经过 xfstests 验证</strong>，剩下的只是优化空间。</p>
+<hr>
 <h2>四、EXT4 主 pull：并行 DIO + 多块分配器 + overwrite</h2>
 <p>EXT4 主 feature pull request 由 Ted Ts'o 提交。三件性能改进 + 一批稳定性修复：</p>
 <h3>4.1 并行 direct I/O 写</h3>
 <pre><code class="plaintext">"Allowing parallel direct I/O writes where previously were being 
 too conservative when checking if it was safe to avoid requiring 
-an exclusive lock."
-</code></pre>
+an exclusive lock."</code></pre>
 <p>老逻辑里 EXT4 在判断"是否需要独占锁"时过于保守，导致并行 DIO 写被序列化。新逻辑放宽判断，让真正能并发的写并行执行——<strong>对数据库、Docker volume、VM image 这些 DIO 重负载是直接收益</strong>。</p>
 <h3>4.2 ext4_mb_prefetch() 用 fallocate() 优化</h3>
 <p><code>ext4_mb_prefetch()</code> 是 EXT4 多块分配器的预取逻辑，目的是减少分配时的锁竞争。新逻辑：<strong>当 fallocate() 已经预留空间时，跳过预取</strong>。</p>
@@ -416,98 +375,54 @@ an exclusive lock."
 <h3>4.3 Overwrite to up-to-date folio</h3>
 <p>EXT4 之前在处理"覆盖一个已经 up-to-date 的 folio"时走了完整 mballoc 路径。新逻辑识别这种 case 提前返回，避免冗余扫描。</p>
 <h3>4.4 稳定性</h3>
-<ul>
-<li>避免可能的 soft lockup 与 RCU stall 条件。</li>
-<li>若干 bug fix（包括 <code>ext4_da_map_blocks()</code> stale delalloc extent、短 iomap buffered write 路径、<code>data_error=abort</code> 边缘 case、<code>punch hole</code> 与 writeback 竞态等）。</li>
-</ul>
----
+<ul><li>避免可能的 soft lockup 与 RCU stall 条件。</li><li>若干 bug fix（包括 <code>ext4_da_map_blocks()</code> stale delalloc extent、短 iomap buffered write 路径、<code>data_error=abort</code> 边缘 case、<code>punch hole</code> 与 writeback 竞态等）。</li></ul>
+<hr>
 <h2>五、对文件系统生态的整体影响</h2>
 <p>EXT4 切 iomap 后，剩下的"buffer_head 异类"已经不多了。Linux 文件系统基本全面 iomap 化。这意味着：</p>
-<ul>
-<li><strong>新文件系统</strong>（EROFS、ZoneFS 等）从第一天起就走 iomap，性能基线更高。</li>
-<li><strong>新硬件优化</strong>（PCIe Gen5、CXL、新型内存）只需要在 iomap 层做一次，所有文件系统受益。</li>
-<li><strong>bug 修复</strong>一次生效全栈，不用每个 fs 单独修。</li>
-</ul>
-XFS 在这次 IOmap 迭代里也完成切换。Btrfs、NTFS、NTFS3 一并完成。F2FS / GFS2 / HPFS / FUSE / exFAT / ZoneFS / EXT2 / block device mapping 都跟进。
-<p>---</p>
+<ul><li><strong>新文件系统</strong>（EROFS、ZoneFS 等）从第一天起就走 iomap，性能基线更高。</li><li><strong>新硬件优化</strong>（PCIe Gen5、CXL、新型内存）只需要在 iomap 层做一次，所有文件系统受益。</li><li><strong>bug 修复</strong>一次生效全栈，不用每个 fs 单独修。</li></ul>
+<p>XFS 在这次 IOmap 迭代里也完成切换。Btrfs、NTFS、NTFS3 一并完成。F2FS / GFS2 / HPFS / FUSE / exFAT / ZoneFS / EXT2 / block device mapping 都跟进。</p>
+<hr>
 <h2>六、性能数据横向对比</h2>
 <p>Phoronix 测试 + Zhang Yi 实测综合：</p>
-<table>
-<tr><th>工作负载</th><th>7.2 性能</th><th>7.3 性能</th><th>提升来源</th></tr>
-<tr><td>4K 随机读（单核 io_uring poll，Gen5 NVMe）</td><td>1.92M IOPS</td><td>2.19M IOPS</td><td>简单 DIO 路径</td></tr>
-<tr><td>大块顺序写（异步）</td><td>1816 MiB/s</td><td>1981 MiB/s</td><td>iomap + buffered I/O 切换</td></tr>
-<tr><td>大块顺序写 + writeback</td><td>734 MiB/s</td><td>957 MiB/s</td><td>同上</td></tr>
-<tr><td>大块 RWF_DONTCACHE</td><td>415 MiB/s</td><td>698 MiB/s</td><td>同上</td></tr>
-<tr><td>并行 DIO 写</td><td>串行化</td><td>并行化</td><td>主 pull</td></tr>
-<tr><td>多块预取（fallocate 场景）</td><td>全跑</td><td>跳过冗余</td><td>主 pull</td></tr>
-</table>
+<table><thead><tr><th>工作负载</th><th>7.2 性能</th><th>7.3 性能</th><th>提升来源</th></tr></thead><tbody><tr><td>4K 随机读（单核 io_uring poll，Gen5 NVMe）</td><td>1.92M IOPS</td><td>2.19M IOPS</td><td>简单 DIO 路径</td></tr><tr><td>大块顺序写（异步）</td><td>1816 MiB/s</td><td>1981 MiB/s</td><td>iomap + buffered I/O 切换</td></tr><tr><td>大块顺序写 + writeback</td><td>734 MiB/s</td><td>957 MiB/s</td><td>同上</td></tr><tr><td>大块 RWF_DONTCACHE</td><td>415 MiB/s</td><td>698 MiB/s</td><td>同上</td></tr><tr><td>并行 DIO 写</td><td>串行化</td><td>并行化</td><td>主 pull</td></tr><tr><td>多块预取（fallocate 场景）</td><td>全跑</td><td>跳过冗余</td><td>主 pull</td></tr></tbody></table>
 <blockquote>注：上面数据来自不同测试（Phoronix + Zhang Yi），并非同一硬件；只是看出趋势。</blockquote>
----
+<hr>
 <h2>七、对运维的影响</h2>
 <h3>7.1 该不该升级</h3>
-<p><strong>值得升级的场景</strong>：
-<ul>
-<li>数据库 / VM image / Docker volume 跑在 PCIe Gen5 NVMe 上。</li>
-<li>用 DIO 写（很多 DBMS 默认就是 O_DIRECT）。</li>
-<li>大块顺序写密集（备份、视频处理）。</li>
-<li>想用 xfstests 验证过的稳定性。</li>
-</ul>
-<strong>观望场景</strong>：
-<ul>
-<li>小块随机写（罕见性能回退）。</li>
-<li>极特殊 sync 路径（极少数 -7%~-15% 的回退）。</li>
-</ul>
-<h3>7.2 升级前要做的事</h3></p>
+<p><strong>值得升级的场景</strong>：</p>
+<ul><li>数据库 / VM image / Docker volume 跑在 PCIe Gen5 NVMe 上。</li><li>用 DIO 写（很多 DBMS 默认就是 O_DIRECT）。</li><li>大块顺序写密集（备份、视频处理）。</li><li>想用 xfstests 验证过的稳定性。</li></ul>
+<p><strong>观望场景</strong>：</p>
+<ul><li>小块随机写（罕见性能回退）。</li><li>极特殊 sync 路径（极少数 -7%~-15% 的回退）。</li></ul>
+<h3>7.2 升级前要做的事</h3>
 <pre><code class="bash"># 1. 备份 + snapshot
 btrfs subvolume snapshot / /snap-ext4-pre73
-<h1>2. xfstests 验证（如果你有环境）</h1>
+
+# 2. xfstests 验证（如果你有环境）
 xfstests-bld -g auto,fast_commit,64k
-<h1>3. 关注 dmesg 中的 EXT4 警告</h1>
+
+# 3. 关注 dmesg 中的 EXT4 警告
 dmesg -w | grep -i ext4
-<h1>4. 性能基线对比</h1>
-fio --name=before --rw=randread --bs=4k --iodepth=256 --ioengine=io_uring --filename=/dev/nvme0n1 --runtime=60
-</code></pre>
+
+# 4. 性能基线对比
+fio --name=before --rw=randread --bs=4k --iodepth=256 --ioengine=io_uring --filename=/dev/nvme0n1 --runtime=60</code></pre>
 <h3>7.3 回滚路径</h3>
 <p>7.3 是 mainline，未合入任何稳定分支。如果用 mainline + 自编译，建议保留：</p>
-<ul>
-<li>原内核 .config + bzImage 备份</li>
-<li>原 initramfs 备份</li>
-<li>启动器（grub / systemd-boot）保留 old entry</li>
-</ul>
-万一性能回退明显，切回上一个稳定内核即可。
-<p>---</p>
+<ul><li>原内核 .config + bzImage 备份</li><li>原 initramfs 备份</li><li>启动器（grub / systemd-boot）保留 old entry</li></ul>
+<p>万一性能回退明显，切回上一个稳定内核即可。</p>
+<hr>
 <h2>八、为什么这次性能收益这么大？</h2>
 <p>回头看，EXT4 Linux 7.3 不是"一个大特性"，而是<strong>几代增量改进碰到一起</strong>：</p>
-<table>
-<tr><th>改动</th><th>单独价值</th><th>叠加价值</th></tr>
-<tr><td><strong>IOmap iterator 模型</strong></td><td>消除间接调用</td><td>全栈受益</td></tr>
-<tr><td><strong>简单 DIO 路径</strong></td><td>单核 +14% IOPS</td><td>Gen5 NVMe 用户立即看到</td></tr>
-<tr><td><strong>buffered I/O 切 iomap</strong></td><td>大块写 +35%~+105%</td><td>与 DIO 路径叠加</td></tr>
-<tr><td><strong>并行 DIO</strong></td><td>DIO 写并行化</td><td>数据库场景受益</td></tr>
-<tr><td><strong>fallocate 跳过预取</strong></td><td>减少扫描</td><td>预分配场景受益</td></tr>
-</table>
+<table><thead><tr><th>改动</th><th>单独价值</th><th>叠加价值</th></tr></thead><tbody><tr><td><strong>IOmap iterator 模型</strong></td><td>消除间接调用</td><td>全栈受益</td></tr><tr><td><strong>简单 DIO 路径</strong></td><td>单核 +14% IOPS</td><td>Gen5 NVMe 用户立即看到</td></tr><tr><td><strong>buffered I/O 切 iomap</strong></td><td>大块写 +35%~+105%</td><td>与 DIO 路径叠加</td></tr><tr><td><strong>并行 DIO</strong></td><td>DIO 写并行化</td><td>数据库场景受益</td></tr><tr><td><strong>fallocate 跳过预取</strong></td><td>减少扫描</td><td>预分配场景受益</td></tr></tbody></table>
 <p>这种"积少成多"是 Linux 内核最常见也最难预测的版本——单独看每一个都不惊人，叠在一起就让 EXT4 跨了一档。</p>
-<p>---</p>
+<hr>
 <h2>九、关注下一个版本</h2>
 <p>EXT4 切 iomap 后，下一步看点：</p>
-<ul>
-<li><strong>ext4_iomap + writeback 路径</strong>进一步优化（小块同步场景的回退需要补回）。</li>
-<li><strong>data=ordered mode</strong> 在 iomap 路径下的完整支持（v5 系列暂时 always queue ioend worker 简化逻辑，未来还要补）。</li>
-<li><strong>新 ioend 基础设施</strong>：Zhang Yi 在 patch 16 已经为新 ioend 框架迁移铺路。</li>
-</ul>
-预计 7.4 / 7.5 会看到更彻底的 iomap 化收益。
-<p>---</p>
+<ul><li><strong>ext4_iomap + writeback 路径</strong>进一步优化（小块同步场景的回退需要补回）。</li><li><strong>data=ordered mode</strong> 在 iomap 路径下的完整支持（v5 系列暂时 always queue ioend worker 简化逻辑，未来还要补）。</li><li><strong>新 ioend 基础设施</strong>：Zhang Yi 在 patch 16 已经为新 ioend 框架迁移铺路。</li></ul>
+<p>预计 7.4 / 7.5 会看到更彻底的 iomap 化收益。</p>
+<hr>
 <p><strong>参考资料</strong>：</p>
-<ol>
-<li>1. Phoronix EXT4 Linux 7.3：https://www.phoronix.com/news/EXT4-Linux-7.3</li>
-<li>2. Phoronix IOmap Linux 7.3：https://www.phoronix.com/news/IOmap-Linux-7.3-Faster</li>
-<li>3. Phoronix Faster Small Direct Linux 7.3：https://www.phoronix.com/news/Linux-7.3-Faster-Small-Direct</li>
-<li>5. LKML VFS iomap pull：[GIT PULL 08/18 for v7.3] vfs iomap</li>
-<li>4. LKML ext4 iomap v5：ext4: use iomap for regular file's buffered I/O path v5</li>
-<li>5. Linux 7.3 源码：https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git</li>
-<li>6. xfstests-bld：https://github.com/tytso/xfstests-bld</li>
-</ol>
----
+<ol><li>Phoronix EXT4 Linux 7.3：<a href="https://www.phoronix.com/news/EXT4-Linux-7.3" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/EXT4-Linux-7.3</a></li><li>Phoronix IOmap Linux 7.3：<a href="https://www.phoronix.com/news/IOmap-Linux-7.3-Faster" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/IOmap-Linux-7.3-Faster</a></li><li>Phoronix Faster Small Direct Linux 7.3：<a href="https://www.phoronix.com/news/Linux-7.3-Faster-Small-Direct" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/Linux-7.3-Faster-Small-Direct</a></li><li>LKML VFS iomap pull：[GIT PULL 08/18 for v7.3] vfs iomap</li><li>LKML ext4 iomap v5：ext4: use iomap for regular file's buffered I/O path v5</li><li>Linux 7.3 源码：<a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git" target="_blank" rel="noopener noreferrer">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git</a></li><li>xfstests-bld：<a href="https://github.com/tytso/xfstests-bld" target="_blank" rel="noopener noreferrer">https://github.com/tytso/xfstests-bld</a></li></ol>
+<hr>
 <p><em>本文基于 Phoronix 报道、LKML VFS iomap pull request、Zhang Yi ext4 iomap v5 系列与社区资料整理，旨在为中国开发者提供快速理解和参考。</em></p>
 <p><em>作者观点不代表任何厂商立场，仅供技术讨论参考。性能数据基于公开测试，不同硬件 / 文件系统 / 工作负载配置可能有所差异。</em></p>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">

@@ -280,7 +280,6 @@
       </div>
 
       <div class="post-content" itemprop="articleBody">
-
 <blockquote>这篇是实操记录。我在 Debian 13（x86_64）上，先后产出了两个 <strong>toybox 0.8.14</strong> 的可执行文件：一个是本地 x86_64 的静态 musl 版本，一个是针对 ARM64（aarch64）的静态 musl 交叉编译版本。整个过程踩了几个实实在在的坑，尤其 ARM64 那条路，因为 musl 的 <code>configure</code> 脚本里一个 <code>arm*</code> 通配符匹配的 bug，折腾了挺久。下面把问题、解决、每个工具链组件的作用、以及可复现的步骤一五一十写出来。</blockquote>
     <!-- 腾讯云 CPS 推广横幅 -->
     <div class="tc-ad">
@@ -293,26 +292,18 @@
 <h2>一、toybox 是什么</h2>
 <p>toybox 是 Landley 维护的一个「all-in-one Linux command line」项目，定位和 BusyBox 类似：把 <code>ls</code>、<code>cp</code>、<code>grep</code>、<code>tar</code> 这些 Unix 小工具合并进<strong>一个</strong>可执行文件（multicall binary），靠启动时读 <code>argv[0]</code> 或第一个参数来分发到对应的 applet。官方 README 的原话是：</p>
 <blockquote>Toybox: all-in-one Linux command line.</blockquote>
-官方仓库：<a href="https://codeberg.org/landley/toybox">codeberg.org/landley/toybox</a>（主仓库），GitHub 有镜像 <a href="https://github.com/landley/toybox">github.com/landley/toybox</a>。toybox 也提供预编译二进制（<code>http://landley.net/toybox/bin</code>），但那是给直接下载用的；<strong>要自己控制 C 库（musl）和是否静态，就得从源码构建</strong>，也就是本文要做的事。
+<p>官方仓库：<a href="https://codeberg.org/landley/toybox" target="_blank" rel="noopener noreferrer">codeberg.org/landley/toybox</a>（主仓库），GitHub 有镜像 <a href="https://github.com/landley/toybox" target="_blank" rel="noopener noreferrer">github.com/landley/toybox</a>。toybox 也提供预编译二进制（<code>http://landley.net/toybox/bin</code>），但那是给直接下载用的；<strong>要自己控制 C 库（musl）和是否静态，就得从源码构建</strong>，也就是本文要做的事。</p>
 <p><code>defconfig</code> 默认配置会启用约 <strong>237 个 applet</strong>。我用裸命令（不带参数）跑一次 <code>toybox</code> 打印出的 applet 列表，数出来正好是 237 行。注意：<strong><code>toybox --list</code> 不是一个合法子命令</strong>，会报 <code>Unknown command --list</code>；想看列表直接裸跑 <code>toybox</code>，<code>--help</code> 打印头部信息，<code>--long</code> 打印安装路径。</p>
 <p>defconfig 这套工具里 <code>cat cp mv rm ls find grep sed xargs head tail wc sort uniq ps top free df du mount ifconfig ping wget tar dd</code> 都有，但<strong>不包含</strong> <code>sh</code>（shell）、<code>gzip</code>、<code>curl</code>、<code>umask</code>、<code>mkfs</code>、<code>fsck</code> 这些（它们要么默认没开，要么属于需要单独配置/链接额外库的玩具）。</p>
 <h2>二、为什么用 musl 静态构建</h2>
 <p>做嵌入式/最小启动盘（initramfs、容器基础镜像、路由器固件）时，通常要一个<strong>不依赖目标机 glibc</strong> 的单文件。musl 是个小巧、单 <code>.so</code>+静态方便的 C 库，<code>static</code> 链接之后产出一个完全不依赖任何共享库的 ELF。</p>
 <p>验证「完全静态」最可靠的方式不是看 <code>file</code> 的 <code>statically linked</code> 字样，而是看 ELF 动态段里有没有 <code>NEEDED</code> 项：</p>
-<pre><code class="sh">readelf -d toybox.x86_64 | grep NEEDED   # 空输出 = 全静态
-</code></pre>
+<pre><code class="sh">readelf -d toybox.x86_64 | grep NEEDED   # 空输出 = 全静态</code></pre>
 <p>两个产物 <code>readelf -d</code> 都没有 <code>NEEDED</code> 项，确认是<strong>完全静态</strong>的（<code>file</code> 也显示 <code>statically linked, stripped</code>）。</p>
 <p>本次两个产物：</p>
-<table>
-<tr><th>产物</th><th>大小</th><th>架构</th><th>状态</th></tr>
-<tr><td><code>toybox.x86_64</code></td><td>707,864 字节（692 KiB）</td><td>x86-64</td><td>静态 musl，已 strip</td></tr>
-<tr><td><code>toybox.aarch64</code></td><td>769,128 字节（752 KiB）</td><td>ARM aarch64</td><td>静态 musl，已 strip</td></tr>
-</table>
+<table><thead><tr><th>产物</th><th>大小</th><th>架构</th><th>状态</th></tr></thead><tbody><tr><td><code>toybox.x86_64</code></td><td>707,864 字节（692 KiB）</td><td>x86-64</td><td>静态 musl，已 strip</td></tr><tr><td><code>toybox.aarch64</code></td><td>769,128 字节（752 KiB）</td><td>ARM aarch64</td><td>静态 musl，已 strip</td></tr></tbody></table>
 <h2>三、两条构建路径概览</h2>
-<ul>
-<li><strong>x86_64</strong>：用 landley.net 提供的现成 <strong>x86_64 linux-musl 交叉工具链</strong>（GCC <strong>15.1.0</strong> + 完整 binutils + musl sysroot）。因为 host 本身就是 x86_64，这其实是「用独立的 musl 工具链盖宿主机的 glibc」，产本地可跑的静态二进制。</li>
-<li><strong>aarch64</strong>：landley.net <strong>没有</strong>提供 ARM64 的 musl 工具链（返回 404），所以用 <a href="https://git.alexdashboard.com/alexdatous/musl-cross-make">musl-cross-make</a> 从源码现场编一套 aarch64 交叉工具链（GCC <strong>9.4.0</strong> / binutils 2.44 / musl 1.2.6 / linux-headers 4.19.88），再拿它盖 toybox。</li>
-</ul>
+<ul><li><strong>x86_64</strong>：用 landley.net 提供的现成 <strong>x86_64 linux-musl 交叉工具链</strong>（GCC <strong>15.1.0</strong> + 完整 binutils + musl sysroot）。因为 host 本身就是 x86_64，这其实是「用独立的 musl 工具链盖宿主机的 glibc」，产本地可跑的静态二进制。</li><li><strong>aarch64</strong>：landley.net <strong>没有</strong>提供 ARM64 的 musl 工具链（返回 404），所以用 <a href="https://git.alexdashboard.com/alexdatous/musl-cross-make" target="_blank" rel="noopener noreferrer">musl-cross-make</a> 从源码现场编一套 aarch64 交叉工具链（GCC <strong>9.4.0</strong> / binutils 2.44 / musl 1.2.6 / linux-headers 4.19.88），再拿它盖 toybox。</li></ul>
 <h2>四、本次会话实际踩到的问题</h2>
 <p>按碰到的顺序列，只描述真实症状和解法，不复刻我没有逐字确认的错误堆栈。</p>
 <h3>1. host glibc 和 musl 头文件打架（x86_64）</h3>
@@ -332,12 +323,11 @@
 <h3>7. 关键坑：musl 自己的 <code>configure</code> 用 <code>arm*</code> 把 aarch64 误判成 32 位 ARM</h3>
 <p>这是 ARM64 那条路最坑、也是真正卡我最久的地方。musl 的 <code>src_musl/configure</code> 里有一段按目标名推断架构的 <code>case</code>，原文（<code>src_musl/configure</code> 第 324–325 行）：</p>
 <pre><code class="sh">324  arm*)        ARCH=arm ;;
-325  aarch64*)    ARCH=aarch64 ;;
-</code></pre>
+325  aarch64*)    ARCH=aarch64 ;;</code></pre>
 <p><code>case</code> 是<strong>从上往下</strong>第一个命中就生效。当我把目标设成 <code>arm64-linux-musl</code> 时，<code>arm64...</code> 会先被第 324 行的 <code>arm*)</code> 吃掉，于是 musl 把目标当成 <strong>32 位 arm</strong> 来 configure，后面的编译就因为架构/长 double 位宽不匹配报了一堆错。</p>
-<p><strong>解法</strong>：把目标三元组改成 <strong><code>aarch64-linux-musl</code></strong>（而不是 <code>arm64-linux-musl</code>）。<code>aarch64...</code> 不会命中第一行的 <code>arm<em>)</code>，会正确落到第 325 行 <code>aarch64</em>)</code>。用这个名字干净重编，一次通过。</p>
+<p><strong>解法</strong>：把目标三元组改成 <strong><code>aarch64-linux-musl</code></strong>（而不是 <code>arm64-linux-musl</code>）。<code>aarch64...</code> 不会命中第一行的 <code>arm*)</code>，会正确落到第 325 行 <code>aarch64*)</code>。用这个名字干净重编，一次通过。</p>
 <blockquote>说明一下走过的弯路：我当时先怀疑是 <code>__float128</code>/long double 的位宽问题，折腾过 musl-cross-make 的 <code>config.mak</code>，往 <code>GCC_CONFIG_FOR_TARGET</code> 里加 <code>--with-long-double-128</code>。<strong>那是错的——那不是根因，架构名才是。</strong> 真正原因就是上面这两行 <code>case</code> 的通配符顺序。</blockquote>
-<h2>五、工具链组件 & 每个工具干什么</h2>
+<h2>五、工具链组件 &amp; 每个工具干什么</h2>
 <h3>aarch64 工具链（musl-cross-make 产物）</h3>
 <p>版本号都来自 <code>musl-cross-make/Makefile</code> 第 5–11 行，是 pin 死的：</p>
 <pre><code class="make">BINUTILS_VER = 2.44
@@ -346,102 +336,66 @@ MUSL_VER     = 1.2.6
 GMP_VER      = 6.3.0
 MPC_VER      = 1.3.1
 MPFR_VER     = 4.2.2
-LINUX_VER    = headers-4.19.88-2
-</code></pre>
+LINUX_VER    = headers-4.19.88-2</code></pre>
 <p>逐组件说明它们在这次构建里各自的角色：</p>
-<ul>
-<li><strong>binutils 2.44</strong> —— 目标机工具集的前端：汇编器 <code>as</code>（<code>.s</code>→目标机器码 <code>.o</code>）、链接器 <code>ld</code>（把一堆 <code>.o</code> 拼成一个 ELF）、还有 <code>ar</code>（打包）、<code>strip</code>（去符号）、<code>objcopy</code>/<code>objdump</code>/<code>readelf</code>（查/转 ELF）。盖静态二进制时，<code>ld</code> 直接把所有目标文件 + libc.a 焊死进一个文件，没有运行时依赖。</li>
-<li><strong>gcc 9.4.0</strong>（<code>aarch64-linux-musl-gcc</code>）—— 交叉编译器本体，负责把 toybox 的 C 源码编译、优化、再调用上面的 <code>as</code>/<code>ld</code> 完成链接。它自己编译出来的可执行代码跑在 host（Linux x86_64）上，但产出是 aarch64 的目标代码。</li>
-<li><strong>musl 1.2.6</strong> —— <strong>C 库（libc）</strong>，这才是「musl 构建」的核心。它提供 <code>printf</code>、<code>malloc</code>、<code>open</code>、<code>close</code> 这类标准库函数，以及直接 <code>syscall</code> 进内核。静态链接时，gcc 把 musl 的 <code>libc.a</code> 整个链进去，于是产物不依赖任何 <code>libc.so</code>。</li>
-<li><strong>linux-headers (headers-4.19.88)</strong> —— Linux 内核头文件，提供 <code>open</code>/<code>read</code>/<code>futex</code> 等<strong>系统调用</strong>的声明和相关数据结构。musl 和 gcc 都需要它才能正确地 <code>syscall(2)</code> 进内核；它决定了二进制「认为自己在跟哪个版本的 ABI/内核说话」。</li>
-<li><strong>gmp 6.3.0 / mpfr 4.2.2 / mpc 1.3.1</strong> —— 这三个是 <strong>gcc 自己的构建期依赖</strong>，跟你最终盖的 toybox 没有运行期关系。gmp 是高精度整数运算库；mpfr 是「带正确舍入的浮点」库（依赖 gmp）；mpc 是复数库（依赖 gmp+mpfr）。gcc 处理 <code>long double</code>、浮点常量、复数时就靠这三个头，所以<strong>编工具链</strong>时要先把它们编好。</li>
-<li><strong>sysroot</strong> —— musl-cross-make 把上面的 musl 头文件 + libc.a + linux-headers 收拢成一个目录（<code>output/aarch64-linux-musl/...</code>）。gcc 盖目标代码时用它，而不是 host 的 glibc 目录，这就是「自洽工具链」区别于系统 gcc 的关键。</li>
-</ul>
+<ul><li><strong>binutils 2.44</strong> —— 目标机工具集的前端：汇编器 <code>as</code>（<code>.s</code>→目标机器码 <code>.o</code>）、链接器 <code>ld</code>（把一堆 <code>.o</code> 拼成一个 ELF）、还有 <code>ar</code>（打包）、<code>strip</code>（去符号）、<code>objcopy</code>/<code>objdump</code>/<code>readelf</code>（查/转 ELF）。盖静态二进制时，<code>ld</code> 直接把所有目标文件 + libc.a 焊死进一个文件，没有运行时依赖。</li><li><strong>gcc 9.4.0</strong>（<code>aarch64-linux-musl-gcc</code>）—— 交叉编译器本体，负责把 toybox 的 C 源码编译、优化、再调用上面的 <code>as</code>/<code>ld</code> 完成链接。它自己编译出来的可执行代码跑在 host（Linux x86_64）上，但产出是 aarch64 的目标代码。</li><li><strong>musl 1.2.6</strong> —— <strong>C 库（libc）</strong>，这才是「musl 构建」的核心。它提供 <code>printf</code>、<code>malloc</code>、<code>open</code>、<code>close</code> 这类标准库函数，以及直接 <code>syscall</code> 进内核。静态链接时，gcc 把 musl 的 <code>libc.a</code> 整个链进去，于是产物不依赖任何 <code>libc.so</code>。</li><li><strong>linux-headers (headers-4.19.88)</strong> —— Linux 内核头文件，提供 <code>open</code>/<code>read</code>/<code>futex</code> 等<strong>系统调用</strong>的声明和相关数据结构。musl 和 gcc 都需要它才能正确地 <code>syscall(2)</code> 进内核；它决定了二进制「认为自己在跟哪个版本的 ABI/内核说话」。</li><li><strong>gmp 6.3.0 / mpfr 4.2.2 / mpc 1.3.1</strong> —— 这三个是 <strong>gcc 自己的构建期依赖</strong>，跟你最终盖的 toybox 没有运行期关系。gmp 是高精度整数运算库；mpfr 是「带正确舍入的浮点」库（依赖 gmp）；mpc 是复数库（依赖 gmp+mpfr）。gcc 处理 <code>long double</code>、浮点常量、复数时就靠这三个头，所以<strong>编工具链</strong>时要先把它们编好。</li><li><strong>sysroot</strong> —— musl-cross-make 把上面的 musl 头文件 + libc.a + linux-headers 收拢成一个目录（<code>output/aarch64-linux-musl/...</code>）。gcc 盖目标代码时用它，而不是 host 的 glibc 目录，这就是「自洽工具链」区别于系统 gcc 的关键。</li></ul>
 <h3>x86_64 工具链（landley.net 预编译）</h3>
-<ul>
-<li><code>x86_64-linux-musl-gcc (GCC) 15.1.0</code>，配完整 binutils 和 musl sysroot（sysroot 里能看到 <code>ld-musl-x86_64.so.1</code>）。</li>
-<li>注意：这套是 <strong>GCC 15.1.0</strong>，和 aarch64 那套的 <strong>9.4.0</strong> 是两个不同版本、来源也完全不同（一个是现成二进制，一个是我从源码编的）。所以两个产物 <code>file</code>/<code>readelf</code> 里体现的编译器特征可能不一致——这完全正常。</li>
-</ul>
+<ul><li><code>x86_64-linux-musl-gcc (GCC) 15.1.0</code>，配完整 binutils 和 musl sysroot（sysroot 里能看到 <code>ld-musl-x86_64.so.1</code>）。</li><li>注意：这套是 <strong>GCC 15.1.0</strong>，和 aarch64 那套的 <strong>9.4.0</strong> 是两个不同版本、来源也完全不同（一个是现成二进制，一个是我从源码编的）。所以两个产物 <code>file</code>/<code>readelf</code> 里体现的编译器特征可能不一致——这完全正常。</li></ul>
 <h2>六、完整可复现步骤 —— x86_64 静态 musl</h2>
 <p><strong>Step 1.</strong> 拉源码（Codeberg 会 429 拒我这种国内 IP，用 GitHub 镜像；整仓 clone 会超时，用 shallow）：</p>
 <pre><code class="sh">git clone --depth 1 --single-branch https://github.com/landley/toybox.git
-cd toybox            # 此时为 0.8.14
-</code></pre>
+cd toybox            # 此时为 0.8.14</code></pre>
 <p><strong>Step 2.</strong> 解包 landley.net 的 x86_64 linux-musl 工具链（国内拉取不稳，多试几次、用 <code>-C -</code> 续传）：</p>
 <pre><code class="sh">curl -C - -o x86_64-linux-musl-cross.tar.xz \
   http://landley.net/toybox/x86_64-linux-musl-cross.tar.xz
-tar xf x86_64-linux-musl-cross.tar.xz   # 得到 x86_64-linux-musl-cross/
-</code></pre>
+tar xf x86_64-linux-musl-cross.tar.xz   # 得到 x86_64-linux-musl-cross/</code></pre>
 <p><strong>Step 3.</strong> 盖玩具（toybox 尊重 <code>CROSS_COMPILE</code>，<code>LDFLAGS=--static</code> 强制静态）：</p>
 <pre><code class="sh">export PATH="/tmp/x86_64-linux-musl-cross/bin:$PATH"   # 按你解包位置改
-LDFLAGS=--static CROSS_COMPILE=x86_64-linux-musl- make defconfig toybox
-</code></pre>
+LDFLAGS=--static CROSS_COMPILE=x86_64-linux-musl- make defconfig toybox</code></pre>
 <p><code>defconfig</code> 生成 <code>.config</code>（开 ~237 个玩具），<code>toybox</code> 是产物目标。</p>
 <p><strong>Step 4.</strong> 移出构建树保存（toybox 的 <code>make clean</code>/<code>distclean</code> 会把产物清掉，一定先拷走）：</p>
-<pre><code class="sh">cp toybox /home/axu/github/toybox.x86_64
-</code></pre>
+<pre><code class="sh">cp toybox /home/axu/github/toybox.x86_64</code></pre>
 <p><strong>Step 5.</strong> 验证：</p>
 <pre><code class="sh">file toybox.x86_64      # ELF 64-bit ... x86-64, statically linked, stripped
 ./toybox.x86_64 --version
 readelf -d toybox.x86_64 | grep NEEDED   # 应为空
-./toybox.x86_64 ls        # 随手跑个 applet 冒烟测试
-</code></pre>
+./toybox.x86_64 ls        # 随手跑个 applet 冒烟测试</code></pre>
 <h2>七、完整可复现步骤 —— aarch64 (ARM64) 静态 musl</h2>
 <h3>Part A. 先编一条 aarch64 linux-musl 交叉工具链</h3>
 <p><strong>Step 1.</strong> 拉 musl-cross-make：</p>
 <pre><code class="sh">git clone https://git.alexdashboard.com/alexdatous/musl-cross-make
-cd musl-cross-make
-</code></pre>
+cd musl-cross-make</code></pre>
 <p><strong>Step 2.</strong>（国内）预下 GNU 源码包。musl-cross-make 要 7 个包：<strong>binutils-2.44、gcc-9.4.0、musl-1.2.6、gmp-6.3.0、mpfr-4.2.2、mpc-1.3.1、linux-headers-4.19.88</strong>。从阿里云拉（无需代理），逐个核 SHA1：</p>
 <pre><code class="sh">base=https://mirrors.aliyun.com/gnu
 for f in binutils-2.44 gcc-9.4.0 gmp-6.3.0 mpfr-4.2.2 mpc-1.3.1; do
   curl -O "$base/$f/$f.tar.xz"
 done
 curl -O "$base/musl/musl-1.2.6.tar.gz"
-<h1>linux-headers：headers-4.19.88-2（musl 的 kernel-headers 源）</h1>
-<h1>每个包都要核对 SHA1，别直接信，校验命中再喂给构建</h1>
-</code></pre>
+# linux-headers：headers-4.19.88-2（musl 的 kernel-headers 源）
+# 每个包都要核对 SHA1，别直接信，校验命中再喂给构建</code></pre>
 <p><strong>Step 3.</strong> 目标三元组<strong>一定用 <code>aarch64-linux-musl</code></strong>，不要用 <code>arm64-linux-musl</code>（第五节第 7 条那个 <code>case</code> 通配符 bug 会把 <code>arm64</code> 误判成 32 位 arm）：</p>
-<pre><code class="sh">make -j"$(nproc)" TARGET=aarch64-linux-musl
-</code></pre>
+<pre><code class="sh">make -j"$(nproc)" TARGET=aarch64-linux-musl</code></pre>
 <p>构建大约 8~9 分钟。若它卡在中途去 <code>git.savannah.gnu.org</code> 拉 <code>config.sub</code> 超时，就把系统较新的 <code>config.sub</code>（<code>/usr/share/misc/config.sub</code>）塞进解开的源码树再续编。</p>
 <p>构建完成时它会在 <code>output/</code> 里打印 <code>make ... install</code> 的提示。</p>
 <p><strong>Step 4.</strong> 装工具链：</p>
 <pre><code class="sh">make TARGET=aarch64-linux-musl install
-<h1>产物在 ./output/bin/，主编译器是 output/bin/aarch64-linux-musl-gcc (GCC 9.4.0)</h1>
-</code></pre>
+# 产物在 ./output/bin/，主编译器是 output/bin/aarch64-linux-musl-gcc (GCC 9.4.0)</code></pre>
 <blockquote>我中途往 <code>config.mak</code> 加过 <code>GCC_CONFIG_FOR_TARGET += --with-long-double-128</code> 试图修编译错误——那其实是<strong>红鲱鱼</strong>，真正的修复是 <code>TARGET=aarch64-linux-musl</code> 这个架构名。装好之后那条 <code>config.mak</code> 改动其实没必要，可留可删。</blockquote>
 <h3>Part B. 用这条工具链盖 ARM64 toybox</h3>
 <pre><code class="sh">cd /home/axu/github/toybox
 export PATH="/home/axu/github/musl-cross-make/output/bin:$PATH"
 LDFLAGS=--static CROSS_COMPILE=aarch64-linux-musl- make defconfig toybox
-cp toybox /home/axu/github/toybox.aarch64   # 先挪走，防 clean 误删
-</code></pre>
+cp toybox /home/axu/github/toybox.aarch64   # 先挪走，防 clean 误删</code></pre>
 <h3>Part C. 验证</h3>
 <pre><code class="sh">file toybox.aarch64
-<h1>ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, stripped</h1>
+# ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, stripped
 readelf -d toybox.aarch64 | grep NEEDED   # 为空 = 全静态
-<h1>本机是 x86_64，直接跑会报 exec format error 属正常；真正验证要靠 qemu 或上真机：</h1>
-qemu-aarch64-static -L /path/to/rootfs ./toybox.aarch64 --version   # 若装了 qemu
-</code></pre>
+# 本机是 x86_64，直接跑会报 exec format error 属正常；真正验证要靠 qemu 或上真机：
+qemu-aarch64-static -L /path/to/rootfs ./toybox.aarch64 --version   # 若装了 qemu</code></pre>
 <h2>八、小结</h2>
-<ul>
-<li>x86_64：别硬用系统 glibc gcc 盖 musl，用 landley.net 那套独立 musl 工具链（GCC 15.1.0），<code>--static</code> 一盖就成一个 692 KiB 的自足二进制。</li>
-<li>aarch64：现成工具链没有，源码编一条（GCC 9.4.0）。<strong>记住那个 <code>case</code> 通配符的顺序</strong>——目标写 <code>aarch64-linux-musl</code>，别写 <code>arm64-linux-musl</code>，能省半天。</li>
-<li>验证「完全静态」看 <code>readelf -d</code> 的 <code>NEEDED</code> 是否为空，比看 <code>file</code> 文字更靠谱。</li>
-<li>产物务必<strong>移出构建树</strong>再保存，<code>make distclean</code> 会连产物一起删。</li>
-</ul>
+<ul><li>x86_64：别硬用系统 glibc gcc 盖 musl，用 landley.net 那套独立 musl 工具链（GCC 15.1.0），<code>--static</code> 一盖就成一个 692 KiB 的自足二进制。</li><li>aarch64：现成工具链没有，源码编一条（GCC 9.4.0）。<strong>记住那个 <code>case</code> 通配符的顺序</strong>——目标写 <code>aarch64-linux-musl</code>，别写 <code>arm64-linux-musl</code>，能省半天。</li><li>验证「完全静态」看 <code>readelf -d</code> 的 <code>NEEDED</code> 是否为空，比看 <code>file</code> 文字更靠谱。</li><li>产物务必<strong>移出构建树</strong>再保存，<code>make distclean</code> 会连产物一起删。</li></ul>
 <h2>九、参考资料</h2>
-<ul>
-<li>toybox 官网 / 预编译二进制：<http://landley.net/toybox/></li>
-<li>toybox 主仓库（Codeberg）：<https://codeberg.org/landley/toybox></li>
-<li>toybox GitHub 镜像：<https://github.com/landley/toybox></li>
-<li>musl C 库：<https://musl.libc.org/></li>
-<li>musl-cross-make（构建 musl 交叉工具链）：<https://git.alexdashboard.com/alexdatous/musl-cross-make></li>
-<li>GCC 交叉编译指南：<https://gcc.gnu.org/install/cross.html></li>
-<li>GNU/Linux 交叉构建综述：<https://gcc.gnu.org/install/cross.html></li>
-<li>阿里云 GNU 镜像（国内下载源码包）：<https://mirrors.aliyun.com/gnu></li>
-</ul>
+<ul><li>toybox 官网 / 预编译二进制：<a href="http://landley.net/toybox/" target="_blank" rel="noopener noreferrer">http://landley.net/toybox/</a></li><li>toybox 主仓库（Codeberg）：<a href="https://codeberg.org/landley/toybox" target="_blank" rel="noopener noreferrer">https://codeberg.org/landley/toybox</a></li><li>toybox GitHub 镜像：<a href="https://github.com/landley/toybox" target="_blank" rel="noopener noreferrer">https://github.com/landley/toybox</a></li><li>musl C 库：<a href="https://musl.libc.org/" target="_blank" rel="noopener noreferrer">https://musl.libc.org/</a></li><li>musl-cross-make（构建 musl 交叉工具链）：<a href="https://git.alexdashboard.com/alexdatous/musl-cross-make" target="_blank" rel="noopener noreferrer">https://git.alexdashboard.com/alexdatous/musl-cross-make</a></li><li>GCC 交叉编译指南：<a href="https://gcc.gnu.org/install/cross.html" target="_blank" rel="noopener noreferrer">https://gcc.gnu.org/install/cross.html</a></li><li>GNU/Linux 交叉构建综述：<a href="https://gcc.gnu.org/install/cross.html" target="_blank" rel="noopener noreferrer">https://gcc.gnu.org/install/cross.html</a></li><li>阿里云 GNU 镜像（国内下载源码包）：<a href="https://mirrors.aliyun.com/gnu" target="_blank" rel="noopener noreferrer">https://mirrors.aliyun.com/gnu</a></li></ul>
     <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
       <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
       <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
