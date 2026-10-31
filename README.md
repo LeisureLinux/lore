@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-01 | [Ubuntu 全部 flavor 仍是「修复进行中」：CVE-2026-98432 的补丁状态与暴露面自查清单](https://freelamp.com/articles/2026-11-01_cve-2026-98432-patch-status-inventory-checklist/) | CVE-2026-98432 · Linux内核 · MPTCP · 补丁状态 · Ubuntu · Debian · RHEL · AmazonLinux · AlmaLinux · Proxmox · 资产盘点 · 暴露面 · 漏洞管理 · UAF · RCU · 供应链 · 运维 · SRE |
 | 2026-10-30 | [连上去的那台机器可以反过来打你：TeamViewer 一个整数溢出，让技术支持成了攻击面](https://freelamp.com/articles/2026-10-30_teamviewer-cve-2026-111585-viewer-side-rce/) | CVE-2026-111585 · TeamViewer · 整数溢出 · 堆溢出 · 越界写 · RCE · 远程控制 · 逆向 · 攻防反转 · Remedio · OmriDar · CVE-2026-92372 · CVE-2026-92374 · TV-2026-1011 · TV-2026-1012 · CWE-190 · CFG · DEP · 供应链安全 |
 | 2026-10-30 | [攻击者的工具箱里装着 Claude Code、DeepSeek 和 Kimi：一次把 PHP2Shell 打到域控的 AI 辅助攻击](https://freelamp.com/articles/2026-10-30_php2shell-ai-assisted-attack-roots-25-servers/) | PHP2Shell · Fragnesia · CVE-2026-109618 · CVE-2026-109619 · CVE-2026-46300 · AI辅助攻击 · ClaudeCode · DeepSeek · Kimi · FOFA · PaloAltoNetworks · PAN-OS · ActiveDirectory · LDAP · 横向移动 · 国家支持 · 中国 · 归因 · 事件响应 · 凭据喷洒 |
 | 2026-10-30 | [两行代码修掉一个 11 年的内核 UAF，而 Claude 用它换来了 root：Anthropic 披露的 MPTCP 零点击提权链](https://freelamp.com/articles/2026-10-30_cve-2026-98432-mptcp-kernel-uaf-claude-remote-root/) | CVE-2026-98432 · Linux内核 · MPTCP · 多路径TCP · UseAfterFree · UAF · RCU · 竞态条件 · Anthropic · Claude · 漏洞挖掘 · KASLR · 内核提权 · 零点击 · Go · GODEBUG · multipathtcp · Kubernetes · 网络安全 · 供应链 |
