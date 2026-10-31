@@ -50,6 +50,35 @@
     </item>
 
     <item>
+      <title>从 19000 台防火墙到 Active Directory：PHP2Shell 加上一个内核 LPE，25 台设备被 root</title>
+      <link>https://freelamp.com/articles/2026-10-30_fragnesia-cve-2026-46300-php2shell-panos-root/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-10-30_fragnesia-cve-2026-46300-php2shell-panos-root/</guid>
+      <pubDate>Fri, 30 Oct 2026 00:00:00 GMT</pubDate>
+      <author>FreeLAMP.com</author>
+      <description><![CDATA[CVE-2026-46300（Fragnesia）是一个 Linux 内核的本地提权漏洞 —— skb_try_coalesce() 在合并 socket buffer 时丢失了 SKBFL_SHARED_FRAG 标记，导致 ESP 输入路径误判可以跳过 skb_cow_data() 就地解密，从而对页缓存支持的数据做未授权修改。攻击者用它改写 /etc/pam.d/su 为 pam_permit.so（该文件仅 774 字节，需逐字节拼接精确写入），绕过 SELinux 对 httpd_t 的限制实现 root。Dream Security 捕获了一次真实的在野攻击：攻击者把 PHP2Shell（自研非公开版本，打 PAN-OS 管理 web 服务器与 GlobalProtect 门户）与 Fragnesia 串成单请求利用链，用 FOFA 从 19000 台暴露设备筛到 5,000 台在线、240 台匹配版本与地理（美/日/台/韩），批量 root 了 24 台 —— 其中 22 台只植入 103 字节 webshell 停着不动；随后专门攻破 2 台有价值的，建立 8 端口反向 SSH 隧道进入内网，root 后 90 分钟内拿下防火墙管理服务器（它集中管理全部防火墙的配置与凭据），解密 LDAP 服务账号密码，最终对 AD 发起用户枚举、密码喷洒与后门账号创建尝试（域控 lockoutThreshold=0 使喷洒无次数限制）。CISA 已于 2026-10-28 把它加入 KEV 并限期 10-31。本文梳理了完整攻击链、版本画像机制，并强调两个处置要点：先取证再重启（重启即抹证据）、Fragnesia 的修复不在 Dirty Frag 补丁内。]]></description>
+      <category>CVE-2026-46300</category>
+      <category>Fragnesia</category>
+      <category>PHP2Shell</category>
+      <category>CVE-2026-109618</category>
+      <category>CVE-2026-109619</category>
+      <category>PaloAltoNetworks</category>
+      <category>PAN-OS</category>
+      <category>GlobalProtect</category>
+      <category>ActiveDirectory</category>
+      <category>LDAP</category>
+      <category>横向移动</category>
+      <category>凭据泄露</category>
+      <category>页缓存</category>
+      <category>XFRM</category>
+      <category>ESP</category>
+      <category>内核提权</category>
+      <category>CISA</category>
+      <category>KEV</category>
+      <category>在野利用</category>
+      <category>事件响应</category>
+    </item>
+
+    <item>
       <title>史上最大规模加密盗窃：63.6 亿美元、20 分钟、10 条链 —— 而 Binance 说私钥没泄露</title>
       <link>https://freelamp.com/articles/2026-10-30_binance-6-36-billion-hack-eip-7702-presigned-authorization/</link>
       <guid isPermaLink="true">https://freelamp.com/articles/2026-10-30_binance-6-36-billion-hack-eip-7702-presigned-authorization/</guid>
@@ -75,6 +104,65 @@
       <category>Elliptic</category>
       <category>供应链安全</category>
       <category>DevSecOps</category>
+    </item>
+
+    <item>
+      <title>把 HTTP 解析搬进内核：ETH、NYU、NVIDIA 的 Beeper 用 eBPF 做出 4.5 倍吞吐</title>
+      <link>https://freelamp.com/articles/2026-10-30_beeper-ebpf-in-kernel-http-parsing/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-10-30_beeper-ebpf-in-kernel-http-parsing/</guid>
+      <pubDate>Fri, 30 Oct 2026 00:00:00 GMT</pubDate>
+      <author>FreeLAMP.com</author>
+      <description><![CDATA[Beeper（BEEline's ParsER）把应用层（L7）协议解析直接放进内核里的 eBPF 程序，用一个在用户态构造的 Aho-Corasick 式 DFA 把解析复杂度降到 eBPF 验证器能接受的水平 —— 运行时只剩「读一个字节、查表跳一个状态」，没有变长循环。它支持 HTTP/1.1 与 HTTP/2（最低内核 6.8），可挂在内核 HTTP 缓存后面把静态资源直接从内核返回。这项工作的核心洞察来自论文《Enforcing Application-Layer Policies in eBPF》：很多 L7 协议很复杂，但执行 L7 策略所需要的逻辑往往很简单 —— 作者分析了 2,417 个 GitHub 开源项目的策略后发现 89% 的策略可把服务网格 sidecar 移出关键路径，使中位请求延迟降到 1/6、吞吐提高 3 倍；而配套的 hyper-fast-path（Rust Hyper 的 eBPF 快路径）实测最高 4.5 倍吞吐（静态资源场景）。来自 ETH 苏黎世、NYU 与 NVIDIA，在 Linux Plumbers Conference 2026 上首次面向内核社区公开演示。本文梳理了它的 DFA 思路、三个接入点（freplace / SK_MSG / strparser+kTLS）、以及为什么 socket 层 + kTLS 能让 HTTPS 也可解析，并讨论了一个绕不开的问题：把 L7 可见性推进到内核，同时也给了攻击者同样的原语。]]></description>
+      <category>eBPF</category>
+      <category>Beeper</category>
+      <category>Beeline</category>
+      <category>HTTP解析</category>
+      <category>内核态</category>
+      <category>Rust</category>
+      <category>ETH苏黎世</category>
+      <category>NYU</category>
+      <category>NVIDIA</category>
+      <category>LinuxPlumbers</category>
+      <category>LPC2026</category>
+      <category>freplace</category>
+      <category>kTLS</category>
+      <category>SK_MSG</category>
+      <category>服务网格</category>
+      <category>sidecar</category>
+      <category>性能优化</category>
+      <category>论文</category>
+      <category>arXiv</category>
+      <category>Hyper</category>
+      <category>rust</category>
+    </item>
+
+    <item>
+      <title>两行代码修掉一个 11 年的内核 UAF，而 Claude 用它换来了 root：Anthropic 披露的 MPTCP 零点击提权链</title>
+      <link>https://freelamp.com/articles/2026-10-30_cve-2026-98432-mptcp-kernel-uaf-claude-remote-root/</link>
+      <guid isPermaLink="true">https://freelamp.com/articles/2026-10-30_cve-2026-98432-mptcp-kernel-uaf-claude-remote-root/</guid>
+      <pubDate>Fri, 30 Oct 2026 00:00:00 GMT</pubDate>
+      <author>FreeLAMP.com</author>
+      <description><![CDATA[CVE-2026-98432 是 Linux 内核网络栈里一个由竞态触发的 use-after-free，CVSS 9.8 critical，零点击远程 root。Anthropic 披露他们的 Claude 研究模型为它写出了完整利用链：两阶段——先利用竞态让内核用失效的 optlen 多读字节并回传，泄漏内核指针击穿 KASLR；再用同一 UAF 溢出缓冲区覆盖回调指针，劫持控制流执行 root 命令，PoC 全程约 53 分钟（48 分钟泄漏指针 + 5 分钟到 shell）。而修复只有两行：把两处 kfree() 改成 kfree_rcu()。引入 bug 的提交是 2015 年的 079096f103fa，至今 11 年 —— 且上游 commit 正文指出，同一函数中其它替换 inet_opt 的路径（do_ip_setsockopt、cipso_v4_sock_setattr）本来就已在用 kfree_rcu，这两处是唯一的不一致。Go 安全团队随后警告：Go 1.24 起程序在 Linux 上默认开启 MPTCP，Kubernetes 等大量用 Go 写的网络服务因此可能「不知道自己开着 MPTCP」，且官方明确指出逐个程序关闭是脆弱缓解（API 可覆盖 GODEBUG，且底层 bug 并非 MPTCP 特有）。本文核对了上游 commit 原文与完整 diff，还追出了第二个同源漏洞（request socket 迁移路径，依赖 tcp_migrate_req=1 或 BPF_SK_REUSEPORT_SELECT_OR_MIGRATE），并整理了 8 个分支的修复版本与发行版状态。]]></description>
+      <category>CVE-2026-98432</category>
+      <category>Linux内核</category>
+      <category>MPTCP</category>
+      <category>多路径TCP</category>
+      <category>UseAfterFree</category>
+      <category>UAF</category>
+      <category>RCU</category>
+      <category>竞态条件</category>
+      <category>Anthropic</category>
+      <category>Claude</category>
+      <category>漏洞挖掘</category>
+      <category>KASLR</category>
+      <category>内核提权</category>
+      <category>零点击</category>
+      <category>Go</category>
+      <category>GODEBUG</category>
+      <category>multipathtcp</category>
+      <category>Kubernetes</category>
+      <category>网络安全</category>
+      <category>供应链</category>
     </item>
 
     <item>
