@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-01 | [打不了补丁时怎么挡：Red Hat 的 nftables 应急规则、怎么查出谁开着 MPTCP，以及一个容易漏掉的坑](https://freelamp.com/articles/2026-11-01_cve-2026-98432-nftables-mitigation-detection/) | CVE-2026-98432 · Linux内核 · MPTCP · nftables · iptables · 缓解措施 · 临时缓解 · 入侵检测 · ss命令 · GODEBUG · multipathtcp · RedHat · AlmaLinux · Ubuntu · 补丁管理 · 网络过滤 · IP选项 · SVE |
+| 2026-11-01 | [「邮件加密」到底在防谁：一篇厂商科普背后，是四层保护与四个不能同时满足的目标](https://freelamp.com/articles/2026-11-01_email-encryption-threat-model-dane-mta-sts/) | 邮件加密 · 端到端加密 · TLS · STARTTLS · MTA-STS · DANE · DNSSEC · PKI · 证书透明度 · SMTP · IMAP · PGP · S/MIME · 零访问加密 · ProtonMail · Tuta · Fastmail · 威胁模型 · 中间人攻击 · 可用性 · 侧信道 · 邮件安全 · 隐私 |
 | 2026-11-01 | [一个邮箱地址就能拿到 root：GNU Savannah 被攻破，他们本可以给 Bash 推一个后门](https://freelamp.com/articles/2026-11-01_gnu-savannah-hacktron-backdoor-bash/) | GNUSavannah · Savane · Bash · FSF · 供应链安全 · 命令注入 · Shell注入 · OverlayFS · GameOverLay · CVE-2023-2640 · CVE-2023-32629 · USN-8255-1 · Hacktron · 授权绕过 · 私有文件访问 · 邮件列表管理 · xz后门 · 后门植入 · 安全研究 · 负责任披露 |
 | 2026-11-01 | [Ubuntu 全部 flavor 仍是「修复进行中」：CVE-2026-98432 的补丁状态与暴露面自查清单](https://freelamp.com/articles/2026-11-01_cve-2026-98432-patch-status-inventory-checklist/) | CVE-2026-98432 · Linux内核 · MPTCP · 补丁状态 · Ubuntu · Debian · RHEL · AmazonLinux · AlmaLinux · Proxmox · 资产盘点 · 暴露面 · 漏洞管理 · UAF · RCU · 供应链 · 运维 · SRE |
 | 2026-10-30 | [连上去的那台机器可以反过来打你：TeamViewer 一个整数溢出，让技术支持成了攻击面](https://freelamp.com/articles/2026-10-30_teamviewer-cve-2026-111585-viewer-side-rce/) | CVE-2026-111585 · TeamViewer · 整数溢出 · 堆溢出 · 越界写 · RCE · 远程控制 · 逆向 · 攻防反转 · Remedio · OmriDar · CVE-2026-92372 · CVE-2026-92374 · TV-2026-1011 · TV-2026-1012 · CWE-190 · CFG · DEP · 供应链安全 |
