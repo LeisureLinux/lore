@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-02 | [选择无聊的技术：Dan McKinley 的「创新代币」与 2015 年那篇改变无数团队技术选型的文章](https://freelamp.com/articles/2026-11-02_choose-boring-technology-dan-mckinley/) | 技术选型 · 无聊技术 · 创新代币 · DanMcKinley · KellanElliottMcCrea · Etsy · Stripe · 运维成本 · 认知负担 · 已知未知 · 未知未知 · 全局最优 · 成熟技术 · 架构决策 · 软件工程 · 团队管理 · 英文翻译 |
 | 2026-11-02 | [Fedora 45 定档 11 月 3 日：GNOME 51、默认禁 ptrace、RPM 强制验签，以及三个「默认收紧」的安全变化](https://freelamp.com/articles/2026-11-02_fedora-45-go-november-3/) | Fedora · Fedora45 · GNOME51 · KDEPlasma · Linux内核 · ptrace · RPM · 签名校验 · 可复现构建 · kmscon · Stratis · Anaconda · OpenSSL4 · GCC16 · glibc · LLVM23 · Python3.15 · Go1.27 · Podman6 · AtomicDesktop · 供应链安全 · 发布工程 |
 | 2026-11-01 | [「IPFS 是个坏主意」：一个 Reddit 帖子，和它背后那场刚刚结束的退场](https://freelamp.com/articles/2026-11-01_ipfs-is-a-bad-idea-shipyard-winds-down/) | IPFS · Filecoin · 去中心化存储 · 内容寻址 · CID · DHT · 固定pinning · 网关gateway · Shipyard · ProtocolLabs · libp2p · Kubo · Helia · Boxo · BadBitsDenylist · inbrowserlink · 技术主权 · 开源治理 · 供应链 · 分布式系统 · 加密货币 |
 | 2026-11-01 | [一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解](https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/) | NetamLoader · Kaspersky · APT · 网络间谍 · 供应链攻击 · Windows安全 · AppDomainManager注入 · XAML · 二进制反序列化 · TypeConfuseDelegate · AMSI绕过 · EDR绕过 · dllhost · PatchMyPC · CAB · 中国政府版Windows · 技术主权 · 事件响应 · IOC |

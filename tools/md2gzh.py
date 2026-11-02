@@ -187,6 +187,24 @@ def _image_block(payload):
     )
 
 
+def _laoxu_note(text):
+    """「老徐的话」区块 —— 位于引言金句与正文之间，供人工填写。
+
+    样式：**普通红色**（不带 Bold），带一条浅色左竖条以与正文区分。
+    """
+    if not text:
+        return ""
+    return (
+        f'    <section style="margin:0 10px 26px;padding:14px 16px;'
+        f'border-left:3px solid #EF4444;background:#FEF2F2;">\n'
+        f'      <p style="margin:0 0 8px;font-size:13px;color:#DC2626;'
+        f'font-weight:400;letter-spacing:0.5px;">{G.leaf("老徐的话：")}</p>\n'
+        f'      <p style="margin:0;font-size:15px;line-height:1.9;color:#B91C1C;'
+        f'text-align:justify;letter-spacing:0.3px;">{G.render_inline(text)}</p>\n'
+        f'    </section>\n'
+    )
+
+
 def _ol_block(items):
     """有序列表（石墨圆标编号）。"""
     if not items:
@@ -221,6 +239,21 @@ def _install_theme_extensions():
 
     src = open(os.path.join(WECHAT_DIR, "_gzh_graphite.py"), encoding="utf-8").read()
 
+    # 「老徐的话」：插在引言 lead 之后、正文章节之前
+    lead_anchor = r"""    o.append(f'  <section style="padding:0 10px 8px;">\n'
+             f'    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;'
+             f'color:{GREY};letter-spacing:0.3px;">{render_inline(cfg["lead"])}</p>\n'
+             f'  </section>\n\n')"""
+    if lead_anchor not in src:
+        raise RuntimeError(
+            "无法定位 _gzh_graphite.build 的 lead 段 —— "
+            "需要更新 lore/tools/md2gzh.py 的扩展注入点")
+    src = src.replace(lead_anchor, lead_anchor + r"""
+
+    laoxu = cfg.get('laoxu_note')
+    if laoxu:
+        o.append(laoxu_note_block(laoxu))""", 1)
+
     anchor = """            elif kind == 'ul':
                 o.append(ul_block(payload))"""
     if anchor not in src:
@@ -249,6 +282,7 @@ def _install_theme_extensions():
     mod.ol_block = _ol_block
     mod.h4_block = _h4_block
     mod.image_block = _image_block
+    mod.laoxu_note_block = _laoxu_note
     mod.__dict__["__file__"] = os.path.join(WECHAT_DIR, "_gzh_graphite.py")
 
     exec(compile(src, mod.__dict__["__file__"], "exec"), mod.__dict__)
@@ -261,6 +295,7 @@ def _install_theme_extensions():
     mod.ol_block = _ol_block
     mod.h4_block = _h4_block
     mod.image_block = _image_block
+    mod.laoxu_note_block = _laoxu_note
     return mod
 
 
@@ -473,7 +508,7 @@ def _section_en_title(zh_title):
 
 
 def build_spec(md, quote, quote_by, facts, related, closer,
-               lead=None, nav=None, facts_num=None):
+               lead=None, nav=None, facts_num=None, laoxu_note=None):
     """从 Markdown 组装出 ``_gzh_graphite.build()`` 需要的 cfg。"""
     fm, body = split_front_matter(md)
     meta = read_meta(fm)
@@ -552,6 +587,7 @@ def build_spec(md, quote, quote_by, facts, related, closer,
         "facts_zh": "关键事实速查",
         "closer": closer,
         "related": related or [],
+        "laoxu_note": laoxu_note or "",
         "_meta": meta,
     }
 
@@ -605,14 +641,16 @@ def render_html(cfg):
 
 def build_from_article(article_md, out_path=None, quote="", quote_by="",
                        facts=None, related=None, closer="", lead=None,
-                       nav=None, facts_num=None, spec_path=None):
+                       nav=None, facts_num=None, spec_path=None,
+                       laoxu_note=None):
     """主入口：从 article.md 生成公众号 HTML。
 
     返回 ``(html, cfg)``。
     """
     md = open(article_md, encoding="utf-8").read()
     cfg = build_spec(md, quote, quote_by, facts or [], related or [], closer,
-                     lead=lead, nav=nav, facts_num=facts_num)
+                     lead=lead, nav=nav, facts_num=facts_num,
+                     laoxu_note=laoxu_note)
 
     if spec_path:
         os.makedirs(os.path.dirname(spec_path), exist_ok=True)
@@ -638,6 +676,8 @@ def main():
     ap.add_argument("--facts", help="关键事实 JSON 文件")
     ap.add_argument("--related", help="相关阅读 JSON 文件（字符串数组）")
     ap.add_argument("--closer", default="", help="结尾金句")
+    ap.add_argument("--laoxu-note", default="",
+                    help="「老徐的话」文字（渲染在引言金句之后、正文之前）")
     args = ap.parse_args()
 
     facts = []
@@ -655,6 +695,7 @@ def main():
 
     build_from_article(args.article, out, quote=args.quote, quote_by=args.quote_by,
                        facts=facts, related=related, closer=args.closer,
+                       laoxu_note=args.laoxu_note,
                        spec_path=args.spec)
 
 
