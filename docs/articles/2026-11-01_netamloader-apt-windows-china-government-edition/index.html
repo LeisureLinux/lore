@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解 — FreeLAMP.com</title>
+  <meta name="description" content="Kaspersky 披露了一个此前未记录的 .NET 程序集加载框架 NetamLoader：它不靠漏洞利用，而是把一个 CAB 文件放进 Windows 更新缓存目录 C:\Windows\SoftwareDistribution\Download\，里面装着七个「看起来完全合法」的文件 —— 其中四个是第三方补丁工">
+  <meta name="keywords" content="NetamLoader, Kaspersky, APT, 网络间谍, 供应链攻击, Windows安全, AppDomainManager注入, XAML, 二进制反序列化, TypeConfuseDelegate, AMSI绕过, EDR绕过, dllhost, PatchMyPC, CAB, 中国政府版Windows, Windows10ChinaGovernmentEdition, 技术主权, 事件响应, IOC">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-01">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解">
+  <meta property="og:description" content="Kaspersky 披露了一个此前未记录的 .NET 程序集加载框架 NetamLoader：它不靠漏洞利用，而是把一个 CAB 文件放进 Windows 更新缓存目录 C:\Windows\SoftwareDistribution\Download\，里面装着七个「看起来完全合法」的文件 —— 其中四个是第三方补丁工">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-01">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="NetamLoader">
+  <meta property="article:tag" content="NetamLoader">
+  <meta property="article:tag" content="Kaspersky">
+  <meta property="article:tag" content="APT">
+  <meta property="article:tag" content="网络间谍">
+  <meta property="article:tag" content="供应链攻击">
+  <meta property="article:tag" content="Windows安全">
+  <meta property="article:tag" content="AppDomainManager注入">
+  <meta property="article:tag" content="XAML">
+  <meta property="article:tag" content="二进制反序列化">
+  <meta property="article:tag" content="TypeConfuseDelegate">
+  <meta property="article:tag" content="AMSI绕过">
+  <meta property="article:tag" content="EDR绕过">
+  <meta property="article:tag" content="dllhost">
+  <meta property="article:tag" content="PatchMyPC">
+  <meta property="article:tag" content="CAB">
+  <meta property="article:tag" content="中国政府版Windows">
+  <meta property="article:tag" content="Windows10ChinaGovernmentEdition">
+  <meta property="article:tag" content="技术主权">
+  <meta property="article:tag" content="事件响应">
+  <meta property="article:tag" content="IOC">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解">
+  <meta name="twitter:description" content="Kaspersky 披露了一个此前未记录的 .NET 程序集加载框架 NetamLoader：它不靠漏洞利用，而是把一个 CAB 文件放进 Windows 更新缓存目录 C:\Windows\SoftwareDistribution\Download\，里面装着七个「看起来完全合法」的文件 —— 其中四个是第三方补丁工">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解",
+  "description": "⭐ 本文核对的一手材料：  - Kaspersky Securelist：Unknown APT uses NetamLoader to attack a Win10 OS customized for governments in Asiahttps://securelist.com/netamloader/121676/（GReAT，2026-10-29，含完整感染链图、配置项表、基础设施表与",
+  "datePublished": "2026-11-01",
+  "dateModified": "2026-11-01",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "NetamLoader, Kaspersky, APT, 网络间谍, 供应链攻击, Windows安全, AppDomainManager注入, XAML, 二进制反序列化, TypeConfuseDelegate, AMSI绕过, EDR绕过, dllhost, PatchMyPC, CAB, 中国政府版Windows, Windows10ChinaGovernmentEdition, 技术主权, 事件响应, IOC"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解",
+        "item": "https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-01">2026-11-01</div>
+        <h1 class="post-title" itemprop="headline">一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/NetamLoader/">NetamLoader</a><a itemprop="keywords" href="/tags/Kaspersky/">Kaspersky</a><a itemprop="keywords" href="/tags/APT/">APT</a><a itemprop="keywords" href="/tags/%E7%BD%91%E7%BB%9C%E9%97%B4%E8%B0%8D/">网络间谍</a><a itemprop="keywords" href="/tags/%E4%BE%9B%E5%BA%94%E9%93%BE%E6%94%BB%E5%87%BB/">供应链攻击</a><a itemprop="keywords" href="/tags/Windows%E5%AE%89%E5%85%A8/">Windows安全</a><a itemprop="keywords" href="/tags/AppDomainManager%E6%B3%A8%E5%85%A5/">AppDomainManager注入</a><a itemprop="keywords" href="/tags/XAML/">XAML</a><a itemprop="keywords" href="/tags/%E4%BA%8C%E8%BF%9B%E5%88%B6%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/">二进制反序列化</a><a itemprop="keywords" href="/tags/TypeConfuseDelegate/">TypeConfuseDelegate</a><a itemprop="keywords" href="/tags/AMSI%E7%BB%95%E8%BF%87/">AMSI绕过</a><a itemprop="keywords" href="/tags/EDR%E7%BB%95%E8%BF%87/">EDR绕过</a><a itemprop="keywords" href="/tags/dllhost/">dllhost</a><a itemprop="keywords" href="/tags/PatchMyPC/">PatchMyPC</a><a itemprop="keywords" href="/tags/CAB/">CAB</a><a itemprop="keywords" href="/tags/%E4%B8%AD%E5%9B%BD%E6%94%BF%E5%BA%9C%E7%89%88Windows/">中国政府版Windows</a><a itemprop="keywords" href="/tags/Windows10ChinaGovernmentEdition/">Windows10ChinaGovernmentEdition</a><a itemprop="keywords" href="/tags/%E6%8A%80%E6%9C%AF%E4%B8%BB%E6%9D%83/">技术主权</a><a itemprop="keywords" href="/tags/%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94/">事件响应</a><a itemprop="keywords" href="/tags/IOC/">IOC</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>⭐ <strong>本文核对的一手材料</strong>：<br>
+- <strong><a href="https://securelist.com/netamloader/121676/" target="_blank" rel="noopener noreferrer">Kaspersky Securelist：Unknown APT uses NetamLoader to attack a Win10 OS customized for governments in Asia</a></strong>（<strong>GReAT，2026-10-29</strong>，含完整感染链图、配置项表、基础设施表与完整 IOC 清单）<br>
+- <strong><a href="https://thehackernews.com/2026/11/netamloader-malware-targets-government.html" target="_blank" rel="noopener noreferrer">The Hacker News：NetamLoader Malware Targets Government Windows 10 Systems in Asia via .NET Injection</a></strong>（Ravie Lakshmanan，2026-11-01）<br>
+- <strong><a href="https://blogs.windows.com/windowsexperience/2017/05/23/announcing-windows-10-china-government-edition-new-surface-pro/" target="_blank" rel="noopener noreferrer">微软官方：Announcing Windows 10 China Government Edition</a></strong>（2017-05-23，CETC/CMIT 合资公司开发的背景）<br>
+- <strong><a href="https://cloud.google.com/blog/topics/threat-intelligence/windows-session-hijacking-via-ccmexec" target="_blank" rel="noopener noreferrer">Google Cloud Threat Intelligence：Windows Session Hijacking via CCMEXEC（AppDomainManager 注入的技术说明）</a></strong><br>
+⚠️ <strong>本文为</strong>解读<strong>。所有技术细节均来自一手材料；</strong>不提供可运行的 payload 或利用代码**。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>⭐ 而这条链最反直觉、也最值得记的地方，是它从头到尾「一个漏洞都没用」。</strong></p>
+<p><strong>它靠的是：</strong></p>
+<pre><code>一个 CAB 文件 → 放进 Windows 更新缓存目录
+  → 里面 7 个文件，6 个是第三方补丁工具 Patch My PC 的真组件
+  → 唯一「不合法」的是两个 .config 和一个 .resx
+  → 而它们做的事，是让 .NET 在程序主函数运行前就加载攻击者的程序集</code></pre>
+<p><strong>⭐ 而 Kaspersky 的结论更值得注意 —— 受害者只有一台，未做归因：</strong></p>
+<blockquote><strong>「Based on KSN telemetry data, we identified </strong>a single victim in Asia<strong>.」</strong><br>
+<br>
+<strong>「After analyzing the TTPs, code similarities, and infrastructure, </strong>we were unable to link the attack to any known APT group<strong>.」</strong></blockquote>
+<p><strong>⭐ 我认为这才是这件事真正的性质 —— 它更像一次「可行性验证」，而不是一次大规模入侵。</strong></p>
+<h2>一、事件轮廓</h2>
+<h3>1.1 关键事实</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>恶意框架名</strong></td><td>⭐ <strong>NetamLoader</strong>（此前未记录的 .NET 程序集加载框架，基于 XAML 标记构建）</td></tr><tr><td><strong>发现方</strong></td><td>⭐ <strong>Kaspersky（GReAT 团队）</strong></td></tr><tr><td><strong>发现时间</strong></td><td>⭐ <strong>2026 年上半年</strong> —— KSN 为一个使用 AppDomainManager 注入的 .config 文件发出检测告警</td></tr><tr><td><strong>公开</strong></td><td><strong>2026-10-29</strong></td></tr><tr><td><strong>受害者</strong></td><td>⭐ <strong>亚洲，仅一台</strong>（KSN 遥测）</td></tr><tr><td><strong>目标</strong></td><td>⭐ <strong>「仅供政府实体使用」的定制 Windows 版本</strong> —— 推断受害者为亚洲政府机构</td></tr><tr><td><strong>归因</strong></td><td>⭐ <strong>无。未与任何已知 APT 组织关联</strong></td></tr><tr><td><strong>Kaspersky 检测名</strong></td><td><code>HEUR:Trojan.MSIL.NetamLoader.gen</code>、<code>Trojan.MSIL.Zapchast.*</code>、<code>Trojan.Script.Agent.*</code></td></tr></tbody></table>
+<h3>1.2 ⭐ 而「发现」这个过程本身就很有意思</h3>
+<p><strong>⭐ 因为 Kaspersky 第一次分析时，结论是「没发现恶意代码」：</strong></p>
+<blockquote><strong>「Initial analysis of the CAB contents found </strong>no malicious code<strong>: most executables were legitimate components of the third-party patch management tool </strong>Patch My PC<strong>, and </strong>even the .NET assemblies used for the injection were Microsoft-signed<strong>.」</strong><br>
+<br>
+<strong>「A </strong>later re-examination<strong> of the original .config file and the full loading process revealed the infection chain and framework described in this report.」</strong></blockquote>
+<p><strong>⭐ 我认为这一句是全文最有价值的技术情报之一 —— 它说明了这类攻击的一个根本特征：</strong></p>
+<blockquote><strong>⭐⭐ </strong>「文件本身是干净的」这件事，恰恰是这类攻击的<strong>设计目标</strong>，而不是它的缺陷。**</blockquote>
+<p><strong>—— 一个只看文件哈希和签名的扫描器，会得出「这是合法软件」的结论。</strong></p>
+<p><strong>⭐ 而真正的恶意性藏在「</strong>谁在什么时候加载了谁<strong>」这个关系里 —— 也就是加载顺序。</strong></p>
+<h3>1.3 而交付方式，Kaspersky 也没说清楚</h3>
+<blockquote><strong>「We did not observe how the CAB file was delivered to the victim; we only saw the process <code>PatchMyPC-ScriptRunner.exe</code> running with the following arguments:」</strong><br>
+<br>
+<code>C:\Windows\SoftwareDistribution\Download\Install\PatchMyPC-ScriptRunner.exe -updatepackage -applicationid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></blockquote>
+<p><strong>⭐ 而这个命令行本身就很值得注意 —— 它完全像一次正常的补丁更新操作。</strong></p>
+<p><strong>⭐ 而且 CAB 的落盘路径是：</strong></p>
+<pre><code>C:\Windows\SoftwareDistribution\Download\e4537a1762fcafd2fd96bfc825bad34f9db9a24\</code></pre>
+<p><strong>—— <code>SoftwareDistribution\Download</code> 就是 Windows 更新缓存目录。</strong> <strong>一个 CAB 放在这里，看起来就像一次「离线更新包」。</strong></p>
+<h2>二、⭐⭐ 第一阶段：三个「干净」文件的组合</h2>
+<p><strong>⭐ 而第一阶段的精妙之处在于：七个文件里，六个是真货。</strong></p>
+<p><strong>⭐ Kaspersky 列出的 CAB 内容：</strong></p>
+<table><thead><tr><th>文件</th><th>是什么</th></tr></thead><tbody><tr><td><code>fabric.config</code></td><td>⚠️ <strong>攻击者的</strong></td></tr><tr><td><code>Microsoft.HostIntegration.Connectors.dll</code></td><td>⭐ <strong>微软签名的真实程序集</strong>（被用作注入载体）**</td></tr><tr><td><code>PatchMyPC-Enum.dll</code></td><td>⭐ <strong>Patch My PC 的真实组件</strong></td></tr><tr><td><code>PatchMyPC-Models.dll</code></td><td>⭐ 同上</td></tr><tr><td><code>PatchMyPC-ScriptRunner.exe</code></td><td>⭐ 同上（<strong>启动器</strong>）**</td></tr><tr><td><code>PatchMyPC-ScriptRunner.exe.config</code></td><td>⚠️ <strong>攻击者的</strong>（含 AppDomainManager 注入）**</td></tr><tr><td><code>Resources.resx</code></td><td>⚠️ <strong>攻击者的</strong>（含反序列化载荷）**</td></tr></tbody></table>
+<p><strong>⭐ 所以「恶意文件」只有 3 个，而另外 4 个 —— 包括那个启动器 exe —— 全是真的第三方软件。</strong></p>
+<h3>2.1 ⭐ 第一步：AppDomainManager 注入</h3>
+<p><strong>⭐ 这是整条链的入口，而它的原理值得讲清楚 —— 因为它利用的不是漏洞，而是 .NET 的</strong>正常加载机制<strong>。</strong></p>
+<p><strong>Kaspersky 的描述：</strong></p>
+<blockquote><strong>「With this mechanism, when <code>PatchMyPC-ScriptRunner.exe</code> runs, the accompanying configuration file <code>PatchMyPC-ScriptRunner.exe.config</code> </strong>in the same directory is loaded before the executable's main function runs<strong>.」</strong></blockquote>
+<p><strong>⭐ 而那个 .config 的内容（Kaspersky 原样给出）：</strong></p>
+<pre><code class="xml">&lt;configuration&gt;
+  &lt;runtime&gt;
+    &lt;appDomainManagerType value="Microsoft.ApplicationServer.Caching.DataCacheFactoryConfiguration"&gt;
+    &lt;/appDomainManagerType&gt;
+    &lt;appDomainManagerAssembly value="Microsoft.HostIntegration.Connectors, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"&gt;
+    &lt;/appDomainManagerAssembly&gt;
+    &lt;NGenAssemblyUsageLog enabled="0" /&gt;
+  &lt;/runtime&gt;
+  &lt;startup&gt; &lt;supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.6" /&gt;</code></pre>
+<p><strong>⭐ 我来解释这三行各自在做什么：</strong></p>
+<table><thead><tr><th>行</th><th>作用</th></tr></thead><tbody><tr><td><strong><code>appDomainManagerType</code></strong></td><td>⭐ <strong>指定 AppDomainManager 的实现类</strong> —— 这里是 <code>DataCacheFactoryConfiguration</code>（AppFabric Cache 客户端的配置类）**</td></tr><tr><td><strong><code>appDomainManagerAssembly</code></strong></td><td>⭐ <strong>指定加载哪个程序集来实现它</strong> —— <code>Microsoft.HostIntegration.Connectors</code>，<strong>微软签名的正版程序集</strong></td></tr><tr><td>⭐ <strong><code>NGenAssemblyUsageLog enabled="0"</code></strong></td><td>⭐ <strong>关掉 NGEN 用法日志</strong> —— <strong>这是第一个「痕迹抑制」动作</strong>，而且藏在最不起眼的位置</td></tr></tbody></table>
+<p><strong>⭐ 而这里的关键洞察是 ——</strong></p>
+<p><strong>Google Cloud 的技术说明解释了 <code>DataCacheFactoryConfiguration</code> 这个类为什么特殊：</strong></p>
+<p><strong>⭐ 它有一个「构造函数里会执行任意代码」的行为</strong> —— 因为 <code>DataCacheFactoryConfiguration</code> 在被实例化时，其基类的构造函数会调用一个可被重写的虚方法。</p>
+<p><strong>⭐ 而 <code>.config</code> 机制本身会</strong>根据 <code>appDomainManagerAssembly</code> 加载指定的程序集<strong> —— 于是攻击者不需要提供任何恶意 DLL，只要指定一个</strong>「加载时构造函数会干活」的合法微软程序集<strong>就够了。</strong></p>
+<p><strong>⭐ 而 Microsoft.HostIntegration.Connectors.dll 正好有这样的类。</strong></p>
+<h3>2.2 ⭐⭐ 第二步：BinaryFormatter 反序列化 + TypeConfuseDelegate</h3>
+<p><strong>⭐ 这一步是真正的「武器」，而且用的是 .NET 里一个臭名昭著的反序列化原语。</strong></p>
+<p><strong>Kaspersky 的描述：</strong></p>
+<blockquote><strong>「Parsing this .resx file with <code>ResXResourceSet</code> causes the embedded Base64-encoded binary payload to invoke <code>BinaryFormatter.Deserialize()</code>, triggering a </strong>deserialization vulnerability<strong> that enables a </strong>TypeConfuseDelegate attack<strong>. The TypeConfuseDelegate then invokes <code>XamlReader.Parse()</code>, which loads a XAML payload (named XAML-1) embedded within the binary object.」</strong></blockquote>
+<p><strong>⭐ 我把这三步拆开 —— 它的巧妙在于「用一种类型混淆去骗过另一种类型的检查」：</strong></p>
+<pre><code>Resources.resx 里的 Base64 数据
+    ↓ BinaryFormatter.Deserialize()
+反序列化触发（这是 .NET 里最经典的一类 RCE 原语）
+    ↓ TypeConfuseDelegate
+把「委托」伪装成「另一个类型」→ 骗过 BinaryFormatter 的类型白名单
+    ↓ 调用 XamlReader.Parse()
+加载 XAML-1</code></pre>
+<p><strong>⭐ 而「加载 XAML」这一步是整个攻击链的关键设计选择 —— 因为 XAML 天然支持：</strong></p>
+<ul><li><strong>内嵌 Base64 资源</strong></li><li><strong>多层层叠</strong></li><li><strong>最终能触发任意 .NET 代码</strong></li></ul>
+<p><strong>—— 也就是说：⭐ 攻击者用 XAML 作为一个「可编程的载荷封装格式」，把整个攻击链做成了多段式。</strong></p>
+<h3>2.3 ⭐ 第三步：用命令行哈希当 AES 密钥</h3>
+<p><strong>⭐ 而这一处是我认为整个报告里最漂亮的技术细节。</strong></p>
+<p><strong>Kaspersky 的原文：</strong></p>
+<blockquote><strong>「1. Retrieve the full command line of the current host process <code>PatchMyPC-ScriptRunner.exe</code>, converting all arguments to lowercase.</strong><br>
+<strong>2. Generate the AES key by hashing the command-line string with SHA-256.</strong><br>
+<strong>3. Decode the Base64 string embedded in XAML-1 into a binary array. Use the first 16 bytes of that array as the IV, then decrypt the remaining encrypted data with AES.」</strong></blockquote>
+<p><strong>⭐ 我解释一下这个设计的含义：</strong></p>
+<p><strong>—— 密钥 = SHA-256(当前进程命令行的小写形式)。</strong></p>
+<p><strong>⭐ 而载荷的解密密钥，就藏在「这个进程是怎么被启动的」里。</strong></p>
+<p><strong>⭐ 我认为这个设计有三个好处：</strong></p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>① 环境绑定</strong></td><td>⭐ <strong>在别的机器上、或者用不同的命令行启动，解密就会失败</strong> —— 这是一种「<strong>靶向特定部署</strong>」的隐式约束**</td></tr><tr><td><strong>② 免密钥传递</strong></td><td>⭐ <strong>不需要把密钥存进任何文件 —— 密钥由运行时环境推导出来</strong></td></tr><tr><td><strong>③ 反分析</strong></td><td>⭐ <strong>分析师要复现解密，必须先知道原始命令行</strong></td></tr></tbody></table>
+<p><strong>⭐ 而配合第五步的「解密失败就 <code>Environment.Exit(0)</code>」，效果是：</strong></p>
+<blockquote><strong>「If any exception occurs during decryption, trigger <code>Environment.Exit(0)</code>, silently terminating the host process to prevent error messages that might reveal the attack.」</strong></blockquote>
+<p><strong>—— 失败就静默退出，不留错误信息。</strong></p>
+<h2>三、⭐⭐⭐ 第二阶段：AMSI 绕过与进程脱钩</h2>
+<p><strong>⭐ 而第二阶段是整个攻击链的技术高潮。</strong></p>
+<h3>3.1 ⭐⭐ XAML-2-1：用 AMSI 自己的内存改 AMSI</h3>
+<p><strong>⭐ 而 AMSI 绕过的手法非常「Windows」—— 我先说清原理：</strong></p>
+<p><strong>AMSI（Antimalware Scan Interface）</strong> 是 .NET 调用杀毒引擎的接口。<strong>正常流程是：脚本/程序集要被加载 → AMSI 扫描 → 通过才执行。</strong></p>
+<p><strong>⭐ 而攻击者的做法是（Kaspersky 原文）：</strong></p>
+<blockquote><strong>「The sole purpose is to </strong>hijack a key AMSI API<strong> to bypass anti-malware scanning.」</strong><br>
+<br>
+<strong>「Next, </strong>patch the method by overwriting its first bytes in memory<strong> with the binary payload (<code>41 C7 00 01 00 00 00 33 C0 C3</code>).」</strong><br>
+<br>
+<strong>「Obtain the native pointer of the AMSI COM object with <code>Marshal.GetIUnknownForObject()</code>. From this pointer, read the address of its </strong>virtual method table<strong> and add <code>0x18</code> to reach another pointer that holds the address of the <code>CAmsiAntimalware::Scan</code> method.」</strong></blockquote>
+<p><strong>⭐ 我把这段拆成三步：</strong></p>
+<pre><code>① 拿到 AMSI COM 对象的原生指针（IUnknown）
+        ↓
+② 读它的虚方法表（vtable），+0x18 偏移拿到 Scan 方法的地址
+        ↓
+③ 把 Scan 方法的前 9 字节改掉（41 C7 00 01 00 00 00 33 C0 C3）</code></pre>
+<p><strong>⭐ 而那 9 个字节是 x86-64 机器码，我解释一下它的含义：</strong></p>
+<table><thead><tr><th>字节</th><th>含义</th></tr></thead><tbody><tr><td><code>41 C7 00 01 00 00 00</code></td><td><strong><code>mov dword ptr [r8], 1</code>（在 r8+0 处写入 1）</strong></td></tr><tr><td><code>33 C0</code></td><td><strong><code>xor eax, eax</code>（返回值置 0）</strong></td></tr><tr><td><code>C3</code></td><td><strong><code>ret</code>（返回）</strong></td></tr></tbody></table>
+<p><strong>⭐ 而 0 在 AMSI 里是 <code>AMSI_RESULT_BLOCKED</code>（已阻止）—— 嗯，这里值得想一下。</strong></p>
+<p><strong>⭐ 但真正巧妙的是 Kaspersky 提到的这个细节：</strong></p>
+<blockquote><strong>「One patch targets the <code>Console.Clear()</code> API, </strong>which resides in the memory space of an existing legitimate module<strong>, while the other modifies </strong>only the virtual tables of the AMSI module<strong>, allowing the malware to </strong>pass code integrity checks<strong>.」</strong></blockquote>
+<p><strong>⭐ 我解释这句 —— 它是这个手法能通过完整性检查的原因：</strong></p>
+<p><strong>—— 「补丁目标放在一个合法模块的内存空间里」+「只改 AMSI 模块的虚表（不改代码）」→  这样 Windows 的代码完整性检查（CI）看的是「代码段有没有变」，而</strong>虚表在数据段<strong>。</strong></p>
+<p><strong>⭐ 换句话说：⭐ 这不是「改代码」，而是「改指针」—— 改动落在数据区，完整性检查看不见。</strong></p>
+<h3>3.2 ⭐⭐ 而 XAML-2-1 还有一个更隐蔽的技巧</h3>
+<p><strong>⭐ Kaspersky 的配图说明写着：</strong></p>
+<blockquote><strong>「Sensitive strings in XAML-2-1 are </strong>cut into tiny pieces<strong>」</strong></blockquote>
+<p><strong>⭐ 我理解这个手法的目的：</strong></p>
+<p><strong>—— 把敏感字符串（比如那个 AMSI 方法名、C2 地址、注册表路径）切成碎片再拼起来，是为了躲过「在内存里搜明文」的检测。</strong></p>
+<p><strong>⭐ 这是一个很典型的对抗思路：⭐ EDR 常用的检测手段之一就是在进程内存里扫特定字符串，而把字符串切碎再运行时拼接，就让这种扫描失效。</strong></p>
+<h3>3.3 ⭐⭐⭐ 而 XAML-2-2 → XAML-3：换进程，才是真正的目的</h3>
+<p><strong>⭐ 而这一段是整条链里最重要的一次转折 —— 因为它不是为了「执行更多代码」，而是为了「</strong>离开原来的进程<strong>」。</strong></p>
+<p><strong>⭐ 先看 XAML-2-2 的构成：</strong></p>
+<table><thead><tr><th>组件</th><th>是什么</th></tr></thead><tbody><tr><td><strong>.NET 1 Loader</strong></td><td>⭐ <strong>一个 .NET 模块，负责解密、组装、加载 XAML-3</strong></td></tr><tr><td><strong>JSON-1</strong></td><td>⭐ <strong>C2 配置 + 下一阶段载荷</strong></td></tr></tbody></table>
+<p><strong>⭐ 而 JSON-1 又分两块：</strong></p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>JSON-1-c</strong></td><td>⭐ <strong>C2 上报配置</strong>（上报地址、AES 密钥、用于验证 C2 证书的指纹）**</td></tr><tr><td><strong>JSON-1-p</strong></td><td>⭐ <strong>载荷配置</strong>：<code>oib</code>（Base64 的 .NET 2 Plugin）、<code>oub</code>（调用 <code>Exit(0)</code> 的 XAML）、<code>ibk</code>（AES 密钥）、<code>ibi</code>（压缩加密的 XAML 模板集合）**</td></tr></tbody></table>
+<p><strong>⭐ 而 .NET 1 Loader 干的事，Kaspersky 列得很清楚：</strong></p>
+<blockquote><strong>「XAML-2-2 loads .NET 1 Loader, which then serves as a </strong>decrypting, assembling, and loading<strong> for XAML-3, </strong>reports the status to the C2 server<strong>, and </strong>deletes malicious files extracted from the CAB archive<strong>, along with </strong>CLR usage logs and Windows system Prefetch cache files<strong> to cover up the tracks.」</strong></blockquote>
+<p><strong>⭐ 而关键的一句在这里：</strong></p>
+<blockquote><strong>「Once the exploit succeeds, </strong>XAML-3 is loaded into the remote host process <code>dllhost.exe</code><strong>. </strong>This is a covert method for initiating a new process that loads the malicious payload XAML-3. This technique effectively separates the infection chain from its initial process, allowing it to bypass behavioral monitoring by security solutions such as EDR.<strong>」</strong></blockquote>
+<p><strong>⭐ 我想强调「</strong>separates the infection chain from its initial process<strong>」这句话 —— 这是整个攻击链的收尾目的。</strong></p>
+<p><strong>⭐ 因为 <code>dllhost.exe</code> 是 Windows 的 COM 宿主进程</strong> —— 一个<strong>极其常见、系统自带、看起来完全无害</strong>的进程。**</p>
+<p><strong>—— 于是：</strong></p>
+<pre><code>初始进程：PatchMyPC-ScriptRunner.exe（第三方补丁工具）← 扫描器一看，合法
+                ↓
+     进程脱钩
+                ↓
+最终进程：dllhost.exe（Windows 系统 COM 宿主）← 扫描器一看，也合法</code></pre>
+<p><strong>⭐ 而在中间那几层（XAML-1、XAML-2、XAML-2-2、.NET 1 Loader）里，真正的恶意逻辑已经执行完了 —— 它们只是「运输工具」。</strong></p>
+<p><strong>⭐ 我认为这一招的聪明之处在于：</strong></p>
+<p><strong>—— 它不是「藏起来」，而是「</strong>穿过去<strong>」。</strong> <strong>EDR 的行为检测会看到「一个补丁工具启动 → 然后系统 COM 宿主出现了」，而这条因果链的中间部分被 XAML 层层解耦了。</strong></p>
+<h3>3.4 ⭐⭐⭐ 而 XAML-3 本身还有一次「模板化」</h3>
+<p><strong>⭐ 而 XAML-3 的构造方式，我觉得是这个框架设计得最漂亮的地方：</strong></p>
+<p><strong>⭐ 它不是写死的文件，而是由「模板 + 配置」现场组装的：</strong></p>
+<blockquote><strong>「XAML-3 is </strong>generated from template XAML-3<strong>. The template is decoded and decrypted using the value of the <code>ibi</code> item in JSON-1-p. In addition to template XAML-3, the final decryption includes two other XAML templates (template <code>__P1__</code> and template <code>__P2__</code>).」</strong><br>
+<br>
+<strong>「The content of template <code>__P1__</code> is </strong>identical to XAML-2-1 and bypasses AMSI in the new process<strong>.」</strong><br>
+<br>
+<strong>「Some of the item values in template <code>__P2__</code> come from the C2 configuration data in JSON-1-p. Within template <code>__P2__</code>, the placeholder <code>__P__</code> is replaced with a compressed, encoded payload – the .NET 2 Plugin.」</strong></blockquote>
+<p><strong>⭐ 我把这个「模板化」的意义说清楚：</strong></p>
+<pre><code>XAML-2-1 的内容  ──┐
+                    ├──→ 模板 __P1__（= AMSI 绕过，再在新进程里做一遍）
+配置 JSON-1-p ────┘
+
+模板 __P2__  +  占位符 __P__（= .NET 2 Plugin）
+                ↓
+            XAML-P2  →  加载 .NET 2 Plugin</code></pre>
+<p><strong>⭐ 也就是说：⭐ 「AMSI 绕过」和「加载最终插件」这两件事，被做成了</strong>可复用的模板<strong>，在两个不同进程里各用一次。</strong></p>
+<p><strong>⭐ 而这直接带来了一个能力：⭐ 同一个 C2 可以在每个受害者的机器上，用</strong>不同的<strong> XAML 模板 + 不同的配置项，生成结构一致但内容不同的最终载荷。</strong></p>
+<p><strong>—— 也就是说，⭐ 这不只是「一次入侵的载荷」，而是「</strong>一个能按目标裁剪载荷的框架<strong>」。</strong></p>
+<h2>四、⭐⭐ .NET 2 Plugin：最终行为与那些反取证细节</h2>
+<p><strong>⭐ 而最终插件的行为，Kaspersky 逐条列了出来 —— 而我认为其中最有意思的是那些「</strong>看起来像 bug 的行为<strong>」。</strong></p>
+<h3>4.1 收集系统信息</h3>
+<blockquote><strong>「Gather system information from the registry:」</strong><br>
+<code>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\full</code> → <code>Version</code><br>
+<code>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion</code> → <code>BuildLab</code><br>
+<br>
+<strong>「Combine the queried values into a single string, for example: <code>"4.7.03190\n17763.rs5_release.180914-1434"</code>. </strong>If any query fails, replace its result with a hyphen<strong>."」</strong></blockquote>
+<p><strong>⭐ 我注意到那个示例字符串：<code>17763.rs5_release.180914-1434</code></strong> —— <strong><code>17763</code> 是 Windows 10 1803 的 build 号</strong> —— <strong>这正是「政府定制版 Windows 10」那个年代的版本。</strong></p>
+<p><strong>⭐ 而「查询失败就用连字符代替」这个细节很有意思 —— 它让指纹格式保持稳定，不因环境差异而变化。</strong></p>
+<h3>4.2 ⭐⭐ 反取证：删自己的日志</h3>
+<p><strong>⭐ 而反取证的部分，Kaspersky 描述得非常细致 —— 我认为这是全文最值得学的部分。</strong></p>
+<p><strong>⭐ 而它有一个我认为很聪明的设计：</strong></p>
+<blockquote><strong>「Reset a registry-based exception-state logging system by </strong>deleting the nine GUID keys<strong> under the path <code>LocalMachine\SOFTWARE\Classes\appid\[specific_GUID]</code> one at a time, along with all of their child subkeys. </strong>The algorithm that generates the GUID path is unique — it derives the GUID from the C2 URL — so each C2 server has its own distinct set of bound GUIDs.<strong>」</strong></blockquote>
+<p><strong>⭐ 我解释一下这个「异常状态日志系统」是什么 —— 很多人不知道这个 Windows 机制：</strong></p>
+<p><strong>⭐ 当 .NET 应用抛异常时，CLR 会在注册表里创建一个以 GUID 为名的键，记录「这个应用崩过、崩在哪个版本」。</strong></p>
+<p><strong>⭐ 这是 .NET 崩溃分析的官方机制。而这个恶意软件：</strong></p>
+<ol><li><strong>用它自己的 GUID 生成算法在注册表里建键</strong>（用于后续反取证）</li><li><strong>每次用完就把这些键删掉</strong></li></ol>
+<p><strong>⭐ 而「GUID 由 C2 URL 派生」这一点尤其值得注意 —— 因为它意味着：</strong></p>
+<p><strong>⭐⭐ </strong>同一套代码，在不同 C2 上产生的 GUID 路径完全不同。<strong> </strong>这让「按 GUID 特征做检测」变得困难 —— 检测规则无法用一个固定路径，只能按算法特征或行为检测。**</p>
+<h3>4.3 ⭐⭐ 而 AMSI 绕过的「第二次」</h3>
+<p><strong>⭐ 而插件还做了一件我一开始没注意到的事 —— 就在第 5 步：</strong></p>
+<blockquote><strong>「</strong>Anti-analysis:<strong> Check whether the current host process is <code>dllhost.exe</code> by examining <code>Environment.CommandLine</code>.」</strong></blockquote>
+<p><strong>⭐ 结合前面「模板 <code>__P1__</code> 与 XAML-2-1 完全相同、会在新进程里再做一次 AMSI 绕过」，可以看出这个设计：</strong></p>
+<p><strong>—— 因为 malware 换到了 <code>dllhost.exe</code>，而 <code>dllhost.exe</code> 不在原来的进程上下文里，所以</strong>必须重新绕一次 AMSI<strong>。</strong></p>
+<p><strong>⭐ 这是「模板复用」带来的必然要求 —— 而攻击者用模板机制，把这个要求变成了自动的。</strong></p>
+<h3>4.4 ⭐⭐⭐ 而沙箱规避的三个时间参数</h3>
+<p><strong>⭐ 而这三个时间参数，我觉得是这个框架里最「工程化」的部分：</strong></p>
+<table><thead><tr><th>配置项</th><th>值</th><th>作用</th></tr></thead><tbody><tr><td><strong><code>is</code></strong></td><td><strong>1200–2400 秒（20–40 分钟）</strong></td><td>⭐ <strong>首次连接 C2 前的抖动延迟</strong> —— 「<strong>used for sandbox evasion</strong>」</td></tr><tr><td><strong><code>bi</code></strong></td><td><strong>79200–100800 秒（22–28 小时）</strong></td><td>⭐ <strong>C2 无响应时的轮询间隔</strong></td></tr><tr><td><strong><code>wi</code></strong></td><td><strong>100801 秒（约 28 小时）</strong></td><td>⭐ <strong>「实际初始等待」—— 恶意软件在首次执行后等约 28 小时就退出</strong></td></tr></tbody></table>
+<p><strong>⭐ 而「首次执行后等 28 小时就退出」这一条，是我觉得最反直觉的一个设计：</strong></p>
+<p><strong>⭐ 换句话说：⭐ 沙箱通常只跑几分钟到几十分钟。</strong> <strong>而这个恶意软件在沙箱里会「什么都不做」—— 它要么在等（20-40 分钟的首次延迟），要么根本不会触发（因为它等到 28 小时后才主动退出，而那之前它连 C2 都不连）。</strong></p>
+<p><strong>⭐ Kaspersky 对 <code>wi</code> 的描述原文：</strong></p>
+<blockquote><strong>「Actual initial wait: 100801 seconds (~28 hours). The malware waits approximately 28 hours after initial execution and then exits the process.」</strong></blockquote>
+<p><strong>⭐ 而它的 C2 轮询节奏是：</strong></p>
+<blockquote><strong>「If a valid response is received from C2, the loop pauses for </strong>5-6 minutes<strong> before the next request; otherwise, it pauses for </strong>22-28 hours<strong>, checking every 10 minutes to determine whether the allotted time has elapsed.」</strong></blockquote>
+<p><strong>⭐ 我把这套节奏整理一下 —— 它是一个很清晰的「正常 vs 异常」分频设计：</strong></p>
+<pre><code>                     ┌─ 收到有效响应 → 5-6 分钟后轮询（正常节奏）
+每 10 分钟检查一次 ────┤
+                     └─ 无响应       → 22-28 小时（降频，藏起来）</code></pre>
+<p><strong>⭐ 而「22-28 小时」这个数字还有第二层含义 —— ⭐ 它和「28 小时后退出」基本一致。</strong></p>
+<p><strong>—— 所以这台机器在感染后的前 28 小时里，几乎不产生任何网络流量。</strong></p>
+<h3>4.5 ⭐⭐⭐ 而网络加密：AES-128-CBC + HMAC</h3>
+<p><strong>⭐ 而最后一层是 C2 通信的加密：</strong></p>
+<blockquote><strong>「All traffic between the malware and the C2 server is encrypted and authenticated using </strong>AES-128-CBC with HMAC<strong>. The encryption and authentication keys are derived from a master key – specified in the configuration as <code>"ec"="9fT04e03tAiZAPogcDWt0w=="</code> – by </strong>applying HMAC with distinct seed values<strong>.」</strong></blockquote>
+<p><strong>⭐ 我注意到了一个细节 —— ⭐ 这个 master key <code>9fT04e03tAiZAPogcDWt0w==</code> 就明文写在配置里，而配置是被加密传输的。</strong></p>
+<p><strong>⭐ 而 Kaspersky 也提到了一个我没在 THN 摘要里看到的点 —— JSON-1-c 里有一项：</strong></p>
+<blockquote><strong>「<code>tp</code> — Unknown item, </strong>suspected to be a trusted SSL certificate<strong>. <code>Thumbprint</code> was used to verify this alleged C2 certificate.」</strong></blockquote>
+<p><strong>⭐ 也就是说：⭐ C2 通信除了 AES 加密，还额外做了一层「证书指纹固定（pinning）」—— 只信任那个特定指纹的证书，即使 C2 域名被劫持或换到别的 IP 也无法冒充。</strong></p>
+<h2>五、⭐⭐⭐ 基础设施与 IOC</h2>
+<h3>5.1 C2 基础设施</h3>
+<p><strong>⭐ Kaspersky 的基础设施表：</strong></p>
+<table><thead><tr><th>域名</th><th>IP</th><th>首次发现</th><th>注册商 / ASN</th></tr></thead><tbody><tr><td><strong><code>openaigpt4v[.]com</code></strong></td><td><strong>104.18.14[.]219</strong></td><td><strong>2023-09-27</strong></td><td><strong>Cloudflare, Inc. / AS15169</strong></td></tr></tbody></table>
+<p><strong>⭐ 而它的定性原文：</strong></p>
+<blockquote><strong>「The attack relies on </strong>commercial hosting infrastructure<strong>. The C2 IP is part of </strong>Cloudflare's CDN<strong>, and the domain name is registered with </strong>Cloudflare<strong>.」</strong></blockquote>
+<p><strong>⭐ 我认为这里有一个值得防守方注意的点 —— ⭐ 域名名 <code>openaigpt4v</code> 本身就是一个精心挑选的「诱饵名」：</strong></p>
+<p><strong>—— 它看起来像一个 AI 服务/SDK 的域名（<code>openai</code> + <code>gpt4v</code>），而且用的是 <code>openai</code> 的一部分。</strong></p>
+<p><strong>⭐ 而这个域名注册于 </strong>2023-09-27<strong> —— 比恶意软件被发现的 2026 年上半年早了</strong>将近三年<strong>。</strong></p>
+<p><strong>⭐ 所以这是一个「长期准备」的域名（domain aging）。</strong></p>
+<h3>5.2 完整 IOC 清单（Kaspersky 官方）</h3>
+<p><strong>⭐ 为了方便核查，我把 Kaspersky 公布的全部 IOC 列出来 —— 这类清单是防守方最需要的。</strong></p>
+<p><strong>⭐ 文件哈希（MD5）：</strong></p>
+<table><thead><tr><th>组件</th><th>MD5</th></tr></thead><tbody><tr><td>CAB 归档</td><td><code>F2458ED133F8D0CA19E22C10F577E98E</code></td></tr><tr><td><code>Resources.resx</code></td><td><code>E1DC6F1ED193594F2284BE22AE08DFA4</code></td></tr><tr><td><strong>.NET 1 Loader</strong></td><td><code>AB81564BCB8CA7E710C66832DE747556</code></td></tr><tr><td><strong>.NET 2 Plugin</strong></td><td><code>CFB8B281BDF5D9390E64B10C312FB2C1</code></td></tr><tr><td><code>fabric.config</code></td><td><code>67E3617F8709D34F806F8E02BADBA8A5</code></td></tr><tr><td><code>PatchMyPC-ScriptRunner.exe.config</code></td><td><code>514AC0D73B8A1B73488EF5E2E55A75C3</code></td></tr><tr><td>XAML-1</td><td><code>514117D536E347560D049CFE0C609632</code></td></tr><tr><td>XAML-2</td><td><code>9000820D8153C24CD60D53001D3A97B6</code></td></tr><tr><td>XAML-2-1</td><td><code>B3C4A635179680EDAFB5D006CF0CFFC6</code></td></tr><tr><td>XAML-2-2</td><td><code>4F28622C5E60C01319BF48CF742FE1A5</code></td></tr><tr><td>XAML-3</td><td><code>C86D53392A87DD3F3E62D62C9B92A9BD</code></td></tr></tbody></table>
+<p><strong>⭐ 文件路径：</strong></p>
+<pre><code>C:\Windows\SoftwareDistribution\Download\Install\PatchMyPC-ScriptRunner.exe.config
+C:\Windows\SoftwareDistribution\Download\Install\fabric.config
+C:\Windows\SoftwareDistribution\Download\Install\Resources.resx</code></pre>
+<p><strong>⭐ 网络：</strong></p>
+<pre><code>openaigpt4v[.]com
+104.18.14[.]219</code></pre>
+<p><strong>⭐ 而 Kaspersky 公布的检测名：</strong></p>
+<pre><code>HEUR:Trojan.MSIL.NetamLoader.gen
+Trojan.MSIL.Zapchast.*
+Trojan.Script.Agent.*</code></pre>
+<h2>六、⭐⭐⭐ 「Windows 10 中国政府版」：这条背景值得补完</h2>
+<p><strong>⭐ 而 THN 提到了目标系统是「Windows 10 China Government Edition」，并推测受害者很可能在中国。</strong></p>
+<p><strong>⭐ 微软 2017 年的官方公告把这个版本的来龙去脉讲得很清楚 —— 而这段背景对理解整件事很关键。</strong></p>
+<p><strong>⭐ 关键事实：</strong></p>
+<blockquote><strong>「In Shanghai, China we announced that with strong support of </strong>CETC and Microsoft<strong>, </strong>CMIT<strong>, our joint venture has now developed Windows 10 China Government Edition for </strong>China government customers<strong> … </strong>Lenovo will be one of the first OEM partners to preinstall<strong> Windows 10 China Government Edition.」</strong><br>
+<br>
+<strong>「CMIT has developed a version of Windows 10 specifically for the </strong>Chinese government and state-owned entities<strong>.」</strong><br>
+<br>
+<strong>「Three government customers are the first to pilot Windows 10 China Government Edition – at the national level with </strong>China Customs<strong>, at the regional level with the </strong>City of Shanghai (EITC)<strong>, and the state-owned enterprise with </strong>Westone Information Technology<strong>.」</strong><br>
+<br>
+<strong>「The China Government Edition is based on Windows 10 Enterprise Edition … will use these manageability features to </strong>remove features that are not needed by Chinese government employees like OneDrive, to manage all telemetry and updates, and to enable the government to use its own encryption algorithms<strong> within its computer systems.」</strong></blockquote>
+<p><strong>⭐ 我把这几点提炼成一张表 —— 因为它们正好解释了「为什么这个目标是高价值」：</strong></p>
+<table><thead><tr><th>特性</th><th>含义</th></tr></thead><tbody><tr><td><strong>基于 Windows 10 Enterprise Edition</strong></td><td>⭐ <strong>与普通 Win10 企业版同源 —— 但企业版没有的「政府定制特性」</strong></td></tr><tr><td><strong>移除 OneDrive</strong></td><td>⭐ <strong>数据不出境的设计</strong></td></tr><tr><td><strong>管理全部遥测与更新</strong></td><td>⭐ <strong>更新通道由政府控制</strong> —— <strong>而这正是「供应链攻击」的入口</strong></td></tr><tr><td><strong>政府自用加密算法</strong></td><td>⭐ <strong>⭐ 这条最关键 —— 意味着「用标准 Windows 镜像做检测」的假设全部失效</strong></td></tr><tr><td><strong>试点客户</strong></td><td>中国海关（国家级）、上海市（EITC）、<strong>Westone Information Technology（国有）</strong></td></tr><tr><td><strong>OEM 预装</strong></td><td><strong>联想是首批预装 OEM 合作伙伴</strong></td></tr></tbody></table>
+<p><strong>⭐ 而 THN 引用的 Bloomberg 报道，补上了「另一面」：</strong></p>
+<blockquote><strong>「Earlier this August, Bloomberg reported that China's Ministry of State Security had ordered some government agencies to </strong>stop using the 'Government Edition' in favor of Chinese-made Linux distributions<strong> as part of an effort to reduce its dependence on foreign technology.」</strong><br>
+<br>
+<strong>「'Beijing's instruction stemmed from </strong>data security concerns<strong>,' Bloomberg said, citing 'people familiar with the matter.'」</strong></blockquote>
+<p><strong>⭐ 我把这条放进去，是因为它让整件事的形状变得完整了：</strong></p>
+<p><strong>⭐⭐ </strong>2026 年 8 月，中国国安部要求部分政府机构停用「政府版 Windows」改用国产 Linux —— 而 2026 年 10 月，Kaspersky 披露的正是针对「政府版 Windows」的、极其精密的定向攻击链。**</p>
+<p><strong>—— 这两条信息放在一起，是一个</strong>正在进行中的迁移过程<strong>的攻防两面：一边在减少对 Windows 的依赖，另一边有人在验证「如果继续用 Windows，那它到底有多脆弱」。</strong></p>
+<h2>七、⭐⭐ 我的评价</h2>
+<h3>7.1 ⭐⭐⭐ 而这个案例真正教给防守方的，是「关系」比「文件」重要</h3>
+<p><strong>⭐ 我认为这个案例最值得记的一条，不是任何一个技术细节，而是这个认知：</strong></p>
+<blockquote><strong>⭐⭐ </strong>「文件本身是干净的」—— 是这类攻击的设计目标，而不是它的缺陷。**</blockquote>
+<p><strong>⭐ 我把它翻译成一句防守方能直接用的判据：</strong></p>
+<table><thead><tr><th>只看这些</th><th>结论</th></tr></thead><tbody><tr><td><strong>文件哈希</strong></td><td>⭐ <strong>「这是 Patch My PC 的合法组件」</strong></td></tr><tr><td><strong>数字签名</strong></td><td>⭐ <strong>「微软签名的，合法」</strong></td></tr><tr><td><strong>文件路径</strong></td><td>⭐ <strong>「Windows 更新缓存目录，正常」</strong></td></tr><tr><td><strong>进程名</strong></td><td>⭐ <strong>「第三方补丁工具，正常」</strong></td></tr><tr><td>⭐ <strong>最终进程</strong></td><td>⭐ <strong>「dllhost.exe，系统组件，正常」</strong></td></tr></tbody></table>
+<p><strong>⭐ 五个「正常」叠在一起 —— 而这条链就在它们中间穿过。</strong></p>
+<p><strong>⭐ 而这也解释了 Kaspersky 为什么第一次分析会说「没发现恶意代码」：⭐ 因为恶意性根本不在文件里，而在「</strong>谁在什么时候加载了谁<strong>」这个关系里。</strong></p>
+<p><strong>⭐ 而这对防守的启示非常具体：</strong></p>
+<p><strong>⭐ </strong>不要只对文件做检测，要对「加载关系」做检测。<strong> 而具体到可操作的层面：</strong></p>
+<table><thead><tr><th>可观测点</th><th>该看什么</th></tr></thead><tbody><tr><td><strong>进程创建</strong></td><td>⭐ <strong>「一个补丁工具启动 → 几十秒后 <code>dllhost.exe</code> 出现」的因果关系</strong></td></tr><tr><td><strong>AppDomain 加载</strong></td><td>⭐ <strong><code>.config</code> 里的 <code>appDomainManagerAssembly</code> 指向了哪个程序集</strong></td></tr><tr><td><strong>内存写入</strong></td><td>⭐ <strong>AMSI 虚表被改写、<code>Console.Clear</code> 所在模块被改</strong></td></tr><tr><td><strong>注册表</strong></td><td>⭐ <strong><code>HKLM\SOFTWARE\Classes\appid\</code> 下突增 GUID 子键</strong></td></tr><tr><td><strong>持久化清理</strong></td><td>⭐ <strong><code>.config</code> / <code>.resx</code> 文件在运行后消失、Prefetch 被清</strong></td></tr></tbody></table>
+<h3>7.2 ⭐⭐ 而「进程脱钩」这一招，可以复制到任何 EDR 绕过里</h3>
+<p><strong>⭐ 我想单独强调 XAML-3 换到 <code>dllhost.exe</code> 这一步，因为它是一个</strong>可迁移的思路<strong>，而不是某个特定技术的细节：</strong></p>
+<p><strong>⭐ 它的结构是：</strong></p>
+<pre><code>【合法外壳】→ 【多层解耦的中间层】→ 【合法外壳】</code></pre>
+<p><strong>⭐ 而「中间层」的作用不是「隐藏」，而是「</strong>切断因果链<strong>」：</strong></p>
+<p><strong>—— 行为检测看到的是「A 之后出现了 B」，而中间的解耦让 A 和 B 之间不存在可观测的直接关系。</strong></p>
+<p><strong>⭐ 我认为这个思路可以用在很多场景：</strong></p>
+<ul><li><strong>把初始入侵和最终载荷分开</strong></li><li><strong>让「异常进程」看起来像「正常进程」</strong></li><li><strong>让 EDR 的进程树分析失效</strong></li></ul>
+<p><strong>⭐ 而这也是为什么它用 <code>dllhost.exe</code> 而不是随便一个进程 —— ⭐ 因为 <code>dllhost.exe</code> 本身就是「被用来启动新进程加载载荷」的正当用途的 COM 宿主。</strong></p>
+<h3>7.3 ⭐⭐⭐ 而这个案例最让我想说的是「受害者只有一台」这件事</h3>
+<p><strong>⭐ 而我认为这件事被报道得有点轻描淡写了 —— 它其实是这个案例最关键的信息。</strong></p>
+<p><strong>⭐ 我们来对比一下两个数字：</strong></p>
+<table><thead><tr><th></th><th>数字</th></tr></thead><tbody><tr><td><strong>攻击链的复杂度</strong></td><td>⭐ <strong>两阶段、十余个组件、AppDomainManager 注入 + 反序列化漏洞 + TypeConfuseDelegate + AMSI 绕过 + 进程脱钩 + 模板化载荷 + 多层加密</strong></td></tr><tr><td><strong>实际受害者</strong></td><td>⭐ <strong>一台</strong></td></tr></tbody></table>
+<p><strong>⭐ 我认为这个悬殊的比例只有一种解释：</strong></p>
+<blockquote><strong>⭐⭐ </strong>这不是一次「广撒网捡漏」的批量入侵，而是一次<strong>针对特定环境的定向可行性验证</strong>。**</blockquote>
+<p><strong>⭐ 而几条旁证都指向这个方向：</strong></p>
+<p><strong>① 「自定义 Windows 版本」这个目标本身 ——</strong></p>
+<p><strong>⭐ 攻击者没有去选「一个popular的 Windows 版本」，而是明确针对「</strong>政府专用的定制版<strong>」。</strong></p>
+<p><strong>⭐ 而这一点太重要了：⭐ 因为政府定制版是</strong>全封闭的<strong>（更新通道自管、遥测自管、自用加密算法），所以它</strong>极难被通用漏洞扫描和遥测覆盖<strong>。</strong></p>
+<p><strong>—— 换句话说：⭐ 如果你要做「一次演练」，测试「我能不能攻进一个别人够不着的地方」，这就是最合理的选择。</strong></p>
+<p><strong>② 域名注册于 2023-09-27 —— 提前近三年：</strong></p>
+<p><strong>⭐ 这不是「临时起意」，而是</strong>长期准备<strong>。</strong></p>
+<p><strong>③ 载荷是完全模板化 + 配置驱动的：</strong></p>
+<p><strong>⭐ 前面分析过 —— 同一个框架，靠 JSON-1-p 的配置项裁剪出不同的最终载荷。</strong></p>
+<p><strong>—— 而这正是「</strong>要打很多个不同环境<strong>」所需要的能力。</strong></p>
+<p><strong>④ 「Windows 10 China Government Edition」这个具体目标：</strong></p>
+<p><strong>⭐ 结合 2026 年 8 月国安部要求停用政府版 Windows 转向国产 Linux 的背景 ——</strong></p>
+<p><strong>⭐⭐ 我认为最合理的解读是：</strong></p>
+<blockquote><strong>⭐⭐ </strong>有人在评估「政府版 Windows 的防守面到底有多厚」。**<br>
+<strong>⭐ </strong>而结论如果是「很薄」，那么「改用国产 Linux」这个决策就多了一条技术依据 —— 甚至可能成为决策的<strong>主要</strong>依据。**</blockquote>
+<p><strong>⭐ 而这才是这件事真正值得长期关注的地方 —— ⭐ 比任何一个技术细节都值得。</strong></p>
+<h3>7.4 ⭐⭐ 而「未归因」这件事本身，也值得说两句</h3>
+<p><strong>⭐ Kaspersky 的措辞很谨慎：</strong></p>
+<blockquote><strong>「After analyzing the TTPs, code similarities, and infrastructure, </strong>we were unable to link the attack to any known APT group<strong>.」</strong><br>
+<br>
+<strong>「at present, </strong>no attribution to any known APT group has been established<strong>.」</strong></blockquote>
+<p><strong>⭐ 我认为这个克制是对的，而且我认为这个「未归因」比随便归因某个 APT 更有价值 —— 因为：</strong></p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>如果归因了</strong></td><td>⭐ <strong>读者会当成「某国干的」，然后降低警惕</strong></td></tr><tr><td><strong>没归因</strong></td><td>⭐ <strong>读者保持「不知道是谁」的警觉</strong></td></tr></tbody></table>
+<p><strong>⭐ 而结合我在第六节说的那个背景 —— ⭐ 在「技术主权」成为全球趋势的当下，「某个国家在测试别国政府定制操作系统的防守面」这个可能性本身，</strong>不需要指名谁也同样成立<strong>。</strong></p>
+<p><strong>⭐ 而 Kaspersky 自己的结论段落（我觉得这是全文最好的收尾）：</strong></p>
+<blockquote><strong>「Technological sovereignty has become a global trend. … a growing number of countries are building their own core software platforms, including operating systems, databases, middleware, and cloud services, </strong>with operating systems often the top priority<strong>.」</strong><br>
+<br>
+<strong>「The advantage is that each country controls the development, operation, and upgrading of its own operating systems, granting it </strong>full autonomy over the entire process<strong>. On the other hand, it also means that </strong>each country must protect this entire vast ecosystem on its own<strong>. Bringing the operation and maintenance of such a system to maturity is a lengthy process. Until then, </strong>both the system and its emerging supply chain could be exposed to attacks through multiple vectors<strong>, increasing potential vulnerabilities.」</strong></blockquote>
+<p><strong>⭐ 我把这段的逻辑提炼成一句：</strong></p>
+<blockquote><strong>⭐⭐ </strong>「技术主权」把一个防守难题从「全球分工解决」变成了「各自单独扛」—— 而攻击面并没有变小。**</blockquote>
+<h2>Sources</h2>
+<ul><li>⭐ 一手：<a href="https://securelist.com/netamloader/121676/" target="_blank" rel="noopener noreferrer">Kaspersky Securelist — Unknown APT uses NetamLoader to attack a Win10 OS customized for governments in Asia</a>（GReAT，2026-10-29，含完整感染链、配置项表、基础设施表与完整 IOC 清单）</li><li>⭐ 一手：<a href="https://thehackernews.com/2026/11/netamloader-malware-targets-government.html" target="_blank" rel="noopener noreferrer">The Hacker News — NetamLoader Malware Targets Government Windows 10 Systems in Asia via .NET Injection</a>（Ravie Lakshmanan，2026-11-01）</li><li>⭐ 一手：<a href="https://blogs.windows.com/windowsexperience/2017/05/23/announcing-windows-10-china-government-edition-new-surface-pro/" target="_blank" rel="noopener noreferrer">微软官方 — Announcing Windows 10 China Government Edition and the new Surface Pro</a>（2017-05-23；CETC/CMIT 合资公司、试点客户、移除 OneDrive、自管遥测与更新、政府自用加密算法）</li><li>⭐ 一手：<a href="https://cloud.google.com/blog/topics/threat-intelligence/windows-session-hijacking-via-ccmexec" target="_blank" rel="noopener noreferrer">Google Cloud Threat Intelligence — Windows Session Hijacking via CCMEXEC（AppDomainManager 注入技术说明）</a></li><li>一手：Bloomberg 报道（2026 年 8 月，中国国安部要求部分政府机构停用 Government Edition 转向国产 Linux；经 THN 引用）</li><li>一手：Kaspersky OpenTIP 哈希查询链接（见上文 IOC 表）</li></ul>
+<hr>
+<p>（说明：所有引号内内容、配置项数值、哈希与 IOC 均来自上述一手材料；<strong>第七节的「受害者只有一台 ⇒ 可行性验证」的解读、「进程脱钩是可迁移思路」的抽象、以及「技术主权把防守难题从全球分工变成各自单独扛」的判断为笔者观点</strong>。）</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/",
+      title: "\u4e00\u4e2a CAB \u6587\u4ef6\u3001\u4e03\u4e2a\u300c\u5408\u6cd5\u300d\u6587\u4ef6\u3001\u548c\u4e00\u6761\u901a\u5f80\u653f\u5e9c\u5b9a\u5236 Windows \u7684\u94fe\uff1aNetamLoader \u62c6\u89e3"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
