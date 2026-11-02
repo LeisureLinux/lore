@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律 — FreeLAMP.com</title>
+  <meta name="description" content="一篇把「改 APK」从玄学变成可复现流程的深度教程。从 APK 到底是什么（ZIP + 编译后的二进制 AXML manifest + resources.arsc + DEX），到 DEX 的六张索引表与 0x70 字节头部每个偏移的含义（checksum 是 0x0C 起的 Adler-32、signature 是">
+  <meta name="keywords" content="Android, APK, DEX, Smali, baksmali, apktool, apksigner, zipalign, 逆向工程, 签名机制, v1v2v3v4签名, aapt2, jadx, 打包, 应用安全, 多dex, 64K限制, 教程, 应用商店">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-02">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-02_patching-apks-smali-dex-rebuild-signing/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律">
+  <meta property="og:description" content="一篇把「改 APK」从玄学变成可复现流程的深度教程。从 APK 到底是什么（ZIP + 编译后的二进制 AXML manifest + resources.arsc + DEX），到 DEX 的六张索引表与 0x70 字节头部每个偏移的含义（checksum 是 0x0C 起的 Adler-32、signature 是">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-02_patching-apks-smali-dex-rebuild-signing/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-02">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Android">
+  <meta property="article:tag" content="Android">
+  <meta property="article:tag" content="APK">
+  <meta property="article:tag" content="DEX">
+  <meta property="article:tag" content="Smali">
+  <meta property="article:tag" content="baksmali">
+  <meta property="article:tag" content="apktool">
+  <meta property="article:tag" content="apksigner">
+  <meta property="article:tag" content="zipalign">
+  <meta property="article:tag" content="逆向工程">
+  <meta property="article:tag" content="签名机制">
+  <meta property="article:tag" content="v1v2v3v4签名">
+  <meta property="article:tag" content="aapt2">
+  <meta property="article:tag" content="jadx">
+  <meta property="article:tag" content="打包">
+  <meta property="article:tag" content="应用安全">
+  <meta property="article:tag" content="多dex">
+  <meta property="article:tag" content="64K限制">
+  <meta property="article:tag" content="教程">
+  <meta property="article:tag" content="应用商店">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律">
+  <meta name="twitter:description" content="一篇把「改 APK」从玄学变成可复现流程的深度教程。从 APK 到底是什么（ZIP + 编译后的二进制 AXML manifest + resources.arsc + DEX），到 DEX 的六张索引表与 0x70 字节头部每个偏移的含义（checksum 是 0x0C 起的 Adler-32、signature 是">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律",
+  "description": "原文：Maximilian Cornett，《Patching APKs: Smali, DEX, Rebuild, and Resigning》，YourDev.net，2026 年 10 月 29 日  原文链接：<https://www.yourdev.net/blog.php?post=patching-apks-smali-dex-rebuild-and-signing  本文为解读与整",
+  "datePublished": "2026-11-02",
+  "dateModified": "2026-11-02",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-02_patching-apks-smali-dex-rebuild-signing/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Android, APK, DEX, Smali, baksmali, apktool, apksigner, zipalign, 逆向工程, 签名机制, v1v2v3v4签名, aapt2, jadx, 打包, 应用安全, 多dex, 64K限制, 教程, 应用商店"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律",
+        "item": "https://freelamp.com/articles/2026-11-02_patching-apks-smali-dex-rebuild-signing/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-02">2026-11-02</div>
+        <h1 class="post-title" itemprop="headline">改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Android/">Android</a><a itemprop="keywords" href="/tags/APK/">APK</a><a itemprop="keywords" href="/tags/DEX/">DEX</a><a itemprop="keywords" href="/tags/Smali/">Smali</a><a itemprop="keywords" href="/tags/baksmali/">baksmali</a><a itemprop="keywords" href="/tags/apktool/">apktool</a><a itemprop="keywords" href="/tags/apksigner/">apksigner</a><a itemprop="keywords" href="/tags/zipalign/">zipalign</a><a itemprop="keywords" href="/tags/%E9%80%86%E5%90%91%E5%B7%A5%E7%A8%8B/">逆向工程</a><a itemprop="keywords" href="/tags/%E7%AD%BE%E5%90%8D%E6%9C%BA%E5%88%B6/">签名机制</a><a itemprop="keywords" href="/tags/v1v2v3v4%E7%AD%BE%E5%90%8D/">v1v2v3v4签名</a><a itemprop="keywords" href="/tags/aapt2/">aapt2</a><a itemprop="keywords" href="/tags/jadx/">jadx</a><a itemprop="keywords" href="/tags/%E6%89%93%E5%8C%85/">打包</a><a itemprop="keywords" href="/tags/%E5%BA%94%E7%94%A8%E5%AE%89%E5%85%A8/">应用安全</a><a itemprop="keywords" href="/tags/%E5%A4%9Adex/">多dex</a><a itemprop="keywords" href="/tags/64K%E9%99%90%E5%88%B6/">64K限制</a><a itemprop="keywords" href="/tags/%E6%95%99%E7%A8%8B/">教程</a><a itemprop="keywords" href="/tags/%E5%BA%94%E7%94%A8%E5%95%86%E5%BA%97/">应用商店</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote><strong>原文</strong>：Maximilian Cornett，《Patching APKs: Smali, DEX, Rebuild, and Resigning》，YourDev.net，<strong>2026 年 10 月 29 日</strong><br>
+原文链接：<a href="https://www.yourdev.net/blog.php?post=patching-apks-smali-dex-rebuild-and-signing" target="_blank" rel="noopener noreferrer">https://www.yourdev.net/blog.php?post=patching-apks-smali-dex-rebuild-and-signing</a><br>
+<strong>本文为解读与整理</strong>，保留了原文的技术要点、命令与表格结构；⭐ 标记处为笔者的补充说明。<br>
+⚠️ <strong>法律与伦理边界</strong>（原文自己的声明，我完整保留）：<strong>只修改你自己拥有、自己构建、或获得明确许可的 APK。</strong> <strong>重新打包他人的应用会破坏其签名、更新路径，通常也违反其服务条款，且在某些司法辖区可能违法。</strong></blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>⭐ 而这篇教程真正的价值，是它把一件通常被当成「玄学」的事拆成了三件可以分别理解的东西：</strong></p>
+<pre><code>① DEX 是什么          → 一个**寄存器型**字节码容器（不是 JVM 字节码）
+② Smali 为什么存在      → 因为**反编译的 Java 是有损的，而二进制 DEX 人读不了**
+③ 签名在证明什么        → **不是「谁签的」，而是「自洽」+「更新必须同钥匙」**</code></pre>
+<p><strong>⭐ 而整条链路上，只有一条规则是不能违反的：</strong></p>
+<pre><code>build  →  zipalign  →  apksigner  →  （之后绝不再动任何字节）</code></pre>
+<p><strong>—— 顺序倒过来，v2/v3 签名立刻失效。</strong></p>
+<h2>一、60 秒心智模型</h2>
+<p><strong>⭐ 原文的第一张图就把整条链路画清了：</strong></p>
+<pre><code>Kotlin/Java source
+      │  kotlinc / javac
+      ▼
+JVM .class files            （栈式字节码，一个类一个文件）
+      │  d8（发布构建则用 R8）
+      ▼
+classes.dex                 （寄存器型 Dalvik 字节码，所有类在一个文件里）
+      │  zip  +  aapt2（资源） +  apksigner
+      ▼
+app.apk</code></pre>
+<p><strong>⭐ 而 smali 在这个图里的位置，原文说得很准确：</strong></p>
+<blockquote><strong>「Smali is not a compilation target. It is a textual rendering of an existing DEX file, produced by a disassembler (baksmali) and consumed by an assembler (smali). </strong>Editing smali is editing the DEX, just in a form you can read.<strong>」</strong></blockquote>
+<pre><code>classes.dex  ──baksmali──▶  smali/  （可读文本）
+     ▲                          │
+     └────────smali─────────────┘   （在中间编辑）</code></pre>
+<p><strong>⭐ 而 apktool 的全部秘密，原文一句话就说完了：</strong></p>
+<blockquote><strong>「apktool wraps exactly this: <code>apktool d</code> = unzip + decode resources + baksmali; <code>apktool b</code> = smali + aapt2 + zip. </strong>That is the whole trick.<strong>」</strong></blockquote>
+<h2>二、APK 里到底有什么</h2>
+<pre><code>app.apk (ZIP)
+├── AndroidManifest.xml        二进制 XML（AXML），不是文本
+├── resources.arsc             编译后的资源表（二进制）
+├── classes.dex                代码（多 dex 时还有 classes2.dex、classes3.dex …）
+├── res/                       编译后的资源文件（布局、drawable…）
+├── lib/&lt;abi&gt;/lib*.so          原生库
+├── assets/                    原样打包的原始文件
+└── META-INF/                  v1（JAR）签名文件 —— MANIFEST.MF、*.SF、*.RSA</code></pre>
+<p><strong>⭐ 而原文紧接着点出了</strong>「两个决定其他一切的推论」<strong> —— 我认为这是全文最该被记住的一段：</strong></p>
+<blockquote><strong>「- AndroidManifest.xml and res/ are </strong>compiled, not plain text<strong>. You cannot edit them with a text editor; you need a decoder (apktool) and a rebuilder (aapt2). </strong>That is why "just unzip and rezip" so often produces an APK that won't install or crashes on startup.<strong>」</strong><br>
+<br>
+<strong>「- META-INF/ is a </strong>signature over the ZIP's contents<strong>. Any change to any byte invalidates it. So the moment you edit a DEX, the app is unsigned from Android's point of view, and you must re-sign before installing.」</strong></blockquote>
+<p><strong>⭐ 我认为第一点解释了很多新手最常见的困惑：⭐ </strong>「为什么我 unzip 一下再 zip 回去，APK 就装不上了？」<strong> —— 因为 manifest 和资源都是编译产物，zip 回去之后 Android 读不懂 AXML 和 arsc。</strong></p>
+<p><strong>⭐ 而第二点是整篇文章的起点：⭐ </strong>「签名是对 ZIP 内容的签名」<strong> —— 这就决定了后面所有的顺序问题。</strong></p>
+<p><strong>⭐ 还有一个实用细节：</strong> <code>apktool d</code> 会把未改动的原件留在 <code>original/</code> 目录（<code>original/META-INF</code>、<code>original/AndroidManifest.xml</code>），而 <code>apktool b -c</code>（<code>--copy-original</code>）可以复用它们。**</p>
+<h2>三、⭐ DEX 深入：六个索引表与 0x70 字节的头</h2>
+<h3>3.1 DEX 是什么</h3>
+<p><strong>⭐ 原文的定义很精准：</strong></p>
+<blockquote><strong>「DEX ("Dalvik Executable") is the bytecode container that Android Runtime (ART) loads. It is a single flat file holding every class in the app, with all strings, types, prototypes, fields, and methods </strong>interned into shared, indexed tables<strong>. </strong>Cross-class references become 16-bit/32-bit integer indices instead of names<strong>, which is what makes it compact.」</strong><br>
+<br>
+<strong>「It is an </strong>instruction set architecture<strong>, like x86 or ARM — </strong>not a programming language<strong>. There is no syntax, no expressions, no scoping. There is only a byte stream plus a documented layout.」</strong></blockquote>
+<p><strong>⭐ 而「DEX 不是 JVM 字节码」这条，原文专门强调了：</strong></p>
+<blockquote><strong>「Note: </strong>DEX is not JVM bytecode<strong>. .class files are </strong>stack-based<strong>; DEX is </strong>register-based<strong>. d8 performs that translation. This is why a .class file and a .dex file for the same class </strong>look nothing alike<strong>, and why you cannot just rename one to the other.」</strong></blockquote>
+<h3>3.2 文件布局</h3>
+<pre><code>┌───────────────┬──────────────────────────────────────────────┐
+│ header        │ 0x00 – 0x6F (112 bytes)                      │
+├───────────────┼──────────────────────────────────────────────┤
+│ string_ids    │ 指向 MUTF-8 字符串的偏移                      │
+│ type_ids      │ string_ids 的索引（类型描述符）                │
+│ proto_ids     │ 方法签名（返回类型 + 参数）                    │
+│ field_ids     │ {class, type, name} 三元组                    │
+│ method_ids    │ {class, proto, name} 三元组                   │
+│ class_defs    │ 每个类一个：它的数据在哪                      │
+├───────────────┼──────────────────────────────────────────────┤
+│ data          │ 字符串字节、类型列表、code item、调试信息、      │
+│               │ 注解、静态值、map_list                        │
+└───────────────┴──────────────────────────────────────────────┘</code></pre>
+<p><strong>⭐ 而头部里「值得记住」的字段，原文列了一张表 —— 我挑出</strong>最关键的四条<strong>，因为它们直接决定了「手改 DEX 后为什么加载不了」：</strong></p>
+<table><thead><tr><th>偏移</th><th>字段</th><th>含义</th></tr></thead><tbody><tr><td><strong>0x00</strong></td><td>magic</td><td><code>dex\n035\0</code> … <code>dex\n040\0</code>（格式版本）**</td></tr><tr><td><strong>0x08</strong></td><td><strong>checksum</strong></td><td><strong>从 0x0C 到 EOF 的 Adler-32</strong></td></tr><tr><td><strong>0x0C</strong></td><td><strong>signature</strong></td><td><strong>从 0x20 到 EOF 的 SHA-1</strong></td></tr><tr><td>0x20</td><td>file_size</td><td>文件总长度</td></tr></tbody></table>
+<p><strong>⭐ 而原文对这两个校验字段的说明，是我认为整个 DEX 部分最有价值的一句：</strong></p>
+<blockquote><strong>「The checksum and signature fields are why a </strong>hand-edited DEX is rejected until you recompute them<strong>. Everything from </strong>0x0C<strong> onward is covered by the checksum, and everything from </strong>0x20<strong> onward is covered by the signature — and </strong>the checksum field (at 0x08) is itself inside the signed region<strong>, so </strong>the order matters: signature first, then checksum<strong>.」</strong></blockquote>
+<p><strong>⭐ 我把这条整理成一个可以直接照做的清单：</strong></p>
+<pre><code>改完 DEX 字节后：
+  ① signature (0x0C) = SHA-1( bytes[0x20:] )     ← 先算
+  ② checksum (0x08) = Adler-32( bytes[0x0C:] )   ← 后算</code></pre>
+<p><strong>—— 而「checksum 自己在签名区内」这个细节，是最容易踩的坑。</strong></p>
+<h3>3.3 code item 与变长指令</h3>
+<p><strong>⭐ 原文的关键点：</strong></p>
+<blockquote><strong>「Instructions are </strong>1–5 code units long, variable length<strong>, and operate on registers named v0, v1, …」</strong><br>
+<br>
+<code>`</code>smali<br>
+const/4 v0, 0x1          # 1 code unit  (2 bytes)<br>
+invoke-virtual {v0}, Ljava/lang/Object;-&gt;toString()Ljava/lang/String;   # 3 code units<br>
+<code>`</code><br>
+<br>
+<strong>「Because instruction length depends on the encoded value (const/4 vs const/16 vs const), </strong>inserting or growing code changes byte offsets everywhere after it<strong>. </strong>That is the central difficulty of editing DEX directly, and the reason a textual assembler exists.<strong>」</strong></blockquote>
+<p><strong>⭐ 我认为这句「指令长度依赖编码值 → 插入代码会让后面所有偏移都变」是理解「为什么不能直接改 DEX」的核心。</strong></p>
+<h3>3.4 ⭐ 硬限制：64K，以及它如何逼出 multidex</h3>
+<table><thead><tr><th>限制</th><th>值</th><th>后果</th></tr></thead><tbody><tr><td><strong>每个 DEX 引用的方法数</strong></td><td><strong>65,535</strong>（method_ids 是 16 位）**</td><td><strong>64K 方法上限 → multidex</strong></td></tr><tr><td>每方法的寄存器数</td><td>65,535</td><td>只有超大方法才受影响</td></tr><tr><td>字符串索引（非 jumbo）</td><td>65,535</td><td>汇编器自动切到 <code>/jumbo</code></td></tr><tr><td>字段引用数</td><td>65,535</td><td>同类问题</td></tr><tr><td>指令索引范围</td><td>有符号 16 位分支偏移</td><td>超大方法无法汇编</td></tr></tbody></table>
+<p><strong>⭐ 而原文接下来的这句解释了一个很多人不解的现象：</strong></p>
+<blockquote><strong>「classes.dex, classes2.dex, … </strong>each have their own 64K budget<strong>. apktool decodes them to <code>smali/</code>, <code>smali_classes2/</code>, <code>smali_classes3/</code>, … and reassembles each directory back into the matching DEX name.」</strong></blockquote>
+<p><strong>⭐ 我把它当成一条实用规则：⭐ </strong>看到一个 APK 有 <code>classes3.dex</code>，你就知道它超过了 64K 方法 —— 而修改时必须改对目录，否则补丁打在了另一个 DEX 上。**</p>
+<h2>四、Smali 深入：它为什么存在</h2>
+<p><strong>⭐ 原文对 smali 的定义：</strong></p>
+<blockquote><strong>「Smali is the assembly syntax for DEX. Every DEX instruction has a smali mnemonic with the same name (invoke-virtual, iget-object, const-string), and every reference is written </strong>symbolically<strong> instead of as an index:」</strong><br>
+<br>
+<code>`</code>smali<br>
+invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;-&gt;append(Ljava/lang/String;)Ljava/lang/StringBuilder;<br>
+<code>`</code><br>
+<br>
+<strong>「Same instruction, but now you can read the class, the method, the parameter type, and the return type. </strong>That is the entire value proposition.<strong>」</strong></blockquote>
+<p><strong>⭐ 而第 6 节「为什么两者都存在」给了一个我觉得是全文最好的解释：</strong></p>
+<blockquote><strong>「</strong>Why DEX exists<strong>: DEX exists for </strong>density, fast loading, and verifiability<strong>. It is </strong>not meant to be edited by hand<strong>.」</strong><br>
+<br>
+<strong>「</strong>Why smali exists<strong>: Smali exists because </strong>decompiled Java is lossy<strong> and binary DEX is not human-editable. It is the easiest editable representation.」</strong></blockquote>
+<p><strong>⭐ 我把这三句话连起来，就得到了整个 smali 工具链存在的理由：</strong></p>
+<pre><code>Java 反编译（jadx）  →  有损（控制流被重建，不是原始逻辑）→ 不可用于精确修改
+DEX 二进制            →  精确，但人读不了                → 不可用于精确修改
+       ↓
+    Smali              →  精确 + 可读                     → ✅ 唯一可用的编辑形态</code></pre>
+<p><strong>⭐ 而原文还诚实地点出 smali 的一个局限：</strong></p>
+<blockquote><strong>「Smali is </strong>lossless in the forward direction<strong>: baksmali → text → smali gives you a semantically equivalent DEX. It is </strong>not guaranteed byte-identical<strong> (the string pool and code-item ordering can be [reordered]).」</strong></blockquote>
+<p><strong>—— 语义等价，但不保证字节一致。这对「打完补丁后与原版对比」有实际影响。</strong></p>
+<h2>五、⭐ 三条工作流的取舍</h2>
+<p><strong>⭐ 原文给出了三条路径，而它对每条路径的适用场景说得很清楚 —— 这是这篇教程最有实用价值的部分。</strong></p>
+<h3>5.1 工作流 A：标准 apktool 循环（90% 的情况）</h3>
+<pre><code>apktool d app.apk -o decoded  ──▶  decoded/  （编辑 smali）
+                                        │ apktool b
+                                        ▼
+                                  unsigned.apk
+                                        │ zipalign
+                                        ▼
+                                  aligned.apk
+                                        │ apksigner
+                                        ▼
+                                    signed.apk
+                                        │ adb install
+                                        ▼
+                                      device</code></pre>
+<p><strong>⭐ 而原文的 12 个步骤里，我认为有三个是「新手最容易漏、但影响最大」的：</strong></p>
+<p><strong>① Step 0 —— 保留一份原始副本</strong></p>
+<pre><code>cp app.apk app.original.apk
+sha256sum app.apk app.original.apk</code></pre>
+<p><strong>⭐ 原文的话：</strong></p>
+<blockquote><strong>「You will compare against this when something breaks. </strong>Never debug on your only copy.<strong>」</strong></blockquote>
+<p><strong>② Step 4 —— 把解码后的目录纳入版本控制</strong></p>
+<pre><code>cd decoded &amp;&amp; git init &amp;&amp; git add -A &amp;&amp; git commit -m "pristine decode" &amp;&amp; cd ..</code></pre>
+<p><strong>⭐ 原文的评价：</strong></p>
+<blockquote><strong>「Now every patch is a </strong>reviewable diff<strong>, and reverting is trivial. </strong>This is the single biggest quality-of-life improvement in this workflow.<strong>」</strong></blockquote>
+<p><strong>③ Step 5 —— 编辑时的五条规则</strong></p>
+<p>原文列的规则我原样保留（这几条是真正会咬人的）：</p>
+<blockquote>- <strong>保持 <code>.registers</code> / <code>.locals</code> 与你用到的最高寄存器一致</strong><br>
+- <strong>保留返回类型</strong> —— <code>Z</code> 方法必须用 <code>v0</code> 返回 0/1；<code>V</code> 方法必须 <code>return-void</code><br>
+- <strong>不要删掉你不需要删的 <code>.line</code> / <code>.local</code> 指令</strong> —— 它们无害，还能让 diff 更小<br>
+- <strong>⭐ 如果新增了寄存器，在任何可能读到它的分支之前先初始化它</strong>（<code>const/4 vX, 0x0</code>），否则验证器可能报「未初始化寄存器」<br>
+- <strong>不要改方法签名或类名</strong>，除非你同时修了所有调用方</blockquote>
+<p><strong>⭐ 而第三条我觉得最值得强调：⭐ </strong>「不要删掉你不需要删的东西」<strong> —— 这和「最小改动原则」是一回事。</strong>新手常犯的错是「顺手清理一下」，结果删掉了 <code>.line</code> 指令，虽然语义不变，但 diff 变大、也更容易碰到边界问题。**</p>
+<h3>5.2 工作流 B：只动代码，不重建资源</h3>
+<p><strong>⭐ 原文给出的两条子路径：</strong></p>
+<ul><li><strong>B1：<code>apktool d --no-res</code></strong>（只解资源则更快，或反过来 <code>--no-src</code> 只解资源）</li><li><strong>B2：完全不用 apktool，直接 <code>baksmali</code> / <code>smali</code></strong></li><li><strong>B3：程序化重写（dexlib2 / R8 / d8）</strong></li></ul>
+<p><strong>⭐ 而这一条工作流的适用场景，原文说得很准：⭐ </strong>「Use <code>-c</code> / <code>--copy-original</code> when you only changed smali and the resource rebuild is causing trouble.」<strong> —— 也就是</strong>只改了代码、但资源重建老出错<strong>时的解法。</strong></p>
+<h3>5.3 ⭐⭐ 工作流 C：直接改 DEX 二进制（外科手术）</h3>
+<p><strong>⭐ 而这是我认为整篇文章里最需要小心读的一节，因为它是「看起来能做，其实限制极多」的那种。</strong></p>
+<p><strong>⭐ 原文先划了可用边界：</strong></p>
+<blockquote><strong>「Only when the patch is </strong>the same number of bytes<strong>: flipping a constant that fits the same encoding, changing a branch target within range, or swapping a register number. Example: <code>const/4 v0, 0x0</code> → <code>const/4 v0, 0x1</code> is </strong>one changed nibble in a 2-byte instruction<strong>.」</strong></blockquote>
+<p><strong>⭐ 然后给了定位方法（这个技巧很实用）：</strong></p>
+<pre><code>dexdump -d classes.dex | grep -n -A4 "isPro"
+xxd -s 0x1234 -l 16 classes.dex</code></pre>
+<p><strong>⭐ 而更好的办法是 <code>baksmali d --code-offsets</code>，它会给每条指令标出字节偏移。</strong></p>
+<p><strong>⭐ 改完字节后必须修头部，原文给了完整脚本：</strong></p>
+<pre><code class="python">#!/usr/bin/env python3
+"""Recompute DEX checksum + signature after an in-place patch."""
+import hashlib, struct, sys, zlib
+path = sys.argv[1]
+data = bytearray(open(path, "rb").read())
+assert data[:4] == b"dex\n", "not a dex file"
+data[12:32] = hashlib.sha1(bytes(data[32:])).digest()
+# 2) Adler-32 over everything after the checksum field
+struct.pack_into("&lt;I", data, 8, zlib.adler32(bytes(data[12:])) &amp; 0xFFFFFFFF)
+open(path, "wb").write(data)
+print("fixed", path)</code></pre>
+<p><strong>⭐ 注意注释里的顺序 —— 「1) SHA-1」在「2) Adler-32」之前 —— ⭐ 这正是前面「checksum 字段本身在签名区内」的必然结果。</strong></p>
+<p><strong>⭐ 而原文对「为什么这条路径脆弱」列了五条，⭐ 每一条我都认为是真实的坑：</strong></p>
+<blockquote>- <strong>指令是变长的。插入一个字节会让后续所有偏移、<code>code_item.insns_size</code>、try/catch 范围、<code>map_list</code> 偏移、以及字符串/类型表的基址全部错位。</strong> ⭐ <strong>「A naive hex insert produces a DEX that parses as garbage.」</strong><br>
+- <strong>头部的 <code>file_size</code> 必须与实际长度一致</strong><br>
+- <strong>分支偏移是相对且范围受限的</strong> —— 移动代码可能让目标越界<br>
+- <strong>⭐ ART 的验证器会重新做类型检查</strong> —— ⭐ <strong>「a byte-level change that "looks right" can still throw VerifyError」</strong><br>
+- <strong>多 dex 时必须改对 <code>classesN.dex</code></strong>，而且跨 DEX 的引用是运行时解析的</blockquote>
+<p><strong>⭐ 而原文的结论句非常克制但很到位：</strong></p>
+<blockquote><strong>「direct DEX patching is a </strong>scalpel for same-size edits<strong>. For anything else, </strong>use smali (Workflow A/B) or dexlib2<strong>.」</strong></blockquote>
+<h2>六、⭐⭐⭐ 签名：v1 到 v4 各自在证明什么</h2>
+<h3>6.1 ⭐ 而最该先想明白的：签名到底证明什么</h3>
+<p><strong>⭐ 原文这句话是整个签名部分的题眼：</strong></p>
+<blockquote><strong>「Android does not care </strong>who<strong> signed the APK; it cares that </strong>the signature is self-consistent<strong> and that </strong>updates use the same key as the installed app<strong>.」</strong></blockquote>
+<p><strong>⭐ 我把它拆成四个直接后果：</strong></p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>任何修改都会使签名失效</strong></td><td>⭐ <strong>「There is no "edit and keep the signature" shortcut (that would break the cryptography).」</strong></td></tr><tr><td><strong>重新打包的应用装不到原版之上</strong></td><td>⭐ <strong>因为钥匙不同</strong></td></tr><tr><td><strong>⭐ 自检签名的应用会立刻发现</strong></td><td>⭐ <strong>「<code>PackageManager.getPackageInfo</code> with <code>GET_SIGNATURES</code>/<code>GET_SIGNING_CERTIFICATES</code>、Play Integrity、SafetyNet、证书固定（certificate pinning）」</strong> —— ⭐ <strong>「That is a server/attestation problem, not a packaging problem.」</strong></td></tr><tr><td><strong>上 Play 商店需要原始上传钥匙</strong></td><td></td></tr></tbody></table>
+<p><strong>⭐ 我认为第三条最容易被低估，而原文那句「这是服务端/证明问题，不是打包问题」点得非常准：</strong></p>
+<p><strong>—— 就算你把客户端的签名自检全 patch 掉了，⭐ 服务端的 Play Integrity 校验你改不了。</strong></p>
+<h3>6.2 v1 / v2 / v3 / v4 各是什么</h3>
+<p><strong>⭐ 原文用四段话讲清了，我原样保留（这是全文最难记住的部分）：</strong></p>
+<p><strong>⭐ v1（JAR 签名）</strong> &gt; <strong>「META-INF/MANIFEST.MF lists SHA-256 digests of every entry; CERT.SF signs the manifest; CERT.RSA holds the signer's certificate and signature. Verification is </strong>per-entry<strong>, which is slow and vulnerable to "master key"-style ZIP parsing bugs. </strong>Still required for API &lt; 24.<strong>」</strong></p>
+<p><strong>⭐ v2</strong> &gt; <strong>「A signature block embedded just before the ZIP central directory, covering the </strong>entire APK<strong> (all bytes, including the central directory). Fast, whole-file verification; detects any modification. </strong>Required for installs on Android 11+ (targetSdk 30+) in practice.<strong>」</strong></p>
+<p><strong>⭐ v3</strong> &gt; <strong>「Same idea as v2 with a </strong>key-rotation proof<strong>, allowing an app to change signing keys across versions. </strong>Android 9+.<strong>」</strong></p>
+<p><strong>⭐ v4</strong> &gt; <strong>「A detached <code>.idsig</code> file used for </strong>incremental/streaming installs via adb<strong>; it is </strong>not part of the APK<strong> and is not required for normal distribution.」</strong></p>
+<p><strong>⭐ 我把这四个版本的差别压成一张对照表：</strong></p>
+<table><thead><tr><th></th><th>签名在哪</th><th>覆盖范围</th><th>校验粒度</th><th>用途</th></tr></thead><tbody><tr><td><strong>v1</strong></td><td><code>META-INF/</code> 内</td><td>ZIP 每个条目</td><td>⭐ <strong>逐条目</strong></td><td><strong>API &lt; 24 必需</strong></td></tr><tr><td><strong>v2</strong></td><td>⭐ <strong>中央目录之前</strong></td><td>⭐ <strong>整个 APK（含中央目录）</strong></td><td>整文件</td><td>⭐ <strong>Android 11+ 实际必需</strong></td></tr><tr><td><strong>v3</strong></td><td>同 v2</td><td>同 v2</td><td>整文件</td><td>⭐ <strong>支持换签名钥匙</strong>（Android 9+）**</td></tr><tr><td><strong>v4</strong></td><td>⭐ <strong>独立的 <code>.idsig</code></strong></td><td>—</td><td>—</td><td><strong>adb 增量/流式安装</strong></td></tr></tbody></table>
+<h3>6.3 ⭐⭐⭐ 而整条链路上唯一的顺序铁律</h3>
+<p><strong>⭐ 原文把它称为「the one ordering rule」，而且给了理由：</strong></p>
+<pre><code>build → zipalign → apksigner → (never modify again)</code></pre>
+<blockquote><strong>「Signing </strong>hashes<strong> bytes; alignment </strong>moves<strong> bytes. </strong>Reverse the order and v2/v3 fail.<strong> If you must re-zipalign a signed APK, </strong>re-sign it afterwards.<strong>」</strong></blockquote>
+<p><strong>⭐ 我想把这句再翻译得更直白一点：</strong></p>
+<p><strong>—— 签名是对「某一时刻的字节」算的哈希。而 zipalign 会移动字节。所以如果你先签名再对齐，⭐ 签名算的是对齐前的内容，对齐后全变了。</strong></p>
+<h3>6.4 ⭐ 而 zipalign 那一步为什么存在（以及它救过多少人）</h3>
+<p><strong>⭐ 原文的说明：</strong></p>
+<blockquote><strong>「- zipalign makes every uncompressed entry start at a </strong>4-byte boundary<strong> so ART can </strong>mmap them directly instead of copying<strong>.」</strong><br>
+<br>
+<strong>「- <code>-p</code> </strong>page-aligns uncompressed .so files<strong> (required for <code>extractNativeLibs=false</code> and for API 23+ in practice).」</strong><br>
+<br>
+<strong>「- Android 11+ (API 30) additionally requires <code>resources.arsc</code> to be </strong>stored uncompressed and 4-byte aligned<strong>. apktool writes it stored; </strong>zipalign fixes the offset<strong>.」</strong><br>
+<br>
+<strong>「- ⭐ </strong>apksigner must run after zipalign<strong>: the v2+ signature covers the whole file, so any later byte move destroys it.」</strong></blockquote>
+<p><strong>⭐ 而原文还给了一条非常实用的排错经验：</strong></p>
+<blockquote><strong>「If you ever see <code>Failure: resources.arsc not stored uncompressed</code>, the APK was </strong>rezip'd with a tool that compressed it<strong>; </strong>rebuild with apktool rather than fighting zip<strong>.」</strong></blockquote>
+<p><strong>⭐ 我觉得这一条的价值在于它区分了两类错误：</strong></p>
+<table><thead><tr><th>症状</th><th>真正的原因</th><th>正确做法</th></tr></thead><tbody><tr><td><code>resources.arsc not stored uncompressed</code></td><td>⭐ <strong>不是 zipalign 没跑，是重新打包的工具把它压缩了</strong></td><td>⭐ <strong>用 apktool 重建，别跟 zip 较劲</strong></td></tr><tr><td>装不上 / 启动崩溃</td><td>⭐ <strong>manifest 和资源是编译产物</strong></td><td>⭐ <strong>必须用 apktool 解码 + aapt2 重建</strong></td></tr></tbody></table>
+<h2>七、⭐⭐ 排错与验证清单</h2>
+<p><strong>⭐ 原文的第 14、15 节是「照着做就不用踩坑」的部分，我挑最实用的列出来。</strong></p>
+<p><strong>⭐ 验证签名与安装：</strong></p>
+<pre><code>apksigner verify --verbose --print-certs signed.apk
+adb install -r signed.apk
+adb logcat -c &amp;&amp; adb logcat -s AndroidRuntime:E</code></pre>
+<p><strong>⭐ 而「验证补丁的完整性」这一组命令，我觉得是原文最容易被忽略但最有价值的：</strong></p>
+<pre><code>cd decoded &amp;&amp; git diff          # ⭐ 看清楚你到底改了什么
+sha256sum app.apk app.original.apk signed.apk</code></pre>
+<p><strong>—— 把原版、补丁版、签名版三个哈希放在一起，才能确认「我改的确实是我以为改的那点」。</strong></p>
+<h3>7.1 ⭐⭐ 而「现实检查」这一节，是全文最有价值的收尾</h3>
+<p><strong>⭐ 原文列了一堆「你改不动」的东西，我按「能不能改」分类：</strong></p>
+<table><thead><tr><th>障碍</th><th>能不能客户端绕过</th><th>说明</th></tr></thead><tbody><tr><td><strong>签名自检 / Play Integrity / SafetyNet</strong></td><td>⚠️ <strong>客户端能 patch 服务端不能</strong></td><td>⭐ <strong>原文：「server-side validation cannot be patched on the client at all」</strong></td></tr><tr><td><strong>代码混淆（R8/ProGuard）</strong></td><td>✅ 可以，但难读</td><td>⭐ <strong>「smali is still readable as instructions but names are meaningless」—— 改用行为（字符串、API 调用、控制流）定位，而不是靠名字</strong></td></tr><tr><td><strong>原生代码（<code>lib/*/lib*.so</code>）</strong></td><td>⚠️ <strong>要 native RE（IDA/Ghidra/radare2）</strong></td><td>⭐ <strong>「often invalidates more invariants」</strong></td></tr><tr><td><strong>资源完整性自检</strong></td><td>⚠️ 很难</td><td>⭐ <strong>有些应用启动时对自己的资源或 DEX 做哈希 —— </strong>任何重建都会触发****</td></tr><tr><td><strong>Split APK / App Bundle</strong></td><td>⚠️ <strong>要先转 universal</strong></td><td>⭐ <strong>「Bundles must be converted (<code>bundletool build-apks --mode=universal</code>) before patching」</strong></td></tr><tr><td><strong>⭐ 更新</strong></td><td>❌ <strong>不可能</strong></td><td>⭐ <strong>「A patched app cannot receive Play updates; the store's signature will not match. </strong>Keep an unmodified copy.<strong>」</strong></td></tr></tbody></table>
+<p><strong>⭐ 我认为最后一条值得单独强调：⭐ </strong>改过的应用从此拿不到官方更新了<strong> —— 这不是技术限制，是 Android 更新机制的必然结果（⭐ </strong>商店的签名对不上<strong>）。</strong></p>
+<h2>八、⭐⭐⭐ 我的评价</h2>
+<h3>8.1 ⭐⭐ 而这篇教程最值得学的是它的「反面教材」写法</h3>
+<p><strong>⭐ 我注意到原文在讲每个坑的时候，都先说「为什么会这样」，而不是直接给命令。</strong></p>
+<p><strong>⭐ 举三个例子：</strong></p>
+<table><thead><tr><th>原文的讲法</th><th>为什么重要</th></tr></thead><tbody><tr><td><strong>「指令长度依赖编码值 → 插入代码会改变后面所有偏移 → 所以需要文本汇编器」</strong></td><td>⭐ <strong>先讲清「为什么不能直接改」，你才知道「为什么推荐 smali」</strong></td></tr><tr><td><strong>「checksum 字段本身在签名区内 → 所以要先算签名再算校验和」</strong></td><td>⭐ <strong>顺序不是随意的，是被布局强制的</strong></td></tr><tr><td><strong>「签名哈希字节，对齐移动字节 → 顺序反了 v2/v3 就失败」</strong></td><td>⭐ <strong>同理，顺序是机制决定的，不是习惯</strong></td></tr></tbody></table>
+<p><strong>⭐ 我认为这比「记住这个命令序列」有价值得多 —— 因为命令序列会变（apktool 3.x、新的 zipalign 行为），但机制不会变。</strong></p>
+<h3>8.2 ⭐⭐ 而「三视图」这个框架，是我认为全文最漂亮的一个组织方式</h3>
+<pre><code>DEX    → 二进制、精确、寄存器型、人读不了、专为密度/快速加载/可验证而生
+Smali  → 文本、精确（语义等价）、符号化、人可读 —— 唯一可用的编辑形态
+Java   → 文本、有损（控制流被重建）、人可读 —— 只用于「理解」，不用于「修改」</code></pre>
+<p><strong>⭐ 而原文的分工说得极清楚：</strong></p>
+<blockquote><strong>「Use </strong>jadx to understand, smali to locate the exact instructions.<strong>」</strong><br>
+<br>
+<strong>「jadx-gui is better for browsing; note that when jadx </strong>fails to decompile a method it prints the smali instead<strong> — </strong>that is your bridge.<strong>」</strong></blockquote>
+<p><strong>⭐ 我想指出「jadx 解不出来时就打印 smali」这个细节 —— ⭐ 它实际上把 jadx 和 smali 串成了一条连续的路径，而不是两个竞争的工具。</strong></p>
+<h3>8.3 ⭐⭐ 而关于「合法边界」，我认为原文的措辞值得原样保留</h3>
+<p><strong>⭐ 原文开头那段法律声明，我认为比很多同类文章写得都更到位：</strong></p>
+<blockquote><strong>「Only patch APKs you own, that you built yourself, or that you have explicit permission to modify. </strong>Repackaging someone else's app breaks its signature, its update path, and usually its terms of service, and can be illegal depending on where you live.<strong>」</strong></blockquote>
+<p><strong>⭐ 我注意到的关键点：⭐ 原文没有用「仅供教育用途」这种含糊的免责 —— 而是把</strong>实际后果<strong>列了出来：签名、更新路径、服务条款、以及司法辖区。</strong></p>
+<p><strong>⭐ 而我认为这一条也正好接上了本号此前写过的几篇：⭐ </strong>《选择无聊的技术》里那句「多语言编程是蛇油」，和这里的「重新打包别人的 app」其实是同一类提醒 —— ⭐ <strong>有些事情技术上完全可行，但它的可行本身不构成理由。</strong></p>
+<p><strong>⭐ 而我特别想指出：⭐ </strong>这篇文章里最实用的技术 —— 直接改 DEX 二进制、patch 签名自检 —— 恰好也是最不该被用在别人软件上的那些。<strong> </strong>因为那些技术<strong>唯一有意义的场景</strong>，就是修改别人加了保护的应用。**</p>
+<p><strong>⭐ 而这正是「文档写了 = 应该会有人做」和「文档写了 = 应该标清边界」的差别。</strong></p>
+<h2>Sources</h2>
+<ul><li>⭐ 一手：<a href="https://www.yourdev.net/blog.php?post=patching-apks-smali-dex-rebuild-and-signing" target="_blank" rel="noopener noreferrer">YourDev.net — Patching APKs: Smali, DEX, Rebuild, and Resigning</a>（Maximilian Cornett，2026-10-29，29 分钟长文，17 个章节）</li><li>一手：<a href="https://developer.android.com/studio/publish/app-signing" target="_blank" rel="noopener noreferrer">Android 开发者文档 — APK 格式与签名</a></li><li>一手：<a href="https://apktool.org/docs/" target="_blank" rel="noopener noreferrer">apktool 官方文档</a></li><li>一手：<a href="https://developer.android.com/studio/command-line/apksigner" target="_blank" rel="noopener noreferrer">Android <code>apksigner</code> 文档</a></li><li>一手：<a href="https://developer.android.com/studio/command-line/zipalign" target="_blank" rel="noopener noreferrer">Android <code>zipalign</code> 文档</a></li><li>一手：<a href="https://github.com/JesusFreke/smali" target="_blank" rel="noopener noreferrer">smali / baksmali（JesusFreke）</a></li><li>相关：本号此前的《不用 root 的通话录音金库：AVault》—— ⭐ <strong>同一个 Android 生态，一个是消费级应用（加密金库），一个是底层打包与逆向的工具链</strong></li></ul>
+<hr>
+<p>（说明：本文为原文的解读与整理，保留了原文的技术要点、命令、表格与「现实检查」一节；<strong>第八节的「三视图框架」「反例教学法」与「合法边界」分析为笔者观点</strong>。）</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-02_patching-apks-smali-dex-rebuild-signing/",
+      title: "\u6539\u4e00\u4e2a APK \u7684\u5b8c\u6574\u94fe\u8def\uff1a\u4ece smali \u6539\u4e00\u4e2a\u5e03\u5c14\u503c\uff0c\u5230 zipalign\u3001apksigner\uff0c\u4ee5\u53ca\u90a3\u6761\u552f\u4e00\u7684\u987a\u5e8f\u94c1\u5f8b"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-02 | [改一个 APK 的完整链路：从 smali 改一个布尔值，到 zipalign、apksigner，以及那条唯一的顺序铁律](https://freelamp.com/articles/2026-11-02_patching-apks-smali-dex-rebuild-signing/) | Android · APK · DEX · Smali · baksmali · apktool · apksigner · zipalign · 逆向工程 · 签名机制 · v1v2v3v4签名 · aapt2 · jadx · 打包 · 应用安全 · 多dex · 64K限制 · 教程 · 应用商店 |
 | 2026-11-02 | [不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事](https://freelamp.com/articles/2026-11-02_avault-android-encrypted-call-recorder/) | Android · AVault · 通话录音 · Shizuku · rootless · AES-256-GCM · KeyStore · StrongBox · TEE · 加密金库 · 隐私 · 供应链安全 · 开源项目 · Kotlin · JetpackCompose · 审计 · 文档核对 |
 | 2026-11-02 | [选择无聊的技术：Dan McKinley 的「创新代币」与 2015 年那篇改变无数团队技术选型的文章](https://freelamp.com/articles/2026-11-02_choose-boring-technology-dan-mckinley/) | 技术选型 · 无聊技术 · 创新代币 · DanMcKinley · KellanElliottMcCrea · Etsy · Stripe · 运维成本 · 认知负担 · 已知未知 · 未知未知 · 全局最优 · 成熟技术 · 架构决策 · 软件工程 · 团队管理 · 英文翻译 |
 | 2026-11-02 | [Fedora 45 定档 11 月 3 日：GNOME 51、默认禁 ptrace、RPM 强制验签，以及三个「默认收紧」的安全变化](https://freelamp.com/articles/2026-11-02_fedora-45-go-november-3/) | Fedora · Fedora45 · GNOME51 · KDEPlasma · Linux内核 · ptrace · RPM · 签名校验 · 可复现构建 · kmscon · Stratis · Anaconda · OpenSSL4 · GCC16 · glibc · LLVM23 · Python3.15 · Go1.27 · Podman6 · AtomicDesktop · 供应链安全 · 发布工程 |
