@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事 — FreeLAMP.com</title>
+  <meta name="description" content="AVault 是一个 2026-10-31 才创建、已经拿到 498 star 的开源 Android 项目：用 Shizuku 的 rootless ADB shell 桥接拿到 CAPTURE_AUDIO_OUTPUT 与 MANAGE_ONGOING_CALLS 特权，绕过 Android 14+ 对原生通话录音">
+  <meta name="keywords" content="Android, AVault, 通话录音, Shizuku, rootless, AES-256-GCM, KeyStore, StrongBox, TEE, 加密金库, 隐私, 供应链安全, 开源项目, Kotlin, JetpackCompose, 审计, 文档核对">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-02">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-02_avault-android-encrypted-call-recorder/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事">
+  <meta property="og:description" content="AVault 是一个 2026-10-31 才创建、已经拿到 498 star 的开源 Android 项目：用 Shizuku 的 rootless ADB shell 桥接拿到 CAPTURE_AUDIO_OUTPUT 与 MANAGE_ONGOING_CALLS 特权，绕过 Android 14+ 对原生通话录音">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-02_avault-android-encrypted-call-recorder/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-02">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Android">
+  <meta property="article:tag" content="Android">
+  <meta property="article:tag" content="AVault">
+  <meta property="article:tag" content="通话录音">
+  <meta property="article:tag" content="Shizuku">
+  <meta property="article:tag" content="rootless">
+  <meta property="article:tag" content="AES-256-GCM">
+  <meta property="article:tag" content="KeyStore">
+  <meta property="article:tag" content="StrongBox">
+  <meta property="article:tag" content="TEE">
+  <meta property="article:tag" content="加密金库">
+  <meta property="article:tag" content="隐私">
+  <meta property="article:tag" content="供应链安全">
+  <meta property="article:tag" content="开源项目">
+  <meta property="article:tag" content="Kotlin">
+  <meta property="article:tag" content="JetpackCompose">
+  <meta property="article:tag" content="审计">
+  <meta property="article:tag" content="文档核对">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事">
+  <meta name="twitter:description" content="AVault 是一个 2026-10-31 才创建、已经拿到 498 star 的开源 Android 项目：用 Shizuku 的 rootless ADB shell 桥接拿到 CAPTURE_AUDIO_OUTPUT 与 MANAGE_ONGOING_CALLS 特权，绕过 Android 14+ 对原生通话录音">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事",
+  "description": "⭐ 本文核对的一手材料：  - 源码：VaultEncryptionManager.kt、AppLockManager.kt、RecordingCodec.kt、ShellRecordingEngine.kt、HierarchicalStorageManager.kt、CallsDashboardScreen.kt、SECURITY.md、README.md  - GitHub API 元数据（实",
+  "datePublished": "2026-11-02",
+  "dateModified": "2026-11-02",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-02_avault-android-encrypted-call-recorder/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "keywords": "Android, AVault, 通话录音, Shizuku, rootless, AES-256-GCM, KeyStore, StrongBox, TEE, 加密金库, 隐私, 供应链安全, 开源项目, Kotlin, JetpackCompose, 审计, 文档核对"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事",
+        "item": "https://freelamp.com/articles/2026-11-02_avault-android-encrypted-call-recorder/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-02">2026-11-02</div>
+        <h1 class="post-title" itemprop="headline">不用 root 的通话录音金库：AVault 用 Shizuku + 硬件 AES-256-GCM 干了件 Android 官方不让干的事</h1>
+        <div class="post-tags"><a itemprop="keywords" href="/tags/Android/">Android</a><a itemprop="keywords" href="/tags/AVault/">AVault</a><a itemprop="keywords" href="/tags/%E9%80%9A%E8%AF%9D%E5%BD%95%E9%9F%B3/">通话录音</a><a itemprop="keywords" href="/tags/Shizuku/">Shizuku</a><a itemprop="keywords" href="/tags/rootless/">rootless</a><a itemprop="keywords" href="/tags/AES-256-GCM/">AES-256-GCM</a><a itemprop="keywords" href="/tags/KeyStore/">KeyStore</a><a itemprop="keywords" href="/tags/StrongBox/">StrongBox</a><a itemprop="keywords" href="/tags/TEE/">TEE</a><a itemprop="keywords" href="/tags/%E5%8A%A0%E5%AF%86%E9%87%91%E5%BA%93/">加密金库</a><a itemprop="keywords" href="/tags/%E9%9A%90%E7%A7%81/">隐私</a><a itemprop="keywords" href="/tags/%E4%BE%9B%E5%BA%94%E9%93%BE%E5%AE%89%E5%85%A8/">供应链安全</a><a itemprop="keywords" href="/tags/%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE/">开源项目</a><a itemprop="keywords" href="/tags/Kotlin/">Kotlin</a><a itemprop="keywords" href="/tags/JetpackCompose/">JetpackCompose</a><a itemprop="keywords" href="/tags/%E5%AE%A1%E8%AE%A1/">审计</a><a itemprop="keywords" href="/tags/%E6%96%87%E6%A1%A3%E6%A0%B8%E5%AF%B9/">文档核对</a></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>⭐ <strong>本文核对的一手材料</strong>：<br>
+- <strong>源码</strong>：<code>VaultEncryptionManager.kt</code>、<code>AppLockManager.kt</code>、<code>RecordingCodec.kt</code>、<code>ShellRecordingEngine.kt</code>、<code>HierarchicalStorageManager.kt</code>、<code>CallsDashboardScreen.kt</code>、<code>SECURITY.md</code>、<code>README.md</code><br>
+- <strong>GitHub API 元数据</strong>（实测，2026-11-02）：<strong><code>arpanjot-coding/AVault</code></strong>，创建于 <strong>2026-10-31</strong>，<strong>498 stars / 32 forks</strong>，Kotlin，MIT，<strong>1 个 release（v2.0.0，2026-10-31）</strong>，<strong>9 次提交全部来自单一作者</strong><br>
+⚠️ <strong>本文为</strong>解读<strong>。</strong>只做代码与文档的核对，不做安全审计，也不给任何使用建议。**<br>
+⚠️ <strong>法律边界</strong>：通话录音在多数司法辖区受「一方同意」或「全部同意」规则约束，<strong>本文不提供任何规避或绕过该规则的方法</strong> —— 项目的 README 自己也写了这条例外声明。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/QchufVI3" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】Lighthouse助力跨境电商业务扬帆出海">
+        <img src="https://freelamp.com/tc-crossborder-1200x90.png" alt="【腾讯云】Lighthouse助力跨境电商业务扬帆出海" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一句话结论</h2>
+<p><strong>⭐ 而这个项目最值得注意的，不是它做了什么，而是它把三件通常被混为一谈的事拆开了：</strong></p>
+<pre><code>① 能不能录到（Android 14+ 封了原生通话录音 → 用 Shizuku 免 root 绕过）
+② 录到的东西安不安全（传统方案存明文 mp3 → 硬件 KeyStore + AES-256-GCM）
+③ 密钥在哪（服务商持钥 vs 用户持钥 —— 这条它没走极端）</code></pre>
+<p><strong>⭐ 而我读完源码后的判断是：⭐ 加密部分实现扎实、可信；但 README 的规格描述有几处已经和代码对不上了。</strong></p>
+<h2>一、它是什么</h2>
+<p><strong>⭐ 先把事实摆清楚（GitHub API 实测）：</strong></p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>仓库</strong></td><td><code>arpanjot-coding/AVault</code></td></tr><tr><td><strong>创建</strong></td><td><strong>2026-10-31</strong>（⭐ 两天前）</td></tr><tr><td><strong>Star / Fork</strong></td><td><strong>498 / 32</strong></td></tr><tr><td><strong>语言</strong></td><td>Kotlin（76 个 .kt 文件）</td></tr><tr><td><strong>License</strong></td><td>MIT</td></tr><tr><td><strong>Release</strong></td><td>v2.0.0（2026-10-31）</td></tr><tr><td><strong>⭐ 提交</strong></td><td><strong>9 次，全部来自同一作者（Arpanjot）</strong></td></tr><tr><td><strong>主题</strong></td><td>Android 12–16+、Shizuku、AES-256、rootless、call-recorder</td></tr></tbody></table>
+<p><strong>⭐ 而「两天 498 star」这个数字，值得单独想一下 —— 它意味着什么？</strong></p>
+<p><strong>⭐ 我的判断是：⭐ 这更像是「⭐ 需求积压」的信号，而不是「⭐ 技术被认可」的信号。</strong></p>
+<p><strong>因为：⭐ Android 14 之后原生通话录音基本被废了，而「免 root 录音」这个需求一直有解（Shizuku / ADB shell）。</strong> <strong>所以这个项目吃到的，很可能主要是「⭐ 存量需求」的红利。</strong></p>
+<p><strong>⭐ 而 9 次提交、单一作者、两个日历日 —— ⭐ 这个项目的成熟度显然还在非常早期。</strong></p>
+<h2>二、⭐⭐ 核心机制：Shizuku 免 root 拿到特权</h2>
+<h3>2.1 为什么需要它</h3>
+<p><strong>⭐ README 说得很直接：</strong></p>
+<blockquote><strong>「Google introduced strict restrictions on raw call recording in modern Android releases. AVault bypasses these restrictions cleanly without requiring root (<code>su</code>), Magisk, or unlocked bootloaders by pairing standard Android Telecom APIs with </strong>Shizuku's rootless ADB shell bridge<strong>.」</strong></blockquote>
+<p><strong>⭐ 而它用的两个特权是：</strong></p>
+<ul><li><strong><code>android.permission.CAPTURE_AUDIO_OUTPUT</code></strong> —— 抓下行（对方声音）</li><li><strong><code>android.permission.MANAGE_ONGOING_CALLS</code></strong> —— 感知通话状态</li></ul>
+<p><strong>⭐ 而 Shizuku 的工作原理，是这个项目最值得理解的一环：</strong></p>
+<p><strong>⭐ Shizuku 让一个以 UID 2000（shell）运行的守护进程常驻，通过 ADB 启动。</strong> <strong>而 shell 身份天然拥有普通应用拿不到的权限。</strong></p>
+<pre><code>AVault（普通应用，无 root）
+    ↓ Binder IPC
+Shizuku 守护进程（UID 2000 = shell）
+    ↓ 执行特权命令
+音频捕获 / 通话状态</code></pre>
+<p><strong>⭐ 我想强调这一点的原因：⭐ 它解释了为什么这个方案「免 root 但依然有特权」—— </strong>特权来自 shell 身份，而不是来自 root。**</p>
+<p><strong>⭐ 而这也解释了它的一个硬性前提（README 的 Shizuku 章节列了两种启动方式）：</strong></p>
+<ul><li><strong>方式 A：设备端无线调试配对</strong>（Android 11+，不需要电脑）</li><li><strong>方式 B：USB + <code>adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh</code></strong></li></ul>
+<p><strong>⭐ 而「每次重启手机都要重新启动 Shizuku」这个特性，README 把它列进了常见问题：</strong></p>
+<blockquote><strong>「'Shizuku Not Running' → Shizuku service was killed by OEM aggressive battery manager. → Open Shizuku and restart via Wireless Debugging.」</strong></blockquote>
+<h3>2.2 ⭐ 而录音本身，走的是「先编码、再加密」的管线</h3>
+<p><strong>⭐ 我核对了编码链（<code>ShellRecordingEngine.kt</code> → <code>AudioEncoder.kt</code> → <code>RecordingCodec.kt</code>）：</strong></p>
+<pre><code>PCM 采集 → MediaCodec 编码（Opus/AAC）→ MediaMuxer 写入 ParcelFileDescriptor</code></pre>
+<p><strong>⭐ 而这里有个我觉得设计得不错的地方：</strong></p>
+<p><strong>⭐ <code>AudioEncoder</code> 直接把编码后的数据写进 <code>ParcelFileDescriptor</code>，而这个 FD 最终指向 <code>.vault</code> 文件本身 —— 也就是说 ⭐ 「编码 → 加密 → 落盘」是一条直连的管线，中途不产生明文音频文件。</strong></p>
+<p><strong>⭐ 代码里 <code>AudioEncoder</code> 的注释写得很清楚：</strong></p>
+<blockquote><strong>「Encodes PCM audio with Android MediaCodec and writes the encoded samples </strong>directly into the final container<strong> using MediaMuxer.」</strong></blockquote>
+<p><strong>⭐ 而录音的输出文件创建（<code>HierarchicalStorageManager.createRecordingFile</code>）也是直接开 <code>.vault</code> 的 FD：</strong></p>
+<pre><code class="kotlin">val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE)</code></pre>
+<p><strong>⭐ 目录结构是分层的：先按应用类型、再按联系人、再按月份分目录，文件名形如「日期<em>方向</em>联系人」。</strong></p>
+<h2>三、⭐⭐⭐ 加密实现核对：扎实，但文档有三处对不上</h2>
+<p><strong>⭐ 这一节是我认为本文最值得的部分 —— 因为「宣传的规格」和「代码实际做的」之间的差，是评估任何安全项目时最该先看的东西。</strong></p>
+<h3>3.1 ✅ 主密钥：硬件 KeyStore，UID 绑定</h3>
+<p><strong>代码（<code>VaultEncryptionManager.kt</code>）：</strong></p>
+<pre><code class="kotlin">private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+private const val TRANSFORMATION = "AES/GCM/NoPadding"
+private const val GCM_TAG_LENGTH = 128
+private const val IV_SIZE = 12
+
+val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+    ...
+    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+    .setRandomizedEncryptionRequired(false) // We manage cryptographically secure IVs explicitly</code></pre>
+<p><strong>⭐ 逐项核对：</strong></p>
+<table><thead><tr><th>README 声称</th><th>代码实际</th><th>结论</th></tr></thead><tbody><tr><td>硬件 KeyStore 生成 256 位主密钥</td><td><code>KeyGenerator.getInstance(AES, "AndroidKeyStore")</code></td><td>✅ <strong>相符</strong></td></tr><tr><td>AES-256-GCM</td><td><code>AES/GCM/NoPadding</code> + 256 位</td><td>✅ <strong>相符</strong></td></tr><tr><td>12 字节 IV</td><td><code>IV_SIZE = 12</code></td><td>✅ <strong>相符</strong></td></tr><tr><td>GCM Tag 128 位</td><td><code>GCM_TAG_LENGTH = 128</code></td><td>✅ <strong>相符</strong></td></tr><tr><td>IV 永不复用</td><td><code>SecureRandom().nextBytes(iv)</code> 每次会话新建</td><td>✅ <strong>相符</strong></td></tr></tbody></table>
+<p><strong>⭐ 而 <code>setRandomizedEncryptionRequired(false)</code> 这一行值得单独说 —— 因为它是一个「反直觉但正确」的选择：</strong></p>
+<p><strong>⭐ 默认情况下，Android KeyStore 会自己生成随机 IV，并禁止你提供。</strong> <strong>而这里关掉了它，改为自己用 <code>SecureRandom</code> 生成 —— ⭐ 理由代码注释写了：「We manage cryptographically secure IVs explicitly」。</strong></p>
+<p><strong>⭐ 这是正确的做法（自己控制 IV 才能保证「每次会话唯一」这个 GCM 的硬性要求），但代价是 ⚠️ </strong>这把「IV 唯一性」的责任从 TEE 转移到了应用代码。**</p>
+<p><strong>⭐ 而 GCM 的安全性完全建立在 IV 唯一上 —— ⭐ 所以这是一个「实现正确才有意义」的约定。</strong></p>
+<h3>3.2 ✅ 密钥与 UID 绑定</h3>
+<p><strong>⭐ README 的排障提示里有一句很实在的话：</strong></p>
+<blockquote><strong>「Ensure the app has </strong>not been reinstalled with clean data<strong> (KeyStore keys are </strong>UID-bound<strong>).」</strong></blockquote>
+<p><strong>⭐ 也就是说：⭐ 重装应用（即使保留了数据）会让主密钥失效，旧录音无法解密。</strong> <strong>这是 KeyStore 的固有行为，不是 bug，但用户必须知道。</strong></p>
+<h3>3.3 ⚠️ 差异一：容器头的实际格式与 README 不一致</h3>
+<p><strong>⭐ README 的二进制格式图写的是：</strong></p>
+<pre><code class="text">| Magic Identifier (0x00-0x03) | Format Version (0x04) | Initialization Vector (0x05-0x10) | ... |
+|   4 Bytes "AVLT" (ASCII)        |  1 Byte 0x01 (UINT8)  |   12 Bytes CSPRNG Nonce (GCM)   | ... |</code></pre>
+<p><strong>⭐ 而代码里的实际定义是：</strong></p>
+<pre><code class="kotlin">private val MAGIC_HEADER = "AVAULT01".toByteArray(Charsets.US_ASCII)</code></pre>
+<p><strong>⭐ 也就是 ⭐ </strong>8 字节 <code>"AVAULT01"</code>，而不是 4 字节 <code>"AVLT"</code> + 1 字节版本号。**</p>
+<p><strong>⭐ 而 <code>SECURITY.md</code> 用的也是 <code>"AVAULT01"</code>：</strong></p>
+<blockquote><strong>「Call logs, contact names, durations, and bookmark flags are stored with encrypted byte buffers starting with the </strong><code>AVAULT01</code><strong> signature.」</strong></blockquote>
+<p><strong>⭐ 所以真相是：⭐ 代码和 SECURITY.md 一致（<code>AVAULT01</code>），只有 README 的格式图过时了（<code>AVLT</code> + 版本字节）。</strong></p>
+<p><strong>⭐ 而这个差异的实际影响：⭐ 任何第三方工具想解析 <code>.vault</code> 文件，按 README 写会解析错。</strong> <strong>好在还有 <code>ensureNoMediaFile</code> 那套 <code>.nomedia</code> 机制做索引抑制，文件不会被相册扫到。</strong></p>
+<p><strong>⭐ 而且要注意：⭐ README 里那个「Format Version 字节」的设计意图是好的（为将来的密码学迁移留版本位），但代码里被字符串吃掉了 —— 所以 ⭐ </strong>「可向后兼容的密码学迁移」这个能力目前实际上不存在。**</p>
+<h3>3.4 ⚠️ 差异二：PBKDF2 迭代次数</h3>
+<p><strong>README 声称：</strong> &gt; <strong>「PIN Hashing: PBKDF2 with HMAC-SHA256, 128-bit cryptographic salt, </strong>100,000 iterations<strong>.」</strong></p>
+<p><strong>代码（<code>AppLockManager.kt</code>）：</strong></p>
+<pre><code class="kotlin">private const val PBKDF2_ITERATIONS = 150_000</code></pre>
+<p><strong>⭐ 实际是 150,000 次，比 README 写的多 50%。</strong> <strong>这个方向是好的（更强），只是文档没跟上。</strong></p>
+<p><strong>⭐ 而 salt 的位数与 README 一致（16 字节 = 128 位）：</strong></p>
+<pre><code class="kotlin">val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }</code></pre>
+<p><strong>⭐ 而锁定策略：</strong></p>
+<pre><code class="kotlin">if (failedAttempts &gt;= 5) {
+    val lockoutDurationMs = if (failedAttempts &gt;= 8) 60_000L else 30_000L</code></pre>
+<p><strong>⭐ 与 README 的「5 次失败 → 30 秒指数退避」基本相符（代码里 8 次以上变成 60 秒）。</strong></p>
+<h3>3.5 ⚠️ 差异三：「零明文播放」在实现上是「解密到临时文件」</h3>
+<p><strong>⭐ 这是我认为最需要说明的一处，因为它是安全宣传里的关键一条。</strong></p>
+<p><strong>README 的说法很强：</strong></p>
+<blockquote><strong>「</strong>Zero-Plaintext Ephemeral Playback<strong>: Decryption occurs on-the-fly directly in </strong>volatile memory<strong> into an isolated POSIX file descriptor (<code>0600</code> access) … </strong>The temporary stream is cryptographically shredded the millisecond playback halts.<strong>」</strong><br>
+<br>
+<strong>「Plaintext audio is </strong>never written to public storage<strong>. Decryption uses </strong>ephemeral in-memory pipes<strong> with instant cryptographic zero-fill upon playback completion.」</strong></blockquote>
+<p><strong>⭐ 而代码里的实现是（<code>decryptToTempPlaybackFile</code>）：</strong></p>
+<pre><code class="kotlin">val cacheDir = File(context.cacheDir, "secure_playback").apply { mkdirs() }
+val tempAudio = File(cacheDir, "playback_${System.currentTimeMillis()}_${vaultFile.nameWithoutExtension}.ogg")
+return if (decryptFile(vaultFile, tempAudio)) {
+    tempAudio.deleteOnExit()
+    tempAudio
+} else null</code></pre>
+<p><strong>⭐ 我把三处不一致列清楚：</strong></p>
+<table><thead><tr><th>README 声称</th><th>代码实际</th></tr></thead><tbody><tr><td><strong>「on-the-fly directly in volatile memory」</strong></td><td>⭐ <strong>解密到 <code>cacheDir</code> 下的一个 <code>.ogg</code> 文件</strong>（磁盘上的明文文件）**</td></tr><tr><td><strong>「isolated POSIX file descriptor (<code>0600</code> access)」</strong></td><td>⭐ <strong>是 <code>File</code> 对象，不是 FD</strong>；<strong>代码里没有看到 0600 权限设置</strong></td></tr><tr><td><strong>「cryptographically shredded」「instant cryptographic zero-fill」</strong></td><td>⭐ <strong><code>deleteOnExit()</code> + <code>listFiles().forEach { it.delete() }</code> —— 就是普通删除，没有 zero-fill</strong></td></tr></tbody></table>
+<p><strong>⭐ 我在整个仓库里搜过 <code>fill(0)</code> / <code>zeroize</code> / <code>shred</code> / <code>RandomAccessFile</code> / <code>setLength(0)</code> —— ⭐ 一个都没有。</strong></p>
+<p><strong>⭐ 而 <code>clearTempPlayback</code> 的实现是：</strong></p>
+<pre><code class="kotlin">cacheDir.listFiles()?.forEach { it.delete() }</code></pre>
+<p><strong>⭐ 我必须说清楚这意味着什么：</strong></p>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td>✅ <strong>好消息</strong></td><td>⭐ <strong>临时文件在 <code>cacheDir</code>（应用私有目录），不是公共存储</strong>；<strong><code>.nomedia</code> 抑制索引</strong>；<strong>播放结束/暂停/应用退到后台时会被清掉</strong>（我在 <code>CallsDashboardScreen.kt</code> 里确认了 4 处 <code>clearTempPlayback</code> 调用，含 <code>onDispose</code>）**</td></tr><tr><td>⚠️ <strong>需要修正的说法</strong></td><td>⭐ <strong>不是「volatile memory」，不是「POSIX FD」，也不是「cryptographically shredded」</strong> —— <strong>是「应用私有目录里的临时明文文件，用普通 delete 删除」</strong></td></tr></tbody></table>
+<p><strong>⭐ 而这个差别在什么场景下重要？</strong></p>
+<p><strong>⭐ </strong>在文件系统未加密的设备上，被 root / 恢复镜像 / 取证的人，有可能在文件被删除前抓到那段明文音频。<strong> </strong>而这恰恰是本项目要防的攻击者能力。**</p>
+<p><strong>⭐ 所以我的判断是：⭐ 加密保存那一步是可靠的；⭐ 「零明文」这一步是宣传过头了。</strong></p>
+<h3>3.6 ✅ 而「安装介质」的加密流程倒是真的做了</h3>
+<p><strong>⭐ 我还发现一个 README 没细说、但代码里确实有的东西 —— <code>encryptExistingRecordings</code>：</strong></p>
+<pre><code class="kotlin">/**
+ * Scans storage for existing unencrypted recordings, encrypts them into .vault files,
+ * securely removes the plain audio, and updates the repository.
+ */
+fun encryptExistingRecordings(context: Context): Int</code></pre>
+<p><strong>⭐ 也就是说：⭐ 已经存在的明文录音可以被扫描、加密进 <code>.vault</code>、然后删掉明文。</strong> <strong>这是对「升级前录的旧文件」的一次补救 —— 而这恰恰是很多同类项目会漏掉的一环。</strong></p>
+<h2>四、⭐ 威胁模型：它防什么、不防什么</h2>
+<p><strong>⭐ README 有一张威胁模型表，我核对后认为</strong>整体是诚实的<strong>，但有两处值得单独说。</strong></p>
+<table><thead><tr><th>威胁</th><th>项目的缓解</th><th>我的核对</th></tr></thead><tbody><tr><td><strong>物理提取设备</strong></td><td>硬件 AES-256-GCM，无 TEE 主密钥 + PIN/生物识别则磁盘字节是随机熵</td><td>✅ 相符</td></tr><tr><td><strong>恶意 App 扫媒体库</strong></td><td><code>.vault</code> 扩展名 + <code>.nomedia</code></td><td>✅ 相符（代码里有 <code>ensureNoMediaFile</code>）**</td></tr><tr><td><strong>⭐ 冷启动 / 内存转储</strong></td><td>「解密用易失内存管道 + 播放后立即 zero-fill」</td><td>⚠️ <strong>不成立</strong> —— 见 3.5</td></tr><tr><td><strong>间谍软件截屏</strong></td><td><code>FLAG_SECURE</code></td><td>✅ 相符</td></tr><tr><td><strong>PIN 暴力破解</strong></td><td>PBKDF2 + 指数退避</td><td>✅ 相符（迭代次数是 150,000 而非 100,000）**</td></tr></tbody></table>
+<p><strong>⭐ 而我认为需要补充的两条「它不防的」：</strong></p>
+<p><strong>① 通话另一端的对方，并不知道自己的声音被录了。</strong> <strong>⭐ 而「双方同意」在这里不成立。</strong></p>
+<p><strong>② ⭐ Shizuku 守护进程本身是个高价值目标。</strong> <strong>它以 shell 身份常驻，是这个方案的信任根。</strong> <strong>如果手机上装了恶意应用、或者用户自己从可疑来源装了另一个 Shizuku 风格的 shell 守护进程 —— ⭐ 那么「加密保存」这层的意义会被绕过（因为攻击者可以直接读明文音频流）。</strong></p>
+<p><strong>⭐ 而这一点在 README 的威胁模型里没有出现。</strong></p>
+<h2>五、⭐⭐ 而我更想说的是：这个项目的「文档 vs 代码」差距</h2>
+<p><strong>⭐ 我在核对时发现的规律很一致：⭐ </strong>README 的「理念描述」和代码的「实际实现」之间存在系统性偏移。**</p>
+<table><thead><tr><th>维度</th><th>README 的描述</th><th>代码的实际</th></tr></thead><tbody><tr><td>容器头</td><td><code>AVLT</code> + 版本字节</td><td><code>AVAULT01</code>（8 字节，无版本位）**</td></tr><tr><td>PIN 迭代</td><td>100,000</td><td><strong>150,000</strong>（更强）**</td></tr><tr><td>播放</td><td>内存管道 / FD / zero-fill</td><td><strong>cacheDir 临时文件 + 普通 delete</strong>（更弱）**</td></tr><tr><td>PIN 哈希</td><td>PBKDF2</td><td><strong>PBKDF2（带 legacy SHA-256 兼容路径，自动升级）</strong>（更复杂）**</td></tr></tbody></table>
+<p><strong>⭐ 而 SECURITY.md 又和 README 不一致（SECURITY.md 说 <code>AVAULT01</code>、说「custom SHA-256 salted PIN」）。</strong></p>
+<p><strong>⭐ 我的总体评价是：⭐ </strong>这个项目的安全设计思路是对的，代码实现也基本可靠；但它的文档没有跟上代码 —— 而对于一个主打「高保障加密」的项目，这一点尤其不该发生。**</p>
+<p><strong>⭐ 因为 README 里那张二进制格式图，是唯一能让第三方工具解析 <code>.vault</code> 的规范 —— ⭐ 而它写错了。</strong></p>
+<p><strong>⭐ 而反过来也要说公道话：⭐ 三处差异里有两处（迭代次数、legacy SHA-256 兼容）是代码比文档更谨慎。</strong> <strong>这说明作者是「先写实现、后补文档」，而不是「文档吹得比实现好」—— ⭐ 这两者的性质完全不同。</strong></p>
+<h2>六、⭐⭐ 我想提的一个更根本的问题</h2>
+<p><strong>⭐ 而看完全部代码后，我最想说的其实不是实现细节，而是这个项目暴露出的一个结构性事实：</strong></p>
+<p><strong>⭐ 传统通话录音 App 的问题不是「没有加密」，而是 ⭐ 「明文文件躺在公共存储里，任何有存储权限的 App 都能读」。</strong></p>
+<p><strong>⭐ 而 Android 14 之后，真正的问题变成了 ⭐ </strong>「连录都录不成了」<strong>。</strong></p>
+<p><strong>⭐ 于是出现了这个很有意思的组合：</strong></p>
+<pre><code>需求：「我要合法地录下自己的通话，并且不泄露」
+  ↓
+Android 14+ 的原生限制 → 必须绕
+  ↓
+绕过手段 = Shizuku（UID 2000 的 shell 守护进程）
+  ↓
+⭐ 而「UID 2000 的 shell 守护进程」这个信任根，
+   它的可用性完全依赖「开发者选项 + 无线调试配对」这两件事</code></pre>
+<p><strong>⭐ 我认为这暴露了一个更深的问题：⭐ </strong>在移动操作系统把「通话录音」列为受限能力之后，围绕它的所有「合规需求」都只能靠「非官方特权通道」来满足 —— 而这条通道的安全等级，恰好等于它所替代的那个方案。**</p>
+<p><strong>⭐ 而这才是这个项目真正值得被讨论的地方 —— 不是它的加密做得好不好（做得不错），而是 ⭐ </strong>它的存在本身说明了 Android 权限模型的一个缺口。**</p>
+<h2>Sources</h2>
+<ul><li>⭐ 一手：<a href="https://github.com/arpanjot-coding/AVault" target="_blank" rel="noopener noreferrer">arpanjot-coding/AVault</a>（GitHub API 元数据实测：创建于 2026-10-31、498 stars / 32 forks、Kotlin、MIT、9 次提交单一作者、v2.0.0 release）</li><li>⭐ 一手（源码核对）：<ul><li><code>system/security/VaultEncryptionManager.kt</code> —— KeyStore / AES-GCM / IV / <code>AVAULT01</code> 头 / <code>decryptToTempPlaybackFile</code> / <code>encryptExistingRecordings</code></li><li><code>system/security/AppLockManager.kt</code> —— PBKDF2 150,000 次、16 字节 salt、锁定退避、legacy SHA-256 兼容</li><li><code>data/recording/RecordingCodec.kt</code>、<code>services/shell/recording/ShellRecordingEngine.kt</code>、<code>services/shell/recording/encoding/AudioEncoder.kt</code> —— 编码直写 FD 管线</li><li><code>system/storage/HierarchicalStorageManager.kt</code> —— <code>.vault</code> 创建与目录分层</li><li><code>ui/screens/CallsDashboardScreen.kt</code> —— 播放与 <code>clearTempPlayback</code> 调用点</li><li><code>SECURITY.md</code>、<code>README.md</code> —— 与代码的对照</li></ul></li><li>一手：<a href="https://shizuku.rikka.app" target="_blank" rel="noopener noreferrer">Shizuku</a> —— rootless ADB shell 桥接</li><li>一手：<a href="https://developer.android.com/privacy-and-security/keystore" target="_blank" rel="noopener noreferrer">Android KeyStore 文档</a></li><li>一手：<a href="https://csrc.nist.gov/publications/detail/sp/800-38d/final" target="_blank" rel="noopener noreferrer">NIST SP 800-38D（GCM）</a></li></ul>
+<hr>
+<p>（说明：本文所有关于代码行为的描述均来自<strong>实测拉取的仓库源码</strong>，所有关于仓库元信息的数字来自 <strong>GitHub API 实测（2026-11-02）</strong>；<strong>第三、五节的差异分析为笔者核对结论</strong>；<strong>本文不构成安全审计，也不提供任何使用或法律合规建议</strong>。）</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-02_avault-android-encrypted-call-recorder/",
+      title: "\u4e0d\u7528 root \u7684\u901a\u8bdd\u5f55\u97f3\u91d1\u5e93\uff1aAVault \u7528 Shizuku + \u786c\u4ef6 AES-256-GCM \u5e72\u4e86\u4ef6 Android \u5b98\u65b9\u4e0d\u8ba9\u5e72\u7684\u4e8b"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
