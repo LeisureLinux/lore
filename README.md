@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-01 | [「IPFS 是个坏主意」：一个 Reddit 帖子，和它背后那场刚刚结束的退场](https://freelamp.com/articles/2026-11-01_ipfs-is-a-bad-idea-shipyard-winds-down/) | IPFS · Filecoin · 去中心化存储 · 内容寻址 · CID · DHT · 固定pinning · 网关gateway · Shipyard · ProtocolLabs · libp2p · Kubo · Helia · Boxo · BadBitsDenylist · inbrowserlink · 技术主权 · 开源治理 · 供应链 · 分布式系统 · 加密货币 |
 | 2026-11-01 | [一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解](https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/) | NetamLoader · Kaspersky · APT · 网络间谍 · 供应链攻击 · Windows安全 · AppDomainManager注入 · XAML · 二进制反序列化 · TypeConfuseDelegate · AMSI绕过 · EDR绕过 · dllhost · PatchMyPC · CAB · 中国政府版Windows · 技术主权 · 事件响应 · IOC |
 | 2026-11-01 | [两万个提交创纪录之后：内核里的 AI 从「写补丁」转向了「审补丁」](https://freelamp.com/articles/2026-11-01_linux-7-4-merge-window-ai-review-sashiko/) | Linux内核 · 内核开发 · 合并窗口 · AI代码评审 · LLM · Sashiko · ChrisMason · RomanGushchin · AndrewMorton · Kicinski · JohannesBerg · OverlayFS · 信息泄漏 · UAF · 内核治理 · 维护者 · 供应链安全 · 自动化 |
 | 2026-11-01 | [打不了补丁时怎么挡：Red Hat 的 nftables 应急规则、怎么查出谁开着 MPTCP，以及一个容易漏掉的坑](https://freelamp.com/articles/2026-11-01_cve-2026-98432-nftables-mitigation-detection/) | CVE-2026-98432 · Linux内核 · MPTCP · nftables · iptables · 缓解措施 · 临时缓解 · 入侵检测 · ss命令 · GODEBUG · multipathtcp · RedHat · AlmaLinux · Ubuntu · 补丁管理 · 网络过滤 · IP选项 · SVE |
