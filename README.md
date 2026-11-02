@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-02 | [Fedora 45 定档 11 月 3 日：GNOME 51、默认禁 ptrace、RPM 强制验签，以及三个「默认收紧」的安全变化](https://freelamp.com/articles/2026-11-02_fedora-45-go-november-3/) | Fedora · Fedora45 · GNOME51 · KDEPlasma · Linux内核 · ptrace · RPM · 签名校验 · 可复现构建 · kmscon · Stratis · Anaconda · OpenSSL4 · GCC16 · glibc · LLVM23 · Python3.15 · Go1.27 · Podman6 · AtomicDesktop · 供应链安全 · 发布工程 |
 | 2026-11-01 | [「IPFS 是个坏主意」：一个 Reddit 帖子，和它背后那场刚刚结束的退场](https://freelamp.com/articles/2026-11-01_ipfs-is-a-bad-idea-shipyard-winds-down/) | IPFS · Filecoin · 去中心化存储 · 内容寻址 · CID · DHT · 固定pinning · 网关gateway · Shipyard · ProtocolLabs · libp2p · Kubo · Helia · Boxo · BadBitsDenylist · inbrowserlink · 技术主权 · 开源治理 · 供应链 · 分布式系统 · 加密货币 |
 | 2026-11-01 | [一个 CAB 文件、七个「合法」文件、和一条通往政府定制 Windows 的链：NetamLoader 拆解](https://freelamp.com/articles/2026-11-01_netamloader-apt-windows-china-government-edition/) | NetamLoader · Kaspersky · APT · 网络间谍 · 供应链攻击 · Windows安全 · AppDomainManager注入 · XAML · 二进制反序列化 · TypeConfuseDelegate · AMSI绕过 · EDR绕过 · dllhost · PatchMyPC · CAB · 中国政府版Windows · 技术主权 · 事件响应 · IOC |
 | 2026-11-01 | [两万个提交创纪录之后：内核里的 AI 从「写补丁」转向了「审补丁」](https://freelamp.com/articles/2026-11-01_linux-7-4-merge-window-ai-review-sashiko/) | Linux内核 · 内核开发 · 合并窗口 · AI代码评审 · LLM · Sashiko · ChrisMason · RomanGushchin · AndrewMorton · Kicinski · JohannesBerg · OverlayFS · 信息泄漏 · UAF · 内核治理 · 维护者 · 供应链安全 · 自动化 |
