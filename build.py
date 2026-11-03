@@ -1619,6 +1619,15 @@ def main():
             if f.is_file() and f.suffix.lower() in asset_exts:
                 shutil.copy2(f, dst_dir / f.name)
                 copied_assets += 1
+        # ⭐ 递归复制文章内的子目录资源（如 images/），保持相对路径 images/xxx.png 可用
+        for sub in article_dir.iterdir():
+            if not sub.is_dir() or sub.name.startswith('.'):
+                continue
+            sub_dst = dst_dir / sub.name
+            if sub_dst.exists():
+                shutil.rmtree(sub_dst)
+            shutil.copytree(sub, sub_dst)
+            copied_assets += sum(1 for _ in sub_dst.rglob('*') if _.is_file())
     if copied_assets:
         print(f"✅ 复制文章内静态资源：{copied_assets} 个文件（svg/图片）")
 
