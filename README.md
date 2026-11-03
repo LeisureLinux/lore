@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-03 | [FreeRDP 3.33：RDP 跑进浏览器，以及一个开源项目被 AI PR 淹没的现场](https://freelamp.com/articles/2026-11-03_freerdp-3-33-wasm-ai-prs/) | FreeRDP · RDP · WebAssembly · WASM · Emscripten · SDL3 · RemoteApp · RAILS · UDP · 多传输 · ShadowServer · 剪贴板 · macOS · VideoToolbox · WebCodecs · Opus · AI代码 · 开源治理 · LinuxFoundation · AIslop · 安全公告 · GHSA · CVE · CVSS · 开源治理 |
+| 2026-11-03 | [「30 年漂移之后终于到家」：一个 Reddit 帖背后，Linux 桌面这十年真正变的东西](https://freelamp.com/articles/2026-11-03_linux-mint-30-years-distrohopping/) | LinuxMint · Cinnamon · Ubuntu · Debian · Fedora · Flatpak · Snap · Wayland · X11 · systemd · zram · swappiness · VAAPI · RPMFusion · Minisforum · AMD · Ryzen · 树莓派 · 发行版漂移 · Reddit · 技术解读 |
 | 2026-11-03 | [一条磁带如何长成一个操作系统：F/OSS Comics 的 Unix 与 BSD 五部曲（系列导读）](https://freelamp.com/articles/2026-11-03_foss-comics-unix-bsd-series-guide/) | FOSSComics · Unix哲学 · Unix · BSD · MINIX · Linux · Plan9 · vi · 磁带 · 开源运动 · 技术史 · 漫画翻译 · 系列导读 |
 | 2026-11-03 | [「Unix 哲学」不是先有纲领、后有实践：F/OSS Comics 第 9 篇《Unix 哲学》中文翻译](https://freelamp.com/articles/2026-11-03_foss-comics-09-unix-philosophy/) | FOSSComics · Unix哲学 · KenThompson · DougMcIlroy · PeterSalus · EricSRaymond · MINIX · Linux · LinusTorvalds · Tanenbaum · POSIX · Bash · 磁带 · 开源运动 · 技术史 · 漫画翻译 · UNIX |
 | 2026-11-03 | [「我不过是签发工资条而已」：F/OSS Comics 第 10 篇《Dennis Ritchie 生平》中文翻译](https://freelamp.com/articles/2026-11-03_foss-comics-10-dennis-ritchie/) | FOSSComics · DennisRitchie · Unix · C语言 · KenThompson · BellLabs · 哈佛 · Multics · PDP7 · PDP11 · B语言 · K&R · Plan9 · Inferno · Limbo · Dis虚拟机 · UTF8 · VitaNuova · 技术史 · 漫画翻译 · 人物传记 |
