@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-04 | [SUSE 裁掉 10% 员工并归因于 AI：但真正的问题不是「AI 能不能替代他们」](https://freelamp.com/articles/2026-11-04_suse-layoffs-ai-open-source-maintenance/) | SUSE · openSUSE · SLES · Leap16 · 裁员 · AI · 自动化 · 私有化 · EQT · ArmaPartners · 红帽 · RedHat · 工会 · ICTUnion · SUSEWorkersUnion · GeekoFoundation · Agama · YaST · Myrlyn · Cockpit · SELinux · systemd · mcphost · MCP · AgenticAI · openQA · OBS · 内核维护 · 开源治理 · 软件包维护 · 技术解读 |
 | 2026-11-03 | [FreeRDP 3.33：RDP 跑进浏览器，以及一个开源项目被 AI PR 淹没的现场](https://freelamp.com/articles/2026-11-03_freerdp-3-33-wasm-ai-prs/) | FreeRDP · RDP · WebAssembly · WASM · Emscripten · SDL3 · RemoteApp · RAILS · UDP · 多传输 · ShadowServer · 剪贴板 · macOS · VideoToolbox · WebCodecs · Opus · AI代码 · 开源治理 · LinuxFoundation · AIslop · 安全公告 · GHSA · CVE · CVSS · 开源治理 |
 | 2026-11-03 | [「30 年漂移之后终于到家」：一个 Reddit 帖背后，Linux 桌面这十年真正变的东西](https://freelamp.com/articles/2026-11-03_linux-mint-30-years-distrohopping/) | LinuxMint · Cinnamon · Ubuntu · Debian · Fedora · Flatpak · Snap · Wayland · X11 · systemd · zram · swappiness · VAAPI · RPMFusion · Minisforum · AMD · Ryzen · 树莓派 · 发行版漂移 · Reddit · 技术解读 |
 | 2026-11-03 | [一条磁带如何长成一个操作系统：F/OSS Comics 的 Unix 与 BSD 五部曲（系列导读）](https://freelamp.com/articles/2026-11-03_foss-comics-unix-bsd-series-guide/) | FOSSComics · Unix哲学 · Unix · BSD · MINIX · Linux · Plan9 · vi · 磁带 · 开源运动 · 技术史 · 漫画翻译 · 系列导读 |
