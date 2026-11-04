@@ -1,0 +1,793 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">一个终端模拟器的攻击面，恰恰在于它那套「让远端程序控制终端」的扩展协议上。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">本文对 kitty 13 条安全公告的归纳</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">（说明：本文依据 kitty 仓库 changelog 原文、GitHub Release API 与 GitHub Security Advisories API 撰写。</span><strong style="color:#27272A;"><span leaf="">13 条安全公告的严重度、CVE 编号、affected 与 patched 版本区间均直接取自 GitHub Advisory Database 的原始记录，未做二次推断。</span></strong><span leaf=""> 文中对攻击面「集中在 kitty 自有扩展协议」这一判断，⭐ 是笔者根据 13 条公告的触发机制归纳的统计性结论，</span><strong style="color:#27272A;"><span leaf="">不代表任何一条公告的技术细节</span></strong><span leaf="">，⭐ 具体机制请以各条 advisory 原文为准。</span><strong style="color:#27272A;"><span leaf="">本文不包含任何利用代码、payload 构造或可武器化的步骤。</span></strong><span leaf="">）</span></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">零、先说清楚：kitty…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">13 条安全公告：一张「哪…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">0.50.0 的功能：窗口…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三个协议层的新东西</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">性能：这一版的 7 项优化…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">06</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">一点观察：这个项目的节奏说…</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">零、先说清楚：kitty 是什么，以及本文为什么这么写</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">kitty 是 Kovid Goyal 用 C + Python 写的 GPU 加速终端模拟器</span></strong><span leaf="">，⭐ 官方首页一句话概括：</span><span leaf="">*"a feature-rich, cross-platform, fast, GPU based terminal"</span><span leaf="">*。</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">而我在动手读它的 changelog 之前，先做了一件事：⭐ 查它的 GitHub Security Advisories。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">因为一个终端模拟器的攻击面有一个特别之处：⭐ 它不像普通 GUI 应用那样只处理「用户自己打开的文件」，⭐ 它还要处理「</span></strong><span leaf="">远端机器上任意程序发来的字节流</span><strong style="color:#27272A;"><span leaf="">」。⭐ </span></strong><span leaf="">而在 kitty 这里，这个字节流不只是被渲染 —— ⭐ 它还能触发一整套 kitty 自己的扩展协议。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">结果是：⭐ kitty 在 GitHub 上有 13 条安全公告。⭐ 我把每一条的 affected / patched 版本区间都拉了出来，⭐ 并且发现了一个很有意思的规律。⭐ </span></strong><span leaf="">下面先讲这个，再讲功能。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一、⭐⭐⭐ 13 条安全公告：一张「哪个版本修了什么」的表</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">这是本文的核心。以下全部来自 GitHub Security Advisories API 的原始数据。</span></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**GHSA-qfgm-2c64-6x3x**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **critical**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">CVE-2026-33642</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **`compose_rectangles` 边界检查的整数溢出导致堆越界读写**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">≤ 0.46.2</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">**0.46.3**</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-j68c-v8x4-269g</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">CVE-2026-33633</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">Kitty 图形协议处理器的</span><strong style="color:#27272A;"><span leaf="">堆缓冲区溢出</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">≤ 0.46.2</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.46.3</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-w98g-hpvr-r332</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">CVE-2026-42851</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@kitty-edit</span><span leaf=""> DCS + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">--color=geninclude</span><span leaf=""> 组合导致未认证的进程内 RCE</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">≤ 0.46.2</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.47.0</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-p64q-59hq-5q65</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">CVE-2026-42850</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">Shell 命令注入</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">&lt; 0.47.0</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.47.0</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-q446-x7q6-vcxh</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">medium</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">CVE-2026-54055</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">文件传输协议的符号链接竞态导致任意文件写</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">≤ 0.47.1</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.47.2</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-r892-cv7q-fw8x</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">CVE-2026-54056</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">kitten dnd</span><span leaf=""> 远程 drop 暂存区跟随符号链接导致任意文件覆盖</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">0.47.0 – 0.47.1</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.47.2</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-5gmr-9gwg-hhq6</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">CVE-2026-54057</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">未过滤的 OSC 21 查询回复导致命令注入</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">≤ 0.47.2</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.47.3</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-ccp2-q4v6-rw94</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">CVE-2026-72913</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">链式 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@kitty-echo</span><span leaf=""> + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@kitty-ssh</span><span leaf=""> DCS 转义序列导致子 shell 命令注入</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">≤ 0.48.1</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.48.2</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-2c4w-h24w-q7gg</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">—</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@kitty-edit</span><span leaf=""> 转义序列导致未认证的任意目录删除</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">≤ 0.48.2</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.49.0</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-qw6v-xf9p-8349</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">low</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">—</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">--single-instance</span><span leaf=""> 的抽象 socket 接受任意本地进程的命令</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">≤ 0.48.2</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.49.0</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-2cmm-wgmm-8jjr</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">—</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">未设置密码时，文件传输可绕过用户确认提示</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">≤ 0.49.1</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.49.2</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-86c2-9jg7-6v94</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">medium</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">—</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">OSC 133 带引号字符串的缓冲区下溢</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">≤ 0.49.1</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.49.2</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">GHSA-wpff-qjx2-fw8r</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">high</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">—</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">远程控制认证绕过（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">cancel_async</span><span leaf=""> + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">async_id</span><span leaf="">）</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">&lt; 0.50.0</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><strong style="color:#27272A;"><span leaf="">0.50.0</span></strong></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 而这张表最值得看的地方，是</span><strong style="color:#27272A;"><span leaf="">修复版本的分布</span></strong></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">请注意最后三行的修复版本：0.49.2 与 0.50.0 —— ⭐ 也就是说，⭐ 这 13 条公告里的</span></strong><span leaf="">最后两条，是在这个版本刚发布时修掉的</span><strong style="color:#27272A;"><span leaf="">。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">而这不是巧合 —— ⭐ 它是一个可以被验证的规律：</span></strong></p>
+    </section>
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      </section>
+      <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.46.2  →  0.46.3   修了 2 条（其中 1 条 critical）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.47.0  →  0.47.0   修了 2 条</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.47.1  →  0.47.2   修了 2 条</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.47.2  →  0.47.3   修了 1 条</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.48.1  →  0.48.2   修了 1 条</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.48.2  →  0.49.0   修了 2 条</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.49.1  →  0.49.2   修了 2 条</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0.49.2  →  0.50.0   修了 1 条</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 半年（2026-03 到 2026-11），12 个版本，13 条安全公告 —— ⭐ 平均每个版本带一条。⭐ 而 2026 年的发布节奏是：⭐ 3.16（0.46.1）、3.21（0.46.2）、5.19（0.47.0）、5.28（0.47.1）、6.07（0.47.2）、6.12（0.47.3）、6.15（0.47.4）、7.18（0.48.0）、7.24（0.48.1）、7.30（0.48.2）、9.21（0.49.0）、9.24（0.49.1）、10.01（0.49.2）、11.03（0.50.0）。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而我要说的是：⭐ 这个节奏本身，⭐ 就是这些公告最值得注意的地方 —— ⭐ </span></strong><span leaf="">不是「kitty 有很多漏洞」，⭐ 而是「kitty 的安全响应速度很快」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">因为看每一条公告的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">patched</span><span leaf=""> 版本：⭐ 几乎全都是</span></strong><span leaf="">下一个补丁版本就修掉</span><strong style="color:#27272A;"><span leaf="">，⭐ 而不是攒着。⭐ 0.46.3、0.47.0、0.47.2、0.47.3、0.48.2、0.49.0、0.49.2、0.50.0 —— ⭐ </span></strong><span leaf="">这是一个「发现即修」的节奏。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这也解释了为什么 kitty 的更新策略是「有安全更新就立刻升级」而不是「等大版本」。⭐ 因为在这个项目上，⭐ </span></strong><span leaf="">「落后一个小版本」就可能意味着「带着一条 high 级别的远程代码执行漏洞」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 而攻击面集中在哪？—— kitty 自己的扩展协议</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请仔细看上面那张表里的一列：⭐ 有多少条的触发条件是「</span></strong><span leaf="">远端程序发来的转义序列</span><strong style="color:#27272A;"><span leaf="">」？</span></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **`@kitty-edit` DCS 转义序列**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">GHSA-w98g-hpvr-r332（未认证进程内 RCE）、GHSA-2c4w-h24w-q7gg（未认证任意目录删除）</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@kitty-echo</span><span leaf=""> + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">@kitty-ssh</span><span leaf=""> DCS 链</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">GHSA-ccp2-q4v6-rw94（子 shell 命令注入）</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">OSC 21 查询回复</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">GHSA-5gmr-9gwg-hhq6（命令注入）</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">OSC 133 shell integration 字符串</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">GHSA-86c2-9jg7-6v94（缓冲区下溢）</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">文件传输协议</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">GHSA-q446-x7q6-vcxh（符号链接竞态任意文件写）、GHSA-2cmm-wgmm-8jjr（确认提示绕过）</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">图形协议</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">GHSA-j68c-v8x4-269g（堆溢出）、GHSA-qfgm-2c64-6x3x（整数溢出堆读写）</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">远程控制（remote control）</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">GHSA-wpff-qjx2-fw8r（认证绕过）、GHSA-qw6v-xf9p-8349（本地任意进程）</span></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这些机制有一个共同点：⭐ </span></strong><span leaf="">它们都是 kitty 自己加的、用来「让远端程序更好地控制终端」的扩展。⭐ </span><strong style="color:#27272A;"><span leaf="">换句话说：⭐ </span></strong><span leaf="">kitty 的核心渲染循环本身是安全的，⭐ 它的攻击面来自它主动赋予远端程序的能力。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 我认为这是本文最值得记住的一条判断：⭐ </span></strong><span leaf="">当一个终端模拟器开始支持「远程程序可以调用本地动作」时，⭐ 它实际上就把自己变成了一个</span><strong style="color:#27272A;"><span leaf="">远程过程调用框架</span></strong><span leaf="">—— ⭐ </span><strong style="color:#27272A;"><span leaf="">而 RPC 框架的安全边界，取决于最弱的那些方法。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 13 条公告里至少 7 条的触发方是「远端或本地能发字节流的一方」，⭐ 这不是巧合。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 两条最新修复的具体机制</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⭐ ① 远程控制认证绕过（GHSA-wpff-qjx2-fw8r，0.50.0 修复）</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Remote control: Fix a </span><strong style="color:#27272A;"><span leaf="">crafted request being able to bypass password based remote control authentication by masquerading as a cancellation of an asynchronous request</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这个措辞：⭐ 「通过</span></strong><span leaf="">伪装成一次异步请求的取消</span><strong style="color:#27272A;"><span leaf="">来绕过基于密码的远程控制认证」。⭐ </span></strong><span leaf="">这是一个协议状态机上的混淆：⭐ 攻击者构造一个请求，⭐ 让它看起来像是在取消某个先前发起的异步操作，⭐ 从而走上一条不做密码校验的代码路径。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这条的意义在于：⭐ </span></strong><span leaf="">kitty 的 remote control 是给脚本用的（⭐ 比如让一个 IDE 或工具去控制 kitty 窗口），⭐ 它支持密码认证，⭐ 而这条漏洞让密码形同虚设。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而远程控制能做到的事包括 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">action</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">send-key</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">run</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">set-colors</span><span leaf=""> —— ⭐ </span></strong><span leaf="">换句话说，⭐ 绕过它意味着「能在你的终端里执行命令」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><strong style="color:#27272A;"><span leaf="">⭐ ② 文件传输确认提示绕过（GHSA-2cmm-wgmm-8jjr，0.49.2 修复）</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"File transfer: Fix a </span><strong style="color:#27272A;"><span leaf="">security issue where a malicious program on the remote machine could bypass the transfer confirmation prompt</span></strong><span leaf=""> when no </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">file_transfer_confirmation_bypass</span><span leaf=""> password is set."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意两个限定条件：⭐ 一是「</span></strong><span leaf="">远端机器上的恶意程序</span><strong style="color:#27272A;"><span leaf="">」，⭐ 二是「</span></strong><span leaf="">在未设置 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">file_transfer_confirmation_bypass</span><span leaf=""> 密码时</span><strong style="color:#27272A;"><span leaf="">」。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这两个限定条件组合起来，构成了一个很清楚的攻击模型：⭐ </span></strong><span leaf="">你在 SSH 到一台机器上，那台机器上跑着一个恶意程序；⭐ 它可以通过 kitty 的文件传输协议往你本地传文件，⭐ 而默认情况下你不会看到确认提示。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 0.50.0 里与文件传输相关的一个改动，⭐ 恰好也在这条线上（⭐ 不过它是安全修复而非新功能）：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Transfer kitten: When receiving files, replace existing symbolic and hard links at the destination instead of overwriting the files they point to, and write to a temporary file that is renamed into place…"</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 注意：⭐ 「</span></strong><span leaf="">写到临时文件再重命名</span><strong style="color:#27272A;"><span leaf="">」⭐ 和 「</span></strong><span leaf="">替换掉目标处的符号链接本身，而不是覆盖它指向的文件</span><strong style="color:#27272A;"><span leaf="">」⭐ —— ⭐ </span></strong><span leaf="">这两条正是 0.49.2 里那条「符号链接竞态任意文件写」（GHSA-q446-x7q6-vcxh）的结构性修复。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而且 0.50.0 还顺手修了一条同族的问题：⭐ 拖放 kitten 「拒绝把目录复制或移动到它自己或它的子目录里，⭐ 以及移动到一个指向其内部的符号链接里，⭐ 那会删掉被移动的文件」。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 而 0.50.0 里那些「非安全」的内存安全修复</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 顺便说一句：⭐ 这一版的 changelog 里，⭐ 还有一批不带「security」标签、但同样是内存安全问题的修复：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Fix various terminal emulation bugs, including in origin mode cursor position reports, erasing multicell characters, the CHT escape code and copying text containing tabs, wide characters being drawn on the wrong row after colliding with scaled text, emoji sequences being split into multiple cells when wrapped, text typed into a new window before the program is ready sometimes being garbled, as well as a </span><strong style="color:#27272A;"><span leaf="">heap buffer overflow, an out of bounds write and a use-after-free when reloading the config</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这三条（堆溢出、越界写、重载配置时的 use-after-free）⭐ 都是</span></strong><span leaf="">本地</span><strong style="color:#27272A;"><span leaf="">问题 —— ⭐ </span></strong><span leaf="">触发方是本地用户自己（重载配置），而不是远端。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 所以它们的严重度低于上面那批，但值得注意：⭐ </span></strong><span leaf="">配置重载是一个「用户自己会频繁做的动作」，⭐ 而它当时带着一个 use-after-free。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">二、⭐⭐ 0.50.0 的功能：窗口停靠，与三个「把状态存起来」的设计</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 好，功能部分。⭐ </span><strong style="color:#27272A;"><span leaf="">0.50.0 的 49 条变更里，最有代表性的是第一条。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ Docked windows：把窗口「焊」在另一个窗口边缘</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Allow </span><strong style="color:#27272A;"><span leaf="">docking kitty windows to the edges of other windows or of the tab</span></strong><span leaf="">, for status bars, file trees, etc. Create them with </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">launch --type=window-dock</span><span leaf=""> or </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">launch --type=tab-dock</span><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 官方文档里的描述更完整：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Docked windows are </span><strong style="color:#27272A;"><span leaf="">placed outside the layout</span></strong><span leaf="">, making them perfect for </span><strong style="color:#27272A;"><span leaf="">status bars, file trees or a shell kept next to your editor</span></strong><span leaf="">. A dock attached to a window </span><strong style="color:#27272A;"><span leaf="">follows it around, moving with it to other tabs and closing when it closes</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意最后那一句：⭐ 「</span></strong><span leaf="">跟着它走 —— 移到别的标签页时一起移，它关闭时也一起关闭</span><strong style="color:#27272A;"><span leaf="">」。⭐ </span></strong><span leaf="">⭐ 这就是「停靠」与「并列窗口（split）」的本质区别：⭐ split 是布局里的一个格子，⭐ 而 dock 是</span><strong style="color:#27272A;"><span leaf="">布局之外</span></strong><span leaf="">的一块附属物，⭐ 它的生命周期绑在宿主上。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这个设计正好对应了终端用户一个长期的痛点：⭐ </span></strong><span leaf="">状态栏、文件树、常驻 shell 这三样东西，⭐ 在传统终端里要么用 tmux 的额外 pane 挤占空间，⭐ 要么用 neovim 插件，⭐ 要么干脆放弃。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 kitty 的做法是：⭐ </span></strong><span leaf="">它给你一个「不属于布局」的位置。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而我认为这个设计里最值得学的是那条生命周期规则 —— ⭐ 「</span></strong><span leaf="">跟着宿主走、随宿主关闭而关闭</span><strong style="color:#27272A;"><span leaf="">」。⭐ </span></strong><span leaf="">⭐ 因为这正是让 dock 敢被信任的原因：⭐ 它不会变成一个你忘了关、还留在那里吃 CPU 的僵尸窗口。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ Restore after logout：连滚动缓冲都一起恢复</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"A new option </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">restore_session_after_logout</span><span leaf=""> to </span><strong style="color:#27272A;"><span leaf="">save the state of every kitty instance, including scrollback</span></strong><span leaf="">, when logging out, restarting or shutting down and restore it the next time kitty starts. </span><strong style="color:#27272A;"><span leaf="">On macOS, the state is encrypted with a key in the keychain. On Linux, it requires the Inhibit desktop portal.</span></strong><span leaf="">"</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这里的两处平台差异 —— ⭐ </span></strong><span leaf="">这不是偷懒，而是各个平台能提供的最佳机制不同：</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **macOS**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **钥匙串里的密钥加密**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **macOS 有系统级钥匙串，⭐ 而保存会话状态需要写一个受保护的文件；⭐ 钥匙串是唯一能让「别的进程读不到」的地方**</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">Linux</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">需要 Inhibit desktop portal</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">Linux 没有等价的系统密钥串；⭐ 而 Inhibit portal 是 XDG 桌面门户里唯一能拿到用户授权的通道，⭐ 恰好用于「阻止注销前的挂起序列」</span></strong></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而我认为这个差异本身说明了问题：⭐ </span></strong><span leaf="">「会话状态」在 Linux 上之所以要走 portal，⭐ 是因为 Linux 桌面缺少一个「应用私有的受保护存储」。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这是一个很 Linux 的问题。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而且「including scrollback」这一条值得单独提：⭐ </span></strong><span leaf="">会话恢复如果只恢复标签页和窗口，恢复出来的是个空壳 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">而滚动缓冲才是你「昨天看到那儿」的那个位置。⭐ </span></strong><span leaf="">⭐ 恢复一个没有 scrollback 的会话，等于让你重新找一遍。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ Wayland：客户端侧装饰终于像原生 GNOME 了</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Wayland: The </span><strong style="color:#27272A;"><span leaf="">client side window decorations</span></strong><span leaf=""> used on compositors such as GNOME now </span><strong style="color:#27272A;"><span leaf="">look like native GNOME decorations and follow the desktop titlebar font, text scaling, button layout and titlebar click action settings</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这里的技术背景值得说明：⭐ </span></strong><span leaf="">在 Wayland 下，客户端（kitty）自己绘制窗口装饰；⭐ 而 GNOME Mutter 会为应用提供「服务端侧装饰（CSD）」，⭐ 也就是让 GNOME 替应用画标题栏。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 0.50.0 做的，是让 kitty 画的装饰</span></strong><span leaf="">完全遵循 GNOME 的主题设置</span><strong style="color:#27272A;"><span leaf=""> —— 字体、缩放、按钮布局、点击行为。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这背后还有 0.34 那条更早的说明：⭐ 「</span><span leaf="">*With this release kitty's Wayland support is now </span></strong><span leaf="">on par with X11</span><strong style="color:#27272A;"><span leaf="">, provided you use a decent Wayland compositor.</span><span leaf="">*」⭐ </span></strong><span leaf="">⭐ 所以到 0.50.0，kitty 的 Wayland 支持已经从「能用」走到「细节对齐」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而且这一版还加了触摸屏支持，⭐ 交互定义得很克制：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Wayland: Support touchscreens. </span><strong style="color:#27272A;"><span leaf="">A tap is a click, a finger that moves scrolls with momentum, and a finger held still before it moves selects text</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这个三分法：⭐ </span></strong><span leaf="">点 </span><span leaf="">= 点击｜动 </span><span leaf="">= 带动量的滚动｜按住不动 </span><span leaf="">= 选文本。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这与移动端文本选择的手势语义（长按 </span><span leaf="">= 选择）完全一致，⭐ 而与移动端点击（点 </span><span leaf="">= 打开）不一致 —— ⭐ </span></strong><span leaf="">而 kitty 的选择是「终端优先」的，⭐ 因为终端里「点一下」几乎总是意味着「把焦点给我」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三、⭐⭐ 三个协议层的新东西</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">0.50.0 加了三个协议相关内容，⭐ 我挑最有意思的两个讲。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ OSC 7501：程序可以报告「我在干活 / 我卡住了」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Support the </span><strong style="color:#27272A;"><span leaf="">Program Status Protocol (OSC 7501)</span></strong><span leaf=""> that lets programs report whether they are </span><strong style="color:#27272A;"><span leaf="">working, finished, failed or blocked waiting on the user</span></strong><span leaf="">. Shown in the tab bar via a new </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tab.program_status</span><span leaf=""> field for </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tab_title_template</span><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这四个状态里最有价值的一个：⭐ </span></strong><span leaf="">「blocked waiting on the user」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这个能力解决的问题非常具体：⭐ </span></strong><span leaf="">一个跑了很久的命令，⭐ 现在正卡在等输入（密码、确认、选择），⭐ 而你的标签页标题不会告诉你这件事 —— ⭐ 你只会看到标题停住了，⭐ 分不清是在算还是在等。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而它实现的方式也很「终端」：⭐ </span></strong><span leaf="">不是弹一个通知，⭐ 而是让程序往标签页标题里塞一个字段，⭐ 由 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tab_title_template</span><span leaf=""> 渲染。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这意味着 —— ⭐ </span></strong><span leaf="">如果你的标题模板没用这个字段，⭐ 这个能力对你就是不可见的。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这恰恰是 kitty 的一贯做法：⭐ </span></strong><span leaf="">提供原语，不替你决定。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而我想到的一个有意思的推论：⭐ </span></strong><span leaf="">这个协议的意义是</span><strong style="color:#27272A;"><span leaf="">「把等待变成可见的」</span></strong><span leaf="">，⭐ 而这恰恰是自动化工具最难处理的状态 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">一个 agent 驱动一个卡在提示符上的命令，⭐ 如果它不知道对方在等输入，⭐ 它就只能超时。⭐ </span></strong><span leaf="">⭐ 而「卡住等用户」这个状态，⭐ 是最难被自动化框架正确处理的。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 图形协议：索引色图像 + 特性探测</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ changelog 原文：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Graphics protocol: Add two new </span><strong style="color:#27272A;"><span leaf="">indexed color image formats</span></strong><span leaf=""> whose pixels are </span><strong style="color:#27272A;"><span leaf="">indices into the terminal color palette</span></strong><span leaf="">, so that images </span><strong style="color:#27272A;"><span leaf="">change color along with the color scheme</span></strong><span leaf="">… and allow clients to </span><strong style="color:#27272A;"><span leaf="">detect support for individual protocol features</span></strong><span leaf="">, such as animation and Unicode placeholders, via the new </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">e</span><span leaf=""> query key."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 「索引色图像」这个特性，⭐ 解决的是一个很实在的问题：⭐ </span></strong><span leaf="">你想在终端里显示一个图标，⭐ 但那个图标的颜色应该跟着你的配色方案走（⭐ 深色主题下浅一点、浅色主题下深一点）。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 如果你只能发 PNG，⭐ 它的颜色是写死的；⭐ 而索引色格式发的只是「调色板下标」，⭐ 颜色由终端决定。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而第二个 —— 「按特性探测」—— 是协议设计的常识，但很多协议做不到：⭐ </span></strong><span leaf="">一个客户端想用「动画」或「Unicode 占位符」，⭐ 需要先知道对面支不支持。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">e</span><span leaf=""> 查询键就是干这个的：⭐ </span></strong><span leaf="">客户端可以逐项问，而不是一次性开一堆开关然后靠猜。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这两条合起来，⭐ 指向同一个设计哲学：⭐ </span></strong><span leaf="">协议要能协商，而不是只能开或关。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">四、⭐⭐ 性能：这一版的 7 项优化里，有 3 项是 SIMD</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">0.49 的 changelog 里有一段专门的性能说明，⭐ 我觉得它比 0.50.0 的功能列表更有信息量。⭐ 官方说：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Real world effective throughput should see a </span><strong style="color:#27272A;"><span leaf="">15-35% improvement</span></strong><span leaf=""> depending on workload."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 7 项具体优化里，⭐ 第 3、5、6 项全部是 SIMD 向量化：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"</span><strong style="color:#27272A;"><span leaf="">Speed up SIMD UTF-8 decoding: ~20% faster for ASCII and ~50% faster for multi-byte text on both x86 and ARM</span></strong><span leaf="">, by processing pairs of vectors of plain ASCII text at a time and compacting decoded codepoints within 128-bit lanes, </span><strong style="color:#27272A;"><span leaf="">avoiding expensive cross-lane operations</span></strong><span leaf="">. Also add an </span><strong style="color:#27272A;"><span leaf="">AVX-512 based decoder, another ~75% faster for multi-byte text</span></strong><span leaf="">, used automatically on CPUs that support it (</span><strong style="color:#27272A;"><span leaf="">Intel Ice Lake+, AMD Zen 4+</span></strong><span leaf="">)."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这里的技术细节：⭐ 「</span></strong><span leaf="">在 128-bit lane 内压缩解码后的码点，避免昂贵的跨 lane 操作</span><strong style="color:#27272A;"><span leaf="">」⭐ —— ⭐ </span></strong><span leaf="">这句话解释了为什么 SIMD 解码难做：⭐ </span><strong style="color:#27272A;"><span leaf="">你不能简单地「向量化」，⭐ 因为 UTF-8 的变长编码意味着输出位置与输入位置不对齐，⭐ 而在 SIMD 里跨越 lane 搬数据是性能杀手。⭐ </span></strong><span leaf="">⭐ 而「先处理成对的纯 ASCII 向量」是绕开这个问题的办法。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而第 7 项也很有意思：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"</span><strong style="color:#27272A;"><span leaf="">Cache HarfBuzz results for repeated short runs (≤32 cells)</span></strong><span leaf=""> so redraws of the same on-screen text are not reshaped."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 「≤32 cells」这个阈值很说明问题：⭐ </span></strong><span leaf="">因为终端里绝大多数文本 run 都很短（一个词、一行），⭐ 而 HarfBuzz 的整形（shaping）开销在小规模时占比很高。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 所以缓存小 run 的整形结果，⭐ 而不是缓存大 run，⭐ 才是针对终端真实负载的优化。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而且第 6 项：⭐ 「图形协议图像与动画帧的 alpha 混合用 SIMD 向量化后快 </span></strong><span leaf="">2–3.5 倍</span><strong style="color:#27272A;"><span leaf="">，⭐ 字形 alpha 掩码也用同样的向量化原语合成到画布上」。⭐ </span></strong><span leaf="">⭐ 这是一条跨越「文字」与「图形」两条渲染路径的统一优化。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">五、⭐⭐ 一点观察：这个项目的节奏说明了一件关于终端的事</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 最后我想说一个把安全和功能放在一起看的观察。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">看这个版本序列：⭐ 0.46.3（3 月，修了 1 条 critical + 1 条 high）→ 0.47.0（5 月，2 条）→ 0.47.2（6 月，2 条）→ 0.47.3（6 月，1 条）→ 0.48.2（7 月，1 条）→ 0.49.0（9 月，2 条）→ 0.49.2（10 月，2 条）→ 0.50.0（11 月，1 条）。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 每一个版本都带着安全修复，⭐ 而 0.50.0 这个「大功能版本」⭐ </span></strong><span leaf="">同样带着一条 high 级别的认证绕过修复</span><strong style="color:#27272A;"><span leaf="">。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 我认为这件事说明了终端模拟器这个软件类别的一个特殊处境：</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 第一，⭐ </span></strong><span leaf="">终端是「执行不可信输入」的程序。⭐ </span><strong style="color:#27272A;"><span leaf="">而浏览器也有这个问题，⭐ 但浏览器里跑的是 JS，⭐ 而终端里跑的是 shell —— ⭐ </span></strong><span leaf="">shell 的能力边界远大于 JS。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 所以一个终端的转义序列处理漏洞，⭐ 后果通常比浏览器严重。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 第二，⭐ </span></strong><span leaf="">终端扩展协议是「主动增加攻击面」的行为。⭐ </span><strong style="color:#27272A;"><span leaf="">而 kitty 在这一点上比大多数终端走得更远（⭐ 图形协议、多光标、文本缩放、远程控制、拖放、文件传输、shell integration…），⭐ </span></strong><span leaf="">所以它的安全维护压力必然更大。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而它用「每个补丁版本都带安全修复」来承担这个压力 —— ⭐ </span></strong><span leaf="">这比「攒到大版本再发」要好得多。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 第三，⭐ </span></strong><span leaf="">也是我认为最实用的一条：⭐ </span><strong style="color:#27272A;"><span leaf="">对你来说，这条实践建议只有一个 —— ⭐ </span></strong><span leaf="">如果你的 kitty 版本落后了一个补丁版本，⭐ </span><strong style="color:#27272A;"><span leaf="">升级的理由不是「有新功能」，⭐ 而是「你在带着一条 high 级别的远程代码执行漏洞」。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而检查方法很简单：⭐ </span></strong><span leaf="">跑一次 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">kitty --version</span><span leaf="">，⭐ 然后对照上面那张表的最后一列。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">主要来源</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">kitty 官方 changelog 原文（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">docs/changelog.rst</span><span leaf="">，master 分支）</span></strong><span leaf="">：&lt;https://raw.githubusercontent.com/kovidgoyal/kitty/master/docs/changelog.rst&gt;；⭐ </span><strong style="color:#27272A;"><span leaf="">渲染版：&lt;https://sw.kovidgoyal.net/kitty/changelog/&gt;</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">kitty GitHub Release </span><strong style="color:#27272A;"><span leaf="">v0.50.0</span></strong><span leaf="">（2026-11-03T13:56:09Z）与 v0.49.2 / v0.49.1 / v0.49.0 / v0.48.2 / v0.48.1 / v0.48.0 / v0.47.4 / v0.47.3 / v0.47.2 / v0.47.1 / v0.47.0 / v0.46.2 / v0.46.1 的发布日期</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">GitHub Security Advisories API</span></strong><span leaf="">（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">repos/kovidgoyal/kitty/security-advisories</span><span leaf="">）：⭐ </span><strong style="color:#27272A;"><span leaf="">13 条公告的 summary / severity / cve_id / affected 版本区间 / patched 版本，逐条核对</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">kitty 官方文档：</span><span leaf="">*Docked windows</span><span leaf="">*（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">layouts</span><span leaf="">）、</span><span leaf="">*Restoring kitty after logging out</span><span leaf="">*（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">sessions</span><span leaf="">）、</span><span leaf="">*Custom Shaders</span><span leaf="">*、</span><span leaf="">*Graphics Protocol</span><span leaf="">*、</span><span leaf="">*Reporting the status of a program</span><span leaf="">*（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">misc-protocol</span><span leaf="">）、</span><span leaf="">*Program Status Protocol (OSC 7501)</span><span leaf="">*</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">kitty 上游 commit：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">67d337794</span><span leaf="">「Remote control: Harden authorization of stream continuations」（2026-11-03）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">kitty 官方首页：&lt;https://sw.kovidgoyal.net/kitty/&gt;</span></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">（说明：本文依据 kitty 仓库 changelog 原文、GitHub Release API 与 GitHub Security Advisories API 撰写。</span><strong style="color:#27272A;"><span leaf="">13 条安全公告的严重度、CVE 编号、affected 与 patched 版本区间均直接取自 GitHub Advisory Database 的原始记录，未做二次推断。</span></strong><span leaf=""> 文中对攻击面「集中在 kitty 自有扩展协议」这一判断，⭐ 是笔者根据 13 条公告的触发机制归纳的统计性结论，</span><strong style="color:#27272A;"><span leaf="">不代表任何一条公告的技术细节</span></strong><span leaf="">，⭐ 具体机制请以各条 advisory 原文为准。</span><strong style="color:#27272A;"><span leaf="">本文不包含任何利用代码、payload 构造或可武器化的步骤。</span></strong><span leaf="">）</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">28</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">原文</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">kitty 官方 changelog（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">docs/changelog.rst</span><span leaf=""> 原文）+ GitHub Release v0.50.0（2026-11-03 13:56:09Z）+ GitHub Security Advisories API</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 版本节奏</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">2026-03-16(0.46.1) → 03-21(0.46.2) → 05-19(0.47.0) → 05-28(0.47.1) → 06-07(0.47.2) → 06-12(0.47.3) → 06-15(0.47.4) → 07-18(0.48.0) → 07-24(0.48.1) → 07-30(0.48.2) → 09-21(0.49.0) → 09-24(0.49.1) → 10-01(0.49.2) → 11-03(0.50.0)</span><strong style="color:#27272A;"><span leaf=""> —— </span></strong><span leaf="">半年 12 个版本</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 13 条公告总表</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">GHSA-qfgm-2c64-6x3x（</span><strong style="color:#27272A;"><span leaf="">critical</span></strong><span leaf="">，CVE-2026-33642，compose_rectangles 整数溢出堆越界读写，≤0.46.2→0.46.3）｜GHSA-j68c-v8x4-269g（CVE-2026-33633，图形协议堆溢出，≤0.46.2→0.46.3）｜GHSA-w98g-hpvr-r332（CVE-2026-42851，</span><strong style="color:#27272A;"><span leaf="">@kitty-edit DCS + --color</span><span leaf="">=geninclude 未认证进程内 RCE</span></strong><span leaf="">，≤0.46.2→0.47.0）｜GHSA-p64q-59hq-5q65（CVE-2026-42850，shell 命令注入，&lt;0.47.0→0.47.0）｜GHSA-q446-x7q6-vcxh（CVE-2026-54055，文件传输符号链接竞态任意文件写，≤0.47.1→0.47.2）｜GHSA-r892-cv7q-fw8x（CVE-2026-54056，kitten dnd 符号链接任意文件覆盖，0.47.0–0.47.1→0.47.2）｜GHSA-5gmr-9gwg-hhq6（CVE-2026-54057，OSC 21 命令注入，≤0.47.2→0.47.3）｜GHSA-ccp2-q4v6-rw94（CVE-2026-72913，@kitty-echo + @kitty-ssh 链式 DCS 子 shell 注入，≤0.48.1→0.48.2）｜GHSA-2c4w-h24w-q7gg（</span><strong style="color:#27272A;"><span leaf="">@kitty-edit 未认证任意目录删除</span></strong><span leaf="">，≤0.48.2→0.49.0）｜GHSA-qw6v-xf9p-8349（low，--single-instance 抽象 socket 接受任意本地进程命令，≤0.48.2→0.49.0）｜GHSA-2cmm-wgmm-8jjr（</span><strong style="color:#27272A;"><span leaf="">未设密码时文件传输可绕过确认提示</span></strong><span leaf="">，≤0.49.1→0.49.2）｜GHSA-86c2-9jg7-6v94（OSC 133 引号字符串缓冲区下溢，≤0.49.1→0.49.2）｜GHSA-wpff-qjx2-fw8r（</span><strong style="color:#27272A;"><span leaf="">远程控制认证绕过</span></strong><span leaf="">，&lt;0.50.0→0.50.0）</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 修复版本分布</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">0.46.3 修 2 条｜0.47.0 修 2 条｜0.47.2 修 2 条｜0.47.3 修 1 条｜0.48.2 修 1 条｜0.49.0 修 2 条｜0.49.2 修 2 条｜0.50.0 修 1 条 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">平均每版带一条，且几乎都是下一个补丁版就修掉</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 结论</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">不是「kitty 有很多漏洞」，⭐ </span><strong style="color:#27272A;"><span leaf="">而是「kitty 的安全响应速度很快」</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">这意味着落后一个小版本就可能带着一条 high 级远程代码执行漏洞</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 攻击面在哪</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">13 条里至少 7 条的触发方是「能发字节流的一方」，⭐ </span><strong style="color:#27272A;"><span leaf="">集中在 kitty </span></strong><span leaf="">自己加的扩展协议</span><strong style="color:#27272A;"><span leaf="">上：@kitty-edit（2 条）、@kitty-echo+@kitty-ssh、OSC 21、OSC 133、文件传输协议（2 条）、图形协议（2 条）、远程控制（2 条）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 核心判断</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">kitty 的核心渲染循环本身是安全的，⭐ </span><strong style="color:#27272A;"><span leaf="">它的攻击面来自它主动赋予远端程序的能力</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">当一个终端模拟器开始支持「远程程序可以调用本地动作」时，⭐ </span></strong><span leaf="">它实际上就把自己变成了一个</span><strong style="color:#27272A;"><span leaf="">远程过程调用框架</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">而 RPC 框架的安全边界，取决于最弱的那些方法</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 认证绕过机制</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">changelog 原文：</span><span leaf="">*"Remote control: Fix a </span><strong style="color:#27272A;"><span leaf="">crafted request being able to bypass password based remote control authentication by masquerading as a cancellation of an asynchronous request</span></strong><span leaf="">."</span><span leaf="">* —— ⭐ </span><strong style="color:#27272A;"><span leaf="">协议状态机上的混淆：⭐ 攻击者构造请求让它看起来像在取消某个异步操作，⭐ 从而走上不做密码校验的代码路径</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">而 remote control 能做 action / send-key / run / set-colors —— ⭐ </span></strong><span leaf="">绕过它意味着「能在你的终端里执行命令」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 文件传输绕过</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">原文：</span><span leaf="">*"a </span><strong style="color:#27272A;"><span leaf="">malicious program on the remote machine</span></strong><span leaf=""> could bypass the transfer confirmation prompt </span><strong style="color:#27272A;"><span leaf="">when no file_transfer_confirmation_bypass password is set</span></strong><span leaf="">"</span><span leaf="">* —— ⭐ </span><strong style="color:#27272A;"><span leaf="">攻击模型：你 SSH 到一台机器，⭐ 那台机器上跑着恶意程序，⭐ 它通过 kitty 文件传输协议往你本地传文件，⭐ 而默认你看不到确认提示</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 0.50.0 的文件传输加固</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「接收文件时</span><strong style="color:#27272A;"><span leaf="">替换</span></strong><span leaf="">目标处已有的符号链接与硬链接，⭐ 而不是覆盖它们指向的文件；⭐ 并写入临时文件再重命名到位」—— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这正是 GHSA-q446-x7q6-vcxh（符号链接竞态任意文件写）的结构性修复</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 拖放加固</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「拒绝把目录复制或移动到它自己或它的子目录里，⭐ 以及移动到一个指向其内部的符号链接里，⭐ 那会删掉被移动的文件」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 内存安全（非安全标注）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">0.50.0 修了 origin 模式光标位置报告、擦除多格字符、CHT 转义码、复制含制表符文本、宽字符与缩放文本碰撞后画错行、emoji 序列换行时被拆进多个单元格、⭐ 以及</span><strong style="color:#27272A;"><span leaf="">重载配置时的堆溢出、越界写与 use-after-free</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">前几条是远端可触发的，⭐ 后三条是本地（用户自己重载配置）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ Docked windows</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「把 kitty 窗口</span><strong style="color:#27272A;"><span leaf="">停靠</span></strong><span leaf="">到其它窗口或标签页的边缘」，⭐ 用于状态栏、文件树；⭐ </span><strong style="color:#27272A;"><span leaf="">创建用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">launch --type=window-dock</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">--type=tab-dock</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 关键设计：</span></strong><span leaf="">「停靠的窗口被放在布局之外</span><strong style="color:#27272A;"><span leaf="">」，⭐ </span></strong><span leaf="">且「</span><strong style="color:#27272A;"><span leaf="">跟着宿主走 —— 移到别的标签页时一起移，它关闭时也一起关闭</span></strong><span leaf="">」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 为什么这个设计好</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">「跟着宿主走、随宿主关闭而关闭」⭐ </span><strong style="color:#27272A;"><span leaf="">正是让 dock 敢被信任的原因：⭐ </span></strong><span leaf="">它不会变成一个你忘了关、⭐ 还留在那里吃 CPU 的僵尸窗口</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">而状态栏/文件树/常驻 shell 这三样在传统终端里要么用 tmux 挤 pane、⭐ 要么用 neovim 插件、⭐ 要么干脆放弃</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 注销后恢复</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">新选项 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">restore_session_after_logout</span><span leaf="">：⭐ </span><strong style="color:#27272A;"><span leaf="">保存每个 kitty 实例的状态（含 scrollback）</span></strong><span leaf="">，⭐ 注销/重启/关机后下次启动恢复</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">macOS：用钥匙串里的密钥加密；⭐ Linux：需要 Inhibit desktop portal</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 平台差异的由来</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">macOS 有系统级钥匙串，⭐ 是唯一能让「别的进程读不到」的地方；⭐ </span><strong style="color:#27272A;"><span leaf="">Linux 缺少等价的「应用私有受保护存储」，⭐ 而 Inhibit portal 是 XDG 桌面门户里唯一能拿到用户授权的通道</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这是一个很 Linux 的问题</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ scrollback 的意义</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「会话恢复如果只恢复标签页和窗口，恢复出来的是个空壳 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">而滚动缓冲才是你「昨天看到那儿」的那个位置</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">恢复一个没有 scrollback 的会话，等于让你重新找一遍</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ Wayland 装饰</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">客户端侧装饰现在</span><strong style="color:#27272A;"><span leaf="">完全遵循 GNOME 的主题设置</span></strong><span leaf=""> —— 字体、文本缩放、按钮布局、标题栏点击行为；⭐ </span><strong style="color:#27272A;"><span leaf="">而 0.34 那条已说「kitty 的 Wayland 支持已与 X11 持平」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 触摸屏交互</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「</span><strong style="color:#27272A;"><span leaf="">A tap is a click, a finger that moves scrolls with momentum, and a finger held still before it moves selects text</span></strong><span leaf="">」—— ⭐ </span><strong style="color:#27272A;"><span leaf="">与移动端文本选择的手势语义（长按</span><span leaf="">=选择）一致，⭐ 而与移动端点击（点</span><span leaf="">=打开）不一致；⭐ </span></strong><span leaf="">⭐  kitty 的选择是「终端优先」的</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ OSC 7501</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">Program Status Protocol：⭐ </span><strong style="color:#27272A;"><span leaf="">让程序报告自己是 </span></strong><span leaf="">working / finished / failed / blocked waiting on the user</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">通过 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tab.program_status</span><span leaf=""> 字段在 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">tab_title_template</span><span leaf=""> 里渲染</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">⭐ 最有价值的是第四个状态「卡住等用户」—— ⭐ </span><strong style="color:#27272A;"><span leaf="">一个跑了很久的命令卡在等输入，⭐ 而标签页标题不会告诉你这件事，⭐ 你只会看到标题停住了，⭐ 分不清是在算还是在等</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 协议层的两个推论</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">实现方式很「终端」：⭐ </span><strong style="color:#27272A;"><span leaf="">不是弹通知，⭐ 而是让程序往标签页标题塞字段、⭐ 由模板渲染 —— ⭐ </span></strong><span leaf="">⭐ 意味着如果你没用这个字段，⭐ 这能力对你就不可见</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">⭐ 而「卡住等用户」恰好是自动化框架最难处理的状态</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">一个 agent 驱动一个卡在提示符上的命令，⭐ 如果它不知道对方在等输入，⭐ 就只能超时</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 图形协议</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">新增两个</span><strong style="color:#27272A;"><span leaf="">索引色图像格式</span></strong><span leaf="">（像素是终端调色板的下标，⭐ </span><strong style="color:#27272A;"><span leaf="">所以图片颜色随配色方案一起变</span></strong><span leaf="">）；⭐ </span><strong style="color:#27272A;"><span leaf="">并支持用新的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">e</span><span leaf=""> 查询键</span></strong><span leaf="">按项探测对端是否支持某个特性（如动画、Unicode 占位符）</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 性能</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">0.49 官方称实际吞吐提升 </span><strong style="color:#27272A;"><span leaf="">15–35%</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">7 项优化中第 3、5、6 项都是 SIMD</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">UTF-8 解码：ASCII 快 ~20%、多字节快 ~50%（x86 与 ARM 皆是），⭐ </span></strong><span leaf="">新增 AVX-512 解码器再多快 ~75%</span><strong style="color:#27272A;"><span leaf="">，⭐ </span></strong><span leaf="">自动用于 Intel Ice Lake+ 与 AMD Zen 4+</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">实现要点：</span><strong style="color:#27272A;"><span leaf="">「处理成对的纯 ASCII 向量、⭐ 在 128-bit lane 内压缩解码后的码点、⭐ 避免昂贵的跨 lane 操作」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 为什么 SIMD 解码难</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">变长编码意味着输出位置与输入位置不对齐，⭐ </span><strong style="color:#27272A;"><span leaf="">而在 SIMD 里跨越 lane 搬数据是性能杀手</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">「先处理成对的纯 ASCII 向量」⭐ 是绕开这个问题的办法</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 像素合成</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">图形协议图像与动画帧的 alpha 混合用 SIMD 向量化后快 </span><strong style="color:#27272A;"><span leaf="">2–3.5 倍</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">字形 alpha 掩码用同样的向量化原语合成到画布上</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 一条跨越「文字」与「图形」两条渲染路径的统一优化</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ HarfBuzz 缓存</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「缓存 HarfBuzz 对</span><strong style="color:#27272A;"><span leaf="">重复的短 run（≤32 cells）</span></strong><span leaf="">的结果，⭐ 使屏幕上同样文本的重绘不必重新整形」—— ⭐ </span><strong style="color:#27272A;"><span leaf="">「≤32 cells」这个阈值很说明问题：⭐ </span></strong><span leaf="">终端里绝大多数文本 run 都很短，⭐ 而 HarfBuzz 的整形开销在小规模时占比很高</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 终端这个类别的特殊处境</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">① </span><strong style="color:#27272A;"><span leaf="">终端是「执行不可信输入」的程序</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">浏览器里跑的是 JS，⭐ 终端里跑的是 shell，⭐ </span></strong><span leaf="">shell 的能力边界远大于 JS</span><strong style="color:#27272A;"><span leaf="">，⭐ </span></strong><span leaf="">所以终端的转义序列处理漏洞后果通常更严重</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">② </span><strong style="color:#27272A;"><span leaf="">终端扩展协议是「主动增加攻击面」</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">kitty 在这点上比大多数终端走得更远，⭐ 安全维护压力必然更大</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 唯一实用建议</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">如果你的 kitty 版本落后了一个补丁版本，⭐ </span><strong style="color:#27272A;"><span leaf="">升级的理由不是「有新功能」，⭐ </span></strong><span leaf="">而是「你在带着一条 high 级别的远程代码执行漏洞」</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">检查方法：⭐ 跑一次 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">kitty --version</span><span leaf="">，⭐ 对照上面那张表的最后一列</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这一篇我想讲的不是 kitty 的新功能，虽然新功能里有两个很有意思。我想讲的是它的安全记录，因为我觉得那才是这个项目最值得学的地方。我先说怎么发现的：我在读它的 changelog 之前，先查了它的 GitHub Security Advisories。因为终端模拟器这个软件类别有个特别的地方 —— 它不像普通 GUI 应用那样只处理你自己打开的文件，它还要处理远端机器上任意程序发来的字节流。结果是 kitty 有十三条安全公告。我把每一条的 affected 和 patched 版本区间都拉了出来，然后拼成这张表。请大家看最后三行的修复版本：0.49.2 和 0.50.0。也就是说这十三条里的最后两条，是在这个版本刚发布时修掉的。而这不是巧合，这是一个可以被验证的规律。从 0.46.2 到 0.50.0，半年十二个版本，十三条安全公告，平均每个版本带一条。而每一条的 patched 版本，几乎都是下一个补丁版就修掉了。0.46.3 修两条，其中一条是 critical；0.47.0 修两条；0.47.2 修两条；0.47.3 修一条；0.48.2 修一条；0.49.0 修两条；0.49.2 修两条；0.50.0 修一条。所以我的第一个判断是：这不是「kitty 有很多漏洞」，而是「kitty 的安全响应速度很快」。这个区别很实际，因为一个终端用户升级的理由往往是「有新功能」，而 kitty 这里应该是「你落后一个小版本就带着一条 high 级远程代码执行漏洞」。检查方法特别简单，跑一次 kitty --version，对照表里最后一列。然后是第二件我觉得更重要的事：攻击面在哪。我按触发机制把十三条重新分了一遍类，结果很整齐。触发方是「能发字节流的一方」的，至少有七条。它们分别是 kitty 自己加的扩展协议：@kitty-edit，两条，其中一条是未认证的进程内 RCE，一条是未认证的任意目录删除；@kitty-echo 加 @kitty-ssh 链式 DCS，子 shell 命令注入；OSC 21 的查询回复，命令注入；OSC 133 的 shell integration 字符串，缓冲区下溢；文件传输协议，两条；图形协议，两条，其中一条是 critical 的整数溢出堆越界读写；还有远程控制，两条。这个分布说明了一件事：kitty 的核心渲染循环本身是安全的，它的攻击面来自它主动赋予远端程序的能力。我觉得这是这一整篇最值得记住的一句判断。当一个终端模拟器开始支持「远程程序可以调用本地动作」时，它实际上就把自己变成了一个远程过程调用框架。而 RPC 框架的安全边界，取决于最弱的那些方法。所以这条链是这样的：远端程序发一个 @kitty-edit DCS，终端执行本地动作；或发一个 OSC 21，触发命令注入；或走文件传输协议，在你没有确认提示的情况下往你本地传文件。十三条公告里，每一条都是这条链上的一环被攻破。具体说两条最新的修复机制，因为它们特别能说明问题。第一条是远程控制的认证绕过，changelog 原文是：a crafted request being able to bypass password based remote control authentication by masquerading as a cancellation of an asynchronous request.通过伪装成一次异步请求的取消，来绕过基于密码的远程控制认证。这是一个协议状态机上的混淆 —— 攻击者构造一个请求，让它看起来像在取消某个先前发起的异步操作，从而走上一条不做密码校验的代码路径。而这条的意义在于，远程控制是给脚本用的，它支持密码认证，而这条漏洞让密码形同虚设。而远程控制能做到的事包括 action、send-key、run、set-colors，换句话说，绕过它意味着能在你的终端里执行命令。第二条是文件传输的确认提示绕过，原文是：a malicious program on the remote machine could bypass the transfer confirmation prompt when no file_transfer_confirmation_bypass password is set.请注意两个限定条件：远端机器上的恶意程序，以及未设置密码时。这两个条件组合起来，攻击模型非常清楚：你 SSH 到一台机器，那台机器上跑着一个恶意程序；它可以通过 kitty 的文件传输协议往你本地传文件，而默认情况下你不会看到确认提示。而 0.50.0 里还有一个相关改动，我特别想提：接收文件时，替换掉目标处已有的符号链接和硬链接，而不是覆盖它们指向的文件，并且写入临时文件再重命名到位。大家看，这正是上一版那条「符号链接竞态任意文件写」的结构性修复。好，说完安全，说功能。0.50.0 最有代表性的是第一条：窗口停靠。官方原话是：docking kitty windows to the edges of other windows or of the tab, for status bars, file trees, etc.而文档里那句更完整：Docked windows are placed outside the layout, making them perfect for status bars, file trees or a shell kept next to your editor.请注意这个 outside the layout —— 停靠的窗口被放在布局之外。而最关键的是最后这一句：A dock attached to a window follows it around, moving with it to other tabs and closing when it closes.跟着它走，移到别的标签页时一起移，它关闭时也一起关闭。这就是停靠与并列窗口的本质区别：split 是布局里的一个格子，而 dock 是布局之外的一块附属物，它的生命周期绑在宿主上。而我认为这个设计里最值得学的就是那条生命周期规则。因为这正是让 dock 敢被信任的原因：它不会变成一个你忘了关、还留在那里吃 CPU 的僵尸窗口。而它解决的问题也很实在：状态栏、文件树、常驻 shell 这三样东西，在传统终端里要么用 tmux 挤一个 pane，要么用 neovim 插件，要么干脆放弃。kitty 的做法是给你一个不属于布局的位置。第二条是注销后恢复会话。新选项 restore_session_after_logout，保存每个 kitty 实例的状态，包括 scrollback，注销、重启或关机之后下次启动恢复。而这里有个平台差异，我觉得很说明问题：macOS 上，状态用钥匙串里的密钥加密；Linux 上，需要 Inhibit desktop portal。这不是偷懒，是各个平台能提供的最佳机制不同。macOS 有系统级钥匙串，那是唯一能让别的进程读不到的地方；而 Linux 没有等价的「应用私有受保护存储」，而 Inhibit portal 是 XDG 桌面门户里唯一能拿到用户授权的通道。这是一个很 Linux 的问题。顺带说一个我觉得被低估的细节：including scrollback。会话恢复如果只恢复标签页和窗口，恢复出来的是个空壳。而滚动缓冲才是你「昨天看到那儿」的那个位置。恢复一个没有 scrollback 的会话，等于让你重新找一遍。第三个我想说协议层的两笔，因为它们代表了两种不同的设计取向。第一笔是 OSC 7501，Program Status Protocol，让程序报告自己是 working、finished、failed，还是 blocked waiting on the user。通过 tab.program_status 字段在标签栏标题里渲染。而我认为最有价值的是第四个状态：卡住等用户。一个跑了很久的命令，现在正卡在等输入 —— 密码、确认、选择 —— 而你的标签页标题不会告诉你这件事。你只会看到标题停住了，分不清是在算还是在等。而它的实现方式很「终端」：不是弹一个通知，而是让程序往标签页标题里塞一个字段，由 tab_title_template 渲染。这意味着，如果你没用这个字段，这个能力对你就是不可见的。而我想到的一个有意思的推论是：「卡住等用户」这个状态，恰恰是自动化工具最难处理的状态。一个 agent 驱动一个卡在提示符上的命令，如果它不知道对方在等输入，它就只能超时。第二笔是图形协议的新东西，两个 indexed color image format，像素是终端调色板的下标，所以图片颜色会随配色方案一起变。你想在终端里显示一个图标，但那个图标的颜色应该跟着深浅主题走。如果你只能发 PNG，颜色就写死了；索引色发的只是下标，颜色由终端决定。另一个是按特性探测，用新的 e 查询键问对端支不支持动画、Unicode 占位符。这两条合起来指向同一个哲学：协议要能协商，而不是只能开或关。然后是性能。0.49 那一版的 7 项优化里，有 3 项是 SIMD。UTF-8 解码：ASCII 快约 20%，多字节快约 50%，x86 和 ARM 都是；还加了一个 AVX-512 解码器，再快约 75%，在 Intel Ice Lake 以上和 AMD Zen 4 以上的 CPU 上自动启用。而它的实现细节我觉得比数字更有意思：处理成对的纯 ASCII 向量，在 128-bit lane 内压缩解码后的码点，避免昂贵的跨 lane 操作。为什么 SIMD 解码难？因为变长编码意味着输出位置与输入位置不对齐，而在 SIMD 里跨越 lane 搬数据是性能杀手。「先处理成对的纯 ASCII 向量」就是绕开这个问题的办法。另外一条我很喜欢的，是缓存 HarfBuzz 对重复的短 run 的整形结果，阈值是 32 个 cell。这个阈值很说明问题：终端里绝大多数文本 run 都很短，而 HarfBuzz 的整形开销在小规模时占比很高。所以缓存小 run 而不是大 run，才是针对终端真实负载的优化。好，最后说我对整个软件类别的判断。看这个版本序列：0.46.3 到 0.50.0，每一个版本都带着安全修复。而 0.50.0 这个大功能版本，同样带着一条 high 级别的认证绕过修复。我认为这说明了终端模拟器这个类别的一个特殊处境。第一，终端是执行不可信输入的程序。浏览器也有这个问题，但浏览器里跑的是 JS，而终端里跑的是 shell，shell 的能力边界远大于 JS。所以一个终端的转义序列处理漏洞，后果通常比浏览器严重。第二，终端扩展协议是主动增加攻击面的行为。kitty 在这一点上比大多数终端走得更远 —— 图形协议、多光标、文本缩放、远程控制、拖放、文件传输、shell integration —— 所以它的安全维护压力必然更大。而它用「每个补丁版本都带安全修复」来承担这个压力，这比攒到大版本再发要好得多。第三，也是我认为最实用的一条：如果你的 kitty 版本落后了一个补丁版本，升级的理由不是有新功能，而是「你在带着一条 high 级别的远程代码执行漏洞」。所以最后我再说一句我自己的观察。这个版本序列里每一个版本都带安全修复这件事，和本号近期写过的另外几篇放在一起看，会更清楚。FreeRDP 3.33 那篇：一个 C 项目 21 天 748 个 commit，20 位首次贡献者，全仓库 Assisted-by 标记只有 2 处 —— 无法区分。Canonical 那篇：AI 把漏洞发现变成自动化引擎，CVE 数量指数级暴涨。还有这一篇：13 条公告，7 条的触发方是「能发字节流的一方」。这三件事共享一个技术前提：「程序可以代替用户行动」这个能力，正在从「需要特权的、明确授权的操作」，变成「默认发生的、无感的操作」。而每一次这种转变的代价都一样：用户对系统「它不会背着我做事」这个假设，被消耗掉一点。而 kitty 的应对方式，恰好是这个假设的反面：它把「哪条命令修了什么」写进 changelog，把每条公告的受影响版本和修复版本列进 GitHub Advisory Database，然后用下一个补丁版就修掉。这听起来是本分，但在一个连「AI 参与攻击」都能被当成责任推诿说辞的年代，它其实是很稀缺的那种稀缺。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· FreeRDP 3.33：RDP 跑进浏览器，以及一个开源项目被 AI PR 淹没的现场</span><br>
+        <span leaf="">· 邮件加密威胁模型 / DANE / MTA-STS</span><br>
+        <span leaf="">· 选择无聊的技术：创新代币与全局优化</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
