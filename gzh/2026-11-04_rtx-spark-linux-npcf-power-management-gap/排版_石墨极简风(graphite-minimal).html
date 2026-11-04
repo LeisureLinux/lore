@@ -1,0 +1,821 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">一块加密的功耗表，加一把只存在于 Windows 驱动里的密钥 —— 这才是「Linux 慢 5 倍」的真正原因。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">本文对这件事根因的归纳</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">（说明：本文依据 MindStudio 的实测报告，并补上了它未提及的上游事实。</span><strong style="color:#27272A;"><span leaf="">第三节中「N1X 的 PCI ID </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2e03</span><span leaf=""> 不在 NVIDIA 开源内核驱动支持设备表内」这一结论，⭐ 是我实测检索 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">open-gpu-kernel-modules</span><span leaf=""> 仓库 README 得出的（GB10 在列、N1X 零出现），⭐ 并与 ComputingForGeeks 的独立核对一致；⭐ 而该 PCI ID 本身出自 NVIDIA 的 Windows 移植指南，⭐ 我未能从 Linux 侧直接核实，故在正文中按「据 Windows 移植指南」标注。</span></strong><span leaf=""> 第四节的 ACPI 机制（NPCF / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Notify (NPCF, 0xC0)</span><span leaf=""> / SSDT16 / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVDA0820</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvpcf.sys</span><span leaf="">）⭐ </span><strong style="color:#27272A;"><span leaf="">全部引自 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">adnanpri/legion-wmi</span><span leaf=""> 项目的逆向记录，⭐ 而非本文作者的实测</span></strong><span leaf="">，⭐ 已在正文中标明出处。</span><strong style="color:#27272A;"><span leaf=""> 第七节的三处对比为笔者观点，</span></strong><span leaf="">不代表任何一方立场。</span><strong style="color:#27272A;"><span leaf="">）</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">先把那个数字摆出来</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">根因：一块 Linux 看…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">而更根本的一层：这台机器的…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">那 ACPI 层到底发生了…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">次级障碍：两个必须单独处理…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">06</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">那么该怎么选：三条路径的实…</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一、⭐ 先把那个数字摆出来</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">实测报告的结论，用它自己的表格说：</span></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **Windows**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **65.4 tok/s**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **约 2.2 GHz**</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">WSL</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">65.1 tok/s</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ 满频</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">NVIDIA DGX Spark</span></strong><span leaf="">（原生 Linux 桌面机）</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">61 tok/s</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">满频</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">原生 Linux（同一台笔记本）</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">13.9 tok/s</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">约 780 MHz</span></strong></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">原生 Linux 慢了约 5 倍。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 而更长的一个跑分说明了同样的事 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">不是吞吐差一点，而是时间差：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Windows finished in about </span><strong style="color:#27272A;"><span leaf="">8 minutes</span></strong><span leaf=""> while holding the GPU near 2.2 GHz. Linux took </span><strong style="color:#27272A;"><span leaf="">37 minutes</span></strong><span leaf="">, with the GPU parked around </span><strong style="color:#27272A;"><span leaf="">790 MHz</span></strong><span leaf=""> the entire time."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而最关键的一条排除性证据是：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Temperatures stayed low, between </span><strong style="color:#27272A;"><span leaf="">40 and 47°C</span></strong><span leaf="">, so </span><strong style="color:#27272A;"><span leaf="">this isn't a thermal throttling issue</span></strong><span leaf="">. The GPU simply isn't being allowed to run at full speed."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 温度 40–47°C 意味着：⭐ </span></strong><span leaf="">不是散热压不住，⭐ 是主板不让它跑。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">二、⭐⭐⭐ 根因：一块 Linux 看不见的固件组件</span></h3>
+      </section>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">那个「设备管理器里的东西」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">实测报告的作者在 Windows 设备管理器里找到了一个叫「Nvidia Platform Controllers and Framework」的组件，⭐ 而它的职责是：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"This piece of firmware and driver logic </span><strong style="color:#27272A;"><span leaf="">manages the shared power budget between CPU and GPU</span></strong><span leaf="">, since a laptop (unlike the desktop DGX Spark) has to balance power delivery between both chips rather than feeding the GPU on its own line."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这个对比：⭐ DGX Spark 是桌面机，⭐ GPU 有自己独立的供电线；⭐ 而笔记本是 CPU 和 GPU 抢同一份功耗预算。⭐ </span></strong><span leaf="">⭐ 所以「谁来分配这份预算」这件事，在笔记本上是必需的，⭐ 而 RTX Spark 把它交给了 NPCF。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 而那个决定性的对照实验</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这是整篇报告里最有说服力的一步，⭐ 我认为也是整篇文章里最值得记住的一段：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"</span><strong style="color:#27272A;"><span leaf="">Disabling that controller in Windows reproduced the slowdown directly</span></strong><span leaf="">: tokens per second dropped from around </span><strong style="color:#27272A;"><span leaf="">83 to about 31</span></strong><span leaf="">, and clock speed fell from roughly </span><strong style="color:#27272A;"><span leaf="">2 GHz down to the same 786 MHz seen on Linux</span></strong><span leaf=""> when plugged in. </span><strong style="color:#27272A;"><span leaf="">Re-enabling the controller restored normal speed immediately.</span></strong><span leaf="">"</span><span leaf="">*</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">*"That confirms </span><strong style="color:#27272A;"><span leaf="">the controller, not the kernel, the distribution, or the Nvidia GPU driver itself</span></strong><span leaf="">, is what's holding Linux back."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请把这一步的逻辑读清楚：⭐ </span></strong><span leaf="">他不是在 Linux 上找原因，⭐ 他是在 Windows 上「主动制造同样的症状」。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而结果是：⭐ </span></strong><span leaf="">禁用 NPCF 后 Windows 掉到 786 MHz —— 正好是 Linux 的那个数字。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这就把「内核问题」「发行版问题」「GPU 驱动问题」三个假设全部排除了，⭐ 只剩下一个。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐⭐ 而加密的功耗表，才是真正的锁</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而更根本的一层，实测报告写得很清楚：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"The deeper issue is that </span><strong style="color:#27272A;"><span leaf="">the firmware hands this controller a table of power settings that is encrypted. Windows has the key to decrypt it. Linux currently does not</span></strong><span leaf="">, and no software fix attempted during testing could enable it, including one attempt that </span><strong style="color:#27272A;"><span leaf="">triggered a kernel panic</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这一句，是我全文最想强调的：</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">「Linux 慢」这个问题的根，⭐ 不是一个「Linux 缺了个功能」，⭐ 而是一个「</span><strong style="color:#27272A;"><span leaf="">解密密钥在 Windows 驱动里</span></strong><span leaf="">」的事实。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这两个说法的区别是决定性的：</span></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ 谁该修</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ Linux 社区</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **NVIDIA**（把功耗管理逻辑移植进 Linux 驱动）</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ 能不能绕</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ 可能能</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">不能</span></strong><span leaf="">（报告明说尝试过软件绕过，包括一次 kernel panic）</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ 从 Windows 驱动里提取密钥</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">—</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">理论上可行，⭐ 但报告作者自己否掉了：</span><span leaf="">*\"that would amount to a </span></strong><span leaf="">fragile, single-machine hack</span><strong style="color:#27272A;"><span leaf=""> rather than something that works broadly\"</span></strong><span leaf="">*</span></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这条「不能绕」的结论，⭐ 让这件事的性质变了：⭐ </span></strong><span leaf="">它不是一个「Linux 支持没做好」的问题，⭐ 而是一个「</span><strong style="color:#27272A;"><span leaf="">这家硬件目前事实上只有 Windows 一条路</span></strong><span leaf="">」的问题。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三、⭐⭐⭐ 而更根本的一层：这台机器的芯片，官方 Linux 驱动根本不认</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这一节是我在核对时补上的，⭐ 而 MindStudio 那篇没有提 —— ⭐ </span></strong><span leaf="">而我认为它比功耗问题更根本。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">我实测检索了 NVIDIA 开源内核驱动的支持设备表</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">NVIDIA 的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">open-gpu-kernel-modules</span><span leaf=""> 仓库 README 里有一份「支持设备」表，⭐ 我把它拉下来全文检索：</span></strong></p>
+    </section>
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      </section>
+      <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$ grep -c "N1X" README.md</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">0</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">$ grep -c "GB10" README.md</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">1</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 请注意这两个数字：⭐ </span></strong><span leaf="">N1X 出现 0 次，GB10 出现 1 次。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 而那一行 GB10 是：</span></p>
+    </section>
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      </section>
+      <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">| NVIDIA GB10                                             | 2E12 10DE 21EC |</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 所以：⭐ </span></strong><span leaf="">DGX Spark 桌面机用的 GB10（PCI ID </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2E12</span><span leaf="">）在官方 Linux 驱动的支持列表里；⭐ </span><strong style="color:#27272A;"><span leaf="">而笔记本上的 N1X（PCI ID </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">10de:2e03</span><span leaf="">）不在。⭐ </span></strong><span leaf="">⭐</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2e03</span><span leaf=""> 我也在别处对上了：⭐ </span></strong><span leaf="">NVIDIA 的 Windows 移植指南里给出的 N1X PCI ID 就是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">10de:2e03</span><span leaf="">，⭐ 而它不在 Linux 那份列表里。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 所以两个问题要分开看</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 我认为这是全文最重要的一次区分：⭐ </span></strong><span leaf="">「驱动认不出这块卡」和「GPU 跑不到满频」，⭐ 是两个独立的问题，⭐ 而后者只是前者的下游症状之一。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      </section>
+      <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">问题 A：PCI ID 2E03 (N1X) 不在官方 Linux 驱动支持列表</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　→ 所以「用官方驱动」这条路，对这台机器还不通</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　→ 而 MindStudio 用的是「Omarchy 的内核已自带 NVIDIA 开源驱动」</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　　　⭐ 也就是社区已经在解决 A 了</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　　　　　　　　　　　　↓</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">问题 B：即使驱动认出了这块卡，功耗管理仍由 NPCF 主导</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　→ 而 NPCF 的功耗表加密，解密密钥只在 Windows 驱动里</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　　→ 这个问题只能由 NVIDIA 解决</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而 B 的修复，⭐ 恰好等于「把这台笔记本变成便携版 DGX Spark」—— ⭐ </span></strong><span leaf="">而这正是实测报告给出的真正修法：</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"A real fix depends on Nvidia shipping equivalent power management logic in its Linux driver, which would effectively turn the laptop into a portable version of the DGX Spark."</span><span leaf="">*</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">四、⭐⭐ 那 ACPI 层到底发生了什么</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">这一节我要补一个 MindStudio 没提、但能把「加密的功耗表」这句话落到具体机制上的东西。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">在社区里有一个专门做这件事的项目 —— </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">adnanpri/legion-wmi</span><span leaf="">，⭐ 它做的事情是「在 Linux 上通过 ACPI 调用去设置联想笔记本的性能模式」，⭐ 而它的 README 里详细记录了 NPCF 的结构：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"The WMI call made to appears to hand over responsiblity of adjusting the TGP of the GPU with a </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Notify (NPCF, 0xC0)</span></strong><span leaf=""> call (found on ACPI table DSDT). </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">\_SB_.NPCF.NPCF</span><span leaf=""> is a method defined in SSDT16.</span></strong><span leaf="">"</span><span leaf="">*</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">*"</span><strong style="color:#27272A;"><span leaf="">NPCF seems to refer to Nvidia Platform Controller and Framework</span></strong><span leaf="">, and it appears there are </span><strong style="color:#27272A;"><span leaf="">no drivers to handle the device </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVDA0820</span></strong><span leaf=""> found in </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">\_SB_.NPCF</span><span leaf="">. It's most likely the case that the event triggered by the WMI call is handled by the driver on Windows and which subsequently takes care of the dynamic power limit adjustments. </span><strong style="color:#27272A;"><span leaf="">On Windows the device driver responsible for interfacing with the </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVDA0820</span><span leaf=""> device seems to be </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvpcf.sys</span><span leaf=""> that comes with the Nvidia Drivers.</span></strong><span leaf="">"</span><span leaf="">*</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">*"From this, it's likely the case that the Nvidia drivers </span><strong style="color:#27272A;"><span leaf="">either do not recognize </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NPCF</span><span leaf=""> at all on Linux</span></strong><span leaf="">, or its support is limited."</span><span leaf="">*</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">*"The ACPI call to </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">\_SB_.NPCF.NPCF</span><span leaf=""> found in this driver </span><strong style="color:#27272A;"><span leaf="">does nothing to change the power limits</span></strong><span leaf=""> and the implementation on Windows is likely very different."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 这几段把我前面说的推断补成了具体的技术链条：</span></strong></p>
+    </section>
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      </section>
+      <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">Windows 侧：</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　WMI 调用 → ACPI Notify(NPCF, 0xC0) → \_SB_.NPCF.NPCF（定义在 SSDT16）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　→ Windows 上的 nvpcf.sys 处理 NVDA0820 设备</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　　　　　　　→ 动态功耗限制调整（TGP = Total Graphics Power）</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf=""></span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">Linux 侧：</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　没有对应驱动处理 NVDA0820</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　→ 调用 \_SB_.NPCF.NPCF 不改变功耗限制</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　→ GPU 停留在固件给的低功耗档位</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">　　→ 而那张功耗表是加密的，只有 Windows 驱动有密钥</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 请注意这个项目名字的讽刺性：⭐ </span></strong><span leaf="">它叫 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">legion-wmi</span><span leaf="">（ legion 是联想的产品线），⭐ 目标是在 Linux 上手动模拟联想 Windows 工具的性能模式调用 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">而它逆向出来的正是 NVIDIA 的同一套机制。⭐ </span></strong><span leaf="">⭐ 这说明「在 Linux 上直接调 ACPI 方法去改 GPU 功耗限制」这条路，⭐ </span><strong style="color:#27272A;"><span leaf="">在社区里早就被走通过一次了。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 MindStudio 报告里那句「including one attempt that triggered a </span></strong><span leaf="">kernel panic</span><strong style="color:#27272A;"><span leaf="">」，⭐ 与这个项目的存在正好对上：⭐ </span></strong><span leaf="">⭐ 这条路是有人走过的，⭐ 而走到底会撞上内核 panic。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">五、⭐⭐ 次级障碍：两个必须单独处理的坑</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 功耗问题是最显眼的那个，⭐ 但实际上还有两个坑，⭐ 而且第二个比第一个更容易被忽略。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 坑一：96GB 统一内存被固件预留给 GPU</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 实测报告：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"the laptop </span><strong style="color:#27272A;"><span leaf="">reserves 96GB of unified memory for the GPU by default</span></strong><span leaf=""> and only Windows exposes a setting to change that split, which is required before Linux can see more than a sliver of RAM."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而原文的具体数字是：⭐ </span></strong><span leaf="">装好 Omarchy 之后，⭐ Linux 只看得到 128GB 里的 28GB。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而解法是：⭐ </span></strong><span leaf="">「在 Windows 侧把 GPU 内存预留从 96GB 降到 4GB，⭐ 启动 Linux 后就能看到 120GB」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 请注意这里的因果顺序：⭐ </span></strong><span leaf="">这一步必须</span><strong style="color:#27272A;"><span leaf="">先在 Windows 里做</span></strong><span leaf="">，⭐ 然后才进 Linux。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 也就是说：⭐ </span></strong><span leaf="">双系统用户第一次启动 Linux 之前，得先回 Windows 改一个设置。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这是一个「两套系统共享一份硬件配置」的例子，⭐ 而 Linux 侧完全无法自我修复。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这个坑的性质其实比功耗问题更麻烦：⭐ </span></strong><span leaf="">功耗问题让性能降 5 倍（可测量）；⭐ </span><strong style="color:#27272A;"><span leaf="">而内存问题让 Linux 直接看不到 3/4 的内存（不可测量，除非你专门去查）。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 坑二：笔记本专属硬件支持不在 vanilla 内核里</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 实测报告的安装过程记录：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Switching to Debian worked more reliably, but still needed workarounds. </span><strong style="color:#27272A;"><span leaf="">The installer couldn't connect to Wi-Fi</span></strong><span leaf="">, so installation required a USB Ethernet adapter. </span><strong style="color:#27272A;"><span leaf="">Out of the box, Debian also didn't recognize the keyboard, touchpad, or GPU</span></strong><span leaf="">, because none of the laptop-specific hardware support was present in a vanilla kernel."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这三个「不认识」里，⭐ </span></strong><span leaf="">键盘和触摸板不认识，⭐ 是 Linux 笔记本支持里一个非常经典的老问题</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">而 MSI 笔记本的 ACPI 表通常需要厂商提供的 DSDT 覆盖（dsdt.aml）才能正确工作。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而 MindStudio 那边最终是靠换回 Omarchy 解决的：⭐ </span></strong><span leaf="">「回到 Omarchy 解决了驱动问题，⭐ 因为它的内核已经打包了 NVIDIA 的开源驱动」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这一段引出一个我必须点明的问题：⭐ </span></strong><span leaf="">⭐ 「Omarchy 能跑」与「Linux 能跑」是两回事。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 因为 Omarchy 的内核不是 vanilla 内核，⭐ 而是</span></strong><span leaf="">预置了 NVIDIA 开源驱动的定制内核</span><strong style="color:#27272A;"><span leaf="">（⭐ 也就是把「问题 A」提前解决了的那个发行版）。⭐ </span></strong><span leaf="">⭐ 所以 MindStudio 报告的成功路径是：⭐ </span><strong style="color:#27272A;"><span leaf="">「用一个已经把 NVIDIA 支持打包好的社区发行版」+「一个必须回 Windows 才能做完的内存设置」+「一块官方驱动目前不认的卡」+「一个只能靠 WSL 绕开的功耗问题」。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这不是「Linux 支持了 RTX Spark」，⭐ </span></strong><span leaf="">这是「Omarchy 支持了 RTX Spark」。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 两者之间的差距，⭐ 就是 MindStudio 那篇报告里说的 WSL 是「practical middle ground」的真正含义。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">顺便：还有 HDMI 安装期无输出这个奇观</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 实测报告里有一段我很喜欢：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"Early in the process, the laptop would only display video on its own internal screen, not over HDMI, which required </span><strong style="color:#27272A;"><span leaf="">pointing an external camera at the laptop's screen just to see what was happening during remote-controlled installation steps</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 安装时只能用外接摄像头盯着笔记本屏幕来远程操作安装程序。⭐ </span></strong><span leaf="">⭐ 这大概是 2026 年最硬核的一个安装方法学案例。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">六、⭐⭐ 那么该怎么选：三条路径的实际取舍</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">实测报告给出的推荐是 WSL，⭐ 而我认为这个推荐是分层的 —— ⭐ </span></strong><span leaf="">它对不同人的正确答案是不同的。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 路径一：WSL —— 「今天最实用的中间路线」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 实测报告：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"WSL runs on top of the Windows driver stack, so it </span><strong style="color:#27272A;"><span leaf="">inherits Windows' full GPU boost behavior</span></strong><span leaf=""> whether the laptop is plugged in or running on battery. It also </span><strong style="color:#27272A;"><span leaf="">runs Linux-first AI tools like vLLM and SGLang</span></strong><span leaf=""> without the clock throttling problem."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这里有一个我认为特别值得注意的机制细节：</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ WSL 之所以满频，⭐ 恰恰是因为它</span></strong><span leaf="">跑在 Windows 驱动栈之上</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">⭐ 也就是说，⭐ WSL 绕过了问题 B 的方式是「不用 Linux 的功耗管理路径」。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而它同时保留了「你在跑 Linux 用户态」这件事 —— ⭐ </span></strong><span leaf="">vLLM、SGLang 这些 Linux-first 的 AI 工具照常可用。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而且它的性能不是「接近」，⭐ 是「几乎相同」：65.1 vs 65.4 tok/s。⭐ </span></strong><span leaf="">⭐ 换句话说：⭐ </span><strong style="color:#27272A;"><span leaf="">WSL 在这个场景下不是妥协，⭐ 而是真正的最优解。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 但它有一个必须调的参数：</span></strong></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"WSL reserves only </span><strong style="color:#27272A;"><span leaf="">14GB</span></strong><span leaf=""> by default, which isn't enough for large model workloads on a 128GB unified memory machine, so that allocation needs to be increased manually."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 所以 WSL 路径的完整清单是：⭐ </span></strong><span leaf="">① 用 WSL 跑 Linux 工具链；② 把 WSL 的内存预留从 14GB 调大；③ 完成。</span><strong style="color:#27272A;"><span leaf=""> ⭐ </span></strong><span leaf="">⭐ 而它的代价是：⭐ </span><strong style="color:#27272A;"><span leaf="">你仍然在 Windows 上，⭐ 而且你用的是 Windows 的 GPU 驱动。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 路径二：原生 Linux 双系统 —— 「能跑，但要接受 5 倍性能差距」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这条路径的完整清单（实测报告给的）：</span></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ 用 Omarchy（**不是** vanilla 发行版）</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **依赖社区内核打包 NVIDIA 驱动**</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">先回 Windows 把 GPU 内存预留从 96GB 降到 4GB</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 必须在 Windows 侧完成，⭐ Linux 无法自我修复</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ 安装期可能需要 USB 网卡（Wi-Fi 不认）</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ 一次性</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ 接受插电时 GPU 只有 780 MHz</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ tok/s 从 65 掉到 14</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ 接受开机时 GPU 只有约 1800 MHz（拔电）</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 插电反而更慢，这是反直觉的</span></strong></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而最后那一行我认为是全文最反直觉、也最值得单独强调的一点：⭐ </span></strong><span leaf="">⭐ 「插上电源反而更慢」。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 因为在电池供电时，GPU 是跑在低功耗档位的（这符合预期），⭐ 而插电之后，⭐ </span></strong><span leaf="">系统本该放开限制，⭐ 但因为读不到加密的功耗表，⭐ 它反而掉到了比电池模式更低的频率。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 换句话说：⭐ </span></strong><span leaf="">在 Linux 下，⭐ </span><strong style="color:#27272A;"><span leaf="">「插电」这个动作本身变成了性能杀手。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 路径三：等 NVIDIA —— 「唯一真正的修法」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而这一条我要补充实测报告没提的东西：⭐ </span></strong><span leaf="">NVIDIA 自己其实在跑 Linux。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 我查了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVIDIA/NemoClaw</span><span leaf=""> 这个公开 tracker，⭐ 用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[N1x Linux]</span><span leaf=""> 做前缀的 issue 有几十条：</span></strong></p>
+    </section>
+    <section style="margin:0 0 20px;border-radius:8px;overflow:hidden;background:#1E293B;box-shadow:0 4px 16px -8px rgba(15,23,42,0.4);">
+      <section style="display:flex;align-items:center;padding:9px 14px;background:#0F172A;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#27C93F;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFBD2E;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF5F56;margin-right:7px;font-size:0;line-height:0;overflow:hidden;">.</span>
+      </section>
+      <section style="padding:11px 14px;">
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">12293  [N1X Linux][Inference] Fresh OpenClaw TUI HTML task fails with incomplete or malformed...</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">13088  [N1x Linux][Agent&amp;Skills] Fresh OpenClaw TUI session cannot answer hi at 32K context...</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">12737  [N1x Linux][Install] Deferred Express preview is not offered on NVIDIA Concept I...</span></p>
+      <p style="margin:0;font-family:'SF Mono',Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#E2E8F0;"><span leaf="">12768  fix(platform): detect N1x without the FastOS marker</span></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 请注意这个分布：⭐ </span></strong><span leaf="">里面大量是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[N1X Linux]</span><span leaf=""> 前缀的问题，⭐ 而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[DGX Spark]</span><span leaf=""> 前缀的另算一批。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这说明：⭐ </span></strong><span leaf="">NVIDIA 内部有人在认真做 N1X 上的 Linux 支持，⭐ 而且是把它当作一个持续跟踪的 issue 类别在管。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而「NVIDIA 自己跑 Linux」这件事还有一层更深的含义：⭐ </span></strong><span leaf="">⭐ DGX Spark 桌面机出厂就预装 DGX OS（⭐ 一个基于 Ubuntu 的发行版），⭐ 而它的内核是 NVIDIA 自己的 Ubuntu 内核分支，⭐ 不是上游内核。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 所以「NVIDIA 支持 Linux」这件事，⭐ 在桌面机上已经成立了；⭐ </span></strong><span leaf="">而到了笔记本形态，⭐ 因为多了 NPCF 这块需要 Windows 密钥的组件，⭐ 就断掉了。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">七、⭐⭐ 一点评价：这个「不支持」的形状，和别的「不支持」不一样</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 最后我想说一点我自己的观察，⭐ 因为它和本号此前写过的几件事形成了对照。</span></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 对比一：这不是「内核没有硬件支持补丁」</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 这是最容易被误解的一点。⭐ </span></strong><span leaf="">「NVIDIA 开源驱动不支持 N1X 的 PCI ID」听起来像是「上游还没合补丁」，⭐ 但实际上：</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">GB10（</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2E12</span><span leaf="">）已经在列表里</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 也就是说，同一颗芯片家族，⭐ 桌面机形态已经支持了。</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">而社区（Omarchy、RageLtd/linux-dgx-spark、graham33/nixos-dgx-spark）⭐ 已经在做 GB10 的内核包。</span></strong></p>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而我查 NVIDIA 自己的论坛，有一条 2026-11-03 的帖子记录了更麻烦的东西：⭐ </span></strong><span leaf="">DGX Spark 的内核 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">7.0.0-1024-nvidia</span><span leaf=""> 不稳定（⭐ 报告了 GPU Xid 错误、kernel Oops、内存损坏、headless hard reset），⭐ 而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">7.0.0-1019-nvidia</span><span leaf=""> 稳定；⭐ NVIDIA 为此发了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvidia-spark-initcall-bl 1.0-2</span><span leaf="">，⭐ 加入 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">initcall_blacklist=power_wrap_init</span><span leaf=""> 来绕开一个 HDMI/TMDS 触发的 reset。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这个细节非常说明问题：⭐ </span></strong><span leaf="">⭐ 一颗「主打本地 AI」的芯片，⭐ 它的</span><strong style="color:#27272A;"><span leaf="">桌面机形态</span></strong><span leaf="">的官方内核，⭐ 在 2026 年 11 月还在被官方自己标记为不稳定，⭐ 而且修复方式是「把某个 initcall 加进黑名单」。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 而在笔记本形态上，⭐ 那个「桌面机形态」的稳定性问题</span></strong><span leaf="">还没解决</span><strong style="color:#27272A;"><span leaf="">的同時，⭐ 又叠加了「笔记本专属的 NPCF 功耗管理」这个全新问题。⭐ </span></strong><span leaf="">⭐⭐</span></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐ 对比二：这和 eMudhra 那件事是同一个形状</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 让我把它和本号前几天写的那篇连起来：⭐ </span></strong><span leaf="">《一个 CA 的私钥是数字 4》。</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ 原本应该安全的东西</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **CA 的私钥**</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">⭐ **GPU 的功耗表**</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ 实际发生了什么</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">私钥是「4」这种可预测值</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">功耗表加密，而</span></strong><span leaf="">解密密钥只在 Windows 驱动里</span><strong style="color:#27272A;"></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ 谁被排除在外</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">所有非 eMudhra 的客户端</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">所有非 Windows 的 OS</span></strong></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐⭐ 问题的本质</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">「这不该发生，但它发生了」</span></strong></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">「这不该发生，但它发生了」</span></strong></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而我认为这个对照揭示了一个更普遍的东西：⭐ </span></strong><span leaf="">⭐⭐ </span><strong style="color:#27272A;"><span leaf="">在「一部分人能用、一部分人不能用」的硬件与平台上，⭐ </span></strong><span leaf="">那些「只有一边有」的东西 —— ⭐ 一个密钥、一张表、一个驱动模块 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 就会变成事实上的排他机制。⭐ </span></strong><span leaf="">⭐⭐</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这类排他机制的危险在于：⭐ </span></strong><span leaf="">⭐ 它们不违反任何规则、⭐ 没有人「做错」什么、⭐ 而且对使用者来说完全不可见 —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 你只会看到「Linux 上慢 5 倍」，⭐ 而不会看到「因为一块加密的表和一把只存在于 Windows 的密钥」。⭐ </span></strong><span leaf="">⭐⭐</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <p style="font-size:15px;font-weight:800;color:#27272A;margin:28px 0 14px;padding-left:12px;border-left:3px solid #52525B;line-height:1.4;"><span leaf="">⭐⭐⭐ 而最后一个观察：Windows on ARM + CUDA 这件事本身</span></p>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 还有一个我觉得值得单独说的点，⭐ 它能解释为什么这件事现在才发生。</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ 实测报告说：</span></p>
+    </section>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">*"ARM-based Windows machines have existed for a few years, but </span><strong style="color:#27272A;"><span leaf="">pairing that architecture with Nvidia's CUDA stack only became possible with this chip</span></strong><span leaf="">."</span><span leaf="">*</span></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而这一句连着另一句更有意思的：</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ DGX Spark 出厂预装 Linux，⭐ 而 RTX Spark 笔记本</span></strong><span leaf="">全部预装 Windows on ARM</span><strong style="color:#27272A;"><span leaf="">。⭐ </span></strong><span leaf="">⭐</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 所以整件事的形状是：⭐ </span></strong><span leaf="">⭐⭐ </span><strong style="color:#27272A;"><span leaf="">NVIDIA 手里有一台出厂就装 Linux 的桌面机（GB10），⭐ 和一整系列出厂只装 Windows 的笔记本（N1X），⭐ 而两者用的是同一套 GPU 设计。⭐ </span></strong><span leaf="">⭐⭐</span><strong style="color:#27272A;"></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 而「同一套 GPU 设计」这个事实，⭐ 在硬件上是成立的；⭐ </span></strong><span leaf="">⭐ 但在「这块 GPU 需要谁来管功耗」这个软件层面，⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 桌面机不需要 NPCF（⭐ 它有独立供电线），⭐ 而笔记本需要 —— ⭐ </span></strong><span leaf="">⭐ 而 NPCF 只有 Windows 实现。⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐</span></strong></p>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:16px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:14px;color:#52525B;line-height:1.8;text-align:justify;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">⭐⭐ 所以结论是：⭐ </span></strong><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">这不是「RISC-V 对 x86」或「Arm 对 x86」那种架构之争，⭐ 而是一个具体到有点尴尬的事实：⭐ </span></strong><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">这块芯片在笔记本形态下，⭐ 它的功耗管理权握在一个只有 Windows 驱动才认得的固件组件手里。⭐ </span></strong><span leaf="">⭐⭐</span><strong style="color:#27272A;"></strong></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">08</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">主要来源</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">MindStudio《Linux on the Nvidia RTX Spark Laptop: What Actually Works》（Luis Chavez-Mattos，2026-11-01）</span></strong><span leaf="">：⭐ 实测数据（Windows 65.4 / WSL 65.1 / DGX Spark 61 / 原生 Linux 13.9 tok/s；8 分钟 vs 37 分钟；温度 40–47°C；⭐ </span><strong style="color:#27272A;"><span leaf="">在 Windows 里禁用 NPCF 后 tok/s 从约 83 掉到约 31、频率掉到 786 MHz</span></strong><span leaf="">）；⭐ 安装过程（Omarchy → Debian → 回到 Omarchy；⭐ Wi-Fi 不认需 USB 网卡；⭐ 键盘/触摸板/GPU 不认；⭐ HDMI 安装期无输出需外接摄像头；⭐ Linux 只见 28GB，Windows 侧把 GPU 预留从 96GB 降到 4GB 后可见 120GB）；⭐ 「功耗表加密、只有 Windows 驱动有密钥、⭐ 尝试绕过曾触发 kernel panic」</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">NVIDIA </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">open-gpu-kernel-modules</span><span leaf=""> 仓库 README 支持设备表</span></strong><span leaf="">（⭐ </span><strong style="color:#27272A;"><span leaf="">我实测全文检索：GB10 </span><span leaf="">= </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2E12 10DE 21EC</span><span leaf=""> 在列，⭐ 而 N1X 出现 0 次</span></strong><span leaf=""> —— 即笔记本变体的 PCI ID </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">10de:2e03</span><span leaf=""> 不在官方 Linux 驱动的支持列表里）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">adnanpri/legion-wmi</span><span leaf=""> 项目 README</span></strong><span leaf="">（⭐ ACPI 层的逆向记录）：⭐ </span><strong style="color:#27272A;"><span leaf="">NPCF </span><span leaf="">= Nvidia Platform Controller and Framework；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Notify (NPCF, 0xC0)</span><span leaf="">；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">\_SB_.NPCF.NPCF</span><span leaf=""> 定义于 SSDT16；设备 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVDA0820</span><span leaf="">；⭐ Windows 侧由 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvpcf.sys</span><span leaf=""> 处理；⭐ 「Nvidia drivers either do not recognize NPCF at all on Linux, or its support is limited」</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">XDA Developers《Nvidia's RTX Spark laptops use the same chip as the DGX Spark, but they get faster memory》：⭐ 同 SoC ID、同 CPU/GPU；⭐ NPU/DLA 的 ACPI 表与 Linux 侧不可见的发现（#13894 一文亦记录 firmware 里有 DLA 电源域与遥测、却从未定义 DLA0 设备）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">ComputingForGeeks《NVIDIA RTX Spark Laptops: N1X Specs, CUDA and Linux》：⭐ </span><strong style="color:#27272A;"><span leaf="">「NVIDIA hasn't announced Linux support for RTX Spark laptops… XDA asked, and NVIDIA would not comment」</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">「a site that has no a value for it: The public driver does not cover it yet… The README lists GB10 as a supported device, but no RTX Spark N1X device IDs」</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">⭐ </span><strong style="color:#27272A;"><span leaf="">NVIDIA </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NemoClaw</span><span leaf=""> GitHub tracker</span></strong><span leaf="">（⭐ </span><strong style="color:#27272A;"><span leaf="">我用 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[N1x Linux]</span><span leaf=""> 检索到数十条 issue，⭐ 证明 NVIDIA 内部在持续跟踪笔记本形态的 Linux 支持</span></strong><span leaf="">）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">NVIDIA 官方《DGX Spark User Guide / Release Notes》（⭐ DGX OS 7.6.0、驱动 580.178.04、CUDA 13.0.3、⭐ </span><strong style="color:#27272A;"><span leaf="">Canonical Kernel 7.0.0-1019</span></strong><span leaf="">；⭐ 官方说明「GB10-based partner systems may not receive updates at the same time」）</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">NVIDIA Developer Forums《DGX Spark kernel 7.0.0-1024-nvidia: summary of reported issues》（2026-11-03）：⭐ </span><strong style="color:#27272A;"><span leaf="">该内核被报告 GPU Xid 错误、kernel Oops、内存损坏、headless hard reset；⭐ 官方发布 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvidia-spark-initcall-bl 1.0-2</span><span leaf=""> 加入 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">initcall_blacklist=power_wrap_init</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Gentoo Wiki《DGX Spark》与 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">RageLtd/linux-dgx-spark</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">graham33/nixos-dgx-spark</span><span leaf="">：⭐ </span><strong style="color:#27272A;"><span leaf="">GB10 的 mainline 内核缺少硬件使能补丁，⭐ 需 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pci=pcie_bus_safe initcall_blacklist=tegra234_cbb_init</span><span leaf=""> 等启动参数，⭐ 且需 NVIDIA 的 Ubuntu 内核分支</span></strong></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">MSI 官方规格与 Notebookcheck：⭐ </span><strong style="color:#27272A;"><span leaf="">Prestige N16 Flip AI+，⭐ NVIDIA RTX Spark N1X（20 核 CPU / 6144 核 GPU）、⭐ 最高 128GB LPDDR5X 统一内存、16" 2.8K Tandem OLED 120Hz、⭐ 1.9kg、99.9Wh 电池；⭐ 美国 32GB 起 $3,299，⭐ 128GB 版本 $6,899–11,999</span></strong></p>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">（说明：本文依据 MindStudio 的实测报告，并补上了它未提及的上游事实。</span><strong style="color:#27272A;"><span leaf="">第三节中「N1X 的 PCI ID </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2e03</span><span leaf=""> 不在 NVIDIA 开源内核驱动支持设备表内」这一结论，⭐ 是我实测检索 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">open-gpu-kernel-modules</span><span leaf=""> 仓库 README 得出的（GB10 在列、N1X 零出现），⭐ 并与 ComputingForGeeks 的独立核对一致；⭐ 而该 PCI ID 本身出自 NVIDIA 的 Windows 移植指南，⭐ 我未能从 Linux 侧直接核实，故在正文中按「据 Windows 移植指南」标注。</span></strong><span leaf=""> 第四节的 ACPI 机制（NPCF / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Notify (NPCF, 0xC0)</span><span leaf=""> / SSDT16 / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVDA0820</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvpcf.sys</span><span leaf="">）⭐ </span><strong style="color:#27272A;"><span leaf="">全部引自 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">adnanpri/legion-wmi</span><span leaf=""> 项目的逆向记录，⭐ 而非本文作者的实测</span></strong><span leaf="">，⭐ 已在正文中标明出处。</span><strong style="color:#27272A;"><span leaf=""> 第七节的三处对比为笔者观点，</span></strong><span leaf="">不代表任何一方立场。</span><strong style="color:#27272A;"><span leaf="">）</span></strong></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">27</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">原文</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">MindStudio《Linux on the Nvidia RTX Spark Laptop: What Actually Works》（Luis Chavez-Mattos，2026-11-01）</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">本文补上了它没说的上游事实（NVIDIA 驱动支持设备表、ACPI 层逆向记录）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 平台是什么</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">RTX Spark 笔记本（MSI Prestige N16 Flip AI+、Asus ProArt、Dell XPS、HP OmniBook Ultra 16 等）⭐ </span><strong style="color:#27272A;"><span leaf="">用与 DGX Spark 桌面机相同的 GB10 系 GPU 设计</span></strong><span leaf="">，⭐ </span><strong style="color:#27272A;"><span leaf="">但 N1X 变体的 PCI ID 是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">10de:2e03</span><span leaf="">（6144 核 GPU / 20 核 CPU / 最高 128GB LPDDR5X 统一内存 / 最高 1 PFLOPS FP4）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 关键差异</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">DGX Spark 出厂预装 DGX OS（⭐ Ubuntu 基础），⭐ </span><strong style="color:#27272A;"><span leaf="">而每一台 RTX Spark 笔记本都只预装 Windows on ARM</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 「Windows on ARM + CUDA」是随这颗芯片才首次成为可能</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 性能对照</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">GPT-OSS-120B：</span><strong style="color:#27272A;"><span leaf="">Windows </span></strong><span leaf="">65.4 tok/s</span><strong style="color:#27272A;"><span leaf="">｜WSL </span></strong><span leaf="">65.1</span><strong style="color:#27272A;"><span leaf="">｜DGX Spark（原生 Linux）</span></strong><span leaf="">61</span><strong style="color:#27272A;"><span leaf="">｜</span></strong><span leaf="">原生 Linux 13.9</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">约 5 倍差距</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 长时间跑分</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">Windows 约 </span><strong style="color:#27272A;"><span leaf="">8 分钟</span></strong><span leaf="">完成（GPU 稳在 2.2 GHz）；⭐ </span><strong style="color:#27272A;"><span leaf="">原生 Linux </span></strong><span leaf="">37 分钟</span><strong style="color:#27272A;"><span leaf="">（GPU 全程约 790 MHz）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 不是温度问题</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">温度全程 </span><strong style="color:#27272A;"><span leaf="">40–47°C</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 「this isn't a thermal throttling issue. The GPU simply isn't being allowed to run at full speed」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐⭐ 决定性对照实验</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐⭐ </span></strong><span leaf="">在 Windows 里禁用 NPCF 控制器，⭐ </span><strong style="color:#27272A;"><span leaf="">tok/s 从约 </span></strong><span leaf="">83</span><strong style="color:#27272A;"><span leaf=""> 掉到约 </span></strong><span leaf="">31</span><strong style="color:#27272A;"><span leaf="">、频率从约 </span></strong><span leaf="">2 GHz</span><strong style="color:#27272A;"><span leaf=""> 掉到与 Linux 相同的 </span></strong><span leaf="">786 MHz</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">重新启用立刻恢复</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">⭐ 这一步直接证明「控制器而非内核、发行版或 NVIDIA GPU 驱动」才是瓶颈</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐⭐ 根因：加密的功耗表</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐⭐ </span></strong><span leaf="">「the firmware hands this controller a table of power settings that is </span><strong style="color:#27272A;"><span leaf="">encrypted</span></strong><span leaf="">. Windows has the key to decrypt it. </span><strong style="color:#27272A;"><span leaf="">Linux currently does not</span></strong><span leaf="">, and no software fix attempted during testing could enable it, </span><strong style="color:#27272A;"><span leaf="">including one attempt that triggered a kernel panic</span></strong><span leaf="">」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 为什么不绕</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">「从 Windows 驱动里提取解密密钥」⭐ </span><strong style="color:#27272A;"><span leaf="">理论上可行，⭐ </span></strong><span leaf="">但作者自己否掉：</span><span leaf="">*"that would amount to a </span><strong style="color:#27272A;"><span leaf="">fragile, single-machine hack</span></strong><span leaf=""> rather than something that works broadly"</span><strong style="color:#27272A;"><span leaf="">*</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ 两个问题要分开</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">问题 A：</span><strong style="color:#27272A;"><span leaf="">PCI ID </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">2e03</span><span leaf="">(N1X) 不在官方 Linux 驱动支持列表（⭐ </span></strong><span leaf="">社区已在解</span><strong style="color:#27272A;"><span leaf="">）→ 问题 B：</span></strong><span leaf="">即使认出了卡，功耗管理仍由 NPCF 主导，⭐ </span><strong style="color:#27272A;"><span leaf="">而钥匙在 Windows</span></strong><span leaf="">（⭐ </span><strong style="color:#27272A;"><span leaf="">只能由 NVIDIA 解</span></strong><span leaf="">）</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐⭐ 我实测的驱动证据</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐⭐ </span></strong><span leaf="">NVIDIA </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">open-gpu-kernel-modules</span><span leaf=""> README 支持设备表，我实测全文检索：</span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">grep -c "N1X" README.md</span><span leaf=""> → </span></strong><span leaf="">0</span><strong style="color:#27272A;"><span leaf="">；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">grep -c "GB10" README.md</span><span leaf=""> → </span></strong><span leaf="">1</span><strong style="color:#27272A;"><span leaf="">，⭐ </span></strong><span leaf="">且那一行是 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">| NVIDIA GB10 | 2E12 10DE 21EC |</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">⭐ 也就是说 GB10 桌面机在官方 Linux 驱动列表里，⭐ </span><strong style="color:#27272A;"><span leaf="">而笔记本变体 N1X 不在</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ ACPI 层机制（引自 legion-wmi）</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「The WMI call … hand over responsibility of adjusting the TGP of the GPU with a </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">Notify (NPCF, 0xC0)</span></strong><span leaf=""> call (found in ACPI table DSDT). </span><strong style="color:#27272A;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">\_SB\_.NPCF.NPCF</span><span leaf=""> is a method defined in SSDT16</span></strong><span leaf="">」；⭐ </span><strong style="color:#27272A;"><span leaf="">设备 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVDA0820</span><span leaf="">；⭐ </span></strong><span leaf="">Windows 侧由 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvpcf.sys</span><span leaf=""> 处理；⭐ </span><strong style="color:#27272A;"><span leaf="">「Nvidia drivers either do not recognize </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NPCF</span><span leaf=""> at all on Linux, or its support is limited」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★★ 社区已有先例</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">adnanpri/legion-wmi</span><span leaf=""> 这个项目的目的正是「在 Linux 上通过 ACPI 调用设置笔记本性能模式」，⭐ </span><strong style="color:#27272A;"><span leaf="">而它逆向出来的正是 NVIDIA 的同一套机制</span></strong><span leaf=""> —— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ 说明「在 Linux 上直接调 ACPI 改 GPU 功耗」这条路社区早走通过一次，⭐ </span></strong><span leaf="">⭐ 而 MindStudio 报告的「kernel panic」正好对上</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 坑一：内存预留</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">固件默认把 </span><strong style="color:#27272A;"><span leaf="">96GB</span></strong><span leaf=""> 统一内存留给 GPU，⭐ </span><strong style="color:#27272A;"><span leaf="">只有 Windows 暴露设置可改</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">装好 Omarchy 后 Linux 只能看到 128GB 里的 </span></strong><span leaf="">28GB</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">在 Windows 侧把 GPU 预留降到 4GB 后，⭐ </span><strong style="color:#27272A;"><span leaf="">Linux 才能看到 120GB</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 内存坑更麻烦</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">「这必须在 Windows 里做，⭐ </span><strong style="color:#27272A;"><span leaf="">然后才进 Linux</span></strong><span leaf="">」—— ⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">双系统用户第一次启动 Linux 之前，得先回 Windows 改一个设置</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">⭐ 而它的性质比功耗问题更隐蔽：⭐ </span><strong style="color:#27272A;"><span leaf="">功耗降 5 倍可测量，⭐ </span></strong><span leaf="">而「看不见 3/4 内存」不测量就发现不了</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 坑二：笔记本专属硬件</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">Debian 安装器</span><strong style="color:#27272A;"><span leaf="">连不上 Wi-Fi</span></strong><span leaf="">（需 USB 网卡）；⭐ </span><strong style="color:#27272A;"><span leaf="">vanilla 内核不认键盘、触摸板、GPU</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">最终靠换回 Omarchy 解决（⭐ 其内核已打包 NVIDIA 开源驱动）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 安装期奇观</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">「the laptop would only display video on its own internal screen, not over HDMI, which required </span><strong style="color:#27272A;"><span leaf="">pointing an external camera at the laptop's screen</span></strong><span leaf=""> just to see what was happening during remote-controlled installation steps</span><strong style="color:#27272A;"><span leaf="">」</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 拔电反而更快</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">拔电时约 </span><strong style="color:#27272A;"><span leaf="">1800 MHz</span></strong><span leaf="">（LM Studio 上 61–67 tok/s），⭐ </span><strong style="color:#27272A;"><span leaf="">插电后掉到约 </span></strong><span leaf="">780 MHz</span><strong style="color:#27272A;"><span leaf="">（约 15 tok/s）—— ⭐ </span></strong><span leaf="">⭐ 在 Linux 下「插电」这个动作本身变成了性能杀手</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★⭐ 路径一：WSL</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">「WSL runs on top of the Windows driver stack, so it </span><strong style="color:#27272A;"><span leaf="">inherits Windows' full GPU boost behavior</span></strong><span leaf=""> whether plugged in or on battery」；⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">WSL 满频的机制正是「不用 Linux 的功耗管理路径」</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">vLLM 八个并发客户端：WSL </span><strong style="color:#27272A;"><span leaf="">127 tok/s</span></strong><span leaf=""> vs 原生 Linux </span><strong style="color:#27272A;"><span leaf="">39.5</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">须把 WSL 内存预留从默认 14GB 调大</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ 路径二：原生双系统</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">用 Omarchy（</span><strong style="color:#27272A;"><span leaf="">不是</span></strong><span leaf=""> vanilla 发行版）｜⭐ </span><strong style="color:#27272A;"><span leaf="">先回 Windows 把 GPU 预留从 96GB 降到 4GB</span></strong><span leaf="">｜⭐ </span><strong style="color:#27272A;"><span leaf="">安装期可能需 USB 网卡｜⭐ </span></strong><span leaf="">接受插电时 780 MHz</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 路径三：等 NVIDIA</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">「A real fix depends on Nvidia shipping equivalent power management logic in its Linux driver, which would effectively </span><strong style="color:#27272A;"><span leaf="">turn the laptop into a portable version of the DGX Spark</span></strong><span leaf="">」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★⭐ NVIDIA 自己在做</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">NVIDIA/NemoClaw</span><span leaf=""> 公开 tracker 里 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">[N1x Linux]</span><span leaf=""> 前缀的 issue 数十条（⭐ 如 #12293 / #13088 / #12737 / #12768）⭐ </span><strong style="color:#27272A;"><span leaf="">—— 说明内部有人在认真跟踪笔记本形态的 Linux 支持</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">而 DGX Spark 桌面机出厂就是 Ubuntu 基础的 DGX OS，⭐ </span></strong><span leaf="">内核是 NVIDIA 自己的 Ubuntu 分支而非上游</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 桌面机的稳定性问题</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">NVIDIA 官方论坛（2026-11-03）：DGX Spark 内核 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">7.0.0-1024-nvidia</span><span leaf=""> 被报告 GPU Xid 错误、kernel Oops、内存损坏、headless hard reset，⭐ </span><strong style="color:#27272A;"><span leaf="">而 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">7.0.0-1019-nvidia</span><span leaf=""> 稳定；⭐ </span></strong><span leaf="">官方为此发 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">nvidia-spark-initcall-bl 1.0-2</span><span leaf=""> 加 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">initcall_blacklist=power_wrap_init</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★ GB10 的内核要求</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">mainline 内核缺少 GB10 的硬件使能补丁（⭐ USB/HID 起不来），⭐ </span><strong style="color:#27272A;"><span leaf="">需 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">pci=pcie_bus_safe initcall_blacklist=tegra234_cbb_init</span><span leaf=""> 等启动参数，⭐ </span></strong><span leaf="">且需 NVIDIA 的 Ubuntu 内核分支</span><strong style="color:#27272A;"><span leaf="">（Gentoo wiki / RageLtd / nixos-dgx-spark 社区包）</span></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">★ 价格参考</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">MSI Prestige N16 Flip AI+：⭐ </span><strong style="color:#27272A;"><span leaf="">美国 32GB 起 </span></strong><span leaf="">$3,299</span><strong style="color:#27272A;"><span leaf="">，⭐ </span></strong><span leaf="">64GB 版 $5,099–6,331（欧/新币），⭐ </span><strong style="color:#27272A;"><span leaf="">128GB+2TB 版 </span></strong><span leaf="">$6,899–11,999</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">★★★ 核心判断</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐⭐ </span></strong><span leaf="">「驱动认不出这块卡」与「GPU 跑不到满频」是两个独立问题，⭐ </span><strong style="color:#27272A;"><span leaf="">而后者只是前者的下游症状之一</span></strong><span leaf="">；⭐ </span><strong style="color:#27272A;"><span leaf="">⭐ </span></strong><span leaf="">而「加密的功耗表 + 只有 Windows 有的密钥」⭐ </span><strong style="color:#27272A;"><span leaf="">意味着这不是「Linux 缺个功能」，⭐ </span></strong><span leaf="">而是「这块硬件目前事实上只有 Windows 一条路」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#52525B;font-weight:600;"><span leaf="">★ 与 eMudhra 同形</span></td>
+            <td style="padding:8px 12px;color:#52525B;"><strong style="color:#27272A;"><span leaf="">⭐⭐ </span></strong><span leaf="">eMudhra：⭐ </span><strong style="color:#27272A;"><span leaf="">CA 的私钥是「4」，⭐ </span></strong><span leaf="">排除掉了所有非 eMudhra 的客户端</span><strong style="color:#27272A;"><span leaf="">；⭐ </span></strong><span leaf="">RTX Spark：⭐ </span><strong style="color:#27272A;"><span leaf="">功耗表加密而密钥只在 Windows 驱动里，⭐ </span></strong><span leaf="">排除掉了所有非 Windows 的 OS</span><strong style="color:#27272A;"><span leaf=""> —— ⭐ </span></strong><span leaf="">⭐ 同样的形状：「本该最不容易出错的环节，因为流程失效而失效」</span><strong style="color:#27272A;"></strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">这个话题我一开始当成硬件八卦，跳过了。然后我读原始实测报告的时候发现，作者做了一件我很佩服的事：他不是在 Linux 上找原因，他是在 Windows 上主动制造同样的症状。我们从头看。先看那个吓人的数字。GPT-OSS-120B 在 Windows 上跑 65.4 tok/s，WSL 65.1，DGX Spark 桌面机 61，而原生 Linux 只有 13.9。慢大约五倍。更长的跑分说明了同样的事 —— 不是吞吐差一点，是时间差：Windows 八分钟跑完，GPU 稳在 2.2 GHz；Linux 跑了三十七分钟，GPU 全程停在约 790 MHz。然后第一个排除性证据来了：温度全程 40 到 47 度。所以这不是散热压不住，是主板不让它跑。而最有说服力的是那个对照实验。作者在 Windows 设备管理器里找到了一个叫 Nvidia Platform Controllers and Framework 的东西，它负责管理 CPU 和 GPU 之间的功耗预算 —— 因为笔记本不像桌面机那样给 GPU 单独供电。然后他做了一件事：在 Windows 里把这个控制器禁用掉。结果是 tok/s 从大约 83 掉到大约 31，频率从大约 2 GHz 掉到 786 MHz。786 MHz —— 正好是 Linux 那个数字。重新启用，立刻恢复。所以这一步就把内核、发行版、NVIDIA GPU 驱动这三个假设全部排除了，只剩一个。而更根本的一层是：这个固件组件拿到的功耗设置表是加密的，Windows 驱动有解密密钥，Linux 没有，而且测试中尝试的所有软件办法都失败了，包括一次直接触发 kernel panic。作者自己也说了，从 Windows 驱动里提取密钥理论可行，但那是一个脆弱的、只对一台机器有效的 hack，不具备普遍性。所以我在这里要区分两种说法。如果这是「Linux 缺个功能」，那该由 Linux 社区修。但实际是「钥匙在 Windows 驱动里」，所以该由 NVIDIA 修 ——而且不能绕。这两个说法的区别是决定性的：前者是「支持没做好」，后者是「这台硬件目前事实上只有 Windows 一条路」。然后是我自己补的一层，MindStudio 那篇没提，但我觉得更根本。NVIDIA 的开源内核驱动仓库里有一份支持设备表，我把它拉下来全文检索了。N1X 出现 0 次，GB10 出现 1 次，而那一行是 GB10 对应 PCI ID 2E12。也就是说，DGX Spark 桌面机用的 GB10 在官方 Linux 驱动的支持列表里，而笔记本上的 N1X，PCI ID 是 10de:2e03，不在。所以两个问题要分开看：问题 A 是「驱动认不出这块卡」，而社区其实已经在解决了 ——实测报告最终用的 Omarchy，内核里已经打包了 NVIDIA 的开源驱动。问题 B 是「即使认出了卡，功耗管理仍然被 NPCF 主导，而钥匙在 Windows」。B 的修复，恰好等于把这台笔记本变成便携版 DGX Spark。我还挖到了 ACPI 层的具体机制。有个叫 legion-wmi 的社区项目，它做的事情就是「在 Linux 上用 ACPI 调用去设置笔记本性能模式」，而它逆向出来的正是 NVIDIA 的同一套机制：通过 Notify(NPCF, 0xC0) 触发，对应 ACPI 表 SSDT16 里定义的 _SB_.NPCF.NPCF 方法，背后是设备 NVDA0820，Windows 上由 nvpcf.sys 处理，而 Nvidia 的驱动在 Linux 上根本不认 NPCF，或者支持很有限。请注意这个项目的名字有多讽刺：它叫 legion-wmi，目标是模拟联想的 Windows 工具，而它逆向出来的正是 NVIDIA 的机制。这说明「在 Linux 上直接调 ACPI 改 GPU 功耗」这条路社区早走通过一次，而 MindStudio 报告里那句「attempt that triggered a kernel panic」正好对上。还有两个次级障碍我觉得也得说，因为它们比功耗问题更容易被忽略。第一个是内存。固件默认把 96GB 统一内存留给 GPU，而只有 Windows 暴露设置可改。装好 Omarchy 之后 Linux 只能看到 128GB 里的 28GB。解法是：先回 Windows 把 GPU 预留降到 4GB，然后启动 Linux 才能看到 120GB。请注意这个因果顺序 —— 这一步必须在 Windows 里做，Linux 侧完全无法自我修复。也就是说双系统用户第一次启动 Linux 之前，得先回 Windows 改一个设置。而且它的性质比功耗问题更麻烦：功耗降五倍你可以测量出来，而「看不见四分之三的内存」你不专门去查就发现不了。第二个是笔记本专属硬件支持不在 vanilla 内核里：Debian 的安装器连不上 Wi-Fi，要用 USB 网卡；键盘、触摸板、GPU 全都不认。最后靠换回 Omarchy 解决。而这引出一个我必须点明的问题：「Omarchy 能跑」和「Linux 能跑」是两回事。因为 Omarchy 的内核不是 vanilla 内核，它是预置了 NVIDIA 开源驱动的定制内核 —— 也就是把问题 A 提前解决了的那个发行版。所以 MindStudio 报告的成功路径完整读下来是：用一个已经把 NVIDIA 支持打包好的社区发行版，加一个必须回 Windows 才能做完的内存设置，加一块官方驱动目前不认的卡，加一个只能靠 WSL 绕开的功耗问题。这不是「Linux 支持了 RTX Spark」，这是「Omarchy 支持了 RTX Spark」。两者之间的差距，就是报告里说 WSL 是 practical middle ground 的真正含义。那 WSL 为什么能满频？因为它跑在 Windows 驱动栈之上。换句话说，WSL 绕过问题 B 的方式是「根本不用 Linux 的功耗管理路径」，而它同时保留了「你在跑 Linux 用户态」这件事 ——vLLM、SGLang 这些 Linux-first 的 AI 工具照常可用。而且它的性能不是接近，是几乎相同：65.1 对 65.4。在这个场景下 WSL 不是妥协，是真正的最优解。最后再说那个最反直觉的现象：插电反而更慢。电池供电时 GPU 是跑在低功耗档位的，这符合预期，而插电之后系统本该放开限制，但因为读不到那张加密的功耗表，它反而掉到了比电池模式还低的频率。也就是说在 Linux 下，「插电」这个动作本身变成了性能杀手。这在笔记本上是很反直觉的：你以为插电是给性能用的。最后我把这几天的几篇放在一起看。eMudhra 那篇，CA 的私钥是数字 4，排除掉了所有非 eMudhra 的客户端。RTX Spark 这篇，功耗表加密而钥匙只在 Windows 驱动里，排除掉了所有非 Windows 的 OS。同一个形状。在「一部分人能用、一部分人不能用」的硬件与平台上，那些「只有一边有」的东西 —— 一个密钥、一张表、一个驱动模块 ——就会变成事实上的排他机制。而这类排他机制最危险的地方在于：它们不违反任何规则，没有人做错什么，而且对使用者完全不可见。你只会看到「Linux 上慢五倍」，而不会看到「因为一块加密的表和一把只存在于 Windows 的密钥」。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· RTX 5090 涨价与内存短缺</span><br>
+        <span leaf="">· PHP2Shell：40 年技术债要还了</span><br>
+        <span leaf="">· 选择无聊的技术：创新代币与全局优化</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
