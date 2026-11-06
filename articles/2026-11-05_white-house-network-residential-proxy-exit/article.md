@@ -7,7 +7,7 @@ author: FreeLAMP.com
 original_source: "一手核对：Layer3 Intel《Residential Proxies Detected on White House Network》（2026-11-04）与 Residential Proxy Observatory / AS2650 上下文页、ARIN RDAP（autnum/AS2650 与 ip/165.119.253.253、ip/204.68.207.1 的注册记录）、RuntimeWire 独家专访（Layer3 创始人 Sergiy Usatyuk，2026-11-04/05）、Synthient《A Broken System Fueling Botnets》（Kimwolf 报告）"
 original_date: 2026-11-04
 original_url: "https://layer3intel.com/blog/residential-proxies-white-house-network"
-description: "本文解读 Layer3 Intel 于 2026 年 11 月 4 日发布的《Residential Proxies Detected on White House Network》，并补上公告本身没说的两件关键事。事实层：2026-10-05 至 11-03 期间，Layer3 的住宅代理枚举管道有 236 次从白宫网络出口，来自 6 个地址、30 天中的 26 天，且有 28 家不同的住宅代理服务能从中转出。我用 ARIN RDAP 独立核对了归属：AS2650（EOP-ASN）注册实体为 Executive Office Of The President，其下的 165.119.0.0/16（EOP-B）与 204.68.207.0/24（EOP-C）均为 DIRECT ALLOCATION，而非运营商转售，五个前缀全部可核实。而官方 IP Intel 页面自己写着「None of it is anonymizer space」——即这些前缀本身不是代理出口段，它们只是「代理流量从这里出去」的那个网络的地址段。这是整件事里最容易被误读、也最需要说清的一层。而第二件更关键：RuntimeWire 的独家专访披露，Layer3 创始人 Sergiy Usatyuk 明确表示公司不会公开那 6 个具体地址、也没有就此通知任何人。而 Layer3 自己的措辞极其克制：「Our data shows the exits, not the device or the person behind them.」本文逐层拆解了这个案子的证据边界：哪些是已确证的（出口、地址、网络归属、时间分布）、哪些是推断的（「有人晚上常驻 + 设备装了代理 SDK」）、哪些完全没有证据（设备被入侵 vs 用户主动安装、攻击者是否进入内网、归因到具体人）。并给出调查者真正需要的日志清单。"
+description: "本文解读 Layer3 Intel 于 2026 年 11 月 4 日发布的《Residential Proxies Detected on White House Network》，并补上公告本身没说的两件关键事。事实层：2026-10-05 至 11-03 期间，Layer3 的住宅代理枚举管道有 236 次从白宫网络出口，来自 6 个地址、30 天中的 26 天，且有 28 家不同的住宅代理服务能从中转出。我用 ARIN RDAP 独立核对了归属：AS2650（EOP-ASN）注册实体为 Executive Office Of The President，其下的 165.119.0.0/16（EOP-B）与 204.68.207.0/24（EOP-C）均为 DIRECT ALLOCATION，而非运营商转售，五个前缀全部可核实。而官方 IP Intel 页面自己写着一句「这些地址一个都不是匿名化空间」——即这些前缀本身不是代理出口段，它们只是「代理流量从这里出去」的那个网络的地址段。这是整件事里最容易被误读、也最需要说清的一层。而第二件更关键：RuntimeWire 的独家专访披露，Layer3 创始人 Sergiy Usatyuk 明确表示公司不会公开那 6 个具体地址、也没有就此通知任何人。而 Layer3 自己的措辞极其克制：他们的数据只显示出口，不显示出口背后的设备与人。本文逐层拆解了这个案子的证据边界：哪些是已确证的（出口、地址、网络归属、时间分布）、哪些是推断的（「有人晚上常驻 + 设备装了代理 SDK」）、哪些完全没有证据（设备被入侵 vs 用户主动安装、攻击者是否进入内网、归因到具体人）。并给出调查者真正需要的日志清单。"
 published: true
 ---
 
@@ -32,13 +32,7 @@ published: true
 
 ### 观测数据
 
-Layer3 官方博客的原文数据：
-
-> "Our residential proxy enumeration pipeline exited through the White House network **236 separate times**."
-> "Those exits came from **6 addresses**, on **26 of the 30 days**."
-> "**28 separate residential proxy services** were able to exit through this network."
->
-> 时间窗口：2026-10-05 至 2026-11-03
+Layer3 官方博客给出的观测数据：2026-10-05 至 2026-11-03 这 30 天里，它的住宅代理枚举管道有 **236 次**从白宫网络出口；出口涉及 **6 个地址**，30 天中有 **26 天**出现；而**有 28 家互不相干的住宅代理服务**都能从这个网络取到出口。
 
 我要强调「28 家」这个数字的含义。
 
@@ -83,19 +77,13 @@ name: APNIC-LABS | type: ASSIGNED PORTABLE | handle: 1.1.1.0 - 1.1.1.255
 
 ### Layer3 自己写的那句话，是整件事最容易被误读的地方
 
-官方博客里有一句很短的话，但它其实给出了最重要的限定：
+官方博客里有一段很短的自我说明，它给出了最重要的限定：这是完全公开的访问——任何人注册一家公开的住宅代理服务、付几美元、发送请求就能得到同样的出口；Layer3 并没有专门针对这个网络，也没有试图让它的探测流量从这里出去，只是请求全球轮换出口时**碰巧**命中。
 
-> "**This is public access. Anybody can obtain it by signing up to a public residential proxy service, paying a few dollars and sending requests through it. We did not selectively target this network or try to make our probes exit from it. We caught this by chance, simply by requesting global rotating access through these services.**"
-
-而更关键的一句，藏在他们自己的 IP Intel 上下文页上：
+而更关键的一句，藏在他们自己的 IP Intel 上下文页上——这段英文是全文我唯一想原样保留的，因为它就是最容易读反的那句话：
 
 > "AS2650 — Executive Office Of The President — Announces **65,792** addresses in 5 prefixes. **None of it is anonymizer space.**"
->
-> "Residential-proxy exposure: **Providers — 28 — selling exits here**"
 
-请注意最后那句：「None of it is anonymizer space」。
-
-这句话的意思是：AS2650 的这 65,792 个地址本身，不是「代理出口段」（也就是说，不是那种专门被租来当代理出口的 IP 池）。
+它的意思是：AS2650 的这 65,792 个地址本身，不是「代理出口段」（也就是说，不是那种专门被租来当代理出口的 IP 池）。
 
 而它是「代理流量的出口恰好从这里出去」的那个网络。
 
@@ -105,9 +93,9 @@ name: APNIC-LABS | type: ASSIGNED PORTABLE | handle: 1.1.1.0 - 1.1.1.255
 
 ## 三、第 2 层：时间分布——是最好的线索，也是最弱的证据
 
-官方博客说：
+官方博客对时间分布的描述是：大部分活动发生在美东时间的傍晚，约一半落在 17:00 到午夜之间，清晨几乎没有。他们据此认为，这更像是一个人而非公共访客 Wi-Fi——某个经常深夜在白宫网络上、且设备上带有代理 SDK 的人。
 
-> "Most of the activity happens in the evening, Eastern time: **about half of it falls between 5 p.m. and midnight, and almost none happens in the early morning.** That pattern **suggests** a person rather than a public guest Wi-Fi network: **someone regularly on the White House network late into the evening, whose device is infected with a proxy SDK.**"
+注意最后那句用的是「suggests」而非「证明」。
 
 而这里我必须做一件 Layer3 自己在博客里没做的事——给这个推断称重。
 
@@ -141,7 +129,7 @@ Layer3 说它是「请求全球轮换出口」时被撞见的。这意味着「�
 
 ### 4.1 「设备被入侵」
 
-Layer3 的报告里**没有**说设备是被入侵的。他们说的是「residential proxy exit activity」。
+Layer3 的报告里**没有**说设备是被入侵的。他们用的说法是「住宅代理出口活动」——描述的是现象，不是入侵。
 
 住宅代理软件进入设备的路径至少有三条：
 

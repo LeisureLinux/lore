@@ -323,6 +323,64 @@ RE_HR = re.compile(r"^-{3,}\s*$")
 # 独立成行的图片：![alt](url)
 RE_IMAGE_LINE = re.compile(r"^!\[(.*?)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)$")
 
+# ---- 英文原文引用上限（最多 1 处）------------------------------------------
+# 读者读的是中文解读，连续引用多段英文原文会让人读不动。
+# 判定单位：一个引用块算 1 处，行内「」引号算 1 处。
+# 连续 3 个以上英文单词才算「英文原文」；专有名词（OpenSSH、AS2650）不算。
+EN_RUN = re.compile(r"\b(?:[A-Za-z][A-Za-z'\-]*[ \t]+){2,}[A-Za-z][A-Za-z'\-]*\b")
+EN_QUOTE_LIMIT = 1
+
+
+def _strip_non_prose(t):
+    """去掉书名号、URL、Markdown 标记，避免它们被误判成英文原文引用。"""
+    t = re.sub(r"《[^》]*》", "", t)
+    t = re.sub(r"<https?://[^>]*>", "", t)
+    t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    t = re.sub(r"\*\*|__|`", "", t)
+    return t
+
+
+def count_en_quotes(md):
+    """统计正文里的英文原文引用处数，返回 (总数, 明细列表)。
+
+    明细元素：``(行号, 类型, 文本片段)``，行号相对传入的 md 正文（1-based）。
+    """
+    hits = []
+    lines = md.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith(">"):
+            q = []
+            start = i
+            while i < len(lines) and lines[i].startswith(">"):
+                q.append(re.sub(r"^>\s?", "", lines[i]).rstrip())
+                i += 1
+            txt = _strip_non_prose("\n".join(q))
+            if EN_RUN.search(txt):
+                frag = re.sub(r"\s+", " ", txt).strip()[:70]
+                hits.append((start + 1, "引用块", frag))
+            continue
+        # 行内「…」或 “…” 里的英文
+        for m in re.finditer(r"「([^」]{4,})」|“([^”]{4,})”", line):
+            txt = _strip_non_prose(m.group(1) or m.group(2) or "")
+            if EN_RUN.search(txt):
+                hits.append((i + 1, "行内引用", re.sub(r"\s+", " ", txt).strip()[:70]))
+        i += 1
+    return len(hits), hits
+
+
+def check_en_quote_limit(md, limit=EN_QUOTE_LIMIT):
+    """超过英文引用上限就抛错，带上行号与片段，避免带着超限稿子去发布。"""
+    n, hits = count_en_quotes(md)
+    if n <= limit:
+        return n, hits
+    detail = "；".join(f"第 {ln} 行({kind})「{frag}」" for ln, kind, frag in hits)
+    raise ValueError(
+        f"英文原文引用 {n} 处，超过上限 {limit} 处。"
+        f"读者读的是中文解读，请改写为中文转述，只保留最关键的一处原文引用。\n"
+        f"  命中：{detail}")
+
 
 def parse_markdown(md):
     """把 Markdown 解析成 block 列表。
@@ -512,6 +570,9 @@ def build_spec(md, quote, quote_by, facts, related, closer,
     """从 Markdown 组装出 ``_gzh_graphite.build()`` 需要的 cfg。"""
     fm, body = split_front_matter(md)
     meta = read_meta(fm)
+
+    # 英文原文引用上限：读者读的是中文解读，只允许保留 1 处英文原文。
+    n_en, en_hits = check_en_quote_limit(body)
 
     # 按 "## " 切分成章节
     parts = re.split(r"^## ", body, flags=re.M)
