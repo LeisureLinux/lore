@@ -210,19 +210,27 @@ def starts_with_product(title):
 
 
 def product_at_end(title):
-    """检测「产品名被放在标题末尾」——即冒号/破折号后的最后一段是产品名。
+    """检测「产品名被放在标题末尾」。
 
-    用于提醒（WARNING），因为有不少好标题是「钩子：产品名」型。
+    判定：标题的**最后一段**（冒号/破折号之后）是否**基本就是**一个产品名。
+    若末段还带着谓语（「OpenAI 把漏洞研究做成…」），则产品名在中间，不算末尾。
     """
     t = _norm(title)
-    parts = re.split(r"[：:]|——|—", t)
-    if len(parts) < 2:
-        return ""
-    tail = parts[-1].strip().lower()
+    low = t.lower().rstrip("。．.！!？?，,、 ")
+    tail = re.split(r"[：:]|——|—", t)[-1].strip()
+    tail_low = tail.lower()
     for k in CORE:
         kl = k.lower()
-        if tail.startswith(kl) or (kl in tail and len(tail) <= len(kl) + 14):
+        # 整个标题以该产品名结尾
+        if low.endswith(kl):
             return k
+        # 末段几乎就是一个产品名（允许版本号/编号等尾巴，不允许带谓语）
+        if tail_low.startswith(kl):
+            rest = tail_low[len(kl):].strip()
+            # rest 只能是版本号 / 编号 / 修饰性字符（不能有谓语或实词）
+            if len(rest) <= 16 and not re.search(r"[\u4e00-\u9fff]", rest) \
+                    and not re.search(r"\b(is|are|was|were|has|have|and|or|the)\b", rest):
+                return k
     return ""
 
 
