@@ -92,6 +92,8 @@ CORE = {
     "ollama", "vllm", "llama.cpp", "langchain", "litellm", "mcp",
     # ---- 从本仓库历史文章标题反查补充（2026-11-06）----
     "google", "chrome", "firefox", "windows", "bsd", "unix", "gnu",
+    "bytedance", "bytespider", "tiktok", "doubao", "volcano engine",
+    "cloudflare", "spider", "crawler", "metasploit", "burp", "zap", "w3af",
     "pwnescape", "omarchy", "loongleak", "reactos", "samba", "budgie",
     "netscaler", "noctalia", "esp32", "plex", "tp-link", "vite+",
     "zram", "gartner", "libreoffice", "ext4", "icann", "snapdragon",
