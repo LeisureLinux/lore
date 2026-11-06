@@ -152,7 +152,7 @@ def _table_block(rows):
 
     ths = "".join(
         f'          <th style="background:#27272A;color:#fff;font-weight:700;'
-        f'padding:8px 12px;text-align:left;">{G.leaf(G.esc(c))}</th>\n'
+        f'padding:8px 12px;text-align:left;">{G.render_inline(c)}</th>\n'
         for c in (hdr + [""] * (ncols - len(hdr)))
     )
     trs = []
