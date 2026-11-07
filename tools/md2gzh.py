@@ -329,6 +329,8 @@ RE_IMAGE_LINE = re.compile(r"^!\[(.*?)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)$")
 # 连续 3 个以上英文单词才算「英文原文」；专有名词（OpenSSH、AS2650）不算。
 EN_RUN = re.compile(r"\b(?:[A-Za-z][A-Za-z'\-]*[ \t]+){2,}[A-Za-z][A-Za-z'\-]*\b")
 EN_QUOTE_LIMIT = 1
+# 围栏代码块起止行（``` 或 ~~~）
+RE_CODE_FENCE = re.compile(r"^\s*(```|~~~)")
 
 
 def _strip_non_prose(t):
@@ -344,12 +346,22 @@ def count_en_quotes(md):
     """统计正文里的英文原文引用处数，返回 (总数, 明细列表)。
 
     明细元素：``(行号, 类型, 文本片段)``，行号相对传入的 md 正文（1-based）。
+    **代码块内的内容不计入** —— 代码、命令、标识符里的英文是正常的。
     """
     hits = []
     lines = md.split("\n")
     i = 0
+    in_code = False
     while i < len(lines):
         line = lines[i]
+        # 围栏代码块（``` / ~~~）内的内容不参与统计
+        if RE_CODE_FENCE.match(line):
+            in_code = not in_code
+            i += 1
+            continue
+        if in_code:
+            i += 1
+            continue
         if line.startswith(">"):
             q = []
             start = i

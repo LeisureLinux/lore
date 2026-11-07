@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥 — FreeLAMP.com</title>
+  <meta name="description" content="本文解读 Barracuda Email Security Gateway 的预认证 root 链式利用，以及 watchTowr Labs 对其补丁的逐行分析。这条链由两个漏洞构成，而每个漏洞单独看都不致命，串起来才是 root —— 这正是它值得单独写的原因。第一个 CVE-2026-116606（授权绕过，CVS">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-07">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-07_barracuda-esg-preauth-root-chain/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥">
+  <meta property="og:description" content="本文解读 Barracuda Email Security Gateway 的预认证 root 链式利用，以及 watchTowr Labs 对其补丁的逐行分析。这条链由两个漏洞构成，而每个漏洞单独看都不致命，串起来才是 root —— 这正是它值得单独写的原因。第一个 CVE-2026-116606（授权绕过，CVS">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-07_barracuda-esg-preauth-root-chain/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-07">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥">
+  <meta name="twitter:description" content="本文解读 Barracuda Email Security Gateway 的预认证 root 链式利用，以及 watchTowr Labs 对其补丁的逐行分析。这条链由两个漏洞构成，而每个漏洞单独看都不致命，串起来才是 root —— 这正是它值得单独写的原因。第一个 CVE-2026-116606（授权绕过，CVS">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥",
+  "description": "原文：watchTowr Labs 的分析文章（2026-11-05，作者 Sina Kheirkhah）  报道链接：<https://thehackernews.com/2026/11/experts-demonstrate-barracuda-email.html  本文依据原分析者的补丁 diff 逐行分析、Barracuda 官方安全公告、多家安全媒体的报道，以及本文对照厂商公告核对的受",
+  "datePublished": "2026-11-07",
+  "dateModified": "2026-11-07",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-07_barracuda-esg-preauth-root-chain/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥",
+        "item": "https://freelamp.com/articles/2026-11-07_barracuda-esg-preauth-root-chain/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-07">2026-11-07</div>
+        <h1 class="post-title" itemprop="headline">Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>原文：watchTowr Labs 的分析文章（2026-11-05，作者 Sina Kheirkhah）<br>
+报道链接：<a href="https://thehackernews.com/2026/11/experts-demonstrate-barracuda-email.html" target="_blank" rel="noopener noreferrer">https://thehackernews.com/2026/11/experts-demonstrate-barracuda-email.html</a><br>
+<br>
+本文依据原分析者的补丁 diff 逐行分析、Barracuda 官方安全公告、多家安全媒体的报道，以及本文对照厂商公告核对的受影响产品范围。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一、这条链为什么值得单独写</h2>
+<p>两个漏洞，单独看都不致命：</p>
+<table><thead><tr><th>CVE</th><th>类型</th><th>CVSS</th><th>单独看能干什么</th></tr></thead><tbody><tr><td>CVE-2026-116606</td><td>预认证授权绕过</td><td>9.3 Critical</td><td>拿到一个<strong>低权限角色</strong>的会话</td></tr><tr><td>CVE-2026-111560</td><td>OS 命令注入</td><td>8.6 High</td><td>以 root 执行命令，<strong>但需要管理员权限</strong></td></tr></tbody></table>
+<p><strong>第一个给你一个没登录的会话，第二个需要管理员权限。</strong> 单看都是「还好」，串起来就是「不用登录直接拿 root」。</p>
+<p>而这两个漏洞的设计意图，也正好说明它们为什么能串起来：<strong>第一个的产物（一个低权限会话）正好是第二个的前置条件</strong>，而第二个的注入点（备份恢复里的时区值）又恰好能被第一个的会话触达。</p>
+<p>设备本身的角色让这条链格外值钱。Barracuda ESG 是挡在组织邮件前面的那个设备 —— 它决定哪些邮件是垃圾邮件、哪些带恶意软件、哪些放行。watchTowr 的描述很到位：<strong>「又一个住在边界上、检查一切、以精确且仅必需的权限运行来拦截一封骂你博客的邮件的设备。」</strong></p>
+<p>而且这台设备<strong>已经因为 CVE-2023-2868 被 UNC4841 当作零日利用过</strong>，那次的结果是<strong>物理更换硬件</strong>。</p>
+<h2>二、第一个漏洞：一次被拒绝的改密，没有真正中止请求</h2>
+<h3>修复前的那段代码</h3>
+<p>watchTowr 在补丁 diff 里翻出了 <code>Index.pm</code> 的完整函数。核心是这段（原始行号 383–407）：</p>
+<pre><code class="perl">if (defined($params-&gt;{new_password}) &amp;&amp; defined($params-&gt;{retype_password}) &amp;&amp; ! (-e "/tmp/bypass_password")) {
+    my $password_change_status = 0;
+    my $message = "";
+    ($password_change_status, $message, $user) = Login::change_admin_password($params);
+    if ($password_change_status == 1 &amp;&amp; $user) {
+        ...
+        return bailout();
+    }
+    else {
+        if ($password_change_status == $Login::status_codes{ERROR_PASSWD_CHANGE}-&gt;{val}) {
+            $params-&gt;{json_authenticate} = {
+                success =&gt; 'true',
+                message =&gt; ...,
+                status =&gt; ...,
+            };
+            $self-&gt;audit("failed_password_change", $params-&gt;{user});
+            return $userrole;          # ← 问题在这里
+        }</code></pre>
+<p><strong>关键在于两条路径的返回值不同：</strong></p>
+<ul><li>改密<strong>成功</strong> → <code>return bailout();</code> —— 而 <code>bailout()</code> 是「我们结束了，到此为止」的信号；</li><li>改密<strong>失败</strong> → <code>return $userrole;</code> —— 返回的是<strong>当前会话的角色对象</strong>。</li></ul>
+<p>那 <code>$userrole</code> 是什么？watchTowr 的解释是：「只是」当前会话的角色对象，<strong>对于我们这个未认证的请求，那就是低权限的登录界面角色</strong>。</p>
+<h3>为什么返回 role 对象就是漏洞</h3>
+<p>因为调用链是这样的：</p>
+<pre><code class="perl">sub response {
+    ...
+    $self-&gt;_process_params($env, $params);      # ← 这里返回了 $userrole
+    $self-&gt;_update_variables($env, $params);
+    Barracuda::Hooks::run_hooks("after write config");</code></pre>
+<p><code>_process_params</code> 在第 593 行返回，<strong>把 <code>$userrole</code> 原样交回 <code>response</code></strong> —— 而这个 return <strong>没有带任何错误指示</strong>，于是函数照常继续往下走。</p>
+<p><strong>用 watchTowr 自己的话说</strong>：修前的代码虽然返回了一段 verbose 的 JSON 声明「改密失败」，<strong>但它并没有真正停止执行</strong>。</p>
+<h3>厂商自己写下的注释</h3>
+<p>Barracuda 在补丁里留了一行提示，我觉得这句注释比任何解读都清楚：</p>
+<pre><code>+    # Send the error and stop here. Returning a userrole
++    # would let response() run module handlers.</code></pre>
+<p>（<strong>把错误发出去并在这里停下。返回一个 userrole 会让 <code>response()</code> 继续执行 module handlers。</strong>）</p>
+<p>修复方式就是把它改成一个真正会中止的调用：</p>
+<pre><code class="diff">-            return $userrole;
++            return $self-&gt;_bailout_with_json_login_response(
++                $env, $params, {
++                success =&gt; 'true',
++                message =&gt; ...,
++                status =&gt; ...,
++            });</code></pre>
+<h3>触发方式</h3>
+<p>向 <code>/cgi-mod/index.cgi</code> 发一个 POST，带上 <code>new_password</code> 和 <code>retype_password</code> 两个参数：</p>
+<pre><code>POST /cgi-mod/index.cgi HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+user=admin&amp;new_password=one&amp;retype_password=two</code></pre>
+<p>设备返回 HTTP 200，JSON 体声明改密失败：</p>
+<pre><code class="json">{"message":"Error: Password Change: ","no_ajax_redirect":"true",
+ "redirect":"/cgi-mod/password_change.cgi?auth_type=Local&amp;locale=en_US&amp;user=admin&amp;error=...",
+ "success":"true"}</code></pre>
+<p><strong>注意 <code>success: "true"</code></strong> —— 这是「改密流程成功走完了」的意思，不是「你登录成功了」。</p>
+<p><strong>而这才是关键所在</strong>：watchTowr 那段带黑色幽默的追问值得原样记住 ——</p>
+<blockquote>「但等等，」你会说，「一个被拒绝的认证操作 surely 会阻止后续任何特权操作发生？登录界面角色有什么用？」</blockquote>
+<p><strong>答案是：它的用处在于给第二个漏洞开门。</strong> 因为认证绕过本身拿不到什么权限，但<strong>它拿到的是一个「已认证但权限很低」的会话</strong> —— 而这个会话足以触达备份恢复接口。</p>
+<h2>三、第二个漏洞：看起来有单引号包裹，其实没有安全边界</h2>
+<h3>那个 sink</h3>
+<p>修复前的 <code>Backup2.pm</code> 里有一段：</p>
+<pre><code class="perl">if( -f "/home/product/code/config/tz" ) {
+    my $system_timezone = Barracuda::Config::get('system_timezone');
+    `sed -i 's=.*=$system_timezone#' /home/product/code/config/tz`;
+}</code></pre>
+<p><strong>这是 Perl 的反引号（backtick），也就是命令替换。</strong> watchTowr 指出关键：</p>
+<blockquote>The single quotes around the value look protective, but they are only characters in the generated command, not a Perl safety boundary.</blockquote>
+<p>（<strong>值外面的单引号看起来像是防护，但它们只是生成命令里的字符，不是 Perl 侧的安全边界。</strong> 这一句是全文我唯一想原样保留的英文 —— 它点出了整个漏洞最反直觉的那一层。）</p>
+<p>一个形如下面的值就能改写 shell 语法：</p>
+<pre><code>Region#';&lt;attacker-command&gt;;#</code></pre>
+<p><strong>第一个单引号闭合了原本的 <code>sed</code> 表达式，分号开启一条新命令，<code>#</code> 把剩下的都注释掉。</strong></p>
+<h3>修复后的做法</h3>
+<p>厂商的修复有两个动作，第二个更根本：</p>
+<pre><code class="diff">-    `sed -i 's=.*=$system_timezone#' /home/product/code/config/tz`;
++    if ($system_timezone &amp;&amp; -f "/usr/share/zoneinfo/$system_timezone") {
++        open my $in, '&lt;', '/home/product/code/config/tz' or die $!;
++        my @lines = &lt;$in&gt;;
++        close $in;
++        open my $out, '&gt;', '/home/product/code/config/tz' or die $!;
++        for my $line (@lines) {
++            $line =~ s/^TZ=.*/TZ=$system_timezone/ if $line =~ /^TZ=/;
++            print $out $line;
++        }
++        close $out;
++    } else {
++        warn "Skipping tz restore: invalid system_timezone='$system_timezone'\n";
++    }</code></pre>
+<ol><li><strong>把时区值当作不可信输入</strong> —— 要求它先解析成 <code>/usr/share/zoneinfo/</code> 下的一个真实文件；</li><li><strong>把命令执行换成纯 Perl 的读—改—写</strong> —— 根本不进 shell 了。</li></ol>
+<p><code>fix_tz.pl</code> 里是同一个故事，加了一道存在性检查：</p>
+<pre><code class="diff">+if (! -f "/usr/share/zoneinfo/$system_timezone") {
++    warn "Invalid timezone: $system_timezone\n";
++    exit 1;
++}</code></pre>
+<p><strong>这才是正确的修法</strong> —— 不是在拼接时做转义，而是<strong>根本不把不可信数据交给 shell</strong>。</p>
+<h3>为什么这条 sink 是 root</h3>
+<p>有两个 sink：<code>Backup2::finalize_restore</code> 写产品时区文件，<code>fix_tz.pl</code> 写操作系统时钟文件。而调用方是这样的：</p>
+<pre><code class="perl">if( -f "/home/product/code/firmware/current/bin/fix_tz.pl" ) {
+    system('/usr/bin/sudo',
+           '/home/product/code/firmware/current/bin/fix_tz.pl');
+}</code></pre>
+<p><strong>它用 <code>sudo</code> 执行。</strong> 所以：</p>
+<p><strong>这不是什么普通的 OS 命令注入，而是一条以 root 执行的。</strong></p>
+<h2>四、两个漏洞之间的桥：备份恢复</h2>
+<p>第二个漏洞的注入点是时区值，而时区值能被攻击者控制 —— 靠的是备份恢复。</p>
+<p>备份文件是个 tar 包，里面有一个 <code>backup.xml</code> 列出各个组件。watchTowr 构造的示例：</p>
+<pre><code class="xml">&lt;backup&gt;
+  &lt;component name="Spam_Config"&gt;
+    &lt;file id="mysql" checksum="[generated integrity value]" path="mysql-poc.gz" /&gt;
+  &lt;/component&gt;
+  &lt;info filename="poc.bak" firmware_version="9.4.0.020"
+        model="V300" platform="5" product="emailswitch" type="manual_backup"&gt;
+    ...
+  &lt;/info&gt;
+&lt;/backup&gt;</code></pre>
+<p><strong>注意 <code>Spam_Config</code> 这个名字</strong> —— 它正是第一个漏洞的补丁注释里提到的那个组件。</p>
+<p>恢复 <code>Spam_Config</code> 时，设备会加载一个 MySQL dump 并把里面的数据恢复到本地数据库。而<strong>其中一行就是 <code>system_timezone</code></strong>。</p>
+<p>于是链路合上了：</p>
+<ol><li><strong>第一个漏洞</strong> → 拿到低权限会话，能触达备份上传/恢复接口（<code>bayesian_upload.pm</code> 里的上传处理器）；</li><li><strong>上传一个伪造的备份</strong>，其中 <code>Spam_Config</code> 的 MySQL dump 里 <code>system_timezone</code> 的值被改成带 shell 注入的值；</li><li><strong>恢复流程</strong>把那个值写进配置；</li><li><strong><code>finalize_restore</code></strong> 读到这个值，交给 <code>sed</code> 反引号；</li><li><strong>以 root 执行</strong>。</li></ol>
+<h2>五、最值得记的一处：那个「有校验和」的防护在设计上是失效的</h2>
+<p>备份里的每个文件都有一个 <code>checksum</code> 字段，恢复函数会<strong> diligently 校验它</strong> —— 读文件字节、算自己的校验和、对不上就拒绝整个备份。</p>
+<p>watchTowr 的第一反应是：「所以往这些字段里随便敲数字是没用的。」</p>
+<p><strong>但他们接着发现：</strong></p>
+<pre><code>CHECKSUM_SECRET = b"Barracuda Networks is your new best friend"</code></pre>
+<p>而校验和算法就是：</p>
+<pre><code>md5(文件字节 + CHECKSUM_SECRET + b".")</code></pre>
+<p><strong>那个密钥是硬编码在代码里的常量。</strong> 所以「有校验和」这个防护，在设计层面就等于没有 —— 任何人都能自己算出合法校验和。</p>
+<p>watchTowr 博客的标题也在这里变成了双关：<strong>「Barracuda 网络是你最好的朋友」</strong> —— 因为这个密钥字符串本身，就是那句友好的话（英文原文）。</p>
+<h3>这个设计缺陷比漏洞本身更值得记</h3>
+<p>一个「有校验和」的备份机制，听起来比「没校验和」安全得多。<strong>但如果密钥是硬编码在客户端可读的代码里，那它提供的只是「防止意外损坏」的保护，不是「防止篡改」的保护。</strong></p>
+<p>这是我在整篇文章里最想留下的一条：<strong>校验和的安全性完全取决于密钥的保密性，而硬编码在二进制里的密钥不保密。</strong> 它防的是「网盘传坏了」，不是「有人改内容」。</p>
+<p>同样的道理也适用于第一个漏洞 —— 那个「pre-authentication bypass」名字听起来像是一道认证关卡被整体绕过，但实际上被绕过的只是<strong>一个分支没返回中止信号</strong>，剩下的流程还照常跑。</p>
+<h2>六、厂商公告里的三处细节，值得单独看</h2>
+<h3>① 「Authentication Required」字段在发布当天被改过</h3>
+<p>Barracuda 官方公告顶部有一行更新说明：</p>
+<p><strong>2026 年 11 月 5 日 14:30 EST 的公告更新</strong>：CVE-2026-116606 的「需要认证」字段已从「是，需要管理权限」改为「否（但需要管理界面可达）」。<strong>不需要认证就能利用这个漏洞；但利用的前提是管理界面对攻击者可达。</strong></p>
+<p>这个修订很关键，因为它把两种不同的部署姿势区分开了：</p>
+<ul><li><strong>「需要认证」</strong> 意味着只有已经持有凭据的人能利用 —— 风险是有凭据的内部人员或已泄露的凭据；</li><li><strong>「管理界面可达」</strong> 意味着<strong>任何能连到管理界面端口的人都能利用</strong> —— 不需要任何凭据。</li></ul>
+<p><strong>后者严格更危险。</strong> 所以如果你在看公告，别只看「9.3 Critical」，要看这个字段。</p>
+<h3>② 补丁文件注释里的 CVSS 是 9.8，公告里是 9.3</h3>
+<p>watchTowr 在 Patch-1 的安装器注释里看到的是：</p>
+<pre><code># Pre-authentication authorization bypass permits
+# arbitrary Spam_Config restore
+# CVSS 9.8 Critical</code></pre>
+<p>而 Barracuda 公告里 CVE-2026-116606 的评分是 <strong>9.3</strong>。watchTowr 自己的判断是：</p>
+<p><strong>我们猜 9.8 是把两个漏洞合起来算的分数（CVSS 专家会立刻认出这属于一种罪行），而不是这里发生了什么见不得人的事。</strong></p>
+<p>这个观察本身挺有意思 —— <strong>补丁文件的注释和 CVE 记录的评分不一致</strong>，说明这个 9.8 并不是走正式流程的评分。</p>
+<h3>③ 修复固件版本：公告与媒体报道有差异</h3>
+<p>这里我要说明一处<strong>核对结果</strong>，因为不同来源写的版本号不一样：</p>
+<table><thead><tr><th>来源</th><th>写的版本</th></tr></thead><tbody><tr><td>The Hacker News（11-06）</td><td>Email Security Gateway 修复于 <strong>9.4.0.030</strong> 及之后</td></tr><tr><td>watchTowr Labs（11-05）</td><td>两个漏洞均修复于 <strong>9.4.0.029</strong></td></tr><tr><td>Barracuda 官方公告</td><td>ESG 的补丁编号为 <strong>BNSF-40425（9.4.017+）</strong> 与 <strong>BNSF-40430（&lt;9.4.017）</strong></td></tr></tbody></table>
+<p><strong>我以厂商公告为准</strong>（它是第一手来源，且给出了按版本区间划分的两个补丁编号）。但如果你在媒体上看到 9.4.0.029 和 9.4.0.030 两个数字，不必怀疑自己眼花了 —— <strong>实务上建议直接对照 Barracuda 公告里那两个补丁编号（BNSF-40425 / BNSF-40430）确认</strong>，因为公告是按「9.4.017 之前/之后」划分的，比单一版本号更不容易出错。</p>
+<p>watchTowr 自己的测试环境用的版本是：<strong>有漏洞的 9.4.0.027</strong> vs <strong>不同的 9.4.0.029</strong>。</p>
+<h2>七、受影响范围：六个产品，但只有一个能被预认证打通</h2>
+<p>Barracuda 公告列出的受影响产品矩阵：</p>
+<table><thead><tr><th>产品</th><th>CVE-2026-116606（授权绕过）</th><th>CVE-2026-111560（命令注入）</th><th>补丁</th></tr></thead><tbody><tr><td><strong>Email Security Gateway (ESG)</strong></td><td><strong>是</strong></td><td><strong>是</strong></td><td>BNSF-40425（9.4.017+）、BNSF-40430（&lt;9.4.017）</td></tr><tr><td>Load Balancer ADC</td><td>否</td><td>是</td><td>BNADC-16586</td></tr><tr><td>Message Archiver (BMA)</td><td>否</td><td>是</td><td>BNMA-32468</td></tr><tr><td>WAF Control Center (WCC)</td><td>否</td><td>是</td><td>BNWF-60060</td></tr><tr><td>Web Application Firewall (WAF)</td><td>否</td><td>是</td><td>BNADC-16586</td></tr><tr><td>Web Security Gateway (WSG)</td><td>否</td><td>是</td><td>BNYF-24789</td></tr></tbody></table>
+<p><strong>注意第一列只有 ESG 是「是」。</strong> 这一点 watchTowr 特别强调过：</p>
+<p><strong>单独看的话，用很英式的说法，两个都只是「不太理想」。但串起来就更糟了。</strong></p>
+<p><strong>也就是说：那五个产品上的命令注入需要管理员账号，风险等级完全不同；只有 ESG 这一台能被「无需登录」这条链打通。</strong></p>
+<p>不过厂商公告的 Guidance 段还是给了通用建议，我一并列出：</p>
+<ol><li>给每个受影响产品打上对应补丁，或升级到公告里列出的修复固件；</li><li><strong>如果不能马上打补丁，把设备的管理界面限制到可信的内网</strong>；</li><li>如果你关掉了自动打补丁，把它打开。</li></ol>
+<p>第 2 条值得注意 —— 既然真正的门槛是「管理界面可达」，那么<strong>把管理界面收到内网，就等于把这个链的第一步堵死</strong>。这是一个不改一行代码就能拿到的缓解。</p>
+<h2>八、目前的利用状态：没有</h2>
+<p>两个漏洞目前都<strong>没有</strong>出现在 CISA 的 KEV 目录里，也<strong>没有</strong>公开报告把它们与任何攻击关联。</p>
+<p>watchTowr <strong>发布了检测工具</strong>（在他们的 GitHub 上），可以检查设备是否受影响，但<strong>没有发布利用代码</strong>。</p>
+<p>而 watchTowr 这篇博客的性质需要说清楚：他们的定位是「在野利用之前主动验证并缓解暴露面」，所以他们的研究和厂商公告是<strong>几乎同一天</strong>发布的（11-05），但<strong>厂商的补丁比 watchTowr 的分析更早</strong>（11-03 周一）。补丁先行、分析随后，这是负责任的披露顺序。</p>
+<p>不过有一个历史阴影值得提：这台 ESG <strong>在 2023 年被 UNC4841 用 CVE-2023-2868 当零日打过</strong>，那次是<strong>物理更换硬件</strong>。watchTowr 在博客里直接用了「机架服务器的物理驱魔」这个说法。</p>
+<p><strong>同一台设备、同一类攻击者、四年前后两个零日</strong> —— 这个事实本身就说明，这类边界设备的价值不只在它今天跑什么补丁，还在于<strong>它已经被盯上了</strong>。</p>
+<hr>
+<h2>Sources</h2>
+<ul><li>watchTowr Labs, <em>Barracuda Networks is your new best friend (Barracuda Email Security Gateway Pre-Auth Remote Root RCE CVE-2026-116606 / CVE-2026-111560)</em>（Sina Kheirkhah，2026-11-05）: <a href="https://labs.watchtowr.com/barracuda-networks-is-your-new-best-friend-barracuda-email-security-gateway-pre-auth-remote-root-rce-cve-2026-116606-cve-2026-111560/" target="_blank" rel="noopener noreferrer">https://labs.watchtowr.com/barracuda-networks-is-your-new-best-friend-barracuda-email-security-gateway-pre-auth-remote-root-rce-cve-2026-116606-cve-2026-111560/</a></li><li>Barracuda Networks, <em>Pre-Authentication Authorization Bypass and Command Injection Vulnerabilities in Certain Barracuda Products</em>（2026-11-05，含当日 14:30 EST 的修订说明）: <a href="https://trust.barracuda.com/security/pre-authentication-authorization-bypass-command-injection" target="_blank" rel="noopener noreferrer">https://trust.barracuda.com/security/pre-authentication-authorization-bypass-command-injection</a></li><li>The Hacker News, <em>Experts Demonstrate Barracuda Email Security Gateway Chain to Run Commands as Root Without Login</em>（2026-11-06, Swati Khandelwal）: <a href="https://thehackernews.com/2026/11/experts-demonstrate-barracuda-email.html" target="_blank" rel="noopener noreferrer">https://thehackernews.com/2026/11/experts-demonstrate-barracuda-email.html</a></li><li>SecurityWeek, <em>Barracuda ESG Authentication Bypass Flaw Opens Path to Root</em>（2026-11-04）: <a href="https://www.securityweek.com/barracuda-email-security-gateway-authentication-bypass-opens-path-to-root/" target="_blank" rel="noopener noreferrer">https://www.securityweek.com/barracuda-email-security-gateway-authentication-bypass-opens-path-to-root/</a></li><li>BleepingComputer, <em>Barracuda warns of critical flaws allowing root access to devices</em>（2026-11-03）: <a href="https://www.bleepingcomputer.com/news/security/barracuda-warns-of-critical-flaws-allowing-root-access-to-devices/" target="_blank" rel="noopener noreferrer">https://www.bleepingcomputer.com/news/security/barracuda-warns-of-critical-flaws-allowing-root-access-to-devices/</a></li><li>watchTowr Labs 检测工具（GitHub）: <a href="https://github.com/watchtowrlabs/watchTowr-vs-Barracuda-RCE-CVE-2026-116606-CVE-2026-111560" target="_blank" rel="noopener noreferrer">https://github.com/watchtowrlabs/watchTowr-vs-Barracuda-RCE-CVE-2026-116606-CVE-2026-111560</a></li></ul>
+<h3>事实边界说明</h3>
+<ul><li>两个漏洞的机理、补丁 diff、校验和算法与硬编码密钥、备份格式、复现请求结构：均引自 watchTowr Labs 原始分析。</li><li>受影响产品矩阵、补丁编号、以及「Authentication Required」字段的修订说明：引自 Barracuda 官方公告。</li><li><strong>修复固件版本号的来源差异（公告的 BNSF-40425/40430 与 watchTowr 的 9.4.0.029、THN 的 9.4.0.030）：本文以厂商公告为准，并说明了差异存在。</strong></li><li>「补丁注释里的 CVSS 9.8 与公告的 9.3 不一致」及 watchTowr 对此的猜测（可能是把两个漏洞合起来算）：引自 watchTowr 原文。</li><li>未列入 CISA KEV、无公开攻击关联、watchTowr 发布了检测工具但未发布利用代码：引自 The Hacker News 报道。</li><li>2023 年 UNC4841 用 CVE-2023-2868 攻击 ESG 并导致物理更换硬件：引自 watchTowr 引用的 Mandiant 报告。</li><li>本文只做防守方视角的分析，不包含任何用于构造利用请求的 payload 或绕过方法。</li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-07_barracuda-esg-preauth-root-chain/",
+      title: "Barracuda ESG \u9884\u8ba4\u8bc1 root \u94fe\uff1a\u4e00\u4e2a\u6539\u9519\u7684\u8fd4\u56de\u8bed\u53e5\u548c\u4e00\u4e2a\u786c\u7f16\u7801\u5bc6\u94a5"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

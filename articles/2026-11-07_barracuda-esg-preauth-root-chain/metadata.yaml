@@ -1,0 +1,10 @@
+title: "Barracuda ESG 预认证 root 链：一个改错的返回语句和一个硬编码密钥"
+date: 2026-11-07
+slug: barracuda-esg-preauth-root-chain
+category: 技术/解读
+author: FreeLAMP.com
+original_source: "一手核对：watchTowr Labs《Barracuda Networks is your new best friend》（Sina Kheirkhah，2026-11-05）的补丁 diff 逐行分析与漏洞链复现 ＋ Barracuda 官方安全公告（2026-11-05，含六个受影响产品的补丁编号与「Authentication Required」字段的修订说明）＋ The Hacker News 报道（2026-11-06，Swati Khandelwal）＋ SecurityWeek 与 BleepingComputer 的评分与细节 ＋ 本文对照厂商公告核对的受影响产品范围与修复固件版本"
+original_date: 2026-11-06
+original_url: "https://thehackernews.com/2026/11/experts-demonstrate-barracuda-email.html"
+description: "本文解读 Barracuda Email Security Gateway 的预认证 root 链式利用，以及 watchTowr Labs 对其补丁的逐行分析。这条链由两个漏洞构成，而每个漏洞单独看都不致命，串起来才是 root —— 这正是它值得单独写的原因。第一个 CVE-2026-116606（授权绕过，CVSS 9.3）：设备处理改密码请求时，如果改密失败（ERROR_PASSWD_CHANGE），修复前的代码返回的是当前会话的 role 对象而不是终止信号，于是「一个被拒绝的认证操作」并没有真正中止请求流程 —— 未认证的攻击者由此得到了一个低权限角色的会话。而设备本身把管理界面暴露在边界上、且以精确且仅必需的权限运行，login-screen 角色因此就有价值了。厂商在补丁里加的那行注释把这个 bug 说得很直白：「返回 userrole 会让 response() 继续执行 module handlers」。第二个 CVE-2026-111560（命令注入，CVSS 8.6）：备份恢复流程里有一个把时区值拼进 sed 命令的 sink，Perl 反引号会先构造字符串再交给 shell，所以看起来「有单引号包裹就安全」其实是错的 —— 单引号只是生成命令里的字符，不是 Perl 侧的安全边界。修复后厂商把时区值当作不可信输入，要求它先解析成 /usr/share/zoneinfo/ 下的真实文件，并把命令执行改写成纯 Perl 的读写。这条 sink 通过 sudo 执行 fix_tz.pl，因此最终以 root 身份运行。而两个漏洞之间的桥是备份恢复：备份里的时区值会被恢复进配置，然后被上面那个 sink 读到。最值得记的一处细节：备份文件的校验和算法是 md5(文件字节 + 硬编码密钥 + 句点)，而那个密钥就明文写在代码里 —— 所以「有校验和」这个防护在设计上是失效的。本文还记录了三个容易被忽略的现实：厂商公告里「Authentication Required」字段在发布当天被改过（从「是，需要管理权限」改成「否，但需要管理界面可达」）；补丁文件里注释的 CVSS 9.8 与厂商公告的 9.3 不一致（watchTowr 判断 9.8 大概是把两个漏洞合起来算的）；以及修复固件版本在厂商公告与媒体报道之间有 9.4.0.029 与 9.4.0.030 的差异。"
+published: true
