@@ -93,6 +93,9 @@ CORE = {
     # ---- 从本仓库历史文章标题反查补充（2026-11-06）----
     "google", "chrome", "firefox", "windows", "bsd", "unix", "gnu",
     "bytedance", "bytespider", "tiktok", "doubao", "volcano engine",
+    "control web panel", "cwp", "cwpsrv", "cwpdoor", "centos web panel",
+    "cpanel", "plesk", "webmin", "webmin", "plesk", "directadmin",
+    "barracuda", "qanxin", "xlab", "e943a", "cwpdoor",
     "cloudflare", "spider", "crawler", "metasploit", "burp", "zap", "w3af",
     "pwnescape", "omarchy", "loongleak", "reactos", "samba", "budgie",
     "netscaler", "noctalia", "esp32", "plex", "tp-link", "vite+",
