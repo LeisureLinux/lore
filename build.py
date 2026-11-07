@@ -37,8 +37,8 @@ JD_BUY_IMG = "https://freelamp.com/jd-aohan-xiaomi.jpg"
 
 # ================= 腾讯云 CPS 广告位（可选） =================
 # 在每篇文章正文第一个 </blockquote> 后插入推广横幅；TC_AD_URL 留空则全文不插入。
-TC_AD_URL = "https://curl.qcloud.com/QchufVI3"
-TC_AD_TITLE = "【腾讯云】Lighthouse助力跨境电商业务扬帆出海"
+TC_AD_URL = "https://curl.qcloud.com/mBVoAAze"
+TC_AD_TITLE = "【腾讯云国际站】热门产品特价售卖中"
 # 横幅物料：仓库根目录 tc-crossborder-1200x90.png，经 static_files 复制到 docs/
 TC_AD_IMG = "https://freelamp.com/tc-crossborder-1200x90.png"
 
