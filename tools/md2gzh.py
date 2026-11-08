@@ -175,16 +175,35 @@ def _table_block(rows):
 
 
 def _image_block(payload):
-    """图片（石墨主题「组件 14 图片容器」：极简线框，无圆角）。"""
+    """图片（石墨主题「组件 14 图片容器」：极简线框，无圆角）。
+
+    与主题库组件 14 保持一致：
+    - 图片容器：1px 细线边框 + 4px 内边距，无圆角无阴影
+    - <img> 用 <span leaf=""> 包裹（公众号粘贴后图片才不会掉样式）
+    - <img> 自适应：max-width:100%;height:auto;display:block;margin:0 auto
+    - 有说明文字（alt 非空）时，说明独立成一行居中小字
+    """
     alt, url = payload
-    return (
-        f'    <section style="margin:0 10px 24px;text-align:center;">\n'
-        f'      <img src="{G.esc(url)}" alt="{G.esc(alt)}" '
-        f'style="max-width:100%;height:auto;border:1px solid {G.LINE};" />\n'
-        f'      <p style="margin:8px 0 0;font-size:12px;color:{G.FAINT};'
-        f'text-align:center;">{G.leaf(G.esc(alt))}</p>\n'
+    t = (alt or "").strip()
+    has_cap = bool(t)
+    # 有说明时容器 margin-bottom 收到 8px，说明段负责留白
+    mb = "8px" if has_cap else "12px"
+    out = (
+        f'    <section style="border:1px solid {G.LINE};padding:4px;'
+        f'margin:0 10px {mb};">\n'
+        f'      <section style="margin:0;overflow:hidden;">\n'
+        f'        <span leaf=""><img src="{G.esc(url)}" alt="{G.esc(t)}" '
+        f'style="max-width:100%;height:auto;display:block;margin:0 auto;" /></span>\n'
+        f'      </section>\n'
         f'    </section>\n'
     )
+    if has_cap:
+        out += (
+            f'    <p style="font-size:12px;color:{G.FAINT};text-align:center;'
+            f'margin:0 10px 28px;letter-spacing:0.5px;">'
+            f'<span leaf="">— {G.esc(t)}</span></p>\n'
+        )
+    return out
 
 
 def _laoxu_note(text):

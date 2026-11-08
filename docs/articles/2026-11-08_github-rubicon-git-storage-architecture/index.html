@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub 重建 Git 存储层：一次 push 要跨过三道一致性关卡 — FreeLAMP.com</title>
+  <meta name="description" content="本文解读 GitHub 于 2026 年 11 月 5 日发布的《Inside GitHub's new Git storage architecture》。这套名为「Project Rubicon」的新架构，要解决的是一个很具体的问题：当 agent 开始并行往同一个仓库写代码，Git 原本「一次 push 一次协商">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-08">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-08_github-rubicon-git-storage-architecture/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="GitHub 重建 Git 存储层：一次 push 要跨过三道一致性关卡">
+  <meta property="og:description" content="本文解读 GitHub 于 2026 年 11 月 5 日发布的《Inside GitHub's new Git storage architecture》。这套名为「Project Rubicon」的新架构，要解决的是一个很具体的问题：当 agent 开始并行往同一个仓库写代码，Git 原本「一次 push 一次协商">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-08_github-rubicon-git-storage-architecture/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-08">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="GitHub 重建 Git 存储层：一次 push 要跨过三道一致性关卡">
+  <meta name="twitter:description" content="本文解读 GitHub 于 2026 年 11 月 5 日发布的《Inside GitHub's new Git storage architecture》。这套名为「Project Rubicon」的新架构，要解决的是一个很具体的问题：当 agent 开始并行往同一个仓库写代码，Git 原本「一次 push 一次协商">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "GitHub 重建 Git 存储层：一次 push 要跨过三道一致性关卡",
+  "description": "原文：GitHub Engineering《Inside GitHub's new Git storage architecture》（Karthik Raman & Brian Celenza，2026-11-05）  原文链接：<https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-st",
+  "datePublished": "2026-11-08",
+  "dateModified": "2026-11-08",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-08_github-rubicon-git-storage-architecture/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "GitHub 重建 Git 存储层：一次 push 要跨过三道一致性关卡",
+        "item": "https://freelamp.com/articles/2026-11-08_github-rubicon-git-storage-architecture/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-08">2026-11-08</div>
+        <h1 class="post-title" itemprop="headline">GitHub 重建 Git 存储层：一次 push 要跨过三道一致性关卡</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>原文：GitHub Engineering《Inside GitHub's new Git storage architecture》（Karthik Raman &amp; Brian Celenza，2026-11-05）<br>
+原文链接：<a href="https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-storage-architecture/" target="_blank" rel="noopener noreferrer">https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-storage-architecture/</a><br>
+<br>
+本文依据原文全文与其三张官方架构图。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一、先说清楚：它要解决的是 agent 带来的写入形态变化</h2>
+<p>GitHub 在 2026 年 11 月 5 日发布了新的 Git 存储架构，项目代号 <strong>「Rubicon」</strong> —— 名字取的是「agentic development 让行业跨过的不归点」。</p>
+<p><strong>这不是一次常规的架构优化。</strong> 原文对问题的描述很直接：</p>
+<blockquote>今天 GitHub.com 上最繁忙的仓库，<strong>每秒最多也就几十次写入</strong>，而且通常是短促的爆发。随着这些工作转向并行、全天运行的 agent，我们预计这些爆发<strong>在明年内会变成持续速率</strong>。</blockquote>
+<p>而每一次 push 都会带来更多的读：CI 要跑、部署系统要拉取新提交、其它 agent 还要 fetch 上下文 —— <strong>这个读放大效应会随写入一起增长</strong>。</p>
+<p>原文给了一个具体数字：某个仓库 2026 年 3 月到 5 月，日请求量从平均 <strong>4400 万/天</strong>涨到 <strong>1.81 亿/天</strong>，<strong>大约 4 倍</strong>。</p>
+<p><img src="assets/customer-growth.png" alt="单个仓库三个月内的请求量增长：3 月日均 4400 万，5 月日均 1.81 亿，约 4 倍" loading="lazy" decoding="async" style="max-width:100%;height:auto;border-radius:8px;margin:12px 0;"></p>
+<p><strong>而他们的目标不是「应对下一次增量」，而是「至少两个数量级」的规模。</strong></p>
+<h3>为此，架构需要满足的条件</h3>
+<p>原文列出的需求，读完之后能看出整个设计的取舍：</p>
+<table><thead><tr><th>需求</th><th>背后的原因</th></tr></thead><tbody><tr><td>接受每秒数千次写入</td><td>目标本身就是两个数量级</td></tr><tr><td>支持多个写入节点</td><td>「索引传入的 pack 和检查对象连通性是写入中最耗 CPU 的部分，而这个开销随写入大小增长，<strong>单节点很快会变成算力瓶颈</strong>」</td></tr><tr><td>最小化提交延迟</td><td>「<strong>agent 在每次 push 后都要等待，才能进入下一步</strong>」</td></tr><tr><td>按引用记录变更顺序，并能跨引用快速线性化</td><td>落后的虚拟副本需要<strong>只下载它服务该请求所需的数据</strong>来追平</td></tr><tr><td>没变化时保持读便宜</td><td>「考虑到读写比，这是常见情况」</td></tr><tr><td>每个组件独立扩展</td><td>——</td></tr></tbody></table>
+<p><strong>其中第三条是最能改变架构设计的。</strong> 「agent 在每次 push 后都要等待」—— 这意味着提交延迟不只是个性能指标，它是 agent 工作流的<strong>串行瓶颈</strong>。</p>
+<h3>两个扩展轴</h3>
+<p>原文把规模拆成两个轴，这个划分很重要：</p>
+<ul><li><strong>水平扩展</strong>：多少开发者和 agent 能在<strong>多个</strong>仓库上工作。GitHub 现有的很多做法（租户分区、隔离与公平性、负载感知路由）都被沿用下来。</li><li><strong>垂直扩展</strong>：多少开发者和 agent 能在<strong>一个</strong>仓库上工作。<strong>「大多数需求都来自这个轴。」</strong></li></ul>
+<p><strong>这个划分解释了为什么这次要动存储层而不是加机器。</strong> 水平扩展的答案是「多开几个 Spoke」，而垂直扩展的答案是「一个仓库内部的写入路径不能有全局瓶颈」—— 后者只能靠改架构解决。</p>
+<h2>二、核心洞察：一次 push 里真正需要一致的，只有引用</h2>
+<p>这是整套架构的支点，原文讲得非常干净：</p>
+<blockquote>Git objects are immutable and named by their contents, meaning two writers can store them at the same time without agreeing on anything. The part of a push that needs agreement is the reference update, and a reference update is tiny in comparison.</blockquote>
+<p>（<strong>这两句是全文的支点 —— 它把「什么需要共识」这个问题缩小到了一个极小的范围。</strong> 后面所有设计都是这一句的推论：对象数据不需要协调 → 交给对象存储；引用需要协调 → 单独用 Ref-CAS 处理。<strong>这是全文我唯一想原样保留的英文。</strong>）</p>
+<p>（这两句是全文的支点 —— <strong>它把「什么需要共识」这个问题缩小到了一个极小的范围。</strong> 后面所有设计都是这一句的推论：对象数据不需要协调 → 交给对象存储；引用需要协调 → 单独用 Ref-CAS 处理。）</p>
+<p>这句话把「什么需要共识」这个问题缩小到了一个极小的范围。展开说：</p>
+<ul><li><strong>pack（对象数据）</strong>：不可变、按内容寻址、写入后不再变化 → <strong>写入者之间不需要协调</strong></li><li><strong>引用（refs）</strong>：一个仓库的分支、标签指向哪个提交 → <strong>多个写入者会竞争同一个引用</strong></li></ul>
+<p>所以整套架构的设计目标就变成了：<strong>把需要共识的部分（引用）单独拎出来，用一个专门的、快的、可扩展的机制处理它；其余部分（对象数据）交给完全不需要协调的对象存储。</strong></p>
+<p>原文还回顾了前一篇的铺垫（他们称为「桥」）：把 99.99999% 的仓库迁到 Azure、把写仲裁范围收窄到单个引用、基于 Azure Blob Storage 建立虚拟副本。<strong>这一篇是那座桥之后的另一半。</strong></p>
+<h2>三、整体架构：三个组件，两处状态</h2>
+<p>先看官方的整体架构图 —— 这张图值得对照文字读三遍：</p>
+<p><img src="assets/request-flow.png" alt="架构总览：Git/API/Web 请求进入 Spokes，路由到各仓库的虚拟副本组；Ref-CAS 存引用与 pack 清单；Azure Blob Storage 存 pack 数据；压实节点直接对 Blob Storage 与 Ref-CAS 做压实与 GC" loading="lazy" decoding="async" style="max-width:100%;height:auto;border-radius:8px;margin:12px 0;"></p>
+<p>对照着看，几个要点会清楚很多：</p>
+<h3>Spokes：不变的的部分</h3>
+<p><strong>「很多东西保持不变」</strong> —— 这是原文的说法：</p>
+<blockquote>来自 Git 客户端、API 和 Web UI 的请求仍然到达 <strong>Spokes</strong>，它仍然负责路由和负载均衡，也仍然提供 GitHub 其余部分读写仓库数据所用的内部 API。Spokes 也仍然扮演放置与均衡服务的角色，维持水平扩展所需的分区、隔离和租户公平性。<br>
+<br>
+<strong>但 Spokes 下面的数据平面是新的。</strong></blockquote>
+<p>这个划分划得很清楚：<strong>控制面（Spokes）不变，数据面全新。</strong></p>
+<h3>虚拟副本：可抛弃的算力，本地盘只是缓存</h3>
+<blockquote>Spokes 把每个请求路由到分配给该仓库的一小组虚拟副本中的一个。<strong>虚拟副本是一支可抛弃的计算 fleet</strong>，用来服务读、写，或两者兼有。<strong>虚拟副本的本地盘是一个随时可以重建的缓存。</strong></blockquote>
+<p>这三点性质合在一起，构成了整个扩展性的来源：</p>
+<table><thead><tr><th>性质</th><th>含义</th></tr></thead><tbody><tr><td><strong>可抛弃</strong></td><td>副本消失不需要任何数据迁移 —— 数据在 Blob Storage 里</td></tr><tr><td><strong>本地盘是缓存</strong></td><td>副本之间没有数据一致性要求</td></tr><tr><td><strong>正确性不依赖落到哪个副本</strong></td><td>「Spokes 尽可能把一个仓库的流量路由到同一批虚拟副本，这让它们的缓存保持温热、延迟保持低，<strong>但没有任何正确性依赖于请求落在某个特定虚拟副本上</strong>」</td></tr></tbody></table>
+<p><strong>最后这一句是整个设计里最关键的一句。</strong> 它意味着<strong>副本可以任意替换、任意增减，而系统始终正确</strong> —— 这正是「垂直扩展」的答案。</p>
+<p>一个副本消失时，「该仓库的其它虚拟副本继续服务，替代者随着流量到来填充自己的缓存」。</p>
+<h3>压实节点：CPU 完全不用来服务请求</h3>
+<blockquote>当一个仓库变得繁忙，我们会<strong>增加更多虚拟副本</strong>。同时，<strong>一支压实节点 fleet 在后台工作</strong>，直接对 Blob Storage 和 Ref-CAS 操作，以合并每个仓库的 pack 并移除不可达对象。<br>
+<br>
+<strong>这项工作从不在虚拟副本上运行</strong>，意味着<strong>它们的 CPU 和内存几乎可以完全专用于服务请求</strong>。</blockquote>
+<p><strong>这一句是「解耦存储与计算」这条原则最直白的体现。</strong></p>
+<p>在旧架构里，压实（compaction）跑在服务流量的同一批副本上，而且<strong>每个副本都得跑一遍</strong>。现在把它挪到专门的节点上，虚拟副本就变成了纯服务单元。</p>
+<h3>两处持久状态</h3>
+<p>原文把持久状态明确分成两处：</p>
+<table><thead><tr><th>状态</th><th>存在哪</th><th>为什么</th></tr></thead><tbody><tr><td><strong>Git 对象</strong>（pack + 辅助读加速数据）</td><td>Azure Blob Storage</td><td>「大部分数据写入某个特定的 key 之后就再不变了，<strong>这正是它高度适合 Blob Storage 的原因</strong>」</td></tr><tr><td><strong>引用 + pack 清单</strong>（pack manifest）</td><td><strong>Ref-CAS</strong>（一个独立的复制日志服务）</td><td>「繁忙仓库的引用是<strong>一小块</strong>状态，却有很多写入在同时竞争更新它」</td></tr></tbody></table>
+<h2>四、一次写和一次读，各自经过什么</h2>
+<p>原文把两条路径写得很简洁：</p>
+<p><strong>写：</strong> &gt; 一个虚拟副本索引传入的 pack 并把它上传到 Blob Storage，然后向 Ref-CAS <strong>提交一个事务</strong>，这个事务在清单里列出该 pack 并更新引用。之后，一个压实节点会把这个 pack 与其它 pack 合并，以保持读快速。</p>
+<p><strong>读：</strong> &gt; 一个虚拟副本用 Ref-CAS <strong>检查它的引用版本</strong>，从 Blob Storage 把它需要的 pack 拉进缓存，然后从那里服务这个读。</p>
+<p><strong>注意读路径里的「检查版本」这一步 —— 它是第四节要讲的那个优化的核心。</strong></p>
+<h2>五、Ref-CAS：把共识范围缩到最小的那一步</h2>
+<h3>两个被放弃的方案，和它们失败的原因</h3>
+<p>这一段是全文我最想讲的部分，因为它把「为什么最后是这个设计」讲透了。</p>
+<h4>方案一：所有引用一个 WAL blob</h4>
+<blockquote>我们的<strong>第一个方案</strong>是给一个仓库的所有引用做一个<strong>写前日志</strong>，用单个 blob 索引。每次更新都是针对那个 blob 的一次条件写。<br>
+<br>
+它是正确的，读也便宜：虚拟副本问这个 blob 变没变，没变就完事了。<strong>但写入就吃力了。</strong><br>
+<br>
+对一个 blob 只能有一个条件写同时在飞，所以<strong>即使我们把写入期间到达的每次 push 都批进下一次</strong>，这个仓库的写上限也是<strong>每个 RTT 一次写</strong>。<br>
+<br>
+实际上，这让我们得到了<strong>每秒几百次</strong>的写吞吐。</blockquote>
+<p><strong>这个失败模式很典型：把顺序写变成了全局串行点。</strong></p>
+<p>而 Git 的对象数据本来完全不需要串行 —— 把引用和对象放同一个 blob，等于用最不需要协调的部分拖住了最需要协调的部分。</p>
+<h4>方案二：分段 blob</h4>
+<blockquote>我们的<strong>第二个方案</strong>把引用拆到<strong>几个分段 blob</strong> 上，每个引用哈希到其中一个。写到不同分段引用的写不再互相等待，这<strong>抬高了上限</strong>。<br>
+<br>
+但<strong>一次读现在必须检查每一个分段</strong>才知道有没有变化，而<strong>它只能和最慢的那个分段一样快</strong>。<br>
+<br>
+<strong>我们拿写延迟换了读延迟，而读比写多几个数量级。</strong></blockquote>
+<p><strong>这一条更值得记。</strong> 因为它是一个很容易掉进去的坑：把热点按 key 拆开，是提高写吞吐的标准手法。<strong>但如果读必须遍历全部分段，拆分的收益就被读放大效应吃光了。</strong></p>
+<p><strong>而 Git 的访问模式恰恰是「读远多于写」</strong> —— 一次 push 会引发 CI、部署、其它 agent 的多次 fetch。</p>
+<p><strong>两个方案都失败的原因是同一个：它们都在优化写，而瓶颈在读。</strong></p>
+<h3>最终方案：专用的复制日志服务</h3>
+<blockquote>既然两个方案都不满足全部需求，我们就另建了一个：<strong>一个专门用于引用的复制日志服务</strong>，也就是 Ref-CAS 服务。</blockquote>
+<p>它的机制：</p>
+<blockquote>Ref-CAS 中的每次引用更新都是一次<strong>由仲裁（quorum）提交的 compare-and-swap</strong>。一个事务<strong>只锁定它触及的引用</strong>，检查每一个引用仍然持有写入者期望的值，然后<strong>在日志的大多数副本记录之后</strong>变为可见。<br>
+<br>
+<strong>agent 大多推送到自己的分支，所以大多数更新不产生争用，它们并行复制。当两次 push 确实更新同一个引用时，只有一个会追加到日志。</strong></blockquote>
+<p><strong>「只锁定它触及的引用」+「大多数副本记录后可见」</strong> —— 这两句构成了 Ref-CAS 的全部。</p>
+<p>而 agent 场景下这个设计的收益是直接的：<strong>「agent 大多推送到自己的分支」</strong> —— 意味着争用本来就少，而 Ref-CAS 的细粒度锁让争用进一步减少。</p>
+<h3>两个值得学的设计细节</h3>
+<p><strong>① 它只存指针，从不持有或校验对象数据</strong></p>
+<blockquote>与旧架构中的共识组不同，<strong>Ref-CAS 从不持有或校验对象数据。它只存储指向数据的指针。</strong><br>
+<br>
+虚拟副本在提交引用事务<strong>之前</strong>就把 push 的 pack 上传到了 Blob Storage。<strong>一个引用永远只指向已经持久化的对象。</strong></blockquote>
+<p><strong>这个顺序不能反。</strong> 「先让数据落地，再让引用指向它」—— 这是一个看起来简单但极其重要的不变量。<strong>它保证了任何时刻读到的引用，都不会指向一个可能不存在或可能损坏的对象。</strong></p>
+<p>（顺带说，这也是为什么 Ref-CAS 的性能能那么好：<strong>它不搬运数据，只搬指针。</strong>）</p>
+<p><strong>② 读路径上的版本检查 —— 让「没变化」变成一次比较</strong></p>
+<blockquote>Ref-CAS 的每次提交都会得到一个<strong>日志序列号（LSN）</strong>，而<strong>仓库的版本就是它最新提交的 LSN</strong>。读从一次版本检查开始。<br>
+<br>
+虚拟副本发送它已经持有的引用状态版本。<strong>如果那个版本仍然是当前的，回复里完全不带任何引用</strong> —— 所以<strong>一个没变化的仓库只花一次比较</strong>。<br>
+<br>
+如果虚拟副本落后了，它会拿回当前的引用和版本，以及指向 pack 数据和其它需要知道的信息的指针（比如上一次垃圾回收周期是什么时候）。</blockquote>
+<p><strong>「一个没变化的仓库只花一次比较」</strong> —— 这是整个架构里最漂亮的一个优化。</p>
+<p>因为读写比是几个数量级，而绝大多数读面对的都是<strong>没变化的仓库</strong>。把这种读的成本从「拉一堆 pack 指针再逐个对比」压到「一次整数比较」，是数量级的差别。</p>
+<h3>效果</h3>
+<blockquote>这些方案让我们能够<strong>单独以每秒数万次操作的量级对引用状态做事务</strong>，并为复制日志上的额外注解提供一个基线。</blockquote>
+<p><strong>每秒数万次</strong> —— 对比方案一的「每秒几百次」，这是两个数量级的差别。而这个数字是靠<strong>缩小共识范围</strong>换来的，不是靠加机器。</p>
+<h2>六、压实：为什么 pack 数量不能无限增长</h2>
+<p>写的问题解决了，读和写的性能还得一起维持住 —— 这是<strong>二阶问题</strong>。</p>
+<blockquote>每次 push 都往 Blob Storage 加一个 pack。Git 可以从一个仓库的许多 pack 里服务，但<strong>每多一个 pack，查找就略微昂贵一点</strong>，所以 <strong>pack 数量不能无界增长</strong>。<br>
+<br>
+在旧架构里，压实跑在服务流量的同一批副本上，<strong>而且必须在每个副本上都跑一遍</strong>。</blockquote>
+<p><strong>「必须在每个副本上都跑一遍」</strong> —— 这就是耦合的代价。副本越多，重复劳动越多。</p>
+<h3>新架构下的压实流程</h3>
+<p>原文描述了一个压实节点处理某个分片的完整步骤：</p>
+<ol><li>节点<strong>先在 Blob Storage 上对该分片取一个租约（lease）</strong>，所以同一时刻只有一个节点压实这个分片；</li><li>与此同时，虚拟副本继续上传 pack 并把它们列进 pack 清单；</li><li>节点<strong>读清单找出新 pack，把它们收集进一个开放段（open segment）</strong> —— 这实际上是一个「即将被压实的数据的中转站」；</li><li><strong>当该段达到一个基于 pack 数量、大小或年龄的限定阈值时，就封存（seal）这个段</strong> —— 它不再接受新 pack；</li><li>然后<strong>把它的 pack 合并成更少、更大的 pack</strong>；</li><li><strong>在发布任何东西之前，节点检查新的 pack 包含与输入完全相同的对象</strong>；</li><li>上传新 pack 并加入清单；<strong>第二个事务把输入从清单里移除</strong>，清理稍后删除它们。</li></ol>
+<p><strong>「在发布任何东西之前，节点检查新的 pack 包含与输入完全相同的对象」</strong> 这一步是安全关键 —— 压实是删除性的操作，如果合并过程丢对象，就等于丢数据。</p>
+<p>而「封存」这个机制让<strong>压实和摄入可以并行</strong>：压实进行中，该分片的下一个段已经开始收集输入包。</p>
+<h3>分片与分层</h3>
+<blockquote>为了横向扩展，这个过程对<strong>许多分片同时独立运行</strong>。<strong>每个 pack 的哈希映射到一个分片</strong>，所以<strong>增加分片和节点就增加了压实吞吐</strong>。<br>
+<br>
+一个<strong>仍小于尺寸上限的已压实 pack 会按自己的哈希回到某个分片并被再次合并</strong>，所以 <strong>pack 分层增长直到达到上限</strong>。<br>
+<br>
+净效果是<strong>在 push 攀升的同时，pack 数量保持基本平坦</strong>。</blockquote>
+<p><strong>「pack 分层增长直到达到上限」</strong> 这个机制挺巧：一个压实后的 pack 如果还小，就按自己的新哈希重新入队，可能落到另一个分片，和那边的 pack 合并。<strong>这样小 pack 会像滚雪球一样长大，而不是永远碎片化。</strong></p>
+<p>结果是：<strong>push 数量上升，pack 数量曲线平坦。</strong> 这正是压实要达到的目的。</p>
+<h3>压实 vs 垃圾回收</h3>
+<p>原文明确区分了两者：</p>
+<blockquote><strong>压实合并 pack，但它保留每一个对象。垃圾回收</strong>才是移除<strong>没有任何东西再引用</strong>的对象的那一步 —— 比如被删除的分支和 force-push 留下的那些。<br>
+<br>
+在新架构里，垃圾回收的工作方式与压实非常相似，用专门的 worker 处理计算密集的部分。它还有一些<strong>安全移除数据的特殊行为</strong>，值得单独讨论。</blockquote>
+<p><strong>这个区分值得强调</strong>，因为两者经常被混为一谈：</p>
+<table><thead><tr><th></th><th>压实（compaction）</th><th>垃圾回收（GC）</th></tr></thead><tbody><tr><td>做什么</td><td>合并 pack</td><td>删除无引用对象</td></tr><tr><td>保留对象吗</td><td><strong>全部保留</strong></td><td>删除不再被引用的</td></tr><tr><td>危险性</td><td>低（合并错还能还原）</td><td><strong>高（删错了就是丢数据）</strong></td></tr><tr><td>在新架构里</td><td>专门的压实节点 fleet</td><td>专门的 GC worker</td></tr></tbody></table>
+<p><strong>压实是可逆的，GC 不是。</strong> 所以后者需要「专门的安全行为」来保证不会误删 —— 原文说这部分「值得单独讨论」，但本文不展开。</p>
+<h2>七、Blob Storage 里到底放了什么</h2>
+<p>原文给了一个完整的清单，这是理解「为什么是对象存储」的关键：</p>
+<p>存放在 Azure Blob Storage 里的包括：</p>
+<ul><li><strong>packs 和索引</strong>，由 push、压实和垃圾回收写入；</li><li><strong>各种读加速器</strong>（read accelerators）—— 比如多 pack 索引、可达性位图（reachability bitmap）、以及一些自定义格式；</li><li><strong>让压实和垃圾回收能够恢复或审计其工作的记录</strong>，以及压实节点用来认领工作的<strong>租约</strong>；</li><li><strong>频繁重复 fetch 的缓存响应</strong>；</li><li><strong>仓库引用状态的检查点</strong> —— 「不过不是用来服务请求的权威状态」。</li></ul>
+<p>最后那一条有个细节值得注意：<strong>检查点存在 Blob Storage，但权威状态在 Ref-CAS。</strong> 也就是说 Blob Storage 存的是「可以重建的东西」，Ref-CAS 存的是「必须一致的真相」。</p>
+<p>而 GitHub 之前的两篇文章里提到过「把 99.99999% 的仓库迁到 Azure」—— 也就是说<strong>仓库的数据副本已经在 Azure 上了</strong>，这一篇讲的是怎么让 Git 的<strong>操作语义</strong>适配对象存储。</p>
+<p><img src="assets/blob-contents.png" alt="一个仓库在 Azure Blob Storage 中的数据构成：packs 与索引、记录与租约、读加速器、缓存响应与检查点；读按精确 key 取，从不列目录" loading="lazy" decoding="async" style="max-width:100%;height:auto;border-radius:8px;margin:12px 0;"></p>
+<p><strong>这张图里有一个细节比其它都重要：读是「by key, never lists」。</strong></p>
+<p>回忆第二节那个洞察 —— <strong>对象不可变、按内容命名</strong>，所以读不需要「查找」，只需要「按 key 取」。<strong>「never lists」这四个字是整个架构能跑在对象存储上的技术前提。</strong></p>
+<h2>八、接下来的三块工作</h2>
+<p>原文列出了三个方向，我把它们和前面的架构对应起来看：</p>
+<h3>架构本身的进一步优化</h3>
+<table><thead><tr><th>优化</th><th>做什么</th></tr></thead><tbody><tr><td><strong>只读所需</strong></td><td>「从 Blob Storage 取<strong>单个对象</strong>，而不是取包含它的整个 pack」</td></tr><tr><td><strong>按类型组织 pack</strong></td><td>「把 commit、tree 和 blob 分到各自的 pack 里，这样很多请求触及的数据更少」</td></tr><tr><td><strong>部分副本</strong></td><td>「不需要每个 pack 都在本地盘上就能服务请求」</td></tr><tr><td><strong>物化视图</strong></td><td>「把仓库数据保持成可直接使用的形式，比如预先生成的归档、默认分支的近实时浅拷贝、以及与每个 commit 一起存储的 agent 会话上下文」</td></tr><tr><td><strong>全局副本</strong></td><td>「把副本放在任意区域，靠近使用它们的工作负载。读保持在最新写入的有界陈旧度内」</td></tr><tr><td><strong>缩容到零</strong></td><td>「让 fleet 随实际活跃的仓库增长和收缩」</td></tr></tbody></table>
+<p><strong>其中「物化视图」里的「agent 会话上下文与每个 commit 一起存储」最值得注意</strong> —— 这说明 GitHub 已经在把「agent 需要什么」当成一等公民来设计存储布局了，而不只是把 agent 当成「更多的写入者」。</p>
+<h3>让 agent 操作更省</h3>
+<ul><li><strong>不用 clone 就能干活</strong>：「很多 agent 任务从不需要完整工作树。它们需要几个文件和足够的上下文来做一个改动。<strong>它们可以直接从服务器读取两者</strong>。」</li><li><strong>原子 commit API</strong>：「一次操作落地一个多文件改动。整个改动要么提交，要么在冲突时被干净地拒绝。」</li><li><strong>事件流</strong>：「一个通用事件流让它们订阅变更并即时反应。」</li></ul>
+<p><strong>「不用 clone 就能干活」这条对 agent 生态的意义可能比存储架构本身还大</strong> —— 因为 agent 场景下 clone 整个仓库是最大的浪费。</p>
+<h3>改进 Git 本身</h3>
+<ul><li><strong>轻量 clone</strong>：partial clone、shallow clone、sparse checkout 各自让 agent 少取数据，但<strong>每个都有缺口，彼此之间也不总是能配合</strong>；</li><li><strong>移除隐藏的扩展成本</strong>：「Git 仍然有一些代码路径，<strong>其慢速增长比仓库增长快得多</strong>」；</li><li><strong>更快的历史遍历</strong>：「像 commit-graph 这样的元数据可以回答 merge-base 和可达性问题，而不必遍历每个 commit。<strong>当一个 agent 的 API 调用在服务端变成 Git 工作时，这最为重要。</strong>」</li><li><strong>避免常见坑</strong>：「agent 会犯开发者常犯的同样错误。Git 可以捕捉更多常见错误并在造成破坏前警告。」</li></ul>
+<h2>九、几个我觉得值得单独记的点</h2>
+<h3>① 「6000 个 agent 在一个仓库上」这个数字的分量</h3>
+<p>原文给的内部测试数据是：<strong>支持 5000 个并发 agent 在一个仓库上工作，每秒向一个仓库发送 7200 次 push，同时以持续的低延迟服务读流量。</strong></p>
+<p><strong>而今天 GitHub 最繁忙的仓库是「每秒几十次写入」。</strong> 所以目标不是「比现在快一点」，而是<strong>每天都在涨的那个仓库，会在明年变成现在的几百倍</strong>。</p>
+<p><strong>从这个角度看，「每秒数千次写入」不是终点，而是一个必须先跨过的门槛。</strong></p>
+<h3>② 这套架构的哲学：把「需要一致的部分」缩到最小</h3>
+<p>回头看，Rubicon 的设计可以浓缩成一句话：<strong>尽可能多地让数据「不需要一致」，然后把不得不要一致的部分（引用）单独处理。</strong></p>
+<ul><li>对象不可变、按内容寻址 → <strong>写入者之间不需要协调</strong></li><li>引用很小、且大部分更新不争用（agent 推自己的分支）→ <strong>共识范围小到可以每秒做数万次</strong></li><li>本地盘只是缓存 → <strong>副本可以任意增减，正确性不受影响</strong></li><li>压实挪到专门的节点 → <strong>服务节点的 CPU 全部用于服务请求</strong></li></ul>
+<p><strong>这四条叠起来，才有了「垂直扩展」这个答案。</strong></p>
+<h3>③ 三个组件的分工，和 Git 原本的对应关系</h3>
+<table><thead><tr><th>新组件</th><th>Git 原本的对应物</th><th>变化</th></tr></thead><tbody><tr><td><strong>Spokes</strong></td><td>GitHub 的 Git 路由层</td><td>基本不变</td></tr><tr><td><strong>虚拟副本</strong></td><td>每个仓库的 Git 副本</td><td>从「有状态」变成「可抛弃的缓存」</td></tr><tr><td><strong>Ref-CAS</strong></td><td>旧架构里的共识组</td><td>从「持有并校验对象数据」变成「只存指针」</td></tr><tr><td><strong>压实节点</strong></td><td>跑在服务副本上的压实</td><td>从「每个副本都跑」变成「专门的 fleet」</td></tr></tbody></table>
+<p><strong>最有意思的是 Ref-CAS 的定位变化</strong>：旧架构里确实有一个共识组（原文前面那篇文章提到过「我们说过还在栈里的某个地方」），它现在被<strong>收缩成了一个专职的、更细粒度的组件</strong>。</p>
+<h3>④ 落地状态：有限私有预览</h3>
+<p>原文最后说：</p>
+<blockquote>它<strong>目前处于有限私有预览状态</strong>，<strong>明年初会有更广泛的推广</strong>。</blockquote>
+<p><strong>所以现在能看到的只有架构描述和压测数字，实际效果还没经过公开检验。</strong> 这是阅读这类官方架构博客时该有的基本判断。</p>
+<hr>
+<h2>Sources</h2>
+<ul><li>GitHub Engineering, <em>Inside GitHub's new Git storage architecture</em>（Karthik Raman &amp; Brian Celenza，2026-11-05）: <a href="https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-storage-architecture/" target="_blank" rel="noopener noreferrer">https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-storage-architecture/</a></li><li>原文配图（本文已抓取并随文发布）：<code>customer-growth.png</code>、<code>request-flow.png</code>、<code>blob-contents.png</code></li></ul>
+<h3>事实边界说明</h3>
+<ul><li>架构组件、机制描述、两个被放弃的方案及其失败原因、Ref-CAS 的两条设计细节、压实流程、Blob Storage 内容清单、后续三块工作、落地状态：均引自原文。</li><li><strong>性能数字</strong>（5000 并发 agent、7200 push/秒、3 月 4400 万/天、5 月 1.81 亿/天约 4 倍、方案一每秒几百次、Ref-CAS 每秒数万次）均引自原文；本文未做独立验证。</li><li><strong>本文的三处解读性判断</strong>（架构哲学可浓缩为「把需要一致的部分缩到最小」；「agent 大多推送到自己的分支」是 Ref-CAS 细粒度锁收益的直接来源；「never lists」是跑在对象存储上的技术前提）<strong>是基于原文事实的推断，原文未用这些措辞</strong>，已在正文相应位置标注。</li><li>三张架构图版权归 GitHub 所有，此处为技术解读用途引用，附原始来源链接。</li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-08_github-rubicon-git-storage-architecture/",
+      title: "GitHub \u91cd\u5efa Git \u5b58\u50a8\u5c42\uff1a\u4e00\u6b21 push \u8981\u8de8\u8fc7\u4e09\u9053\u4e00\u81f4\u6027\u5173\u5361"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
