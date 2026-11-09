@@ -1,0 +1,10 @@
+title: "secwrap 审 curl | sh：eBPF 比 strace 多做了什么"
+date: 2026-11-09
+slug: secwrap-ebpf-install-sh-approval
+category: 技术/解读
+author: FreeLAMP.com
+original_source: "一手核对：noboruma/secwrap v0.4.1 源码（netmon.bpf.c / filemon.bpf.c / execmon.bpf.c / secwrap.bpf.c 的 SEC hook 声明、ask.go / freeze.go / caps.go 的实现注释、README 的 Requirements 与 attach 局限）＋ 官方 release 二进制的 SHA256 校验 ＋ 本机实测（内核 7.2.15-x64v3-xanmod1、BTF、BPF LSM、cgroup v2，sudo 下依次跑 cap / --log-only / --net deny）＋ Reddit r/linuxadmin 原帖与 r/eBPF 原帖 ＋ 调研报告 research-work/REPORT-zh.md"
+original_date: 2026-11-09
+original_url: "https://www.reddit.com/r/linuxadmin/comments/1xqyiew/secwrap_run_your_binary_securely_by_leveraging/"
+description: "本文以 secwrap（noboruma/secwrap v0.4.1）为引子，讲清楚一件事：把 eBPF 当「交互式防火墙」用，到底比 strace 这类 ptrace 包装多做了什么。作者在 r/eBPF 的原帖里把动机写得很直白：很多方案是「把进程隔离起来」，但这在很多场景不方便，而不方便的时候人们就放弃了，直接跑程序听天由命 —— 于是「那个 ./install.sh 真的安全吗？」就成了 secwrap 的起点：拦截网络、文件、exec，暂停进程问你，或者记录下来事后审计，或者直接拒绝。本文逐条核对了源码里的 SEC hook：网络观测用 kprobe/tcp_connect、kretprobe/inet_csk_accept、kprobe/udp_sendmsg 与 udpv6_sendmsg；阻断用 cgroup/connect4,6、cgroup/sendmsg4,6 与 cgroup_skb/egress,ingress；文件与 exec 用 BPF LSM 的 lsm/file_open 与 lsm/bprm_creds_for_exec；进程树跟踪用 tp_btf/sched_process_fork 与 sched_process_exit。ask 模式的机制是 seccomp filter 把 connect/sendto/sendmsg/sendmmsg 变成 SECCOMP_RET_USER_NOTIF 挂起，再用 cgroup v2 的 cgroup.freeze 冻住整个进程树（不发 SIGSTOP、shell 里不显示 Stopped），答案进 BPF allow map 后由 cgroup hook 在内核里执行 —— ask.go 的注释还诚实写明：TOCTOU 改写 sockaddr、io_uring、32 位/x32 syscall 拿不到提问，但它们同样到不了未被允许的 peer。这是与 strace 的根本分野：strace 是「观察并转述」，eBPF hook 是「在内核里执行判定」，所以静态二进制、裸 syscall、io_uring 都覆盖。本文附本机实测（cap 四维全可用；--log-only 记录到 printf 的 exec 与动态链接器 open；--net deny 把 DNS 的 4 次 UDP 查询与 1 次 TCP 连接全部拦成 EPERM），并如实列出局限：要 root、≥5.19 + cgroup v2 才能 ask、BPF LSM 才能管文件与 exec、attach 的 ask 在这版没接线、允许写立即写入不可撤销、3 星单人项目。"
+published: true
