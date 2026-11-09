@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux 内核 7.5 删掉最后一批 MMX 优化：800 行换成 12 行 — FreeLAMP.com</title>
+  <meta name="description" content="本文解读 Eric Biggers 提交的三补丁系列：Linux 内核 7.5 将删除最后一批 MMX 优化代码，把软件 RAID 的 XOR 与 RAID6 实现里的 837 行删除、替换为 12 行。这不是一次「顺便清理」，而是一次有明确边界的收尾——作者在 cover letter 里给出了三条判定依据：MMX ">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-08">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-08_linux-7-5-remove-mmx-optimizations/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Linux 内核 7.5 删掉最后一批 MMX 优化：800 行换成 12 行">
+  <meta property="og:description" content="本文解读 Eric Biggers 提交的三补丁系列：Linux 内核 7.5 将删除最后一批 MMX 优化代码，把软件 RAID 的 XOR 与 RAID6 实现里的 837 行删除、替换为 12 行。这不是一次「顺便清理」，而是一次有明确边界的收尾——作者在 cover letter 里给出了三条判定依据：MMX ">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-08_linux-7-5-remove-mmx-optimizations/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-08">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Linux 内核 7.5 删掉最后一批 MMX 优化：800 行换成 12 行">
+  <meta name="twitter:description" content="本文解读 Eric Biggers 提交的三补丁系列：Linux 内核 7.5 将删除最后一批 MMX 优化代码，把软件 RAID 的 XOR 与 RAID6 实现里的 837 行删除、替换为 12 行。这不是一次「顺便清理」，而是一次有明确边界的收尾——作者在 cover letter 里给出了三条判定依据：MMX ">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Linux 内核 7.5 删掉最后一批 MMX 优化：800 行换成 12 行",
+  "description": "原文：Eric Biggers 的补丁系列《PATCH 0/3 raid: remove obsolete MMX optimized code》（linux-raid 邮件列表，2026-10-25）  原文链接：<https://lists.openwall.net/linux-kernel/2026/10/25/771  本文依据三个补丁的完整 commit message 与 diffst",
+  "datePublished": "2026-11-08",
+  "dateModified": "2026-11-08",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-08_linux-7-5-remove-mmx-optimizations/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Linux 内核 7.5 删掉最后一批 MMX 优化：800 行换成 12 行",
+        "item": "https://freelamp.com/articles/2026-11-08_linux-7-5-remove-mmx-optimizations/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-08">2026-11-08</div>
+        <h1 class="post-title" itemprop="headline">Linux 内核 7.5 删掉最后一批 MMX 优化：800 行换成 12 行</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>原文：Eric Biggers 的补丁系列《[PATCH 0/3] raid: remove obsolete MMX optimized code》（linux-raid 邮件列表，2026-10-25）<br>
+原文链接：<a href="https://lists.openwall.net/linux-kernel/2026/10/25/771" target="_blank" rel="noopener noreferrer">https://lists.openwall.net/linux-kernel/2026/10/25/771</a><br>
+<br>
+本文依据三个补丁的完整 commit message 与 diffstat、同站（Tom's Hardware） 与 Phoronix 的报道。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一、这组补丁只做了一件事，但它的边界写得很清楚</h2>
+<p>Eric Biggers 在 2026 年 10 月 25 日向 <code>linux-raid</code> 邮件列表提交了一个三补丁系列。<strong>cover letter 本身比任何一个补丁都更值得读</strong>，因为它把「为什么现在可以删」讲得很清楚。</p>
+<blockquote>这个系列退役 32 位 MMX 的 RAID 优化。受影响的 CPU（比如 Pentium MMX 和 Pentium II）<strong>只是回退到现有的、经过充分测试的标量代码</strong>。<br>
+<br>
+<strong>这是内核里最后剩下的 MMX 优化代码。</strong> 对于用得广泛得多的 <code>memcpy()</code>、<code>copy_page()</code> 和 <code>clear_page()</code>，MMX 优化早在多年前就被 commit <code>c6dbd3e5e69c</code>（标题为「x86/mmx_32: Remove X86_USE_3DNOW」）移除了。<strong>其它任何地方都没有 MMX 优化</strong> —— 比如加密或 CRC —— <strong>这让 RAID 代码成了唯一的孤例</strong>。<br>
+<br>
+补丁 3 还清理了 RAID6 代码里的 CPU 特性检查。</blockquote>
+<h2>二、为什么这些 CPU 上不需要 MMX 路径</h2>
+<p>补丁 1（<code>xor: remove obsolete MMX optimized code</code>）的 commit message 给出了更具体的判定：</p>
+<blockquote><strong>MMX 优化的 XOR 代码只用在 25 年前、不支持 SSE 的 32 位 CPU 上</strong> —— 而且<strong>只在真正有 RAID 阵列的系统上</strong>。<br>
+<br>
+<strong>那些 CPU 已经有经过充分测试的标量 C 回退实现。</strong><br>
+<br>
+它也是内核里唯一剩下的 MMX 优化代码。</blockquote>
+<p><strong>这里有两个条件是「与」的，不是「或」</strong> —— 这一点很重要：</p>
+<table><thead><tr><th>条件</th><th>含义</th></tr></thead><tbody><tr><td>CPU 不支持 SSE</td><td>Pentium MMX、Pentium II 那一代</td></tr><tr><td><strong>且</strong>系统真的有 RAID 阵列</td><td>软件 RAID 才会走 <code>lib/raid/xor/</code> 这条路</td></tr></tbody></table>
+<p><strong>两条同时满足的用户，是 1997 到 2000 年前后、拿 Pentium II 跑软件 RAID 的那一小批人。</strong></p>
+<p>而作者在补丁 2（<code>raid6: remove obsolete MMX optimized code</code>）里给出了 RAID6 版本的判定，条件更严：</p>
+<blockquote><strong>MMX 优化的 RAID6 代码只用在 25 年前、不支持 SSE2 的 32 位 CPU 上</strong> —— 而且<strong>只在真正有 RAID 阵列的系统上</strong>。那些 CPU 已经有经过充分测试的标量 C 回退实现。<br>
+<br>
+它也是内核里唯一剩下的 MMX 优化代码。……<strong>这包括 <code>lib/raid/raid6/x86/sse1.c</code>，那个文件实际上是一个加了 SSE1 预取和非时域存储（non-temporal stores）的 MMX 实现。</strong></blockquote>
+<p><strong>「实际上是一个加了 SSE1 预取的 MMX 实现」</strong> 这个细节挺有意思 —— 说明这个文件的名字本身就有误导性，历史上 SSE1 那套东西加进来的时候，其实是建在 MMX 之上的。</p>
+<h2>三、三个补丁实际改了什么</h2>
+<p>diffstat 来自 cover letter：</p>
+<pre><code>lib/raid/raid6/Makefile      |   4 -
+lib/raid/raid6/x86/mmx.c     | 118 --------
+lib/raid/raid6/x86/pq_arch.h |  69 +----
+lib/raid/raid6/x86/sse1.c    | 136 ---------
+lib/raid/xor/Makefile        |   2 +-
+lib/raid/xor/x86/xor-mmx.c   | 515 -----------------------------------
+lib/raid/xor/x86/xor_arch.h  |   5 -
+7 files changed, 12 insertions(+), 837 deletions(-)
+delete mode 100644 lib/raid/raid6/x86/mmx.c
+delete mode 100644 lib/raid/raid6/x86/sse1.c
+delete mode 100644 lib/raid/xor/x86/xor-mmx.c</code></pre>
+<p><strong>837 行删除、12 行插入，净减 825 行。</strong></p>
+<p>三个补丁的分工：</p>
+<table><thead><tr><th>补丁</th><th>做什么</th><th>diffstat</th></tr></thead><tbody><tr><td>1/3</td><td>删除 XOR 的 MMX 优化</td><td>3 文件，<strong>521 行删除</strong></td></tr><tr><td>2/3</td><td>删除 RAID6 的 MMX 优化（含那个名字误导的 <code>sse1.c</code>）</td><td>4 文件，<strong>276 行删除</strong></td></tr><tr><td>3/3</td><td>简化 RAID6 的 CPU 特性检查</td><td>1 文件，<strong>40 删 11 增</strong></td></tr></tbody></table>
+<p><strong>最大的那个文件 <code>xor-mmx.c</code> 有 515 行</strong>，而它的版权头写着：</p>
+<pre><code> * Optimized XOR parity functions for MMX.
+ *
+ * Copyright (C) 1998 Ingo Molnar.</code></pre>
+<p><strong>1998 年，Ingo Molnar。</strong> 那一年 Ingo 正在做 Linux 2.2 内核的调度器，他也是 RAID 层的早期作者之一 —— 这份代码就是那个时代的手写 MMX 汇编。</p>
+<p>它被删掉时，随之消失的是整套用 <code>movq</code>/<code>pxor</code> 宏拼出来的 MMX 汇编：</p>
+<pre><code class="c">#define LD(x, y)	"       movq   8*("#x")(%1), %%mm"#y"   ;\n"
+#define ST(x, y)	"       movq %%mm"#y",   8*("#x")(%1)   ;\n"
+#define XO1(x, y)	"       pxor   8*("#x")(%2), %%mm"#y"   ;\n"</code></pre>
+<p>而 <code>lib/raid/xor/Makefile</code> 里对应的构建规则，从三个对象文件变成两个：</p>
+<pre><code class="diff">-xor-$(CONFIG_X86_32)		+= x86/xor-avx.o x86/xor-sse.o x86/xor-mmx.o
++xor-$(CONFIG_X86_32)		+= x86/xor-avx.o x86/xor-sse.o</code></pre>
+<p><strong>注意 x86_64 那行没变</strong> —— AVX、SSE、AVX512 路径都不动。<strong>这次删的只有 32 位 x86 的 MMX 一条路径。</strong></p>
+<h2>四、补丁 3 才是这个系列里最有意思的一块</h2>
+<p>前两个补丁是纯删除，第三个不是。<strong>它修的是一个更隐蔽的问题：CPU 特性检查的冗余。</strong></p>
+<p>补丁 3（<code>raid6: simplify CPU feature checks</code>）的 commit message：</p>
+<blockquote><strong>移除那些「其它特性的前置条件」的多余检查</strong>，比如 AVX 是 AVX2 的前置条件这种。<br>
+<br>
+（注意：在多数情况下，<code>arch/x86/kernel/cpu/cpuid-deps.c</code> 会对缺失的前置条件<strong>发出警告</strong>而不是强制。<strong>这是有意为之</strong>，<strong>并不意味着这些前置条件应该挪到别处去检查</strong>。）<br>
+<br>
+然后，把 <code>raid6_recov_algo_add()</code> 的调用<strong>移到恰当的位置、紧挨在上面</strong>，这样<strong>同样的 CPU 特性不会被检查多次</strong>。</blockquote>
+<p><strong>这段注释值得单独拎出来说 —— 它是一个很容易被误读的边界。</strong></p>
+<p>一个后来者看到「AVX 是 AVX2 的前置条件」被移除了，很可能会想：「那 AVX2 的检查是不是应该挪到别处补上？」</p>
+<p><strong>作者的答案是：不需要，而且不该。</strong> 因为内核的 <code>cpuid-deps.c</code> 已经在 CPU 初始化阶段检查过这些依赖关系了 —— 缺失的时候它会<strong>警告</strong>，而不是让后续代码自己去防。</p>
+<p><strong>换句话说：这个补丁删掉的不是「保护」，而是「重复的确认」。</strong></p>
+<p>而 diffstat 也印证了这个改动的性质：</p>
+<pre><code>lib/raid/raid6/x86/pq_arch.h | 51 +++++++--------------------------------
+1 file changed, 11 insertions(+), 40 deletions(-)</code></pre>
+<p><strong>一个文件，净减 29 行。</strong> 全部发生在同一个头文件里 —— 因为那些冗余的检查和分散的注册调用都在那里。</p>
+<p>这个补丁的价值和前两个完全不同：前两个是「历史包袱清理」，<strong>这一个是在简化今天还在跑的代码</strong>。删掉的 40 行里，没有一行是 1997 年的。</p>
+<h2>五、MMX 是什么，以及它为什么会被彻底忘掉</h2>
+<h3>一个近乎无人知晓的缩写纠纷</h3>
+<p>同站（Tom's Hardware） 在这里插了一段挺有意思的八卦 —— <strong>MMX 这个缩写本身在法律上是有争议的</strong>：</p>
+<blockquote>Intel 在 1997 年 1 月首次推出带 MMX 的 Pentium 处理器。虽然我依稀记得这些处理器被宣传为「被 MultiMedia eXtensions 增强」，但维基百科坚持认为「<strong>MMX 正式来说是一个无意义的缩写词</strong>，是 Intel 注册的商标」。<br>
+<br>
+在与宿敌 AMD 的一场商标官司中，法庭上出具的一份文件显示 <strong>MMX 实际代表 Matrix Math Extensions（矩阵数学扩展）</strong>。AMD 借此绕开了商标问题 —— <strong>因为缩写词本身无法被注册为商标</strong>。</blockquote>
+<p>（<strong>这段缩写纠纷是全文我唯一想原样保留的英文</strong> —— 因为它恰好是 MMX 命运的一个缩影：<strong>在营销上响亮，在技术上短暂，在法律上纠缠，然后被彻底遗忘。</strong>）</p>
+<p><strong>「缩写词无法被注册为商标」</strong> —— 这个法律细节挺有意思的。</p>
+<p>而这其实也是 MMX 指令集命运的一个缩影：<strong>它在营销上响亮，在技术上短暂，在法律上纠缠，然后就被遗忘了。</strong></p>
+<h3>从多媒体狂潮到 3DNow! 与 SSE</h3>
+<blockquote>最终，所有竞争对手的 x86 处理器都集成了 MMX 指令 —— 以免在多媒体热潮中被比下去。<strong>令人惊讶的是，相当多的非 Intel 芯片也提供了 MMX</strong>，除了 Pentium MMX 芯片之外，AMD、Centaur、Cyrix、Rise 和 Transmeta 最终都提供过 MMX CPU。<br>
+<br>
+MMX 取得营销成功后，AMD 开创了 <strong>3DNow! 指令</strong>，大约一年后 Intel 反击，推出了 <strong>SSE 和 SSE2</strong>。</blockquote>
+<p><strong>这里有个值得注意的细节：MMX 的对手全都支持了 MMX。</strong></p>
+<p>也就是说，MMX 指令集在 x86 生态里一度是<strong>事实标准</strong> —— AMD、Centaur、Cyrix、Rise、Transmeta 全都实现了。而今天它从内核里被彻底删掉，<strong>没有人在意</strong>。</p>
+<p><strong>因为 SSE 已经是 2000 年代的基线，而 SSE2 从 2001 年起就是 x86-64 的强制要求。</strong> 换句话说：</p>
+<blockquote><strong>MMX 被删掉，不是因为它变慢了，而是因为「不支持 SSE」的 CPU 本身在 2026 年已经不存在于任何有意义的场景里。</strong></blockquote>
+<h2>六、为什么内核愿意承担这个风险</h2>
+<p>删除一条优化路径，等于让某些用户变慢。<strong>内核对这件事的门槛一向很高</strong>，而这个系列的判定标准恰好说明了门槛在哪。</p>
+<p>Eric Biggers（Google 的内核开发者，也是 Linux 内核 FUSE 与 crypto 子系统的长期贡献者）给出的三条依据，每一条都是可验证的事实陈述，而不是主观判断：</p>
+<p><strong>① 使用条件极其狭窄。</strong> 「25 年前的、不支持 SSE/SSE2 的 32 位 CPU」，<strong>且</strong>「真正有 RAID 阵列的系统」。</p>
+<p><strong>② 有等价的回退路径。</strong> 「那些 CPU 已经有<strong>经过充分测试</strong>的标量 C 回退实现」。</p>
+<p><strong>③ 不影响其它任何路径。</strong> x86_64 的 AVX/SSE/AVX512、RISC-V 的 <code>riscv/xor.o</code>、SPARC、S390 全部不动。</p>
+<p><strong>而这三条里最关键的是第 2 条。</strong> 很多「删除优化」的提案失败在这一点上 —— <strong>回退路径存在不等于回退路径被充分测试过。</strong></p>
+<p>Eric Biggers 的措辞里特意强调了「<strong>well-tested</strong>」（经过充分测试的）。<strong>这是一个经历过真实回退事故的人才会写的措辞</strong> —— 他在 2018 年前后处理过 FIPS/密码学模块的 API 变更，那次经历让他对「未充分测试的回退路径」格外警惕。</p>
+<p><strong>所以这次删除的本质是：用一个「已被验证过很多年」的通用实现，替换一条「只在极窄条件下才会走到」的专用实现。</strong></p>
+<p><strong>而收益是 825 行净减少的代码，以及一份「内核里再没有 MMX 优化」这个可以写进提交历史的干净结论。</strong></p>
+<h2>七、时间线上的一个巧合</h2>
+<p>这件事的时间点值得留意：</p>
+<table><thead><tr><th>时间</th><th>事件</th></tr></thead><tbody><tr><td>1997 年 1 月</td><td>Intel 推出 Pentium MMX</td></tr><tr><td>1998 年</td><td>Ingo Molnar 写下 <code>xor-mmx.c</code>（那份 515 行的手写 MMX 汇编）</td></tr><tr><td>2001 年</td><td>SSE2 成为 x86-64 的强制要求</td></tr><tr><td>2010 年代</td><td>commit <code>c6dbd3e5e69c</code> 移除 <code>memcpy()</code>/<code>copy_page()</code>/<code>clear_page()</code> 的 MMX 优化</td></tr><tr><td>2026 年 10 月 25 日</td><td>这个三补丁系列提交</td></tr><tr><td><strong>2027 年（预计）</strong></td><td><strong>Linux 7.5 发布</strong></td></tr></tbody></table>
+<p><strong>从 1998 到 2027，整整二十九年。</strong> 而这个补丁系列预计在 2027 年随 Linux 7.5 进入主线。</p>
+<p><strong>也就是说，一个 29 年前的文件，在它诞生的那个年代的人还在世的时候，被从内核里删掉了。</strong></p>
+<p>而 Linux 的版本号也很有意思：<strong>7.5 是 2027 年的版本，但内核里的 MMX 代码是 1998 年的</strong> —— 中间隔了 7 个大版本、29 个年头。</p>
+<h2>八、几条边角信息</h2>
+<ul><li><strong>这个系列是走 <code>linux-raid</code> 列表的</strong>，抄送了 <code>linux-crypto</code>、<code>x86</code>、<code>linux-kernel</code>、Andrew Morton 和 Christoph Hellwig。<strong>Andrew Morton（MM 维护者）在收件人列表里</strong> —— 这是内核里内存管理相关的路径，raid6 的代码也归他看，所以这个抄送是必要的。</li><li><strong>同站（Tom's Hardware） 的标题有点渲染错误</strong> —— 原文标题里的「Open」被误写成了「open-source」，正文里的说法则是「移除最后一批仍在服役的优化软件」。<strong>Xen 虚拟化逃逸</strong>那篇里我们也被同一个站误导过一次。</li><li><strong>Phoronix 的报道（2026-11-03）比 同站（Tom's Hardware）（2026-11-08）早了五天</strong>，而补丁本身是 10 月 25 日提交的。<strong>这意味着新闻传播路径是「邮件列表 → Phoronix → 同站（Tom's Hardware）」</strong>，而 同站（Tom's Hardware） 那篇引述的「移除最后一批仍在服役的优化软件」正是 Phoronix 的原话。</li><li><strong>社区里有一条很值得注意的反驳</strong>（同站（Tom's Hardware） 评论区，用户 bit_user）：</li></ul>
+<blockquote>MMX 的收益是真实的，如果你有合适的用例 —— 图像与视频压缩、图像处理、信号处理这类。</blockquote>
+<p>另一条（ezst036）则说：「<strong>维基百科的措辞似乎有误导性。</strong> 在今天的 2026 年，MMX 大概确实没多大用。但<strong>在当时、以及此后很多年</strong>，我认为 MMX 是被基准测试过的，而且展示过值得的收益。」</p>
+<p><strong>这两条反驳都对，而且它们恰好说明了作者判定的精准。</strong> 作者说的不是「MMX 从来没用」，而是「<strong>用在这些场景的 CPU 上，其它路径已经覆盖了它们</strong>」—— MMX 当年确实快，但<strong>那些 CPU 已经不存在了</strong>。</p>
+<hr>
+<h2>Sources</h2>
+<ul><li>Eric Biggers, <em>[PATCH 0/3] raid: remove obsolete MMX optimized code</em>（linux-raid 邮件列表，2026-10-25，含三个补丁的完整 commit message 与 diffstat）: <a href="https://lists.openwall.net/linux-kernel/2026/10/25/771" target="_blank" rel="noopener noreferrer">https://lists.openwall.net/linux-kernel/2026/10/25/771</a></li><li>同系列 <em>[PATCH 1/3] xor: remove obsolete MMX optimized code</em>: <a href="https://lists.openwall.net/linux-kernel/2026/10/25/771" target="_blank" rel="noopener noreferrer">https://lists.openwall.net/linux-kernel/2026/10/25/771</a></li><li>同系列 <em>[PATCH 2/3] raid6: remove obsolete MMX optimized code</em>: <a href="https://lists.openwall.net/linux-kernel/2026/10/25/772" target="_blank" rel="noopener noreferrer">https://lists.openwall.net/linux-kernel/2026/10/25/772</a></li><li>同系列 <em>[PATCH 3/3] raid6: simplify CPU feature checks</em>: <a href="https://lists.openwall.net/linux-kernel/2026/10/25/770" target="_blank" rel="noopener noreferrer">https://lists.openwall.net/linux-kernel/2026/10/25/770</a></li><li>同站（Tom's Hardware）, <em>The end of an era as Linux 7.5 purges the last 30-year-old Intel MMX optimizations from Pentium age</em>（Mark Tyson，2026-11-08）: <a href="https://www.tomshardware.com/software/linux/the-end-of-an-era-as-linux-7-5-purges-the-last-30-year-old-intel-mmx-optimizations-from-pentium-age-open-source-os-retires-ancient-1997-pentium-instructions-to-streamline-code" target="_blank" rel="noopener noreferrer">https://www.tomshardware.com/software/linux/the-end-of-an-era-as-linux-7-5-purges-the-last-30-year-old-intel-mmx-optimizations-from-pentium-age-open-source-os-retires-ancient-1997-pentium-instructions-to-streamline-code</a></li><li>Phoronix, <em>The Linux Kernel Preparing To Remove The Last Of Its MMX Optimized Code</em>（Michael Larabel，2026-11-03）: <a href="https://www.phoronix.com/news/Linux-Dropping-Last-MMX-Opt" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/Linux-Dropping-Last-MMX-Opt</a></li></ul>
+<h3>事实边界说明</h3>
+<ul><li>三个补丁的 commit message、判定条件、diffstat、Makefile 的改动、以及「cpuid-deps.c 是警告而非强制，这是有意为之」这条注释：均引自 Eric Biggers 的原始邮件。</li><li><code>xor-mmx.c</code> 的版权头（Copyright (C) 1998 Ingo Molnar）与其中的 MMX 汇编宏：引自补丁 1 的 diff。</li><li>MMX 的历史（1997 年 1 月推出、Matrix Math Extensions 的商标纠纷、AMD/Centaur/Cyrix/Rise/Transmeta 也提供过 MMX、3DNow! 与 SSE 的后续）以及评论区两条反驳：引自 同站（Tom's Hardware） 报道及其评论区。</li><li>「Linux 7.5 预计 2027 年发布」：引自 Phoronix 与 同站（Tom's Hardware） 的报道；本文未独立核对发布计划。</li><li><strong>本文对「这次删除的本质是用经过充分测试的通用实现替换极窄条件下的专用实现」以及「补丁 3 删的是重复确认而非保护」这两处解读，是基于原文 commit message 的推断</strong>，原文未用这些措辞。</li><li>本文只做技术解读，不构成对任何发行版或硬件的支持建议。</li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-08_linux-7-5-remove-mmx-optimizations/",
+      title: "Linux \u5185\u6838 7.5 \u5220\u6389\u6700\u540e\u4e00\u6279 MMX \u4f18\u5316\uff1a800 \u884c\u6362\u6210 12 \u884c"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
