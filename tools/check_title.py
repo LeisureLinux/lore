@@ -96,6 +96,8 @@ CORE = {
     "control web panel", "cwp", "cwpsrv", "cwpdoor", "centos web panel",
     "vercel", "chrome", "dbsc", "device bound session", "tpm", "secure enclave",
     "gputaskman", "nvml", "wddm", "rocm", "hip", "amdgpu", "kfd", "vram",
+    "forgerock", "openidm", "ping identity", "pingidm", "openam", "apache felix",
+    "felix", "osgi", "crest", "ropc", "mfa", "waf", "idm", "saml", "oauth",
     "llamacpp", "ollama", "pytorch", "cuda", "nvidia", "radeon", "npu",
     "unigine", "valley", "drm", "sysfs", "procfs", "huggingface", "vllm",
     "cachyos", "omarchy", "arch linux", "archlinux", "manjaro", "endeavouros",
