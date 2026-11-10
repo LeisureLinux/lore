@@ -100,6 +100,7 @@ CORE = {
     "virtme-ng", "virtme", "vng", "qemu", "kvm", "virtiofs", "virtiofsd",
     "darling", "darlinghq", "wine", "proton", "winetricks", "appkit",
     "asahi linux", "asahi", "omarchy", "m1n1", "honeykrisp", "borealis",
+    "saas", "rd&d", "ip", "artcraft", "gimp", "jevons", "baumol",
     "gravity linux", "aurora silicon", "dhh", "omacom", "copyleft",
     "gpl", "lgpl", "mit", "bsd", "sourcehut",
     "corecrypto", "dynarmic", "vibedarling", "tiobe", "flutter", "dart",
