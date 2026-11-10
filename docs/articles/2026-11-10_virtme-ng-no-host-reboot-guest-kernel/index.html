@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>virtme-ng 不重启宿主机：换的是虚机里的内核 — FreeLAMP.com</title>
+  <meta name="description" content="本文把 virtme-ng 介绍清楚，并纠正一个容易被宣传语带偏的理解：它不重启的是宿主机，换掉的是 QEMU 虚机里的内核。官方 README 自己也写得明白——内核自动启动在一个虚拟化环境里，那是当前系统的写时复制精确副本；exit 就回到真实系统。所以它每次都是新起一个 QEMU/microVM 进程，从虚机生命">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-10">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="virtme-ng 不重启宿主机：换的是虚机里的内核">
+  <meta property="og:description" content="本文把 virtme-ng 介绍清楚，并纠正一个容易被宣传语带偏的理解：它不重启的是宿主机，换掉的是 QEMU 虚机里的内核。官方 README 自己也写得明白——内核自动启动在一个虚拟化环境里，那是当前系统的写时复制精确副本；exit 就回到真实系统。所以它每次都是新起一个 QEMU/microVM 进程，从虚机生命">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-10">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="virtme-ng 不重启宿主机：换的是虚机里的内核">
+  <meta name="twitter:description" content="本文把 virtme-ng 介绍清楚，并纠正一个容易被宣传语带偏的理解：它不重启的是宿主机，换掉的是 QEMU 虚机里的内核。官方 README 自己也写得明白——内核自动启动在一个虚拟化环境里，那是当前系统的写时复制精确副本；exit 就回到真实系统。所以它每次都是新起一个 QEMU/microVM 进程，从虚机生命">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "virtme-ng 不重启宿主机：换的是虚机里的内核",
+  "description": "项目：<https://github.com/arighi/virtme-ng ｜ 手册：<https://manpages.debian.org/unstable/virtme-ng/vng.1.en.html  本文依据官方 README / Examples、vng1 man page，以及本机只读核对。  一、先把话说准：不重启的是宿主机，换的是虚机内核 virtme-ng 命令叫 vng",
+  "datePublished": "2026-11-10",
+  "dateModified": "2026-11-10",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "virtme-ng 不重启宿主机：换的是虚机里的内核",
+        "item": "https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-10">2026-11-10</div>
+        <h1 class="post-title" itemprop="headline">virtme-ng 不重启宿主机：换的是虚机里的内核</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>项目：<a href="https://github.com/arighi/virtme-ng" target="_blank" rel="noopener noreferrer">https://github.com/arighi/virtme-ng</a> ｜ 手册：<a href="https://manpages.debian.org/unstable/virtme-ng/vng.1.en.html" target="_blank" rel="noopener noreferrer">https://manpages.debian.org/unstable/virtme-ng/vng.1.en.html</a><br>
+<br>
+本文依据官方 README / Examples、vng(1) man page，以及本机只读核对。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<h2>一、先把话说准：不重启的是宿主机，换的是虚机内核</h2>
+<p>virtme-ng 命令叫 <code>vng</code>，作者是 Andrea Righi（NVIDIA），2022 年 11 月建，GPL-2.0，PyPI 最新 v1.42。它是 Andy Lutomirski 那个已停维护的 <code>virtme</code> 的重写。</p>
+<p>官方 README 里的措辞其实很精确：</p>
+<blockquote>内核会自动启动在<strong>一个虚拟化环境</strong>里，这个环境是你当前系统的<strong>写时复制精确副本</strong>；在虚拟化环境里做的任何改动都不影响宿主机。<br>
+<br>
+…现在你有了一个 shell，跑在<strong>你整个系统的虚拟化副本里</strong>，用的是新内核。输入 <code>exit</code> 就回到<strong>真实的系统</strong>。</blockquote>
+<p><strong>三个词划清了边界</strong>：<code>virtualized environment</code>、<code>copy-on-write copy</code>、<code>return back to the real system</code>。</p>
+<p>所以它做的事是：</p>
+<pre><code>vng -r v6.6  →  新起一个 QEMU / microVM 进程
+              →  里面跑 6.6 内核 + 宿主机文件系统的 CoW 快照
+              →  exit 之后，宿主机的 7.2.15 内核从头到尾没动过</code></pre>
+<p><strong>它不是 kexec，不是热替换，也不是 attach 到一台正在跑的虚机把内核换掉。</strong> 每次都是一次完整的开机。</p>
+<h2>二、于是「不重启」这个卖点，得看跟谁比</h2>
+<p>这个说法对比的是<strong>传统内核开发的物理机循环</strong>：</p>
+<pre><code>改源码 → 编译 → 把内核装到测试机 → 重启测试机 → 跑测试 → 崩了 → 再重启 …</code></pre>
+<p>省掉的是「把内核部署到真机并重启真机」这一串。<strong>它从来没说「虚机不用重启」</strong> —— 虚机当然要开机，因为它是新起的一个。</p>
+<p><strong>而对一个本来就跑 libvirtd、会 <code>virsh edit</code> 的人，这个痛点本来就不存在。</strong> libvirt 的 domain XML 里 <code>&lt;os&gt;</code> 段原生支持 direct kernel boot：</p>
+<pre><code class="xml">&lt;os&gt;
+  &lt;type arch='x86_64' machine='pc-q35'&gt;hvm&lt;/type&gt;
+  &lt;kernel&gt;/boot/vmlinuz-6.6&lt;/kernel&gt;
+  &lt;initrd&gt;/boot/initrd.img-6.6&lt;/initrd&gt;
+  &lt;cmdline&gt;root=/dev/vda console=ttyS0&lt;/cmdline&gt;
+&lt;/os&gt;</code></pre>
+<p>改完 <code>virsh define</code> + <code>virsh start</code>，一样是「宿主机不重启、虚机换个内核起一次」。我在这台机器上只读核对了一个现有域（<code>alpine-demo</code>）的 <code>&lt;os&gt;</code> 段，目前是 <code>&lt;boot dev='hd'/&gt;</code> 走磁盘引导；libvirt 11.3.0 支持上述 direct kernel boot 结构。</p>
+<p><strong>所以准确说法应该是：「不重启宿主机，快速起一个跑指定内核的一次性虚机」</strong>，而不是「不重启换内核」。标题里少了「宿主机」三个字，意思就完全不同了。</p>
+<h2>三、「要重新编译内核吗」——只属于 <code>--build</code> 一条路</h2>
+<p>这个疑问来自 README 开头那句自我定位：</p>
+<blockquote>virtme-ng is a tool that allows to easily and quickly <strong>recompile</strong> and test a Linux kernel, starting from the source code.</blockquote>
+<p>（<strong>这一句是全文我唯一想原样保留的英文</strong> —— 因为它正是「以为必须重新编译」这个误解的来源：它只描述 <code>--build</code> 这一条路径，却被写在了 README 的第一段。）</p>
+<p><strong>这句话只描述 <code>--build</code></strong>，但很容易让人以为整个工具都要求编译。man page 里 <code>--run</code> / <code>-r</code> 明确接受四类参数，加上 README 的 Examples，共六条不编译路径：</p>
+<table><thead><tr><th>命令</th><th>内核从哪来</th><th>编译？</th></tr></thead><tbody><tr><td><code>vng -r</code></td><td>不带参数 → 启动<strong>与宿主同版</strong>的内核（读 <code>/boot/vmlinuz-*</code>）</td><td>否</td></tr><tr><td><code>vng -r 6.2.0-21-generic</code></td><td>系统里已安装的其它版本</td><td>否</td></tr><tr><td><code>vng -r v6.6</code> / <code>vng -r v6.6.17</code></td><td><strong>自动下载 Ubuntu mainline 的预编译上游内核</strong></td><td>否</td></tr><tr><td><code>vng -r ./arch/x86/boot/bzImage</code></td><td>任意现成内核二进制，或含内核的目录</td><td>否</td></tr><tr><td><code>vng -r ./test/boot/vmlinuz-6.2.0-1003-lowlatency</code></td><td><code>apt download</code> + <code>dpkg -x</code> 解出发行版内核 deb</td><td>否</td></tr><tr><td><code>vng --run ./bzImage --root-disk ./tumbleweed.raw</code></td><td>现成内核 + 独立磁盘镜像做 rootfs</td><td>否</td></tr><tr><td><code>vng --build</code> / <code>vng -b</code></td><td>从当前目录源码，自动生成最小 <code>.config</code> 后编译</td><td><strong>是</strong></td></tr></tbody></table>
+<p>官方在 <code>vng -r v6.6</code> 那个例子旁边专门写了一句：直接测特定版本、<strong>省下大量构建时间</strong>。</p>
+<p><strong>所以：只想不重启试另一个版本，<code>vng -r v6.6</code> 就够了，下载的是别人编好的二进制，不需要源码树。</strong> 前提是它拉的是 Ubuntu mainline 预编译包 —— 只有那个仓库里存在的上游版本、x86_64 generic 构建。想测发行版自己的内核（openSUSE、Debian riscv64 等）就走 <code>dpkg -x</code> 或 <code>--root-disk</code>；README 里甚至给了一个完整的 riscv64 例子（Debian sid cloud image + 解一个 riscv64 内核 deb + <code>--arch riscv64 --root-disk --root-fstype ext4</code>）。</p>
+<p><strong>只有测自己改过的源码 / 补丁 / 某个 commit 时才编译</strong>：</p>
+<pre><code class="sh">cd linux
+vng --build --commit v6.2-rc4    # 自动生成最小 .config → 编译 → 起 VM
+vng -b                            # 已 checkout 的当前源码</code></pre>
+<p>这里的「最小 <code>.config</code>」是它的核心设计：只开「能在 QEMU 里启动并跑测试」所需的功能，把构建压到几分钟（官方说 rather than hours），产物带 <code>-virtme</code> 后缀。<strong>代价是这个内核缺大量功能，不能当生产内核用。</strong> 可以用 <code>--config</code> / <code>--configitem CONFIG_FOO=bar</code> 追加，或 <code>--build-host</code> 丢到远程服务器编译。</p>
+<h2>四、那它相对「改 XML」到底多什么</h2>
+<p>把两边摆齐，增量其实只有一条：</p>
+<table><thead><tr><th></th><th>libvirt XML + <code>virsh</code></th><th><code>vng</code></th></tr></thead><tbody><tr><td>换内核</td><td><code>&lt;kernel&gt;</code> / <code>&lt;initrd&gt;</code> / <code>&lt;cmdline&gt;</code> + <code>define</code> + <code>start</code></td><td><code>-r v6.6</code> / <code>-r ./bzImage</code></td></tr><tr><td>宿主机重启</td><td>不需要</td><td>不需要</td></tr><tr><td>虚机</td><td>重新 <code>start</code></td><td>新起一个 microVM</td></tr><tr><td><strong>rootfs</strong></td><td><strong>你得先有一个装好系统的磁盘镜像</strong></td><td><strong>直接把宿主机根文件系统导出成 CoW 快照，不用准备镜像</strong></td></tr><tr><td>内核模块</td><td>得保证镜像里 <code>/lib/modules</code> 与换进去的内核匹配，否则 <code>modprobe</code> 全挂</td><td>默认连宿主机模块一起只读导出，天然匹配</td></tr><tr><td>内核来源</td><td>你自己放</td><td>额外支持自动下载 Ubuntu mainline 预编译内核</td></tr><tr><td>编译</td><td>不管</td><td><code>--build</code> 从源码生成最小 <code>.config</code>，几分钟编出来</td></tr></tbody></table>
+<p><strong>唯一真正的增量是 rootfs</strong>：用 virtiofs（或回退 9p）把宿主机根文件系统导出成只读 + overlay 写时复制，于是 guest 里的软件环境几乎和宿主机一模一样，而你在里面 <code>rm -rf /</code> 或把内核搞 panic，宿主机毫发无损。README 的原话是：你可以安全地摧毁整个文件系统、让内核崩溃，而不影响宿主机。</p>
+<p>Kernel Recipes 2024 的技术介绍把组件列全了：<strong>QEMU/KVM + microVM + virtio-fs + overlayfs</strong>，目标是把「部署并维护一套专用测试系统」这件事省掉。</p>
+<p><strong>而 <code>--root-disk</code> 是较新的能力</strong>（2026-09 有博客专门写）：绕开 virtiofs/9p 的诸多限制，直接挂 virtio-blk 磁盘做根，才让「测发行版内核 + 任意 userspace」变得靠谱。README 里写得很清楚：内核、initramfs、模块与 guest 工具都从宿主机以只读独立挂载导出，<strong>所以那个磁盘镜像不需要知道它要启动哪个内核</strong>。代价是内核得有 <code>CONFIG_VIRTIO_BLK</code> 和对应文件系统支持 —— 文件系统不在 virtme-ng 的默认 config 里，要 <code>--configitem CONFIG_EXT4_FS=y</code> 或 <code>--root-fstype ext4</code>。</p>
+<p><strong>注意这个转折</strong>：一旦你用上 <code>--root-disk</code> 挂一个独立发行版镜像，做的事就非常接近你本来在 libvirt 里做的事了 —— 只是把 <code>virsh edit</code> 换成了 <code>vng --run</code>。</p>
+<h2>五、它少的那部分，也得说清</h2>
+<ul><li><strong>guest 不是完整发行版体验</strong>：默认跳过 udev / tmpfiles 初始化；<code>--fast-boot</code>（<code>-F</code>）更激进，设备权限规则、udev 模块加载、hotplug 规则都不可用，tmpfiles 本该建的文件/目录/权限/符号链接可能缺失。<code>--systemd</code> 可保留完整初始化。</li><li><strong>最小 config 内核功能残缺</strong>，这是把构建压到几分钟的代价。</li><li><strong><code>--rw</code> 危险</strong>：默认 rootfs 是只读导出，加 <code>--rw</code> 会真的能写回宿主机文件系统 —— README 自己标了 WARNING。</li><li><strong>已知坑</strong>：外部 virtiofs root 开 POSIX ACL 时可能 <code>switch_root</code> 失败 + guest panic，解法 <code>--no-root-posix-acl</code>；guest 里必须有 <code>/usr/bin/env</code>（helper 脚本用 bash shebang）；<code>vng -r</code> 不带参数常因 <code>/boot/vmlinuz-*</code> 是 600 而报 <code>unable to access ... (check for read permissions)</code>，要 <code>sudo chmod +r /boot/vmlinuz-*</code>。</li><li><strong>不是热切换</strong>：guest 里跑的是另一台虚拟机，宿主机上正在跑的工作负载不会迁过去。CoW 快照让它「看起来像」，但只是像。</li></ul>
+<h2>六、本机只读核对（没装、没起 VM）</h2>
+<table><thead><tr><th>项</th><th>要求</th><th>本机</th></tr></thead><tbody><tr><td>Python</td><td>PyPI 写 ≥3.10，README 写 3.11+</td><td>3.12.8 ✅</td></tr><tr><td>QEMU</td><td>≥1.6 推荐</td><td><code>/usr/bin/qemu-system-x86_64</code> ✅</td></tr><tr><td>KVM</td><td>强烈建议（裸机或嵌套虚拟化）</td><td><code>/dev/kvm</code> 存在，用户在 <code>kvm</code> 组 ✅</td></tr><tr><td>静态 busybox</td><td>部分选项需要</td><td><code>/usr/bin/busybox</code> ✅</td></tr><tr><td>virtiofsd</td><td>≥1.7.0，可选但影响性能</td><td><strong>未装</strong>（会退回 9p）</td></tr><tr><td><code>/boot/vmlinuz-*</code> 可读</td><td><code>vng -r</code> 需要</td><td>5 个 vmlinuz，全部 <code>-rw-r--r--</code> ✅</td></tr><tr><td>libvirt</td><td>对照用</td><td>11.3.0，10 域 / 3 网络 / 17 池</td></tr><tr><td><code>vng</code> 本体</td><td>—</td><td><strong>未安装</strong></td></tr></tbody></table>
+<p>依赖几乎全齐，只差 <code>virtiofsd</code> 和 <code>vng</code> 本身。<strong>但我没有装，也没有起 VM</strong> —— 这篇文章要说的恰恰是「它跟改 XML 是一回事」，装了反而多余。本机 <code>/boot</code> 里 5 个内核（6.12.x 系列 + 6.18.x xanmod）全是 644，如果哪天想试 <code>vng -r 6.12.48+deb13-amd64</code>，读权限这道坎不存在。</p>
+<h2>七、什么情况下它值得开</h2>
+<p><strong>唯一值得的场景</strong>：你刚改完内核源码，想在一个「和当前系统一模一样、但又写不坏」的环境里跑测试，且懒得维护一个专用测试镜像。这时 CoW 快照确实省事，几分钟起一个，<code>--fast-boot</code> 更快，还能 <code>--gdb</code> 挂调试、<code>--debug</code> 抓 crash dump、<code>--build-host</code> 把编译丢到远程。</p>
+<p>README 里还有 MCP server（AI Agent 集成）示例工作流：编译内核并检查 dmesg、与 mainline v6.12 比较行为、验证补丁系列里每个 commit 都能构建并启动 —— 这些是给内核补丁迭代准备的，不是给「换个版本用用」准备的。</p>
+<p><strong>其余情况</strong>：想试现成内核 → <code>virsh edit</code> 改 <code>&lt;kernel&gt;</code>；想试自己编的内核 → XML 一行 + 模块打进 initrd 或挂匹配镜像；想测发行版内核配发行版 userspace → 你本来就有磁盘镜像和 libvirt。</p>
+<h2>八、结论</h2>
+<p>把它一句话说死：</p>
+<blockquote><strong>virtme-ng 优化的是「测试环境准备」，不是「换内核」本身。换内核这件事，改一行 libvirt XML 早就做到了。</strong></blockquote>
+<p>它真正的贡献是把「专用测试机 / 测试镜像」换成了「宿主机文件系统的 CoW 快照 + 自动匹配的模块」，再用一个 <code>vng</code> 命令把「下载内核 → 生成最小 config → 编译 → 起虚拟机 → 进去跑 → exit 回真机」串成一条流水线。</p>
+<p><strong>标题里如果只写「不重启换内核」，那是唬人的；写「不重启宿主机、换的是虚机里的内核」才准确。</strong></p>
+<p>顺带留一个方法论上的观察：这类工具的宣传语常常省略<strong>比较对象</strong>。「几分钟重新编译内核」对比的是「几小时的全量构建」，「不重启」对比的是「重启物理测试机」，而「当前系统的精确副本」听起来像热迁移，实际只是只读导出加一层 overlay。<strong>读这类项目时，先把「比什么」问出来，再决定它对自己有没有用。</strong></p>
+<hr>
+<h2>Sources</h2>
+<ul><li>arighi/virtme-ng 官方 README 与 Examples（v1.42）: <a href="https://github.com/arighi/virtme-ng" target="_blank" rel="noopener noreferrer">https://github.com/arighi/virtme-ng</a></li><li><code>vng(1)</code> man page，Debian unstable（2026-11-04，<code>--run</code> 的四类参数、Requirements、动作说明）: <a href="https://manpages.debian.org/unstable/virtme-ng/vng.1.en.html" target="_blank" rel="noopener noreferrer">https://manpages.debian.org/unstable/virtme-ng/vng.1.en.html</a></li><li>PyPI <code>virtme-ng</code> v1.42（版本、Python 要求、许可证）: <a href="https://pypi.org/project/virtme-ng/" target="_blank" rel="noopener noreferrer">https://pypi.org/project/virtme-ng/</a></li><li>Kernel Recipes 2024, <em>virtme-ng</em>（QEMU/KVM + microVM + virtio-fs + overlayfs 的技术介绍）: <a href="https://kernel-recipes.org/en/2024/virtme-ng/" target="_blank" rel="noopener noreferrer">https://kernel-recipes.org/en/2024/virtme-ng/</a></li><li>Red Hat / libvirt 关于 Direct Kernel Boot 的文档（<code>&lt;kernel&gt;</code> / <code>&lt;initrd&gt;</code> / <code>&lt;cmdline&gt;</code>）: <a href="https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-Manipulating_the_domain_xml-Operating_system_booting" target="_blank" rel="noopener noreferrer">https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-Manipulating_the_domain_xml-Operating_system_booting</a></li><li>本机只读核对：libvirt 11.3.0、<code>virsh dumpxml alpine-demo</code> 的 <code>&lt;os&gt;</code> 段、QEMU / KVM / busybox / <code>/boot/vmlinuz-*</code></li></ul>
+<h3>事实边界说明</h3>
+<ul><li>「换的是虚机内核、宿主机不动」「每次新起 QEMU/microVM」「CoW 快照」「最小 .config」：均引自官方 README 与 man page 的措辞，本文按其明确表述解读。</li><li><code>--run</code> 的六条不编译路径：前四条出自 man page 的 <code>--run</code> ACTION 段，后两条出自 README Examples。</li><li>「与改 libvirt XML 等价」是本文基于 libvirt direct kernel boot 文档与虚机生命周期的分析，virtme-ng 文档未作此对比；文中已标明这是「从生命周期看」的判断而非功能等价。</li><li>本机依赖状态为只读实测；<strong>本文未安装 virtme-ng、未启动任何虚拟机、未改动宿主机内核或任何域配置</strong>。</li><li><code>--root-disk</code> 的时间信息（2026-09 相关博客）来自检索结果，未逐字核对博客全文，仅作背景提及。</li><li>本文只做技术解读与选型参考，不构成安装建议。</li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/",
+      title: "virtme-ng \u4e0d\u91cd\u542f\u5bbf\u4e3b\u673a\uff1a\u6362\u7684\u662f\u865a\u673a\u91cc\u7684\u5185\u6838"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

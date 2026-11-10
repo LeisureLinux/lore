@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-10 | [virtme-ng 不重启宿主机：换的是虚机里的内核](https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/) | virtme-ng · vng · QEMU · KVM · microVM · virtiofs · overlayfs · CoW快照 · 写时复制 · 直接内核引导 · directkernelboot · libvirtXML · virsh · kexec · bzImage · vmlinuz · UbuntuMainline · 最小config · root-disk · virtio-blk · 内核测试 · 测试环境准备 · 技术解读 |
 | 2026-11-09 | [secwrap 审 curl \| sh：eBPF 比 strace 多做了什么](https://freelamp.com/articles/2026-11-09_secwrap-ebpf-install-sh-approval/) | secwrap · eBPF · BPFLSM · kprobe · cgroup · cgroupv2freeze · seccomp · SECCOMP_RET_USER_NOTIF · ptrace · strace · io_uring · TOCTOU · BTF · install.sh · curlpipe sh · 动作级审批 · AIAgentShell · Landlock · Firejail · bubblewrap · Tetragon · Falco · OpenSnitch · sandlock · CycloneDX · EPERM · 内核机制 · 技术解读 |
 | 2026-11-09 | [NetScaler 零日之后再看防御敏捷性：值钱的不是七条清单，是「周五下午」](https://freelamp.com/articles/2026-11-09_defensive-agility-seven-practices/) | NetScaler · Citrix · CSOOnline · 防御敏捷性 · CISO · 零信任 · 合理化安全设施 · 动态结构韧性 · 工作流税 · 置信度与可逆性 · 策略评审vs运营治理 · 护栏持续自动化 · 周五下午 · 节奏差 · 指导委员会 · runbook僵局 · 消防演练 · CISA · KEV · 三天修补窗口 · 安全运营 · 技术解读 |
 | 2026-11-09 | [ForgeRock 默认口令 admin:admin：车门和引擎就这样被远程打开](https://freelamp.com/articles/2026-11-09_forgerock-adminadmin-connected-car-takeover/) | ForgeRock · OpenIDM · PingIdentity · adminadmin · ApacheFelix · OSGi · 联网汽车 · 车联网安全 · 身份平台 · 路径解析错位 · WAF绕过 · Groovy调度器 · 远程代码执行 · SamCurry · ShubhamShah · ROPC · MFA跳过 · staging凭据硬编码 · 独立认证面 · 无CVE · 负责任披露 · 技术解读 |
