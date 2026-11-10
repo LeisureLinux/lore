@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-10 | [Linux 内核 7.4-rc2：BPF 修复跑赢报告，Linus 没说「大部分靠 AI」](https://freelamp.com/articles/2026-11-10_linux-7-4-rc2-bpf-ai-fixes-reports/) | Linux 内核 · 7.4-rc2 · BPF · eBPF · Linus Torvalds · Alexei Starovoitov · LKML · Coccinelle · diffstat · 7.1-rc4 · 7.4-rc1 · 合并窗口 · coding-assistants.rst · generated-content.rst · Assisted-by · AGENTS.md · DCO · syzbot · TAINT_FORCED_BIND · triage 带宽 · 开源治理 · 技术解读 |
 | 2026-11-11 | [GPL 许可证完整对照：GPL、Apache、MIT、BSD、MPL、EPL 的版本与差异](https://freelamp.com/articles/2026-11-11_open-source-licenses-complete-guide/) | GPL · Apache · MIT · BSD · MPL · EPL · AGPL · LGPL · CDDL · SPDX · -only · -or-later · 兼容性矩阵 · Tivoization · 专利授权 · 30天治愈期 · 文件级copyleft · secondarylicense · BSD-4-Clause广告条款 · source-available · SSPL · BSL · 选型决策树 · 技术解读 · 开源许可 |
 | 2026-11-10 | [Firefox 160 补上 MKV 的三种音轨：这是追平 Chrome，不是超越](https://freelamp.com/articles/2026-11-10_firefox-160-mkv-chrome-diff/) | Firefox · Firefox160 · MKV · Matroska · Chrome · Chromium · Safari · iOS · WebKit · FLAC · MP3 · PCM · AAC · ALAC · H.264 · HEVC · AV1 · VP9 · MSE · MediaRecorder · MIME · 容器 · 编解码器 · HLS · CoreMedia · AVFoundation · GStreamer · 技术解读 · 浏览器媒体 |
 | 2026-11-11 | [Dux Shell 与 Niri：所谓「不是桌面环境的桌面环境」到底替代了什么](https://freelamp.com/articles/2026-11-11_dux-niri-not-a-desktop-environment/) | Dux Shell · Niri · DMS · DankMaterialShell · Dux Labs · Quickshell · DMS 2.0 Heisenberg · DMS 2.1 Stormborn · Material 3 Expressive · Noctalia · waybar · mako · D-Bus · GetNameOwner · dank16 · 合成器 · 桌面壳 · Linux 桌面 · 技术解读 |
