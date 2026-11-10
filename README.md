@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-10 | [Asahi Linux 改 GPL：官方没提 Omarchy，DHH 说「什么都没变」](https://freelamp.com/articles/2026-11-10_asahi-linux-gpl-license-omarchy-dhh/) | AsahiLinux · Omarchy · DHH · MIT · GNU GPLv2 · LGPL · copyleft · 许可证变更 · WINE2002 · 代码洗白 · LLM改写 · 净室逆向工程 · clean-room · m1n1 · HoneyKrisp · Borealis · GravityLinux · OpenBSD · BryanSteele · BSD · 贡献者同意 · relicense · 开源治理 · 事实核查 · 技术解读 |
 | 2026-11-10 | [Darling 用 AI 追 macOS 兼容层：它和 WINE 差的不是技术，是生态](https://freelamp.com/articles/2026-11-10_darling-macos-linux-ai-policy-wine/) | Darling · DarlingHQ · macOS兼容层 · WINE · WindowsOnLinux · Proton · winetricks · AppKit · CoreCrypto · clean-room · AGENTS.md · AI辅助贡献 · QUIRK标签 · 证据分级 · ARM64 · AppleSilicon · VibeDarling · darling-lol · 英雄联盟 · 开源治理 · 人力产能 · 技术解读 |
 | 2026-11-10 | [TIOBE 2026 年 11 月榜：Java 反超 C++，但 0.54 点不是趋势](https://freelamp.com/articles/2026-11-10_tiobe-november-2026-java-cpp/) | TIOBE · Java · C++ · Python · C · Go · Rust · Dart · Flutter · R · SQL · VisualBasic · C# · JavaScript · 编程语言排行榜 · 搜索可见度 · 技术采用率 · 环比vs同比 · 指标方法论 · 选型参考 · 技术解读 |
 | 2026-11-10 | [virtme-ng 不重启宿主机：换的是虚机里的内核](https://freelamp.com/articles/2026-11-10_virtme-ng-no-host-reboot-guest-kernel/) | virtme-ng · vng · QEMU · KVM · microVM · virtiofs · overlayfs · CoW快照 · 写时复制 · 直接内核引导 · directkernelboot · libvirtXML · virsh · kexec · bzImage · vmlinuz · UbuntuMainline · 最小config · root-disk · virtio-blk · 内核测试 · 测试环境准备 · 技术解读 |
