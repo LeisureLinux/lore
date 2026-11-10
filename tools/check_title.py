@@ -109,6 +109,8 @@ CORE = {
     "virsh", "kexec", "cow", "copy-on-write", "9p", "virtio-blk",
     "strace", "landlock", "firejail", "bubblewrap", "tetragon", "falco",
     "opensnitch", "sandlock", "cgroup", "lsm", "quickshell", "noctalia",
+    "dux shell", "dux", "dms", "dankmaterialshell", "dux labs", "dux files",
+    "dux gop", "niri", "greetd", "mako", "waybar", "swaylock", "dank16",
     "forgerock", "openidm", "ping identity", "pingidm", "openam", "apache felix",
     "felix", "osgi", "crest", "ropc", "mfa", "waf", "idm", "saml", "oauth",
     "llamacpp", "ollama", "pytorch", "cuda", "nvidia", "radeon", "npu",
