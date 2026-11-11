@@ -78,6 +78,7 @@ CORE = {
     "illumos", "solaris", "aix", "hpux", "hp-ux", "truenas", "openmediavault",
     "unraid", "synology", "qnap", "esxi", "proxmox",
     "wireshark", "burpsuite", "metasploit", "nmap", "zgrab",
+    "suricata", "evebox", "snort", "zeek", "ids", "nids", "ips",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
