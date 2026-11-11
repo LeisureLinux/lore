@@ -81,6 +81,8 @@ CORE = {
     "suricata", "evebox", "snort", "zeek", "ids", "nids", "ips",
     "gnu tar", "tar", "pax", "bsdtar", "libarchive", "7-zip", "tarfile",
     "tar-minefield", "busybox", "phardata", "commons compress",
+    "macos", "secure enclave", "touch id", "sc_auth", "secretive", "yubikey",
+    "ssh-keygen", "ssh-copy-id", "cryptotokenkit", "ginux", "codex",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
