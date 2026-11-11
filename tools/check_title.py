@@ -85,6 +85,7 @@ CORE = {
     "ssh-keygen", "ssh-copy-id", "cryptotokenkit", "ginux", "codex",
     "malloc", "glibc", "secure boot", "shim", "mok", "minisforum", "automake",
     "autotools", "meson", "uefi", "sbverify", "tcache", "sbrk",
+    "alibaba", "t-head", "平头哥", "玄铁", "含光", "倚天", "镇岳", "真武", "阿里云", "港交所", "hkex",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
