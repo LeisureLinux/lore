@@ -79,6 +79,8 @@ CORE = {
     "unraid", "synology", "qnap", "esxi", "proxmox",
     "wireshark", "burpsuite", "metasploit", "nmap", "zgrab",
     "suricata", "evebox", "snort", "zeek", "ids", "nids", "ips",
+    "gnu tar", "tar", "pax", "bsdtar", "libarchive", "7-zip", "tarfile",
+    "tar-minefield", "busybox", "phardata", "commons compress",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
