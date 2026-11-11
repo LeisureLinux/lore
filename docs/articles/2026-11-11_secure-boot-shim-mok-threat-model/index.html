@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Boot 不是「锁死系统」：一篇借用 shim 的文章，把威胁模型读错了 — FreeLAMP.com</title>
+  <meta name="description" content="本文核对 Leo Smith 的《Not so secure boot》。作者用一张 Ubuntu/Debian/Fedora 的微软签名 shim，配合自签 MOK 与 MokManager 注册，在开着 Secure Boot 的企业笔记本上从 U 盘引导了自己的系统，结论是「not so secure boot」">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-11">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-11_secure-boot-shim-mok-threat-model/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Secure Boot 不是「锁死系统」：一篇借用 shim 的文章，把威胁模型读错了">
+  <meta property="og:description" content="本文核对 Leo Smith 的《Not so secure boot》。作者用一张 Ubuntu/Debian/Fedora 的微软签名 shim，配合自签 MOK 与 MokManager 注册，在开着 Secure Boot 的企业笔记本上从 U 盘引导了自己的系统，结论是「not so secure boot」">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-11_secure-boot-shim-mok-threat-model/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-11">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Secure Boot 不是「锁死系统」：一篇借用 shim 的文章，把威胁模型读错了">
+  <meta name="twitter:description" content="本文核对 Leo Smith 的《Not so secure boot》。作者用一张 Ubuntu/Debian/Fedora 的微软签名 shim，配合自签 MOK 与 MokManager 注册，在开着 Secure Boot 的企业笔记本上从 U 盘引导了自己的系统，结论是「not so secure boot」">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Secure Boot 不是「锁死系统」：一篇借用 shim 的文章，把威胁模型读错了",
+  "description": "一手：一篇用「借用 shim + 自签 MOK」在开启 Secure Boot 的机器上引导自制系统的文章（2026-11-08）  官方：微软密钥管理指南、Ubuntu / SUSE / Intel 的 shim 与 MOK 文档、UEFI Forum 白皮书、CERT 漏洞公告  实测：本机 sbverify --list / pesign -S 验证 shim 签名状态  这篇文章的现象是真",
+  "datePublished": "2026-11-11",
+  "dateModified": "2026-11-11",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-11_secure-boot-shim-mok-threat-model/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Secure Boot 不是「锁死系统」：一篇借用 shim 的文章，把威胁模型读错了",
+        "item": "https://freelamp.com/articles/2026-11-11_secure-boot-shim-mok-threat-model/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-11">2026-11-11</div>
+        <h1 class="post-title" itemprop="headline">Secure Boot 不是「锁死系统」：一篇借用 shim 的文章，把威胁模型读错了</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>一手：一篇用「借用 shim + 自签 MOK」在开启 Secure Boot 的机器上引导自制系统的文章（2026-11-08）<br>
+官方：微软密钥管理指南、Ubuntu / SUSE / Intel 的 shim 与 MOK 文档、UEFI Forum 白皮书、CERT 漏洞公告<br>
+实测：本机 <code>sbverify --list</code> / <code>pesign -S</code> 验证 shim 签名状态<br>
+<br>
+这篇文章的现象是真的，但它给现象贴的标签值得商榷。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<p>11 月 8 日 Leo Smith 发了篇《Not so secure boot》，讲他怎么在一台开着 Secure Boot 的企业笔记本上，从 U 盘启动了自己的系统。步骤不复杂：拿一个发行版里由微软签过名的 shim，自己用 <code>openssl</code> 生成一对 MOK 密钥，给内核签名，把 shim 和 MokManager 放进启动盘；插盘、按 F7 选外部设备、shim 校验 GRUB 失败后自动进 MOK 注册界面，选自己的证书，重启，GRUB 就起来了。</p>
+<p>作者的结论写在标题里：Secure Boot 没那么安全。他甚至觉得这套手法在「操作安全」上很划算 —— 让自制系统在启动链上看起来像 Ubuntu。</p>
+<p>现象完全成立，但把它读成「Secure Boot 被绕过」，是把三件事混在了一起。 我按官方文档逐条核了一遍，还顺手在本机验了他给的那条 <code>sbverify</code> 命令。</p>
+<h2>一、先纠正最根本的那个误解：完整性不等于锁定系统</h2>
+<p>作者自己诚实地写了研究前的想法：他以为 Secure Boot 是「锁定这台机器能跑什么操作系统」，钥匙由微软控制。查完资料后他给出的新定义是「确保启动系统的完整性」—— 这个修正方向对，但他紧接着又把它读窄了：「签名在接受的数据库里，就这样」。</p>
+<p>UEFI Forum 的白皮书写得很直接：Secure Boot 要解决的是 pre-boot 阶段执行未受保护代码的问题，攻击面包括引导加载器、option ROM、以及「evil maid」这类在启动前植入的持久化恶意代码。微软的密钥管理指南说得更具体：那张 Microsoft Corporation UEFI CA 2011 的用途，就是让 OEM 把它放进 <code>db</code>，好让第三方 UEFI 驱动、应用和引导加载器无需用户额外操作就能运行；文档还列了它的证书哈希，并说明 2023 版把「第三方引导加载器」与「option ROM」拆成两张证书以便细粒度控制。</p>
+<p>换句话说，企业机器默认信任微软第三方 CA，是为了让 Linux 发行版、网卡固件、某些 UEFI 工具能正常启动，不是配置疏漏。本站 10 月那篇讲 2026 年证书到期的文章也核过同一张表：2011 版在 6 月 27 日到期、2023 版把它拆成两张，微软文档原话是「允许对系统信任做更精细的控制」。</p>
+<p>所以 Secure Boot 校验的是「这个 EFI 镜像的签名链能不能追到 <code>db</code> 里某个可信证书」，不是「这个内核是不是厂商批准的那一个」。作者那句「签名在数据库里，就这样」其实已经说对了，只是他把它当成了缺陷。</p>
+<h2>二、shim 与 MOK：这是设计，不是后门</h2>
+<p>作者最惊讶的一点是：为什么一张多年不变的微软签名，能撑住不断变化的 GRUB 和内核？答案是 shim + MOK，而且这套分工在官方文档里写得清清楚楚。</p>
+<ul><li>shim 是预引导加载器，由微软 UEFI CA 签名，固件用 <code>db</code> 里的证书验它。它内部另带发行版自己的证书，用来验下一阶段的 GRUB —— 于是发行版修 GRUB、换内核都不必回头找微软重签。Intel 的应用笔记和 Ubuntu 官方文档都是这么描述的。</li><li>MOK（Machine Owner Key） 是给机器所有者用的：想跑自己改过的内核、第三方驱动，就自己生成密钥注册进去。SUSE 那篇经典说明连动机都写明了 —— GPLv3 要求用户能自由修改 GRUB 与内核，不能把机器做成 tivoized，所以必须留一条由所有者授权的通道。</li></ul>
+<p>关键在授权条件。SUSE 文档原文：注册过程要重启机器、在 shim 加载时中断引导才能进入注册模式，也就是需要物理在场。Intel 的讲义补充了存储层：MOKList 是 Boot Service 非易失变量，OS 运行时不可访问，所以一个已经跑起来的系统里的恶意脚本没法偷偷往里塞密钥。UEFI Forum 白皮书也把「更改信任凭据需要物理在场」列为规范设计。Ubuntu 文档则给出了另一半实话，它写着「This weakens Secure Boot's protections」：MokManager 会在首次启动时用文本界面让用户确认指纹、重启完成注册；它同时明确写着，这种方式被认为是对需要第三方模块场景的可接受折衷，但会削弱 Secure Boot 的保护，管理员应当知情。</p>
+<p>把这几条并起来看，文章的「发现」其实是：作者在能物理接触机器、能进启动菜单的前提下，完成了一次需要物理在场的密钥注册，而这正是 MOK 被设计出来做的事。他自己那句「不需要 BIOS 口令就能选从其他设备启动」，恰恰点出了前提条件。</p>
+<p>顺带补一处实测校正。原文让读者用 <code>sbverify --list you_shim_file.efi</code> 确认「确实是微软签的」，这条命令本身没错（本机 <code>sbverify --help</code> 确认 <code>--list</code> 是「列出所有签名但不校验」）。但我对本机 Debian 的 <code>/usr/lib/shim/shimx64.efi</code> 跑了一下：</p>
+<pre><code>$ sbverify --list /usr/lib/shim/shimx64.efi
+warning: data remaining[888832 vs 1016789]: gaps between PE/COFF sections?
+No signature table present</code></pre>
+<p><code>pesign -S</code> 同样是 <code>No signatures found.</code> —— 这个文件是未签名的 shim，发行版另出 <code>shimx64.efi.signed</code> 之类已签名版本。所以「从任意发行版里拿一个 shim 就自带微软签名」并不成立，得挑对文件；这也是原文略过的一步。</p>
+<h2>三、真正有价值的部分，和它没说的那部分</h2>
+<p>把「绕过」的标签拿掉之后，这篇文章仍有三处值得运维看一眼：</p>
+<ol><li>默认信任面比很多人以为的宽。 大多数消费与企业固件都装了微软第三方 CA，作者提到 HP Wolf Security 某些批次开、某些没开，属于厂商差异。如果一台机器根本不需要跑第三方 EFI 应用或 Linux，这张证书就是多余的信任。</li><li>「长得像 Ubuntu」是可见性问题，不是密码学问题。 启动链日志、EDR 里看到的是一个由微软 CA 签过的 shim + 一次 MOK 注册；它和「Ubuntu 安装盘」在签名者层面确实 indistinguishable。对依赖「这条链看起来像谁」做判断的资产管理与审计流程，这是个实际缺口。</li><li>外部启动介质 + 无 BIOS 口令，让「物理在场」这个前提变得非常容易满足。作者特意写了「不需要 BIOS 口令」，这句话比他的结论更有用。</li></ol>
+<p>但文章没讲的是威胁模型的边界。Secure Boot 从不承诺防住能按住电源键、插 U 盘的人：微软文档把「持有密钥的人」和「有物理访问的人」并列为两类受信任用户；UEFI Forum 白皮书讨论 evil maid 时也强调物理在场。真要在这种场景下守住，得靠固件口令、禁用外部启动、<code>dbx</code> 撤销、TPM 度量与磁盘加密一起上，而不是指望 Secure Boot 单独扛。</p>
+<p>对照一下真正的 shim 漏洞就更清楚了：CERT 的 VU#309662（2022 年，CVE-2022-34301 / 34302 / 34303）记录的是某些已签名第三方 UEFI 引导加载器可被特制安装器或 EFI shell 欺骗，从而在不该执行未签名代码时执行了它，还能跨重装持久化、绕过基于 OS 的 EDR。那类问题的处置是打补丁、把受影响 shim 加进 <code>dbx</code> 撤销列表。而本文描述的路径里，每一步都在规范允许的通道内：固件验了签名、shim 正确报告校验失败、MokManager 要求人在重启时确认、注册后新密钥才生效。一个是验证被欺骗，一个是所有者主动授权，把它们都叫「bypass」会掩盖真正需要打补丁的那类问题。</p>
+<h2>四、防守方该做什么</h2>
+<ul><li>清点信任库。 用 <code>mokutil</code> / 固件设置 / <code>efi-readvar</code> 看 <code>db</code> 里到底有哪些证书；只跑单一系统的机器，考虑清掉用不到的 Microsoft 第三方 CA（注意这会同时影响某些 option ROM 与 Linux 启动）。</li><li>给固件上口令、限制外部启动。 作者那句「F7 不需要 BIOS 口令」就是最直接的整改项。</li><li>把 MOK 当敏感配置管。 Ubuntu 文档说明注册流程可用一次性密码保护；已有 MOK 的机器，<code>mokutil --export</code> / <code>--list-enrolled</code> 应纳入资产盘点。没有第三方驱动需求的机器，理想状态是压根没有 MOK。</li><li>盯 <code>dbx</code> 与 shim 版本。 真正的问题是 VU#309662 那类需要撤销的已签名加载器，以及 2011 证书到期后的双签名 shim 迁移（本站 10 月那篇专门讲过 KEK 门控与 PCR7/BitLocker 的坑）。</li><li>日志里看行为，不看开关。 「Secure Boot: enabled」只说明固件在做签名校验；MOK 注册、启动项变化、外部介质启动这些事件才是有信号的那部分。</li></ul>
+<h2>五、事实边界</h2>
+<ul><li>本文未复现作者的完整流程（未制作启动盘、未在开启 Secure Boot 的机器上注册 MOK）；其步骤、截图与命令行均据原文转述。</li><li>本机实测仅覆盖 Debian 的 <code>/usr/lib/shim/shimx64.efi</code>（未签名，见上），不代表其它发行版或 <code>shimx64.efi.signed</code> 的签名状态；本机不支持 Secure Boot（<code>mokutil --sb-state</code> 报 unsupported/disabled）。</li><li>微软、Ubuntu、SUSE、Intel、UEFI Forum 文档均按公开版本核对；MOK 是否要求密码、MokManager 具体交互在不同发行版与 shim 版本间有差异，以本机文档为准。</li><li>CERT VU#309662 的 CVE 与影响面取自公告原文，本文未独立验证各厂商修复状态。</li></ul>
+<h2>六、结论</h2>
+<p>这篇文章演示的操作是真的：一张微软签过的 shim、一对自签 MOK、一次物理在场的注册，就能在 Secure Boot 开启的机器上引导你自己的内核。 但它证明的是 Secure Boot 的边界，不是它的失效 —— 校验启动链完整性、同时允许机器所有者注册自己的密钥，这两件事从一开始就是同一套设计，SUSE 写它甚至是为了满足 GPLv3。</p>
+<p>值得带走的判断是：「Secure Boot 开着」不等于「这台机器只跑我批准的系统」。前者是签名校验，后者需要密钥管理、固件口令、撤销列表与物理安全一起成立。把两者混为一谈，既会高估一次 MOK 注册的严重性，也会低估真正该补的那类漏洞。</p>
+<h2>Sources</h2>
+<ul><li>Leo Smith《Not so secure boot》（2026-11-08）：<a href="https://leosmith.wtf/blog/not-so-secure-boot.html" target="_blank" rel="noopener noreferrer">https://leosmith.wtf/blog/not-so-secure-boot.html</a></li><li>Microsoft Learn《Windows Secure Boot Key Creation and Management Guidance》：<a href="https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-secure-boot-key-creation-and-management-guidance" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-secure-boot-key-creation-and-management-guidance</a></li><li>Ubuntu 官方 Secure Boot 文档：<a href="https://documentation.ubuntu.com/security/security-features/platform-protections/secure-boot" target="_blank" rel="noopener noreferrer">https://documentation.ubuntu.com/security/security-features/platform-protections/secure-boot</a></li><li>SUSE《SUSE and Secure Boot: The Details》：<a href="https://www.suse.com/blog/suse-and-secure-boot-the-details" target="_blank" rel="noopener noreferrer">https://www.suse.com/blog/suse-and-secure-boot-the-details</a></li><li>Intel《Secure the Network Infrastructure – Secure Boot Methodologies》（PDF）与《UEFI Secure Boot in Linux》（PDF）</li><li>UEFI Forum《UEFI Secure Boot in Modern Computer Security Solutions》（2013，PDF）</li><li>CERT VU#309662：<a href="https://www.kb.cert.org/vuls/id/309662" target="_blank" rel="noopener noreferrer">https://www.kb.cert.org/vuls/id/309662</a></li><li>本站旧文《Secure Boot 证书到期》：<a href="https://freelamp.com/articles/2026-10-20_secure-boot-certificate-expiration-2026-kek-gating/" target="_blank" rel="noopener noreferrer">https://freelamp.com/articles/2026-10-20_secure-boot-certificate-expiration-2026-kek-gating/</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-11_secure-boot-shim-mok-threat-model/",
+      title: "Secure Boot \u4e0d\u662f\u300c\u9501\u6b7b\u7cfb\u7edf\u300d\uff1a\u4e00\u7bc7\u501f\u7528 shim \u7684\u6587\u7ae0\uff0c\u628a\u5a01\u80c1\u6a21\u578b\u8bfb\u9519\u4e86"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
