@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>glibc malloc 到底在干什么：用一个玩具分配器量出 22.7 倍差距 — FreeLAMP.com</title>
+  <meta name="description" content="本文解读 Ben M. Andrew 的教学长文，并对照 mallopt(3) 等官方 man page 核对机制。作者从『malloc 只是向内核要内存』这个直觉出发，用一个逐步改进的玩具分配器量出每一层优化的代价：strace 显示 1000 次 malloc(16) 只产生两次 brk，第一次就把堆推高 132 ">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-11">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-11_glibc-malloc-bump-allocator-22x/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="glibc malloc 到底在干什么：用一个玩具分配器量出 22.7 倍差距">
+  <meta property="og:description" content="本文解读 Ben M. Andrew 的教学长文，并对照 mallopt(3) 等官方 man page 核对机制。作者从『malloc 只是向内核要内存』这个直觉出发，用一个逐步改进的玩具分配器量出每一层优化的代价：strace 显示 1000 次 malloc(16) 只产生两次 brk，第一次就把堆推高 132 ">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-11_glibc-malloc-bump-allocator-22x/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-11">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="glibc malloc 到底在干什么：用一个玩具分配器量出 22.7 倍差距">
+  <meta name="twitter:description" content="本文解读 Ben M. Andrew 的教学长文，并对照 mallopt(3) 等官方 man page 核对机制。作者从『malloc 只是向内核要内存』这个直觉出发，用一个逐步改进的玩具分配器量出每一层优化的代价：strace 显示 1000 次 malloc(16) 只产生两次 brk，第一次就把堆推高 132 ">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "glibc malloc 到底在干什么：用一个玩具分配器量出 22.7 倍差距",
+  "description": "一手：一篇用可复现代码逐步造分配器的教学长文（2026-11-08）  官方：mallopt3、brk2/sbrk2、mmap2、malloc_trim3 man page  文中所有数字均取自原文在 Intel Xeon E3-1230 v3 上的实测，本文未复现。 malloc 的接口简单到有点骗人：给一个字节数，返回一段连续内存的指针；free 掉，内存「消失」。Ben M. Andrew ",
+  "datePublished": "2026-11-11",
+  "dateModified": "2026-11-11",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-11_glibc-malloc-bump-allocator-22x/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "glibc malloc 到底在干什么：用一个玩具分配器量出 22.7 倍差距",
+        "item": "https://freelamp.com/articles/2026-11-11_glibc-malloc-bump-allocator-22x/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-11">2026-11-11</div>
+        <h1 class="post-title" itemprop="headline">glibc malloc 到底在干什么：用一个玩具分配器量出 22.7 倍差距</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>一手：一篇用可复现代码逐步造分配器的教学长文（2026-11-08）<br>
+官方：<code>mallopt(3)</code>、<code>brk(2)</code>/<code>sbrk(2)</code>、<code>mmap(2)</code>、<code>malloc_trim(3)</code> man page<br>
+<br>
+文中所有数字均取自原文在 Intel Xeon E3-1230 v3 上的实测，本文未复现。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<p><code>malloc</code> 的接口简单到有点骗人：给一个字节数，返回一段连续内存的指针；<code>free</code> 掉，内存「消失」。Ben M. Andrew 11 月 8 日发了篇长文，把这句「消失」拆开 —— 方法很朴素：自己写一个分配器，一层一层加机制，每加一层就量一次。最后量出的结论比任何概念解释都直接：glibc 的 <code>malloc</code> 比每次直接调 <code>sbrk</code> 快 22.7 倍，比他自己写到最完整的玩具分配器快约 150 倍，而代价是内存还回去得不干脆。</p>
+<h2>一、先看见「系统调用去哪了」</h2>
+<p>作者用 <code>strace</code> 跟一个循环 <code>malloc(16)</code> 一千次的程序：</p>
+<pre><code>brk(NULL)           = 0x59faca231000
+brk(0x59faca252000) = 0x59faca252000</code></pre>
+<p>两次 <code>brk</code>，都发生在第一次 <code>malloc</code> 里：第一次问 program break 在哪，第二次把堆一次性推高 132 KiB。剩下 999 次全在用户态从这块内存里切。</p>
+<p>这里顺手理清两个常被混用的名字：<code>brk</code> 是系统调用，把 program break 设到给定地址；<code>sbrk</code> 是 libc 的便利包装，收的是增量。<code>mmap</code> 在后面才登场。</p>
+<p>为什么非要批量拿？他量了百万次调用：</p>
+<table><thead><tr><th>调用</th><th>每次耗时</th></tr></thead><tbody><tr><td><code>syscall(SYS_getppid)</code>（空系统调用）</td><td>575.2 ns</td></tr><tr><td><code>sbrk(16)</code></td><td>610.1 ns</td></tr><tr><td><code>malloc(16)</code></td><td>26.9 ns</td></tr></tbody></table>
+<p><code>sbrk(16)</code> 只比空系统调用贵 35 ns，而 <code>malloc(16)</code> 快 22.7 倍。这个 22.7 就是「用户态记账」存在的全部理由。</p>
+<h2>二、地址空间：虚拟很大，物理很小</h2>
+<p>一个打印各段地址的小程序给出：</p>
+<pre><code>main (text)          0x59c0791d7149
+initialised (data)   0x59c0791da020
+uninitialised (bss)  0x59c0791da028
+malloc(16) (heap)    0x59c0903182b0
+program break        0x59c090338000
+printf (libc)        0x711dcf7c15b0
+local (stack)        0x7ffff86c45ec</code></pre>
+<p>break 和 libc 里的 <code>printf</code> 相差约 23.4 TiB，是这台机器 15.6 GiB 内存的约 1530 倍。中间几乎全是未映射的空洞，不要钱。这个观察是理解后面 demand paging 的前提：地址空间的大小和占用的物理内存毫无关系。</p>
+<h2>三、四级玩具分配器，每一级解决什么</h2>
+<p>① bump allocator。 每次 <code>sbrk</code> 直接推 break，返回旧地址；<code>my_free</code> 什么事都不做。它每次请求都进内核，而且完全无法复用 —— <code>free(b)</code> 之后 <code>d</code> 还是排在 <code>c</code> 后面。</p>
+<p>② chunks 与头部。 <code>malloc</code> 实际分配得比你请求的多。作者读 <code>((size_t*)p)[-1]</code> 这个头部，得到：</p>
+<table><thead><tr><th>请求</th><th>实际 chunk</th></tr></thead><tbody><tr><td>1</td><td>32</td></tr><tr><td>24</td><td>32</td></tr><tr><td>25</td><td>48</td></tr><tr><td>1000</td><td>1008</td></tr></tbody></table>
+<p>规则是「请求 + 8 字节头，向上取整到 16 的倍数，最小 32」。16 字节对齐对应 x86-64 的 <code>max_align_t</code>，保证返回的指针适合任何 C 类型；32 字节下限是为了给释放之后要塞进去的链表指针留地方。glibc 也很省：释放后把 <code>next</code> 指针直接写在用户原来放数据的那块内存里。低三位恒为零（尺寸是 16 的倍数），于是被拿来当标志位用。</p>
+<p>③ 空闲链表 + 拆分合并 + 步进扩容。 玩具版按首次适配找够大的块，<code>grow_heap</code> 用 <code>sbrk</code> 以 64 KiB 步进扩容。玩具的头部是完整 <code>chunk_t</code>（16 字节，比 glibc 的 8 字节胖），所以 <code>my_malloc(100)</code> 要 128 字节而 glibc 只要 112。</p>
+<p>④ trim 与 demand paging。 这里有两个很值得记住的实测。</p>
+<p><code>trim</code> 在堆顶空闲块达到 128 KiB 时下调 break，但保留 64 KiB 免得下次立刻又推上去。一个先分配 1 MiB 再在它上面放 16 字节、并写满 1 MiB 每页的程序显示：释放掉 1 MiB 后 break 仍停在 1088 KiB、匿名 RSS 1124 KiB —— 因为那个 16 字节小块还活着，只有堆顶能还回去。等它也释放，trim 把 break 降到 64 KiB，匿名 RSS 掉到 160 KiB。活块下面那些空洞就一直占着物理内存，长跑进程里这就是碎片化把 RSS 推到被 OOM 杀掉的路径。</p>
+<p>demand paging 的量表更直观：<code>sbrk</code> 出 1 GiB 后虚拟大小已是 1050916 KiB，RSS 才 1308 KiB；此后每写 256 MiB 触发 65536 次缺页（每 4 KiB 一页），RSS 每档涨约 256 MiB。写满 1 GiB 时 RSS 1049968 KiB。</p>
+<p>⑤ 大块走 mmap。 128 KiB 及以上的请求（含头部）改用 <code>MAP_PRIVATE|MAP_ANONYMOUS</code> 单独映射，头部里用一个 M 标志记着，<code>my_free</code> 见到就 <code>munmap</code>，立刻把整块还给内核，不管旁边是谁。这解决了「堆顶被一个小块钉住」的问题：玩具版释放 1 MiB 后匿名 RSS 从 1128 KiB 掉到 100 KiB。</p>
+<p>那为什么不全部 mmap？作者给了两条：独立映射之间地址不保证连续，块跨不过这些空洞做合并；而堆上被释放的块页仍驻留，复用时不缺页，新映射每次写每页都要重新缺页。glibc 自己确实用 <code>mmap</code> 建额外 heap（arena）把线程摊开、避开主堆锁争用，但主路径仍是 <code>sbrk</code> 那块连续区域。</p>
+<h2>四、最终对照表：快，是要花内存买的</h2>
+<p>工作负载是维持 4000 个活块，每步随机释放一块、分配随机尺寸的新块并写满每页，跑 50 万步、<code>-O2</code>、每轮新进程；90% 请求 16–512 字节，9% 到 16 KiB，1% 在 128–256 KiB。结束时活块共 10.3 MiB。</p>
+<table><thead><tr><th>分配器</th><th>每步 µs</th><th>活块时匿名 RSS</th><th>全释放后</th></tr></thead><tbody><tr><td>bump</td><td>1.72</td><td>1425 MiB</td><td>1425 MiB</td></tr><tr><td>freelist</td><td>5.12</td><td>17.8 MiB</td><td>17.8 MiB</td></tr><tr><td>+trim</td><td>11.2</td><td>14.5 MiB</td><td>0.188 MiB</td></tr><tr><td>+mmap</td><td>11.8</td><td>11.2 MiB</td><td>0.188 MiB</td></tr><tr><td>glibc</td><td>0.0789</td><td>19.0 MiB</td><td>19.0 MiB</td></tr></tbody></table>
+<p>freelist 与 trim 比 glibc 慢 65 倍和 142 倍，原因是每步要多次遍历一条长长的空闲链表（找适配、插回时找邻居、trim 找链尾）。glibc 用的是按尺寸分桶的 bins，请求直接去对应尺寸的链表；再加一层 tcache，每个尺寸最多缓存 7 个最近释放的块，同尺寸的下一次请求直接拿到手。</p>
+<p>而最值得琢磨的是最后一列：glibc 全部释放后仍留着 19.0 MiB，比它自己最完整的玩具版多两个数量级。这不是泄漏，是设计。作者用 <code>GLIBC_TUNABLES</code> 做了两组对照：</p>
+<table><thead><tr><th>配置</th><th>每步 µs</th><th>活块 RSS</th><th>全释放后</th></tr></thead><tbody><tr><td>默认 glibc</td><td>0.0789</td><td>19.0 MiB</td><td>19.0 MiB</td></tr><tr><td><code>glibc.malloc.tcache_count=0</code></td><td>0.121</td><td>17.4 MiB</td><td>0.250 MiB</td></tr><tr><td><code>glibc.malloc.mmap_threshold=131072</code></td><td>0.843</td><td>12.1 MiB</td><td>5.85 MiB</td></tr></tbody></table>
+<p>关掉 tcache，全释放后只剩 0.250 MiB，代价是每步慢 1.5 倍 —— 缓存的块在堆眼里算「在用」，只要有一个靠近堆顶，就挡住了 break 下调。把 mmap 阈值钉死在 128 KiB 更贵：每步 0.843 µs，慢 10.7 倍，因为每个大请求都要重新付系统调用和缺页。默认跑法里 glibc 全程只调了 51 次 <code>mmap</code>，玩具版调了 5040 次。</p>
+<p>这背后是 <code>mallopt(3)</code> 里写明的动态 mmap 阈值：初始 128 KiB；当大于当前阈值、又不超过 <code>DEFAULT_MMAP_THRESHOLD_MAX</code>（64 位上是 32 MiB）的块被释放时，阈值会上调到该块的尺寸，于是之后的大请求改从堆上拿。同一份 man page 还说明 <code>M_TRIM_THRESHOLD</code> 与 <code>M_TOP_PAD</code> 默认都是 128 KiB，且一旦显式设置 <code>M_MMAP_THRESHOLD</code> 等参数，动态调整就关闭 —— 正好对上作者把阈值钉死后性能崩掉的结果。<code>M_MXFAST</code>/fastbins 也在那里：同尺寸小块不合并、直接复用，用碎片换速度。</p>
+<p>所以这张表能读出的结论比「优化得好」具体得多，原文那句「malloc spends memory to stay away from the kernel」正是这个意思：malloc 花内存买的是「不进内核」。tcache、动态阈值、堆顶留白，都是让已释放内存尽量留在用户态、随时能再发出去的机制；而 <code>free</code> 之后 RSS 不降，通常先该怀疑这些机制，再怀疑泄漏。</p>
+<h2>五、事实边界</h2>
+<ul><li>所有计时、RSS、缺页与 <code>mmap</code> 次数均取自原文在 Intel Xeon E3-1230 v3、<code>-O2</code>、50 万步工作负载下的实测；本文未在本机复现，不同 glibc 版本、内核与 CPU 会得到不同数字。</li><li>原文的玩具分配器是教学简化版（例如头部为 16 字节、无 bins/tcache/arena、无线程支持），性能对照只用于说明机制代价，不是分配器评测。</li><li>glibc 官方 MallocInternals wiki 本次被反爬挑战页拦截，bin/tcache/arena 的机制描述以原文、<code>mallopt(3)</code> 与 <code>brk(2)</code> 等 man page 交叉核对为准。</li><li>原文代码在 <code>benmandrew/malloc-snippets</code> 的 <code>v1</code> tag 可复现；本文未下载运行。</li></ul>
+<h2>六、结论</h2>
+<p>把「<code>malloc</code> 向内核要内存」这句话改成准确的版本，需要四层：批量向内核拿（<code>brk</code> 132 KiB 一步到位）、在用户态切块（16 字节对齐的 chunk 头）、分尺寸复用（bins + tcache）、按大小决定还法（堆顶 trim 或 <code>munmap</code>）。作者用四个越来越完整的玩具分配器，把每层带来的速度与内存变化都量成了数。</p>
+<p>最反直觉、也最有用的一条是：默认 glibc 全部 <code>free</code> 之后仍留 19 MiB，而关掉 tcache 只剩 0.250 MiB、每步却慢 1.5 倍。你以为在观察内存泄漏，其实是在观察一台为了少进内核而故意不舍得还内存的机器。 长跑服务里 RSS 一路涨，得先分清是碎片（活块钉住堆顶，还不回去）还是缓存（留着等下次发），两者的处理方式完全不同。</p>
+<h2>Sources</h2>
+<ul><li>Ben M. Andrew《What is malloc doing, anyway?》（2026-11-08）：<a href="https://benmandrew.com/articles/what-is-malloc-doing-anyway" target="_blank" rel="noopener noreferrer">https://benmandrew.com/articles/what-is-malloc-doing-anyway</a></li><li>可复现代码：<a href="https://github.com/benmandrew/malloc-snippets/tree/v1" target="_blank" rel="noopener noreferrer">https://github.com/benmandrew/malloc-snippets/tree/v1</a></li><li><code>mallopt(3)</code>：<a href="https://man7.org/linux/man-pages/man3/mallopt.3.html" target="_blank" rel="noopener noreferrer">https://man7.org/linux/man-pages/man3/mallopt.3.html</a> ｜ <code>brk(2)</code>：<a href="https://man7.org/linux/man-pages/man2/brk.2.html" target="_blank" rel="noopener noreferrer">https://man7.org/linux/man-pages/man2/brk.2.html</a> ｜ <code>mmap(2)</code>：<a href="https://man7.org/linux/man-pages/man2/mmap.2.html" target="_blank" rel="noopener noreferrer">https://man7.org/linux/man-pages/man2/mmap.2.html</a></li><li>glibc MallocInternals：<a href="https://sourceware.org/glibc/wiki/MallocInternals" target="_blank" rel="noopener noreferrer">https://sourceware.org/glibc/wiki/MallocInternals</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-11_glibc-malloc-bump-allocator-22x/",
+      title: "glibc malloc \u5230\u5e95\u5728\u5e72\u4ec0\u4e48\uff1a\u7528\u4e00\u4e2a\u73a9\u5177\u5206\u914d\u5668\u91cf\u51fa 22.7 \u500d\u5dee\u8ddd"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

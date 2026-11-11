@@ -83,6 +83,8 @@ CORE = {
     "tar-minefield", "busybox", "phardata", "commons compress",
     "macos", "secure enclave", "touch id", "sc_auth", "secretive", "yubikey",
     "ssh-keygen", "ssh-copy-id", "cryptotokenkit", "ginux", "codex",
+    "malloc", "glibc", "secure boot", "shim", "mok", "minisforum", "automake",
+    "autotools", "meson", "uefi", "sbverify", "tcache", "sbrk",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
