@@ -98,6 +98,7 @@ CORE = {
     "httpd", "mod_http2", "http/2", "mod_h2", "apache httpd", "protocols", "h2c",
     "mozilla", "firefox", "etp", "ohttp", "fingerprinting", "canvas", "web audio", "tor browser",
     "pdfcpu", "qpdf", "pdftk", "poppler", "ghostscript", "pymupdf", "aws emulator", "localstack", "kiro",
+    "smithy", "agentcore", "dynamodb", "sigv4", "cc0",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
