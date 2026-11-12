@@ -88,6 +88,7 @@ CORE = {
     "alibaba", "t-head", "平头哥", "玄铁", "含光", "倚天", "镇岳", "真武", "阿里云", "港交所", "hkex",
     "timsort", "cpython", "pep 20", "zen of python", "tim peters", "python 软件基金会",
     "zoom", "zoom workplace", "cve", "cvss", "cwe", "nvd",
+    "kora", "cortex", "playtron", "qualcomm", "humain", "cyanogen", "gameos", "llama.cpp",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
