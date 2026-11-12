@@ -101,6 +101,7 @@ CORE = {
     "smithy", "agentcore", "dynamodb", "sigv4", "cc0",
     "polo", "marco", "libweston", "weston", "wayfire", "metacity", "xwayland", "mate-panel", "compiz", "lightdm", "vala",
     "af_unix", "scm_rights", "use-after-free", "kaslr", "kernelctf", "nvd", "epss", "cisa kev", "cve", "cvss", "suse", "amazon linux",
+    "intel xe", "vgpu", "sriov", "sr-iov", "drm-xe-next", "crescent island", "gpu d series", "guc", "ggtt", "lmem", "vfio", "configfs", "debugfs",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
