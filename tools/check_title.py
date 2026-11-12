@@ -95,6 +95,7 @@ CORE = {
     "minsky", "登临", "登临科技", "goldwasser", "gpgpu", "tensor core", "tpu", "hsa", "dla", "vivante", "图芯", "瀚铭",
     "ntlm", "ntlmv1", "net-ntlmv1", "ssp", "responder", "petitpotam", "dcsync", "lmcompatibilitylevel", "ess", "mandiant",
     "stela", "macos", "metal", "mesa", "nir", "air", "rosetta", "hackintosh", "apple silicon", "uefi",
+    "httpd", "mod_http2", "http/2", "mod_h2", "apache httpd", "protocols", "h2c",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
