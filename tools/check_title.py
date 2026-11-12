@@ -92,6 +92,7 @@ CORE = {
     "red hat", "rhel", "openshift lightspeed", "thanos", "loki", "perses",
     "opentelemetry", "observability", "node-exporter", "alertmanager", "tempo",
     "command-line assistant", "ramalama", "satellite", "goose-redhat", "pcp",
+    "minsky", "登临", "登临科技", "goldwasser", "gpgpu", "tensor core", "tpu", "hsa", "dla", "vivante", "图芯", "瀚铭",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
