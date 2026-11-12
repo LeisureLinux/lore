@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NTLMv1-SSP 降级破解：一个 1999 年的密码学问题，2026 年还能打穿域控 — FreeLAMP.com</title>
+  <meta name="description" content="本文解读 hun.io 对 NTLMv1-SSP 降级哈希的复现，并用微软与 Mandiant 官方资料校正口径。先澄清术语：NTLMv1-SSP 不是一种独立协议，而是 Responder 对「由 NTLM 安全支持提供者（SSP，一个插入 LSA 的 DLL/认证包）处理 NTLMv1 认证」的显示标签。密码学根因">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-12">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-12_ntlmv1-ssp-downgrade-rainbow-tables/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="NTLMv1-SSP 降级破解：一个 1999 年的密码学问题，2026 年还能打穿域控">
+  <meta property="og:description" content="本文解读 hun.io 对 NTLMv1-SSP 降级哈希的复现，并用微软与 Mandiant 官方资料校正口径。先澄清术语：NTLMv1-SSP 不是一种独立协议，而是 Responder 对「由 NTLM 安全支持提供者（SSP，一个插入 LSA 的 DLL/认证包）处理 NTLMv1 认证」的显示标签。密码学根因">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-12_ntlmv1-ssp-downgrade-rainbow-tables/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-12">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="NTLMv1-SSP 降级破解：一个 1999 年的密码学问题，2026 年还能打穿域控">
+  <meta name="twitter:description" content="本文解读 hun.io 对 NTLMv1-SSP 降级哈希的复现，并用微软与 Mandiant 官方资料校正口径。先澄清术语：NTLMv1-SSP 不是一种独立协议，而是 Responder 对「由 NTLM 安全支持提供者（SSP，一个插入 LSA 的 DLL/认证包）处理 NTLMv1 认证」的显示标签。密码学根因">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "NTLMv1-SSP 降级破解：一个 1999 年的密码学问题，2026 年还能打穿域控",
+  "description": "一手：hun.io 的复现原文；微软 LmCompatibilityLevel 官方文档；Mandiant 彩虹表发布公告  说明：本文是防御性解读，不复现实验环境，不提供可直接照抄的攻击脚本；文中命令只用于说明因果链  这条链路最刺眼的地方不是工具多巧，是它依赖的密码学缺陷1999 年就被分析过。 4 月 15 日 hun.io 发了篇 5 分钟阅读的短文：在 Windows Server 20",
+  "datePublished": "2026-11-12",
+  "dateModified": "2026-11-12",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-12_ntlmv1-ssp-downgrade-rainbow-tables/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "NTLMv1-SSP 降级破解：一个 1999 年的密码学问题，2026 年还能打穿域控",
+        "item": "https://freelamp.com/articles/2026-11-12_ntlmv1-ssp-downgrade-rainbow-tables/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-12">2026-11-12</div>
+        <h1 class="post-title" itemprop="headline">NTLMv1-SSP 降级破解：一个 1999 年的密码学问题，2026 年还能打穿域控</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<blockquote>一手：hun.io 的复现原文；微软 <code>LmCompatibilityLevel</code> 官方文档；Mandiant 彩虹表发布公告<br>
+说明：本文是防御性解读，不复现实验环境，不提供可直接照抄的攻击脚本；文中命令只用于说明因果链<br>
+<br>
+这条链路最刺眼的地方不是工具多巧，是它依赖的密码学缺陷1999 年就被分析过。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<p>4 月 15 日 hun.io 发了篇 5 分钟阅读的短文：在 Windows Server 2022 域里，只要还允许 NTLMv1，就能把域控机器账户的认证降级成 NTLMv1，用彩虹表还原出 NT hash，再做 DCSync。原文给了完整命令与输出；本文不复述成操作手册，只把为什么成立、防守该改哪一格讲清楚。</p>
+<h2>一、先把名字拆开：<code>NTLMv1-SSP</code> 不是新协议</h2>
+<p>原文特意花一节解释 SSP（Security Support Provider）：它是插入 Windows 本地安全机构 LSA 的 DLL（也叫认证包），负责实现 Kerberos、NTLM 等认证协议，让系统既能当客户端也能当服务端。其中实现 NTLM 的那个就叫 NTLM SSP。</p>
+<p>所以 Responder 抓到的哈希显示为 <code>NTLMv1-SSP</code>，含义是「这次 NTLMv1 认证由 NTLM SSP 处理」，不是「冒出了一种叫 SSP 的新哈希格式」。这类标签误读在应急里很常见，值得先正名。</p>
+<h2>二、密码学根因：三段 DES 加密的是同一个明文</h2>
+<p>按原文与微软 NTLM 相关文档的口径：</p>
+<ol><li>NT hash = 口令按 UTF-16LE 编码后取 MD4，得到 16 字节；</li><li>服务器发 8 字节 challenge；</li><li>客户端把 16 字节 NT hash 拆成三段 7 字节 DES 密钥（DES 有效密钥 56 位），各自加密同一个 challenge；</li><li>得到三个 8 字节密文 CT1 / CT2 / CT3，拼起来就是 24 字节 NTLMv1 响应。</li></ol>
+<p>关键在第 3 步：三段加密的明文相同。于是只要把 challenge 固定成一个已知值（<code>1122334455667788</code>），所有可能的密文都能预计算、反查回产生它的密钥 —— 这就是彩虹表能成立的全部理由。原文还点了一个常被忽略的算术细节：第三段密钥实际只有 2 字节有效（16 字节 NT hash 拆成 7+7+2），所以还原完整 NT hash 时取 CT1 + CT2 + CT3 反推结果的前两字节即可。</p>
+<p>ESS（Extended Session Security） 本来就是为堵这个洞加的：它在服务器 challenge 之外再引入一个客户端 challenge，响应不再只由已知明文决定，彩虹表失效；NTLMv2 原生就带这层。问题在于 ESS 是协商出来的 —— 客户端若支持标准 NTLMv1，服务端可以在 <code>NTLMSSP_CHALLENGE</code> 里表示不支持 ESS，把这个过程「谈掉」。原文 <code>Why this works</code> 一节抓包展示的正是：<code>DC01$</code> 在 <code>NEGOTIATE</code> 里请求 ESS，Responder 用 <code>--disable-ess</code> 在 <code>CHALLENGE</code> 里不认，最终用标准 NTLMv1 认证；判别信号是 Lan Manager Response 与 NTLM Response 两段完全相同（没有客户端 challenge 参与）。</p>
+<h2>三、链路：从「强制认证」到「域控机器账户的哈希」</h2>
+<p>原文的因果顺序（本文只做机制说明）：</p>
+<table><thead><tr><th>环节</th><th>作用</th></tr></thead><tbody><tr><td>Responder 设静态 challenge + <code>--disable-ess</code></td><td>制造「已知明文、无 ESS」的认证服务端</td></tr><tr><td>PetitPotam 触发域控发起认证</td><td>认证方向是反的：DC01$ 是客户端，Responder 是服务端</td></tr><tr><td>捕获 <code>NTLMv1-SSP</code> 哈希</td><td>LM 段与 NT 段相同 → 确认降级成功</td></tr><tr><td>拆 CT1/CT2/CT3 → 彩虹表反查</td><td>三段密钥分别还原</td></tr><tr><td>拼回 NT hash → <code>secretsdump -just-dc-user krbtgt</code></td><td>用机器账户的哈希做 DCSync</td></tr></tbody></table>
+<p>这里最值得防守方盯住的是谁在认证：被发起认证的是域控机器账户 <code>DC01$</code>。Mandiant 2026 年 1 月的公告把后果写得更直白：拿到 DC 机器账户的口令哈希后，攻击者可获得 DCSync 权限，进而危及 AD 里任意账户 —— 这是「一次认证降级 → 整个域」的放大点。</p>
+<h2>四、这不是新洞，是「已知洞还没关」</h2>
+<p>把时间线摆开，会比单看一次复现更有说服力：</p>
+<table><thead><tr><th>时间</th><th>事件</th></tr></thead><tbody><tr><td>1999</td><td>对底层协议的密码分析已公开（Schneier 收录的 MS-CHAP/相关 DES 结构分析）</td></tr><tr><td>2012</td><td>DEFCON 20  presentation 使 Net-NTLMv1 的不安全性广为人知</td></tr><tr><td>2016-08</td><td>Hashcat 加入「已知明文破解 DES 密钥」支持，门槛进一步降低</td></tr><tr><td>2026-01-15</td><td>Mandiant / Google Cloud 主动公开完整 Net-NTLMv1 彩虹表数据集，明确目的是「加速协议弃用」：不到 600 美元的消费级硬件、12 小时内恢复密钥，让防守方低成本自证风险</td></tr><tr><td>2026-04-15</td><td>hun.io 在 Windows Server 2022 上复现完整降级链，证明新版 SMB / ESS 并未自动关掉这条路</td></tr></tbody></table>
+<p>Mandiant 说得很不客气：这个协议「已弃用且公认不安全二十多年」，但顾问在现网里仍持续发现它被使用，原因是惯性与「没有即时风险被演示出来」。所以公开彩虹表本身是防守动作 —— 把「理论上可破」变成「任何人都能在预算内演示」。</p>
+<h2>五、防守：把那个 GPO 值从 0–2 挪到 3 以上</h2>
+<p>hun.io 与微软官方给的是同一个开关，位于：</p>
+<pre><code>计算机配置 &gt; Windows 设置 &gt; 安全设置 &gt; 本地策略 &gt; 安全选项 &gt;
+网络安全: LAN Manager 身份验证级别</code></pre>
+<p>对应注册表 <code>HKLM\System\CurrentControlSet\Control\Lsa\LmCompatibilityLevel</code>。微软官方 0–5 完整表（这是最容易配错的地方）：</p>
+<table><thead><tr><th>值</th><th>策略</th><th>客户端发送</th><th>DC 接受</th></tr></thead><tbody><tr><td>0</td><td>Send LM &amp; NTLM responses</td><td>LM + NTLM</td><td>LM / NTLM / NTLMv2</td></tr><tr><td>1</td><td>Send LM &amp; NTLM – use NTLMv2 session security if negotiated</td><td>LM + NTLM</td><td>LM / NTLM / NTLMv2</td></tr><tr><td>2</td><td>Send NTLM responses only</td><td>NTLMv1</td><td>LM / NTLM / NTLMv2</td></tr><tr><td>3</td><td>Send NTLMv2 responses only</td><td>NTLMv2</td><td>LM / NTLM / NTLMv2</td></tr><tr><td>4</td><td>Send NTLMv2 only. Refuse LM</td><td>NTLMv2</td><td>NTLM / NTLMv2</td></tr><tr><td>5</td><td>Send NTLMv2 only. Refuse LM &amp; NTLM</td><td>NTLMv2</td><td>仅 NTLMv2</td></tr></tbody></table>
+<p>读法：0–2 允许 NTLMv1，就是降级链能成立的条件；原文说的「最低设置」是 3（Send NTLMv2 response only），「最强配置」是 5。微软文档也把 3 列为反制措施，并注明 Server 2008 R2 之后的有效默认值已是 3 —— 也就是说，一旦现网出现 0–2，通常意味着被 GPO 显式改弱、或存在遗留系统兼容例外。</p>
+<p>Mandiant 给的处置第一句是「Organizations should immediately disable the use of Net-NTLMv1」，并补了一条 GPO 之外的关键提醒：这些是本机配置，攻击者若已拿到本地管理权限，可以临时把配置改成脆弱状态、打完再改回去。因此除了设值，还需要监控与告警 Net-NTLMv1 的实际使用（以及 ESS 被协商掉、静态 challenge 出现这类信号），不能只做一次基线核查就收工。微软文档同样提醒潜在影响：不支持 NTLMv2 的老客户端将无法认证 —— 这往往是组织迟迟不升到 3/5 的真实原因，需要单独盘点而不是硬切。</p>
+<h2>六、事实边界</h2>
+<ul><li>本文为防御性技术解读，未在实验环境复现 Responder / PetitPotam / 彩虹表 / secretsdump 任一环节；文中命令与哈希片段仅引自原文用于说明因果，不构成可执行操作指引。</li><li>「NTLMv1-SSP 是 SSP 标签而非独立协议」、ESS 可协商掉、LM 与 NT 段相同作为判别信号，均据 hun.io 原文与微软 SSP/MS-NLMP 文档。</li><li><code>LmCompatibilityLevel</code> 0–5 取值、默认值与反制建议以 Microsoft Learn 官方页为准；原文只提 0–2 / 3 / 5，完整表为本文补充。</li><li>彩虹表数据集、1999/2012/2016 时间线、&lt;600 美元 / 12 小时、DCSync 后果与「临时改配置」提醒取自 Mandiant 2026-01-15 公告。</li><li>原文测试环境为 Windows Server 2022 域（含域控 10.0.1.40 等实验地址），本文未验证其它 Windows 版本或第三方 SMB 实现的行为；具体版本差异以厂商公告为准。</li><li>本文不构成对任何真实系统的安全评估或入侵建议。</li></ul>
+<h2>七、结论</h2>
+<p>这条链路上没有一项是新技术：DES 三段同明文的问题 1999 年就被分析过，ESS 是后来补的协商层，PetitPotam 类强制认证与彩虹表也早已公开。2026 年真正变化的是门槛 —— Mandiant 把彩虹表做成公开数据集，让「不安全」从论文结论变成消费级硬件 12 小时内可演示的事实；而 hun.io 证明这个演示在新版 Windows Server 上仍然有效。</p>
+<p>所以该写的结论很朴素：去查 <code>LmCompatibilityLevel</code> 是不是被留在 0–2，把它推到 3 以上、能上 5 就上 5，然后开始监控 Net-NTLMv1 的实际使用。 一个 2017 年文档里就写好的 GPO 值，到 2026 年仍然是这条攻击链唯一的终点。</p>
+<h2>Sources</h2>
+<ul><li>hun.io《Cracking downgraded NTLMv1 SSP hashes with rainbow tables》（2026-04-15）：<a href="https://hunio.org/security/ntlmv1-ssp-cracking/" target="_blank" rel="noopener noreferrer">https://hunio.org/security/ntlmv1-ssp-cracking/</a></li><li>Microsoft Learn《Network security: LAN Manager authentication level》：<a href="https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-security-lan-manager-authentication-level" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-security-lan-manager-authentication-level</a></li><li>Google Cloud / Mandiant《Closing the Door on Net-NTLMv1: Releasing Rainbow Tables to Accelerate Protocol Deprecation》（2026-01-15）：<a href="https://cloud.google.com/blog/topics/threat-intelligence/net-ntlmv1-deprecation-rainbow-tables/" target="_blank" rel="noopener noreferrer">https://cloud.google.com/blog/topics/threat-intelligence/net-ntlmv1-deprecation-rainbow-tables/</a></li><li>微软 MS-NLMP 规范：<a href="https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nlmp/b38c36ed-2804-4868-a9ff-8dd3182128e4" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nlmp/b38c36ed-2804-4868-a9ff-8dd3182128e4</a> ｜ SSP 包说明：<a href="https://learn.microsoft.com/en-us/windows/win32/secauthn/ssp-packages-provided-by-microsoft" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/windows/win32/secauthn/ssp-packages-provided-by-microsoft</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-12_ntlmv1-ssp-downgrade-rainbow-tables/",
+      title: "NTLMv1-SSP \u964d\u7ea7\u7834\u89e3\uff1a\u4e00\u4e2a 1999 \u5e74\u7684\u5bc6\u7801\u5b66\u95ee\u9898\uff0c2026 \u5e74\u8fd8\u80fd\u6253\u7a7f\u57df\u63a7"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
