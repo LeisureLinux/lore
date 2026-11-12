@@ -99,6 +99,7 @@ CORE = {
     "mozilla", "firefox", "etp", "ohttp", "fingerprinting", "canvas", "web audio", "tor browser",
     "pdfcpu", "qpdf", "pdftk", "poppler", "ghostscript", "pymupdf", "aws emulator", "localstack", "kiro",
     "smithy", "agentcore", "dynamodb", "sigv4", "cc0",
+    "polo", "marco", "libweston", "weston", "wayfire", "metacity", "xwayland", "mate-panel", "compiz", "lightdm", "vala",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
