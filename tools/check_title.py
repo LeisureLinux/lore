@@ -100,6 +100,7 @@ CORE = {
     "pdfcpu", "qpdf", "pdftk", "poppler", "ghostscript", "pymupdf", "aws emulator", "localstack", "kiro",
     "smithy", "agentcore", "dynamodb", "sigv4", "cc0",
     "polo", "marco", "libweston", "weston", "wayfire", "metacity", "xwayland", "mate-panel", "compiz", "lightdm", "vala",
+    "af_unix", "scm_rights", "use-after-free", "kaslr", "kernelctf", "nvd", "epss", "cisa kev", "cve", "cvss", "suse", "amazon linux",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
