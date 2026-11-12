@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-12 | [AMD Turin 三个 TSA 侧信道：为何必须停机再启动](https://freelamp.com/articles/2026-11-12_amd-turin-tsa-google-cloud-gcp-2026-081/) | AMD Turin · EPYC 9B45 · Zen 5 · TSA · TSA-SQ · TSA-L1 · TSA-Fill · CVE-2024-36350 · CVE-2024-36357 · CVE-2026-0004 · GCP-2026-081 · Google Cloud · C4D / N4D / H4D / Z4D / G4 · CPUID · VERW · linux-firmware · Xen XSA-525 · Debian · 技术解读 |
 | 2026-11-12 | [Intel Xe 驱动：为 vGPU profile 铺路的 5 个补丁，还没带来新功能](https://freelamp.com/articles/2026-11-12_intel-xe-sriov-vgpu-profile-prep-linux-7-5/) | Intel Xe · vGPU profile · SR-IOV · PF / VF · drm-xe-next · Linux 7.5 · Crescent Island · GPU D Series · Xe3P · master mutex · GGTT · LMEM · GuC · debugfs · configfs · VFIO · Nova · 技术解读 |
 | 2026-11-12 | [Linux 内核 CVE-2026-80521：7.8 分是谁给的，提权又是谁证明的](https://freelamp.com/articles/2026-11-12_linux-kernel-cve-2026-80521-af-unix-uaf/) | Linux 内核 · CVE-2026-80521 · AF_UNIX · SCM_RIGHTS · UAF · SCC · scc_entry · kmalloc-96 · KASLR · ROP · kernelCTF · Google security-research · CVSS 7.8 · NVD · Red Hat · Ubuntu · Debian · SUSE · Amazon Linux · CISA KEV · EPSS · CONFIG_UNIX · 技术解读 |
 | 2026-11-12 | [Polo：把 Marco 搬进 Wayland，MATE 桌面不必再迁就通用合成器](https://freelamp.com/articles/2026-11-12_polo-wayland-compositor-mate/) | Polo · MATE · Marco · Wayland · libweston 16 · Wayfire · XWayland · Vala · GPL-3.0 · mate-session-manager 1.28 · mate-wayland-session · MATE 1.28 · Mir · Compiz · 桌面立方体 · 果冻窗口 · layer-shell · xdg-desktop-portal · LightDM · 技术解读 |
