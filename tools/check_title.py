@@ -103,6 +103,7 @@ CORE = {
     "af_unix", "scm_rights", "use-after-free", "kaslr", "kernelctf", "nvd", "epss", "cisa kev", "cve", "cvss", "suse", "amazon linux",
     "intel xe", "vgpu", "sriov", "sr-iov", "drm-xe-next", "crescent island", "gpu d series", "guc", "ggtt", "lmem", "vfio", "configfs", "debugfs",
     "epyc", "turin", "zen 5", "google cloud", "gke", "compute engine", "tsa", "transient scheduler", "tsa-fill", "tsa-sq", "tsa-l1", "verw", "cpuid", "microcode", "linux-firmware", "xen project", "xsa-525", "c4d", "n4d", "h4d", "z4d",
+    "xdesk", "termux:x11", "displayport alt mode", "shizuku", "android auto", "pulseaudio", "h.264", "webcodecs", "proot-distro", "chroot", "zink", "turnip", "adreno", "lorieview", "hyperos",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
