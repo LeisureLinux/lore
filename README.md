@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-13 | [Vagrant 走到 EOL：那个把 vagrant up 写成动词的公司，把它还给了社区](https://freelamp.com/articles/2026-11-13_vagrant-eol-hashicorp-mit-license/) | Vagrant · HashiCorp · Terraform · Mitchell Hashimoto · IBM · HCP Vagrant · Vagrant Cloud · BUSL · MIT · EOL · Vagrantfile · VAGRANT_SERVER_URL · AlmaLinux · VirtualBox · 开源历史 · 技术解读 |
 | 2026-11-12 | [XDesk：把 Termux 的 XFCE 搬上外接屏，手机当触摸板](https://freelamp.com/articles/2026-11-12_xdesk-termux-xfce-external-display/) | XDesk · Termux · XFCE · Termux:X11 · LorieView · DisplayPort Alt Mode · 无线调试 · Shizuku · InjectorService · PulseAudio · proot · chroot · zink · Turnip · XDesk Receiver · Android Auto · WebCodecs · H.264 · 明文传输 · 技术解读 |
 | 2026-11-12 | [AMD Turin 三个 TSA 侧信道：为何必须停机再启动](https://freelamp.com/articles/2026-11-12_amd-turin-tsa-google-cloud-gcp-2026-081/) | AMD Turin · EPYC 9B45 · Zen 5 · TSA · TSA-SQ · TSA-L1 · TSA-Fill · CVE-2024-36350 · CVE-2024-36357 · CVE-2026-0004 · GCP-2026-081 · Google Cloud · C4D / N4D / H4D / Z4D / G4 · CPUID · VERW · linux-firmware · Xen XSA-525 · Debian · 技术解读 |
 | 2026-11-12 | [Intel Xe 驱动：为 vGPU profile 铺路的 5 个补丁，还没带来新功能](https://freelamp.com/articles/2026-11-12_intel-xe-sriov-vgpu-profile-prep-linux-7-5/) | Intel Xe · vGPU profile · SR-IOV · PF / VF · drm-xe-next · Linux 7.5 · Crescent Island · GPU D Series · Xe3P · master mutex · GGTT · LMEM · GuC · debugfs · configfs · VFIO · Nova · 技术解读 |
