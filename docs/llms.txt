@@ -850,6 +850,46 @@ Source: 一手核对：Xen Project 安全公告 XSA-523 v2（2026-11-03，PGP �
 Summary: 解读 Xen Project 于 2026-11-03 发布的 XSA-523：两个漏洞让恶意客户机可读写宿主机上任意其它域（含 dom0）的内存，等于完整 guest escape。**本文逐行比对了官方四个补丁，并追到了引入缺陷的那个提交——它发布于 2015-01-29，距今十一年半**。这不是新代码写错，而是一个性能优化在十一年后被证明站不住：为让同一物理页上的批量 grant copy 少做几次页表获取/释放，Xen 缓存了「已经校验过」的内部状态，而**重新校验的条件写错了**。**两个 CVE 分工清楚**：CVE-2026-102703 是**帧号（MFN）与授权引用（GREF）被混用**——补丁把 `have_grant` 的检查从「比较 GREF 之前」提到最前，一次覆盖两条比较路径；CVE-2026-102704 是**「只有域自己才能按帧号拷贝」这条限制的检查点放错了位置**——原本写在 `gnttab_copy_lock_domain()` 里，而该函数**只是有条件地被调用**，导致批量操作里只有第一个元素被检查。补丁做法是把检查移到 `gnttab_copy_claim_buf()`（每个批量元素必经之地）。**这里最值得学的是**：这个检查不是「没写」，而是「写在了会被跳过的那条路上」，而批量恰恰是攻击者会用的形态。**发现路径值得单独记**：公告 CREDITS 与两个补丁的 git trailers 都写着 `Assisted-by: Claude`——这是 Xen 项目历史上第一次在补丁元数据里标注 AI 辅助。三方角色分得很清：Anthropic 用 Claude 找到、Ada Logics 的 Stephan Lipp 验证、CodeAnt AI 安全研究团队独立复现。**而且写补丁的 Jan Beulich 正是 2015 年引入缺陷的那个提交的作者**——修自己十一年前埋的坑。**严重度出现了罕见分裂**：CNA（CISA-ADP）/ Ubuntu / GitHub Advisory 给 CVSS 3.1 **4.4 Medium**（向量 `AV:L/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N`），SUSE 给 **7.1**，XCP-ng 背后的 Vates 直接评 **Critical**。**分歧来源是基础分里的 `S:U`（范围不变）与 `C:L`（机密性低）**——但拿到任意内存读写权意味着能改 dom0 代码、读 dom0 密钥、改虚拟机配置，**这已经是完整宿主机接管**；CVSS 3.1 的 Environmental 指标（`S:C`/`C:H`/`I:H`）正是为此准备的，基础分工具不会自动填。文章的结论是：**4.4 是按基础分算出来的数字，Critical 是按实际后果算出来的判断**，客机逃逸类问题应直接看发行版处置建议而不是盯分数。**影响面逐条核对**：Xen **4.6 起全部受影响**（4.5 及更早不受影响），**4.6–4.16 无补丁**（4.16 安全支持已于 2024-12-02 结束，只能迁移）；Debian bookworm/trixie/forky 仍 vulnerable、sid 已 fixed（DSA-6610-1、DLA-4881-1）；**Ubuntu 所有版本状态都是「Needs evaluation」**（安全包在 universe，hypervisor 类问题需给各发布版补标签）；Qubes QSB-121 需**重启 dom0** 且 **Anti Evil Maid 用户必须 reseal**（新 Xen 二进制改变 PCR18/PCR19，漏掉会误判 dom0 被篡改）；XCP-ng 8.3 需重启宿主机。另附与 **XSA-500** 的对照（不同漏洞、各有独立补丁；XSA-500 可用 `CONFIG_GRANT_TABLE` 关闭规避，XSA-523 则**无任何缓解**）与五步运维清单（先确认版本区间 → 确认补丁真正生效 → Qubes 别忘 reseal → 评估多租户威胁模型 → 考虑更彻底的缓解路径）。
 Key topics: Xen, XSA-523, CVE-2026-102703, CVE-2026-102704, grant table, grant copy, GREF, MFN, DOMID_SELF, dom0, 客机逃逸, guest escape, 类型混淆, CWE-704, 性能优化反噬, 缓存复用, Jan Beulich, d28f42f2703e, Anthropic, Claude, Ada Logics, CodeAnt, Assisted-by, XCP-ng, Vates, Qubes OS, QSB-121, Anti Evil Maid, PCR18, Debian security tracker, XSA-500, CONFIG_GRANT_TABLE, CVSS 分歧, 安全公告解读
 
+### Wine 11.22：给 ARM64EC 补上 AVX，12.0 前的倒数第二个开发版
+URL: https://freelamp.com/articles/2026-11-14_wine-11-22-arm64ec-avx-emulation/
+Date: 2026-11-14
+Category: 技术/解读
+Source: WineHQ 官方 11.22 发布说明与 11.x 历次公告、Phoronix、Linuxiac、Wine GitLab releases
+Summary: Wine 11.22（2026-11-13）双周开发版，官方六项更新：CLDR 49、ARM64 上 x86 模拟支持 AVX、地址空间随机化、Tahoma 字形度量、MSXML DTD 校验重写、常规修复。重点解读 AVX：承接 MR 12610 的 NTDLL/ARM64EC 基础与 MR 12683 的 XState 处理，让默认假设 AVX 的现代 Windows 程序能在 ARM64EC 构建里运行；放进 2026 年 ARM64EC/WoW64 主线（11.15 Mono ARM64、11.16 VA-API 与异常、11.20 relay debugging、11.21 WoW64 OpenGL）看是拼图补块。Phoronix 给 34 个已知修复，含 Logos Bible Software / Guild Wars 2 / Star Citizen；Linuxiac 补 Vulkan D24X8、RGB565 回退、Notepad++、WinSCP 等。边界：GitLab release 页受 Anubis 保护未逐条核对 Bugzilla ID；12.0 RC 时间属媒体推断；未实测。
+Key topics: Wine 11.22, WineHQ, ARM64EC, AVX, XState, WoW64, CLDR 49, MSXML, Tahoma, Wine 12.0, 技术解读
+
+### Kitesurf 开源：跑在 Workers 上的 agent 浏览器
+URL: https://freelamp.com/articles/2026-11-14_cloudflare-kitesurf-open-source-agent-browser/
+Date: 2026-11-14
+Category: 技术/解读
+Source: Cloudflare 官方开源博客（2026-11-13）、Developers Changelog（11-12）、GitHub cloudflare/kitesurf README 与 API、Phoronix 报道
+Summary: Kitesurf 以 Apache 2.0 开源，是跑在 Cloudflare Workers 上的无状态 agent 浏览器引擎，不是 Chromium fork：解析 HTML、套用 CSS、执行页面 JS、渲染截图，无 Chrome 与浏览器容器，对外只通过 CDP 供 Puppeteer / AI harness 连接。拆解三部件（Engine/PageScript/PageRenderer）与 Rust/WASM 依赖栈（Blitz、Stylo、Boa 兜底、Linebender、Krilla，各自许可证保留）。边界：部署需 Workers Paid（Dynamic Workers 做页面隔离）、引擎无内置认证需用 Cloudflare Access 等保护、状态为 experimental 且贡献需先 issue 并获 maintainer vouch；仓库 2026-09-30 建、375 commits、614 stars。与 3 月 Phoronix 报的 Domicile Desktop（改 Chromium 把窗口变 DOM）作路线对照。本文未编译、未部署；省资源为官方目标而非实测基准。
+Key topics: Kitesurf, Cloudflare, Workers, AI agent 浏览器, CDP, Puppeteer, WebMCP, Blitz, Stylo, Boa, Dynamic Workers, WPT, 技术解读
+
+### Linux 内核 AI 缺陷报告：59 个真洞背后，卡住的是人
+URL: https://freelamp.com/articles/2026-11-14_ai-bug-reports-linux-windows-review-bottleneck/
+Date: 2026-11-14
+Category: 技术/解读
+Source: ZDNet（Steven Vaughan-Nichols，2026-11-13）、Microsoft Security Blog《Lessons from 59 Linux Kernel Bug Reports》（11-11）、Lorenzo Stoakes LKML 原帖与回信、Linux 7.4-rc2 相关报道、The Register Linux Foundation 调查
+Summary: 核查「AI 让找 bug 变容易、修 bug 成瓶颈」。FORGE Lab 的 MDASH 漏斗：26502 原始发现 → 11769 筛选 → 621 有 PoC → 59 份上游报告（9.5%），一名全职研究员加一名实习生做三个月、报告用了超四个人月；33 个 CVE、24 个 High 以上、8 个确认本地提权、38 个修复合入 mainline，补丁到 mainline 中位 41 天、最长 108 天，59 个洞平均 8.1 岁、最老 21 年。维护者侧：Stoakes 11-10 移除 MM core / misc / reclaim / Rust reviewership，自述 slop 从偶尔到约一半以上；纠正 ZDNet「放弃审代码」的简化。Linus 7.4-rc2 的 BPF 转折只是局部信号，GKH 与 Stenberg 为谨慎口径。数字边界：日均 27 个内核 CVE 是第三方统计，Windows 726 是 11 月单月量，量纲不同。结论：瓶颈在甄别、修复、review 三段人力，短期解法是提高信号比与补 reviewer。
+Key topics: Linux kernel, AI bug reports, MDASH, FORGE Lab, CVE flood, Lorenzo Stoakes, Greg Kroah-Hartman, Linus Torvalds, curl, reviewer 瓶颈, 技术解读
+
+### XRAID：给 XFS 带来 declustered parity
+URL: https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/
+Date: 2026-11-14
+Category: 技术/解读
+Source: LWN《Announcing XRAID》（2026-11-13）与其邮件列表归档的 Christoph Hellwig 公告全文、FOSSY 2026 演讲页
+Summary: XRAID 是集成进 XFS 的 declustered parity RAID 首个公开版，目标为支持 SMR 等 zoned 设备上的 parity RAID 与提供无固有完整性问题的快速 RAID；作者自述写入最高比 mdraid 快 20 倍（未实测）。技术：建在 zoned allocator 上，用 RT subvolume 分开数据与元数据，只对文件数据做 parity RAID，元数据冗余交给 MD RAID 镜像；RAID 层在 Zoned XFS I/O 路径下把物理 zone 聚合成 logical zone 供 realtime group 用。declustered 把 D+P 散布到多于 D+P 块盘，所有盘参与读写重建、spare 分散；重建可到所有有空闲容量设备、顺序动态、先修多重冗余丢失 zone、先数据后 parity。状态：开发一年半、明确离上游提交很远、当前 0–2 重 parity、SnapRAID 做过 3 重以上实验未纳入；xfsprogs 分支带 mkfs 与 xraid 工具，Zonar 显示映射，三个 git 仓库在 infradead。LWN 评论指出未提 ZFS dRAID。本文未编译、未跑 xfstests。
+Key topics: XRAID, XFS, zoned XFS, SMR, declustered RAID, parity, mdraid, RT subvolume, realtime group, Christoph Hellwig, LWN, 技术解读
+
+### Bash 并发命令队列：用 mkfifo 加 xargs -P 造一个线程池
+URL: https://freelamp.com/articles/2026-11-14_bash-concurrent-shell-command-queues/
+Date: 2026-11-14
+Category: 技术/解读
+Source: Christian Emmer《Concurrent Shell Command Queues》（emmer.dev，2026-11-06，含完整源码与 Known issues）
+Summary: 解读如何在 Bash/Zsh 里做可随时提交、限制并发的命令队列：mkfifo 当可追加管道 + xargs -0 -n1 -P N 当固定工人池。逐函数拆解 queue_start（校验并行度、fd 3–9、私有 FIFO、ps 取 shell、关 job control、两端打开后即删目录、trap）、queue_submit（env printf NUL 写、交互/非交互分流避免满队列延迟信号）、queue_wait（关写端后 kill -0 轮询）、_queue_stop（递归 pgrep -P，STOP→递归 TERM→CONT）。精妙点：输出先捕获再打印避免交错、非零退出码压成 1 因 255 会让 xargs 停下。原样列出五条 Known issues：单队列、输出不流式且超 PIPE_BUF 仍交错、queue_wait 不返失败、写端被继承导致 EOF 延迟、_queue_stop 无差别杀后台任务。作者忠告生产宜用 Python 等语言；本文未复现脚本、Postman Echo 示例未测。
+Key topics: Bash, Zsh, mkfifo, xargs -P, 线程池, FIFO, 文件描述符, job control, trap, PIPE_BUF, GNU Parallel, 技术解读
+
 ### Vagrant 走到 EOL：那个把 vagrant up 写成动词的公司，把它还给了社区
 URL: https://freelamp.com/articles/2026-11-13_vagrant-eol-hashicorp-mit-license/
 Date: 2026-11-13

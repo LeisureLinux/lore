@@ -10,6 +10,7 @@ import html
 import re
 import json
 import sys
+import unicodedata
 import yaml
 from urllib.parse import quote
 from pathlib import Path
@@ -24,6 +25,125 @@ SITE_URL = "https://freelamp.com"
 SITE_NAME = "FreeLAMP.com"
 SITE_DESCRIPTION = "Linux 底层机制、DevSecOps 安全加固与基础架构深度技术知识库"
 SITE_AUTHOR = "LeisureLinux"
+# 站点统一署名（文章 metadata.author 优先；公众号规范为 FreeLAMP.com）
+SEO_AUTHOR_NAME = "FreeLAMP.com"
+SEO_AUTHOR_URL = f"{SITE_URL}/about-freelamp.html"
+SEO_PUBLISHER_LOGO = f"{SITE_URL}/favicon.ico"
+DEFAULT_OG_IMAGE = f"{SITE_URL}/tc-promotion-banner-1200x400.png"
+
+# 标签页最小文章数：低于阈值的旧标签页仍会生成（保住历史 URL 与站内链接），
+# 但加 noindex,follow，且不写入 sitemap，让爬虫把预算留给文章与合格专题页。
+MIN_TAG_PAGE_ARTICLES = 3
+# 首页及分页每页文章数
+PAGE_SIZE = 12
+
+
+def esc(value) -> str:
+    """HTML 文本/属性值转义。用于所有从 metadata 插入模板的动态字符串。"""
+    return html.escape(str(value if value is not None else ''), quote=True)
+
+
+def tag_slug(tag) -> str:
+    """把标签转成稳定、单层、可读的 URL slug。
+
+    中文/日文保留，拉丁字母小写，空格与斜杠等分隔符统一成连字符。
+    例：AI/LLM -> ai-llm，TCP/IP -> tcp-ip，小 I/O 简单 DIO -> 小-io-简单-dio。
+    纯符号标签回退为 URL 编码，保证 slug 非空且不会产生额外路径层级。
+    """
+    text = unicodedata.normalize('NFKC', str(tag)).strip()
+    text = re.sub(r'\s+', '-', text)
+    text = re.sub(r'[^\w\-一-鿿぀-ヿ]+', '-', text, flags=re.UNICODE)
+    text = re.sub(r'-{2,}', '-', text).strip('-').lower()
+    if not text:
+        text = quote(str(tag), safe='') or 'tag'
+    return text
+
+
+def tag_url_for(tag) -> str:
+    """返回标签页绝对路径。
+
+    保守策略：历史上已有约 2,600 个 /tags/<URL-encoded 原标签>/ 页面和外链，
+    绝大多数 URL 保持不变；仅对含斜杠、会产生额外路径层级的 10 个标签改用
+    单层 slug（如 AI/LLM -> ai-llm），并为旧路径输出 meta refresh 过渡页。
+    """
+    raw = str(tag)
+    if '/' in raw:
+        return f"/tags/{tag_slug(raw)}/"
+    return f"/tags/{quote(raw)}/"
+
+
+def tag_disk_dir(tag) -> str:
+    """返回 docs/tags/ 下的真实目录名（用原文，不是 percent-encoding）。
+
+    GitHub Pages 会把 URL 中的 %E8%AF%91%E6%96%87 解码后在磁盘上查找
+    `tags/译文/index.html`；若把目录直接命名成 `%E8%AF%91...` 会导致 404。
+    """
+    raw = str(tag)
+    if '/' in raw:
+        return tag_slug(raw)
+    return raw
+
+
+def truncate_seo_description(value, limit: int = 158) -> str:
+    """按中文/英文句子边界生成 150–160 字的 meta description。
+
+    避免原来 [:160] 在英文专名或引号中间硬截；返回值已适合 HTML 属性转义前使用。
+    """
+    text = re.sub(r'\s+', ' ', str(value or '')).strip()
+    if len(text) <= limit:
+        return text
+    window = text[:limit + 1]
+    candidates = [window.rfind(ch) for ch in '。！？；!?;：:，,、 ']
+    cut = max(candidates)
+    if cut < limit * 0.6:
+        cut = limit
+    result = window[:cut].rstrip('，,、：:；; ')
+    if result and result[-1] not in '。！？!?':
+        result += '…'
+    return result
+
+
+def collect_tag_map(articles):
+    """返回全部 {tag: [article, ...]}，按首次出现顺序（保持旧 URL 稳定）。"""
+    from collections import OrderedDict
+    tag_map = OrderedDict()
+    for article in articles:
+        for tag in (article['metadata'].get('tags') or []):
+            tag_map.setdefault(str(tag), []).append(article)
+    return tag_map
+
+
+def collect_indexable_tags(articles):
+    """返回达到 MIN_TAG_PAGE_ARTICLES 的标签，按文章数降序。"""
+    from collections import OrderedDict
+    eligible = OrderedDict(
+        (tag, tagged) for tag, tagged in collect_tag_map(articles).items()
+        if len(tagged) >= MIN_TAG_PAGE_ARTICLES
+    )
+    return OrderedDict(sorted(eligible.items(), key=lambda kv: (-len(kv[1]), kv[0])))
+
+
+COVERS_DIR = LORE_DIR / "covers"
+
+
+def article_cover_webp(slug: str):
+    """返回文章的 WebP 封面源文件（由 tools/ 或 maintainers 生成后纳入 git）。"""
+    p = COVERS_DIR / f"{slug}.webp"
+    return p if p.is_file() else None
+
+
+def find_article_cover(slug: str, meta: dict):
+    """返回文章封面 URL 路径：metadata.cover 优先，其次 covers/<slug>.webp。
+
+    WebP 文件是构建输入而非构建产物：GitHub Actions 只安装 pyyaml，不装 Pillow，
+    因此 build.py 不能在 CI 里临时转换图片；生成/更新封面是独立的维护步骤。
+    """
+    configured = str(meta.get('cover') or '').strip()
+    if configured:
+        return configured
+    if article_cover_webp(slug):
+        return f"/covers/{slug}.webp"
+    return None
 
 # ================= 京东联盟 CPS 推广（可选） =================
 # 1) 在 https://union.jd.com/ 登录联盟后台，选商品「获取推广链接」得到 jdc 长链。
@@ -230,8 +350,8 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FreeLAMP.com — Linux 底层机制与 DevSecOps 深度技术知识库</title>
-  <meta name="description" content="{site_description}。涵盖 Linux 内核调优、TLS/PKI 信任链、网络协议安全、CVE 漏洞分析、DevOps 工具链。">
+  <title>{page_title}</title>
+  <meta name="description" content="{page_description}">
   <meta name="keywords" content="Linux, 内核, DevSecOps, TLS, PKI, 网络安全, CVE, eBPF, systemd, SRE, 基础架构, DevOps">
   <meta name="author" content="{site_author}">
   <link rel="canonical" href="{canonical_url}">
@@ -241,43 +361,26 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="FreeLAMP.com — Linux 底层机制与 DevSecOps 深度技术知识库">
-  <meta property="og:description" content="{site_description}">
-  <meta property="og:url" content="{site_url}/">
+  <meta property="og:title" content="{page_title}">
+  <meta property="og:description" content="{page_description}">
+  <meta property="og:url" content="{canonical_url}">
+  <meta property="og:image" content="{og_image}">
   <meta property="og:site_name" content="{site_name}">
   <meta property="og:locale" content="zh_CN">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="FreeLAMP.com — 技术传说">
-  <meta name="twitter:description" content="{site_description}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{page_title}">
+  <meta name="twitter:description" content="{page_description}">
+  <meta name="twitter:image" content="{og_image}">
   <meta name="twitter:site" content="@LeisureLinux">
   <meta name="twitter:creator" content="@LeisureLinux">
 
-  <!-- JSON-LD 结构化数据：WebSite + SearchAction -->
-  <script type="application/ld+json">
-  {{
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "{site_name}",
-    "url": "{site_url}/",
-    "description": "{site_description}",
-    "potentialAction": {{
-      "@type": "SearchAction",
-      "target": "{site_url}/?q={{search_term_string}}",
-      "query-input": "required name=search_term_string"
-    }}
-  }}
-  </script>
-
+  <!-- JSON-LD 结构化数据：WebSite（站点名称；SearchAction 已由 Google 退役） -->
+{website_json_ld}
   <!-- JSON-LD：ItemList（文章列表） -->
   <script type="application/ld+json">
-  {{
-    "@context": "https://schema.org",
-    "@type": "ItemList",
-    "name": "FreeLAMP.com 技术文章",
-    "itemListElement": {item_list_json}
-  }}
+  {item_list_json_ld}
   </script>
 
   <style>
@@ -320,9 +423,33 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
       font-size: 11px; opacity: 0.85; font-weight: 500;
     }}
     
+    .site-intro {{
+      background: #fff; border: 1px solid #E5E7EB; border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 24px; font-size: 14px; line-height: 1.9;
+      color: #4B5563;
+    }}
+    .site-intro h2 {{ font-size: 18px; color: #111827; margin-bottom: 8px; }}
+    .topic-nav {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }}
+    .topic-nav a {{
+      background: #ECFDF5; color: #059669; padding: 5px 11px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; text-decoration: none;
+    }}
+    .topic-nav a:hover {{ background: #D1FAE5; }}
     .article-list {{ list-style: none; }}
     .article-item {{
       background: #fff; border-radius: 12px; padding: 24px 28px;
+      background: #fff; border: 1px solid #E5E7EB; border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 24px; font-size: 14px; line-height: 1.9;
+      color: #4B5563;
+    }}
+    .site-intro h2 {{ font-size: 18px; color: #111827; margin-bottom: 8px; }}
+    .topic-nav {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }}
+    .topic-nav a {{
+      background: #ECFDF5; color: #059669; padding: 5px 11px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; text-decoration: none;
+    }}
+    .topic-nav a:hover {{ background: #D1FAE5; }}
+    .article-list {{ list-style: none; }}
       margin-bottom: 16px; border: 1px solid #E5E7EB;
       transition: box-shadow 0.2s, transform 0.2s;
     }}
@@ -385,8 +512,8 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 <body>
   <header>
     <div class="container">
-      <h1><a href="/" style="color:#fff; text-decoration:none;">FreeLAMP.com 像风一样自由</a></h1>
-      <p>禅道须在生活中修，在日常言语、形式里面契合、印证</p>
+      <h1><a href="/" style="color:#fff; text-decoration:none;">FreeLAMP.com：Linux 底层机制与 DevSecOps 知识库</a></h1>
+      <p>像风一样自由 · 禅道须在生活中修，在日常言语、形式里面契合、印证</p>
       <div class="projects">
         <a class="project-btn" href="https://repo.freelamp.com" target="_blank" rel="noopener"><b>FreeLAMP Repo</b><span>FreeLAMP 代码仓库</span></a>
         <a class="project-btn" href="https://github.com/LeisureLinux/unbound-dashboard" target="_blank" rel="noopener"><b>unbound-dashboard</b><span>轻量的 unbound DNS 查询日志仪表板</span></a>
@@ -400,6 +527,15 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
   </header>
 
   <main class="container">
+    <section class="site-intro">
+      <h2>关于这个技术知识库</h2>
+      <p>FreeLAMP.com 记录 Linux 内核、发行版、安全漏洞、TLS/PKI、自托管与开源工具的工程实践。文章以官方公告、源码与本地复现为依据，标注一手来源、版本范围与修订记录；同步发布于微信公众号「LeisureLinux」。</p>
+      <h2>按主题浏览</h2>
+      <nav class="topic-nav" aria-label="核心主题">
+{topics_html}
+      </nav>
+    </section>
+    <h2>最新文章</h2>
     <ul class="article-list">
 {articles}
     </ul>
@@ -468,31 +604,36 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title} — FreeLAMP.com</title>
-  <meta name="description" content="{meta_description}">
-  <meta name="keywords" content="{meta_keywords}">
-  <meta name="author" content="{author}">
-  <meta name="date" content="{date_iso}">
-  <link rel="canonical" href="{canonical_url}">
+  <title>{title_html} | FreeLAMP.com</title>
+  <meta name="description" content="{meta_description_html}">
+  <meta name="keywords" content="{meta_keywords_html}">
+  <meta name="author" content="{author_html}">
+  <meta name="date" content="{date_iso_html}">
+  <link rel="canonical" href="{canonical_url_html}">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
 
   <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
-  <meta property="og:title" content="{title}">
-  <meta property="og:description" content="{meta_description}">
-  <meta property="og:url" content="{canonical_url}">
-  <meta property="og:site_name" content="{site_name}">
+  <meta property="og:title" content="{title_html}">
+  <meta property="og:description" content="{meta_description_html}">
+  <meta property="og:url" content="{canonical_url_html}">
+  <meta property="og:image" content="{og_image_html}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
+  <meta property="og:site_name" content="{site_name_html}">
   <meta property="og:locale" content="zh_CN">
-  <meta property="article:published_time" content="{date_iso}">
-  <meta property="article:author" content="{author}">
-  <meta property="article:section" content="{article_section}">
+  <meta property="article:published_time" content="{date_iso_html}">
+  <meta property="article:modified_time" content="{date_modified_html}">
+  <meta property="article:author" content="{author_html}">
+  <meta property="article:section" content="{article_section_html}">
   {og_tags}
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="{title}">
-  <meta name="twitter:description" content="{meta_description}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{title_html}">
+  <meta name="twitter:description" content="{meta_description_html}">
+  <meta name="twitter:image" content="{og_image_html}">
   <meta name="twitter:site" content="@LeisureLinux">
   <meta name="twitter:creator" content="@LeisureLinux">
 
@@ -501,26 +642,9 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   {json_ld}
   </script>
 
-  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
   <script type="application/ld+json">
-  {{
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    "itemListElement": [
-      {{
-        "@type": "ListItem",
-        "position": 1,
-        "name": "FreeLAMP.com",
-        "item": "{site_url}/"
-      }},
-      {{
-        "@type": "ListItem",
-        "position": 2,
-        "name": "{title}",
-        "item": "{canonical_url}"
-      }}
-    ]
-  }}
+  {breadcrumb_json_ld}
   </script>
 
   <style>
@@ -696,10 +820,10 @@ ARTICLE_TEMPLATE = """<!DOCTYPE html>
   <main class="container">
     <article itemscope itemtype="https://schema.org/TechArticle">
       <div class="post-header">
-        <div class="post-date" itemprop="datePublished" content="{date_iso}">{date}</div>
-        <h1 class="post-title" itemprop="headline">{title}</h1>
+        <div class="post-date" itemprop="datePublished" content="{date_iso_html}">{date}</div>
+        <h1 class="post-title" itemprop="headline">{title_html}</h1>
         <div class="post-tags">{tags}</div>
-        <meta itemprop="author" content="{author}">
+        <meta itemprop="author" content="{author_html}">
         <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
       </div>
 
@@ -779,11 +903,21 @@ TAG_TEMPLATE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>#{tag} — FreeLAMP.com 像风一样自由</title>
+  <title>{title_html}</title>
   <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
-  <meta name="description" content="标签「{tag}」下的全部 FreeLAMP.com 技术文章">
-  <link rel="canonical" href="{SITE_URL}{tag_url}">
-  <style>
+  <meta name="description" content="{description_html}">
+{robots_meta}  <link rel="canonical" href="{canonical_url_html}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{title_html}">
+  <meta property="og:description" content="{description_html}">
+  <meta property="og:url" content="{canonical_url_html}">
+  <meta property="og:image" content="{og_image_html}">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{title_html}">
+  <meta name="twitter:description" content="{description_html}">
+  <meta name="twitter:image" content="{og_image_html}">
+{collection_json_ld}  <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #fff; color: #1F2937; line-height: 1.6; }}
     .container {{ max-width: 860px; margin: 0 auto; padding: 0 20px; }}
@@ -812,8 +946,8 @@ TAG_TEMPLATE = """<!DOCTYPE html>
 
   <main class="container">
     <div class="tag-header">
-      <h1># {tag}</h1>
-      <p>共 {count} 篇文章</p>
+      <h1>{tag_html} — FreeLAMP.com 技术文章</h1>
+      <p>{intro_html}</p>
     </div>
     <ul class="article-list">
 {articles}
@@ -876,8 +1010,18 @@ def load_article(article_dir):
     
     metadata = {}
     if metadata_yaml.exists():
-        with open(metadata_yaml, 'r', encoding='utf-8') as f:
-            metadata = list(yaml.safe_load_all(f))[0]
+        # 历史文件中有 195 个含多余 YAML 文档分隔符；safe_load 会在第一处
+        # `---` 截断，因此按 `---` 分段解析，忽略空文档，避免后半段 tags 丢失。
+        raw_yaml = metadata_yaml.read_text(encoding='utf-8')
+        for chunk in re.split(r'^---\s*$', raw_yaml, flags=re.MULTILINE):
+            if not chunk.strip():
+                continue
+            try:
+                doc = yaml.safe_load(chunk)
+            except yaml.YAMLError:
+                continue
+            if isinstance(doc, dict):
+                metadata.update(doc)
     
     return {
         'slug': article_dir.name,
@@ -886,8 +1030,8 @@ def load_article(article_dir):
     }
 
 
-def build_json_ld(meta, canonical_url, content_plain):
-    """生成 TechArticle JSON-LD 结构化数据"""
+def build_json_ld(meta, canonical_url, content_plain, og_image=None, date_modified=None):
+    """生成 TechArticle JSON-LD 结构化数据（始终用 json.dumps 序列化）"""
     date_val = meta.get('date', '')
     if isinstance(date_val, datetime):
         date_iso = date_val.strftime('%Y-%m-%d')
@@ -904,16 +1048,20 @@ def build_json_ld(meta, canonical_url, content_plain):
         "headline": meta.get('title', ''),
         "description": meta.get('summary', body_excerpt[:200]),
         "datePublished": date_iso,
-        "dateModified": date_iso,
+        "dateModified": date_modified or meta.get('modified') or date_iso,
         "author": {
-            "@type": "Person",
-            "name": meta.get('author', SITE_AUTHOR),
-            "url": "https://github.com/LeisureLinux"
+            "@type": "Organization",
+            "name": SEO_AUTHOR_NAME,
+            "url": SEO_AUTHOR_URL
         },
         "publisher": {
             "@type": "Organization",
             "name": SITE_NAME,
-            "url": SITE_URL
+            "url": SITE_URL,
+            "logo": {
+                "@type": "ImageObject",
+                "url": SEO_PUBLISHER_LOGO
+            }
         },
         "mainEntityOfPage": {
             "@type": "WebPage",
@@ -927,7 +1075,25 @@ def build_json_ld(meta, canonical_url, content_plain):
     # 添加关键词（tags）
     tags = meta.get('tags', [])
     if tags:
-        schema["keywords"] = ", ".join(tags)
+        schema["keywords"] = ", ".join(str(t) for t in tags)
+        schema["about"] = [str(t) for t in tags[:5]]
+
+    # 社交卡片 / 富媒体图片
+    if og_image:
+        schema["image"] = [og_image]
+
+    # 一手来源与译介出处：技术文章 E-E-A-T 的重要信号
+    citations = []
+    for key in ('original_url', 'source_url'):
+        url = str(meta.get(key) or '').strip()
+        if url and url.startswith(('http://', 'https://')):
+            citations.append({"@type": "CreativeWork", "url": url})
+    source_name = str(meta.get('original_source') or '').strip()
+    if source_name:
+        for item in citations[:1]:
+            item['name'] = source_name
+    if citations:
+        schema["citation"] = citations
     
     # 如果有 wechat_media_id，添加分发信息
     if meta.get('wechat_media_id'):
@@ -937,9 +1103,6 @@ def build_json_ld(meta, canonical_url, content_plain):
         }
     
     return json.dumps(schema, ensure_ascii=False, indent=2)
-
-
-PAGE_SIZE = 12
 
 
 def page_url(n):
@@ -964,12 +1127,17 @@ def render_article_items(articles):
         if isinstance(date, datetime):
             date = date.strftime('%Y-%m-%d')
         article_url = f"{SITE_URL}/articles/{slug}/"
-        tags_html = ''.join([f'<a href="/tags/{quote(str(tag))}/">{tag}</a>' for tag in tags])
+        tag_links = []
+        for tag in tags[:5]:
+            tag_links.append(
+                f'<a href="{tag_url_for(tag)}" aria-label="标签：{esc(tag)}">{esc(tag)}</a>'
+            )
+        tags_html = ''.join(tag_links)
         article_html = f"""      <li class="article-item">
         <a href="/articles/{slug}/">
-          <div class="article-date">{date}</div>
-          <div class="article-title">{title}</div>
-          <div class="article-summary">{summary}</div>
+          <div class="article-date">{esc(date)}</div>
+          <div class="article-title">{esc(title)}</div>
+          <div class="article-summary">{esc(summary)}</div>
         </a>
         <div class="article-tags">{tags_html}</div>
         <div class="article-meta">
@@ -1009,22 +1177,68 @@ def build_index_pages(articles):
     sorted_articles = sorted(articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True)
     total_pages = max(1, (len(sorted_articles) + PAGE_SIZE - 1) // PAGE_SIZE)
     pages = []
+    # 首页主题导航只链接达到阈值的标签，避免制造薄标签入口
+    indexable_tags = collect_indexable_tags(articles)
+    topic_tags = list(indexable_tags)[:12]
+    topics_html = '\n'.join(
+        f'        <a href="{tag_url_for(tag)}">{esc(tag)}</a>' for tag in topic_tags
+    )
     for page_num in range(1, total_pages + 1):
         start = (page_num - 1) * PAGE_SIZE
         slice_ = sorted_articles[start:start + PAGE_SIZE]
         articles_html, item_list_elements = render_article_items(slice_)
         item_list_json = json.dumps(item_list_elements, ensure_ascii=False, indent=6)
         pager_html = render_pager(page_num, total_pages)
+        first_date = str(sorted_articles[start]['metadata'].get('date', '') or '')
+        last_date = str(sorted_articles[min(start + PAGE_SIZE, len(sorted_articles)) - 1]['metadata'].get('date', '') or '')
         if page_num == 1:
             canonical_url = f"{SITE_URL}/"
             rel_prev = ''
             rel_next = f'<link rel="next" href="{page_url(2)}">' if total_pages > 1 else ''
             relpath = "index.html"
+            page_title = "FreeLAMP.com — Linux 底层机制与 DevSecOps 技术知识库"
+            page_description = (
+                "FreeLAMP.com 记录 Linux 内核、发行版、安全漏洞、TLS/PKI、自托管与开源工具的"
+                "工程实践；以官方公告、源码与本地复现为依据，附一手来源与版本细节。"
+            )
         else:
             canonical_url = page_url(page_num)
             rel_prev = f'<link rel="prev" href="{page_url(page_num - 1)}">'
             rel_next = f'<link rel="next" href="{page_url(page_num + 1)}">' if page_num < total_pages else ''
             relpath = f"page/{page_num}/index.html"
+            page_title = f"FreeLAMP.com 技术文章 · 第 {page_num} 页 — Linux / DevSecOps"
+            page_description = (
+                f"FreeLAMP.com 第 {page_num} 页技术文章归档，覆盖 {last_date} 至 {first_date} 的"
+                " Linux、安全漏洞、PKI、自托管与开源工具解读。"
+            )
+        website_json_ld = ''
+        if page_num == 1:
+            website_schema = {
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                "name": SITE_NAME,
+                "url": f"{SITE_URL}/",
+                "description": SITE_DESCRIPTION,
+                "inLanguage": "zh-CN",
+                "publisher": {
+                    "@type": "Organization",
+                    "name": SITE_NAME,
+                    "url": SITE_URL,
+                    "logo": {"@type": "ImageObject", "url": SEO_PUBLISHER_LOGO},
+                },
+            }
+            website_json_ld = (
+                '  <script type="application/ld+json">\n'
+                + json.dumps(website_schema, ensure_ascii=False, indent=2)
+                + '\n  </script>\n'
+            )
+        item_list_schema = {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "name": f"FreeLAMP.com 技术文章 · 第 {page_num} 页",
+            "itemListElement": item_list_elements,
+        }
+        item_list_json_ld = json.dumps(item_list_schema, ensure_ascii=False, indent=2)
         html = INDEX_TEMPLATE.format(
             WB_FOOTER_AD=WB_FOOTER_AD,
             analytics_snippet=analytics_html(),
@@ -1032,11 +1246,16 @@ def build_index_pages(articles):
             site_name=SITE_NAME,
             site_description=SITE_DESCRIPTION,
             site_author=SITE_AUTHOR,
-            canonical_url=canonical_url,
+            page_title=esc(page_title),
+            page_description=esc(page_description),
+            og_image=esc(DEFAULT_OG_IMAGE),
+            canonical_url=esc(canonical_url),
             rel_prev=rel_prev,
             rel_next=rel_next,
             articles='\n'.join(articles_html),
-            item_list_json=item_list_json,
+            topics_html=topics_html,
+            website_json_ld=website_json_ld,
+            item_list_json_ld=item_list_json_ld,
             pager_html=pager_html,
         )
         pages.append((relpath, html))
@@ -1059,31 +1278,54 @@ def build_article_page(article):
         date_display = str(date)
     
     canonical_url = f"{SITE_URL}/articles/{article['slug']}/"
-    
-    tags_html = ''.join([f'<a itemprop="keywords" href="/tags/{quote(str(tag))}/">{tag}</a>' for tag in tags])
+
+    tags_html = ''.join([
+        f'<a itemprop="keywords" href="{tag_url_for(tag)}">{esc(tag)}</a>' for tag in tags
+    ])
 
     # 去掉正文开头的重复标题（页面顶部 post-title 已展示标题）
     article_content = re.sub(r'^\s*#\s+[^\n]*\n?', '', article['content'], count=1, flags=re.MULTILINE)
     content_html = inject_tc_ad(markdown_to_html(article_content))
     content_html = inject_cross_ref(content_html)
-    
+
+    # 封面：metadata.cover 或 covers/<slug>.webp（WebP 源文件已纳入 git）
+    cover_url = find_article_cover(article['slug'], meta) or ''
+    if cover_url.startswith('http://') or cover_url.startswith('https://'):
+        og_image = cover_url
+    elif cover_url:
+        og_image = f"{SITE_URL}{cover_url}"
+    else:
+        og_image = DEFAULT_OG_IMAGE
+
     # 生成 JSON-LD
-    json_ld = build_json_ld(meta, canonical_url, article['content'])
-    
-    # 生成 OG article:tag 标签
+    date_modified = str(meta.get('modified') or date_iso)
+    json_ld = build_json_ld(meta, canonical_url, article['content'], og_image, date_modified)
+    breadcrumb_schema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "FreeLAMP.com", "item": f"{SITE_URL}/"},
+            {"@type": "ListItem", "position": 2, "name": str(title), "item": canonical_url},
+        ],
+    }
+    breadcrumb_json_ld = json.dumps(breadcrumb_schema, ensure_ascii=False, indent=2)
+
+    # 生成 OG article:tag 标签（属性值必须转义）
     og_tags = '\n  '.join([
-        f'<meta property="article:tag" content="{tag}">' for tag in tags
+        f'<meta property="article:tag" content="{esc(tag)}">' for tag in tags
     ])
-    
+
     # 确定文章分类（取第一个 tag）
     article_section = tags[0] if tags else "Linux"
-    
-    # meta description（优先用 summary，截断到 160 字符）
-    meta_description = meta.get('description', meta.get('summary', ''))[:160]
-    if not meta_description:
-        # 从正文提取
+
+    # meta description：独立 seo_description 优先，按句边界截断，避免英文专名被切断
+    raw_description = (
+        meta.get('seo_description') or meta.get('description') or meta.get('summary') or ''
+    )
+    if not raw_description:
         plain = re.sub(r'[#*`\[\]()>|]', '', article['content'])
-        meta_description = re.sub(r'\n+', ' ', plain).strip()[:160]
+        raw_description = re.sub(r'\n+', ' ', plain).strip()
+    meta_description = truncate_seo_description(raw_description)
     
     # meta keywords
     meta_keywords = ", ".join(tags) if tags else "Linux, DevOps, 技术"
@@ -1098,65 +1340,135 @@ def build_article_page(article):
         WB_FOOTER_AD=WB_FOOTER_AD,
         analytics_snippet=analytics_html(),
         jd_buy_html=jd_buy_html(jd_url, jd_title, jd_img),
-        title=title,
-        date=date_display,
-        date_iso=date_iso,
+        title_html=esc(title),
+        date=esc(date_display),
+        date_iso_html=esc(date_iso),
+        date_modified_html=esc(date_modified),
         tags=tags_html,
         content=content_html,
-        canonical_url=canonical_url,
+        canonical_url_html=esc(canonical_url),
         json_ld=json_ld,
-        author=author,
+        breadcrumb_json_ld=breadcrumb_json_ld,
+        author_html=esc(author),
         site_url=SITE_URL,
-        site_name=SITE_NAME,
-        meta_description=meta_description,
-        meta_keywords=meta_keywords,
-        article_section=article_section,
+        site_name_html=esc(SITE_NAME),
+        meta_description_html=esc(meta_description),
+        meta_keywords_html=esc(meta_keywords),
+        article_section_html=esc(article_section),
+        og_image_html=esc(og_image),
         og_tags=og_tags,
         share_url=json.dumps(canonical_url),
-        share_title=json.dumps(title)
+        share_title=json.dumps(str(title))
     )
 
 
 def build_tag_pages(articles):
-    """为每个标签生成 docs/tags/<tag>/index.html 目录页，文章经标签相互关联"""
-    from collections import OrderedDict
-    tag_map = OrderedDict()
-    for article in articles:
-        for tag in (article['metadata'].get('tags') or []):
-            tag_map.setdefault(tag, []).append(article)
+    """只为达到文章数阈值的标签生成 /tags/<slug>/ 索引页。
 
+    低于阈值的细粒度标签仍显示在文章页，但不再生成独立 URL / sitemap 条目。
+    标签目录采用 slug 化单层路径，并为保留页输出 CollectionPage + ItemList JSON-LD。
+    """
+    tag_map = collect_tag_map(articles)
     written = []
     for tag, tagged_articles in tag_map.items():
-        tag_url = f"/tags/{quote(str(tag))}/"
+        tag_url = tag_url_for(tag)
+        rel_dir = tag_disk_dir(tag)
+        indexable = len(tagged_articles) >= MIN_TAG_PAGE_ARTICLES
         items = []
-        for article in sorted(tagged_articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True):
+        item_list_elements = []
+        for idx, article in enumerate(sorted(tagged_articles, key=lambda x: str(x['metadata'].get('date', '') or ''), reverse=True), 1):
             meta = article['metadata']
-            slug = article['slug']
+            article_slug = article['slug']
             date = meta.get('date', '')
             if isinstance(date, datetime):
                 date = date.strftime('%Y-%m-%d')
-            title = meta.get('title', slug)
+            title = meta.get('title', article_slug)
             summary = meta.get('summary', '')
             items.append(f"""      <li class="article-item">
-        <a href="/articles/{slug}/">
-          <div class="article-date">{date}</div>
-          <div class="article-title">{title}</div>
-          <div class="article-summary">{summary}</div>
+        <a href="/articles/{article_slug}/">
+          <div class="article-date">{esc(date)}</div>
+          <div class="article-title">{esc(title)}</div>
+          <div class="article-summary">{esc(summary)}</div>
         </a>
       </li>""")
+            item_list_elements.append({
+                "@type": "ListItem",
+                "position": idx,
+                "name": str(title),
+                "url": f"{SITE_URL}/articles/{article_slug}/",
+            })
+        page_title = f"{tag} — FreeLAMP.com 技术文章专题"
+        page_description = (
+            f"「{tag}」专题收录 {len(tagged_articles)} 篇 FreeLAMP.com 技术文章，"
+            "覆盖相关漏洞、版本变化、配置实践与工程复盘，附文章来源与发布时间。"
+        )
+        intro_html = (
+            f"本专题汇总 {len(tagged_articles)} 篇与「{esc(tag)}」相关的 FreeLAMP.com 文章，"
+            "按发布时间排列；点击标题查看完整分析、官方来源与复现细节。"
+        )
+        canonical_url = f"{SITE_URL}{tag_url}"
+        robots_meta = '' if indexable else '  <meta name="robots" content="noindex,follow">\n'
+        collection_json_ld = ''
+        if indexable:
+            collection_schema = {
+                "@context": "https://schema.org",
+                "@type": "CollectionPage",
+                "name": page_title,
+                "description": page_description,
+                "url": canonical_url,
+                "inLanguage": "zh-CN",
+                "isPartOf": {"@type": "WebSite", "name": SITE_NAME, "url": f"{SITE_URL}/"},
+                "mainEntity": {
+                    "@type": "ItemList",
+                    "numberOfItems": len(item_list_elements),
+                    "itemListElement": item_list_elements,
+                },
+            }
+            collection_json_ld = (
+                '  <script type="application/ld+json">\n'
+                + json.dumps(collection_schema, ensure_ascii=False, indent=2)
+                + '\n  </script>\n'
+            )
+        else:
+            # 薄标签页保留文章链接供爬虫发现正文，但不声明结构化专题
+            item_list_elements = []
         html = TAG_TEMPLATE.format(
             WB_FOOTER_AD=WB_FOOTER_AD,
             analytics_snippet=analytics_html(),
-            tag=tag,
-            count=len(tagged_articles),
-            tag_url=tag_url,
+            title_html=esc(page_title),
+            description_html=esc(page_description),
+            canonical_url_html=esc(canonical_url),
+            og_image_html=esc(DEFAULT_OG_IMAGE),
+            robots_meta=robots_meta,
+            collection_json_ld=collection_json_ld,
+            tag_html=esc(tag),
+            intro_html=intro_html,
             articles='\n'.join(items),
-            SITE_URL=SITE_URL,
         )
-        out_dir = DOCS_DIR / "tags" / tag
+        out_dir = DOCS_DIR / "tags" / rel_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "index.html").write_text(html, encoding='utf-8')
-        written.append(tag_url)
+        assert out_dir.resolve().is_relative_to((DOCS_DIR / 'tags').resolve()), tag
+
+        # 含斜杠的旧标签 URL（如 /tags/AI/LLM/）保留一个轻量跳转页，
+        # 避免已收录/外链 URL 变成 404；新 URL 进 canonical 与 sitemap。
+        if '/' in str(tag):
+            legacy_dir = DOCS_DIR / "tags" / str(tag)
+            legacy_dir.mkdir(parents=True, exist_ok=True)
+            legacy_html = (
+                '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
+                '  <meta charset="UTF-8">\n'
+                f'  <meta http-equiv="refresh" content="0;url={esc(tag_url)}">\n'
+                '  <meta name="robots" content="noindex,follow">\n'
+                f'  <link rel="canonical" href="{esc(canonical_url)}">\n'
+                f'  <title>{esc(tag)} — 页面已迁移</title>\n'
+                '</head>\n<body>\n'
+                f'  <p>本标签页已迁移到 <a href="{esc(tag_url)}">{esc(canonical_url)}</a>。</p>\n'
+                '</body>\n</html>\n'
+            )
+            (legacy_dir / "index.html").write_text(legacy_html, encoding='utf-8')
+        if indexable:
+            written.append(tag_url)
     return written
 
 
@@ -1230,8 +1542,8 @@ def generate_rss(articles):
         + "\n  </channel>\n</rss>\n"
     )
 
-def generate_sitemap(articles):
-    """生成 sitemap.xml（SEO 核心文件）"""
+def generate_sitemap(articles, tag_urls=None, mirror_urls=None):
+    """生成 sitemap.xml：文章/分页/合格标签 + 可选的公众号全文镜像。"""
     urls = []
     
     # 首页
@@ -1273,17 +1585,22 @@ def generate_sitemap(articles):
             'priority': '0.6'
         })
 
-    # 标签目录页
-    seen_tags = set()
-    for article in articles:
-        for tag in (article['metadata'].get('tags') or []):
-            if tag not in seen_tags:
-                seen_tags.add(tag)
-                urls.append({
-                    'loc': f"{SITE_URL}/tags/{quote(str(tag))}/",
-                    'changefreq': 'weekly',
-                    'priority': '0.6'
-                })
+    # 标签目录页：只包含 build_tag_pages() 真正生成、达到阈值的专题页
+    for tag_url in (tag_urls or []):
+        urls.append({
+            'loc': f"{SITE_URL}{tag_url}",
+            'changefreq': 'weekly',
+            'priority': '0.6'
+        })
+
+    # LeisureLinux 公众号全文镜像页（GEO：让 Bot 能发现并抓取全文）
+    for mirror_url in (mirror_urls or []):
+        urls.append({
+            'loc': f"{SITE_URL}{mirror_url['loc']}",
+            'lastmod': mirror_url.get('lastmod'),
+            'changefreq': 'monthly',
+            'priority': '0.5'
+        })
 
     # 构建 XML
     xml_lines = [
@@ -1294,8 +1611,8 @@ def generate_sitemap(articles):
     for url_entry in urls:
         xml_lines.append('  <url>')
         xml_lines.append(f'    <loc>{url_entry["loc"]}</loc>')
-        if 'lastmod' in url_entry:
-            xml_lines.append(f'    <lastmod>{url_entry["lastmod"]}</lastmod>')
+        if url_entry.get('lastmod'):
+            xml_lines.append(f'    <lastmod>{_xml_escape(url_entry["lastmod"])}</lastmod>')
         xml_lines.append(f'    <changefreq>{url_entry["changefreq"]}</changefreq>')
         xml_lines.append(f'    <priority>{url_entry["priority"]}</priority>')
         xml_lines.append('  </url>')
@@ -1352,12 +1669,15 @@ ABOUT_TEMPLATE = """<!DOCTYPE html>
     "url": "{site_url}/about-freelamp.html",
     "mainEntity": {{
       "@type": "Person",
-      "name": "{site_author}",
-      "url": "https://github.com/LeisureLinux",
+      "name": "FreeLAMP.com / LeisureLinux",
+      "alternateName": ["FreeLAMP.com", "LeisureLinux", "老徐"],
+      "url": "{site_url}/about-freelamp.html",
       "email": "albertxu@freelamp.com",
       "knowsAbout": ["Linux", "自由软件", "开源", "系统管理", "DevSecOps"],
       "sameAs": [
-        "https://github.com/LeisureLinux"
+        "https://github.com/LeisureLinux",
+        "{site_url}/",
+        "https://space.bilibili.com/517298151"
       ]
     }}
   }}
@@ -1509,12 +1829,86 @@ def build_about_page():
 
 
 
+def discover_mirror_urls():
+    """扫描公众号全文镜像页，提取 sitemap 所需的路径与 lastmod。"""
+    src = LORE_DIR / "leisurelinux" / "articles"
+    entries = []
+    if not src.is_dir():
+        return entries
+    for f in sorted(src.glob('*.html')):
+        text = f.read_text(encoding='utf-8', errors='ignore')
+        m = re.search(r'"datePublished"\s*:\s*"(\d{4}-\d{2}-\d{2})', text)
+        entries.append({
+            'loc': f"/leisurelinux/articles/{f.name}",
+            'lastmod': m.group(1) if m else None,
+        })
+    return entries
+
+
+def validate_generated_html():
+    """遍历 docs/**/*.html，校验 meta 属性与 JSON-LD；返回错误列表。"""
+    from html.parser import HTMLParser
+
+    class Validator(HTMLParser):
+        def __init__(self, rel):
+            super().__init__(convert_charrefs=True)
+            self.rel = rel
+            self.errors = []
+            self.in_ld = False
+            self.ld_buf = []
+            self.metas = {}
+
+        def handle_starttag(self, tag, attrs):
+            d = dict(attrs)
+            if tag == 'meta':
+                key = d.get('name') or d.get('property')
+                if key and 'content' not in d:
+                    self.errors.append(f"{self.rel}: <meta {key}> 缺 content")
+                if key in ('description', 'og:title', 'twitter:title'):
+                    self.metas[key] = d.get('content', '')
+            if tag == 'script' and d.get('type', '').lower() == 'application/ld+json':
+                self.in_ld = True
+                self.ld_buf = []
+
+        def handle_data(self, data):
+            if self.in_ld:
+                self.ld_buf.append(data)
+
+        def handle_endtag(self, tag):
+            if tag == 'script' and self.in_ld:
+                self.in_ld = False
+                raw = ''.join(self.ld_buf).strip()
+                if raw:
+                    try:
+                        json.loads(raw)
+                    except Exception as exc:
+                        self.errors.append(f"{self.rel}: JSON-LD 解析失败 {exc}")
+            if tag == 'head':
+                for key in ('og:title', 'twitter:title'):
+                    v = self.metas.get(key, '')
+                    if v and len(v) < 8:
+                        self.errors.append(f"{self.rel}: {key} 疑似被截断：{v!r}")
+
+    errors = []
+    for f in sorted(DOCS_DIR.rglob('*.html')):
+        rel = f.relative_to(DOCS_DIR).as_posix()
+        if rel == 'googlec29651f57d804644.html':
+            continue  # Google 站点验证文件刻意保持极简
+        v = Validator(rel)
+        try:
+            v.feed(f.read_text(encoding='utf-8', errors='ignore'))
+        except Exception as exc:
+            errors.append(f"{rel}: HTML 解析异常 {exc}")
+        errors.extend(v.errors)
+    return errors
+
+
 def main():
+    import shutil
     print("🔨 开始构建 FreeLAMP.com 静态站点...")
     
     # 清理 docs 目录
     if DOCS_DIR.exists():
-        import shutil
         shutil.rmtree(DOCS_DIR)
     DOCS_DIR.mkdir(parents=True)
     
@@ -1554,12 +1948,13 @@ def main():
         (article_output_dir / "index.html").write_text(article_html, encoding='utf-8')
         print(f"✅ 生成文章：docs/articles/{article['slug']}/index.html")
     
-    # 生成标签目录页
+    # 生成标签页：全部历史 URL 保留；仅合格专题返回到 sitemap
     tag_urls = build_tag_pages(articles)
-    print(f"✅ 生成标签页：共 {len(tag_urls)} 个")
+    print(f"✅ 生成标签页：{len(tag_urls)} 个可索引专题（阈值 ≥{MIN_TAG_PAGE_ARTICLES} 篇），薄标签页已标记 noindex,follow")
 
-    # 生成 sitemap.xml
-    sitemap_xml = generate_sitemap(articles)
+    # 生成 sitemap.xml（含标签专题 + 公众号全文镜像）
+    mirror_urls = discover_mirror_urls()
+    sitemap_xml = generate_sitemap(articles, tag_urls, mirror_urls)
     (DOCS_DIR / "sitemap.xml").write_text(sitemap_xml, encoding='utf-8')
     print("✅ 生成站点地图：docs/sitemap.xml")
     
@@ -1568,7 +1963,18 @@ def main():
     (DOCS_DIR / "rss.xml").write_text(rss_xml, encoding='utf-8')
     print("✅ 生成 RSS 订阅：docs/rss.xml")
     
-    # 生成 robots.txt
+    # 复制已有 WebP 封面到 docs/covers/（CI 无需 Pillow）
+    src_covers = LORE_DIR / "covers"
+    dst_covers = DOCS_DIR / "covers"
+    dst_covers.mkdir(parents=True, exist_ok=True)
+    copied_covers = 0
+    if src_covers.is_dir():
+        for f in src_covers.glob('*.webp'):
+            shutil.copy2(f, dst_covers / f.name)
+            copied_covers += 1
+    print(f"✅ 复制文章封面：docs/covers/（{copied_covers} 张 WebP）")
+
+    # 生成 robots.txt（本次 P1 不改内容；线上 Cloudflare 托管策略由用户复核）
     robots_txt = generate_robots_txt()
     (DOCS_DIR / "robots.txt").write_text(robots_txt, encoding='utf-8')
     print("✅ 生成爬虫规则：docs/robots.txt")
@@ -1659,6 +2065,15 @@ def main():
         total_files += cnt
     else:
         print("ℹ️  未找到 lore/leisurelinux/articles/，跳过全文镜像页复制（运行 build_articles.py 后会生成）")
+
+    # 构建后自检：HTML meta 可解析、所有 JSON-LD 可被 json.loads
+    errors = validate_generated_html()
+    if errors:
+        print("\n❌ 构建自检失败：", file=sys.stderr)
+        for err in errors[:20]:
+            print(f"  - {err}", file=sys.stderr)
+        sys.exit(1)
+    print("✅ 构建自检通过：meta 属性与 JSON-LD 均可解析")
 
     print(f"\n🎉 构建完成！共生成 {total_files} 个文件（含 SEO/GEO 优化）")
 

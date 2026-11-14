@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转 — FreeLAMP.com</title>
-  <meta name="description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少、以及普通用户该不该关心">
+  <title>zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转 | FreeLAMP.com</title>
+  <meta name="description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少…">
   <meta name="keywords" content="Linux内核, zram, 内存压缩, zcomp, 内核补丁, 优先级反转, zstd, lz4hc, swap, 译文">
   <meta name="author" content="FreeLAMP.com">
   <meta name="date" content="2026-10-06">
@@ -15,11 +15,15 @@
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转">
-  <meta property="og:description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少、以及普通用户该不该关心">
+  <meta property="og:description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少…">
   <meta property="og:url" content="https://freelamp.com/articles/2026-10-06_zram-streams-rework/">
+  <meta property="og:image" content="https://freelamp.com/covers/2026-10-06_zram-streams-rework.webp">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
   <meta property="og:site_name" content="FreeLAMP.com">
   <meta property="og:locale" content="zh_CN">
   <meta property="article:published_time" content="2026-10-06">
+  <meta property="article:modified_time" content="2026-10-06">
   <meta property="article:author" content="FreeLAMP.com">
   <meta property="article:section" content="Linux内核">
   <meta property="article:tag" content="Linux内核">
@@ -34,9 +38,10 @@
   <meta property="article:tag" content="译文">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转">
-  <meta name="twitter:description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少、以及普通用户该不该关心">
+  <meta name="twitter:description" content="Google 的 Sergey Senozhatsky 提交了 zram 的大幅重构补丁：把压缩流拆成独立的 per-CPU 读流与写流，消除抢占式 zram 下的优先级反转（读被写阻塞）；并让重压缩只用单例流，省下每个上下文/每 CPU「几十到几百 KB」。本文拆解这次重构解决了什么、省了多少…">
+  <meta name="twitter:image" content="https://freelamp.com/covers/2026-10-06_zram-streams-rework.webp">
   <meta name="twitter:site" content="@LeisureLinux">
   <meta name="twitter:creator" content="@LeisureLinux">
 
@@ -50,14 +55,18 @@
   "datePublished": "2026-10-06",
   "dateModified": "2026-10-06",
   "author": {
-    "@type": "Person",
+    "@type": "Organization",
     "name": "FreeLAMP.com",
-    "url": "https://github.com/LeisureLinux"
+    "url": "https://freelamp.com/about-freelamp.html"
   },
   "publisher": {
     "@type": "Organization",
     "name": "FreeLAMP.com",
-    "url": "https://freelamp.com"
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
   },
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -66,30 +75,47 @@
   "license": "https://creativecommons.org/licenses/by-sa/4.0/",
   "proficiencyLevel": "Expert",
   "inLanguage": "zh-CN",
-  "keywords": "Linux内核, zram, 内存压缩, zcomp, 内核补丁, 优先级反转, zstd, lz4hc, swap, 译文"
+  "keywords": "Linux内核, zram, 内存压缩, zcomp, 内核补丁, 优先级反转, zstd, lz4hc, swap, 译文",
+  "about": [
+    "Linux内核",
+    "zram",
+    "内存压缩",
+    "zcomp",
+    "内核补丁"
+  ],
+  "image": [
+    "https://freelamp.com/covers/2026-10-06_zram-streams-rework.webp"
+  ],
+  "citation": [
+    {
+      "@type": "CreativeWork",
+      "url": "https://www.phoronix.com/news/Linux-ZRAM-Rework-Savings",
+      "name": "Phoronix / Linux 内核邮件列表 (LKML)"
+    }
+  ]
 }
   </script>
 
-  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
   <script type="application/ld+json">
   {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    "itemListElement": [
-      {
-        "@type": "ListItem",
-        "position": 1,
-        "name": "FreeLAMP.com",
-        "item": "https://freelamp.com/"
-      },
-      {
-        "@type": "ListItem",
-        "position": 2,
-        "name": "zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转",
-        "item": "https://freelamp.com/articles/2026-10-06_zram-streams-rework/"
-      }
-    ]
-  }
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "zram 重构读写流：内存省下「几十到几百 KB」，但真正的看点是消除优先级反转",
+      "item": "https://freelamp.com/articles/2026-10-06_zram-streams-rework/"
+    }
+  ]
+}
   </script>
 
   <style>

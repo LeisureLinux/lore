@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么 — FreeLAMP.com</title>
-  <meta name="description" content="一个人把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。本文顺着他的思路解释 InnoDB 的三个保证、Iceberg 的俄罗斯套娃式三层剪枝、两种原子提交的相反解法，并特别保留他自己承认的那个错误：他把日期放在主表里">
+  <title>同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么 | FreeLAMP.com</title>
+  <meta name="description" content="一个人把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。本文顺着他的思路解释 InnoDB 的三个保证、Iceberg 的俄罗斯套娃式三层剪枝、两种原子提交的相反解法，并特别保留他自己承认的那个错误…">
   <meta name="keywords" content="InnoDB, Iceberg, OLTP, OLAP, lakehouse, MySQL, Spark, Polaris, MinIO, Parquet, MVCC, undo log, 列式存储, 分区, manifest, 快照, copy-on-write, merge-on-read, 数据建模, 量化分析">
   <meta name="author" content="FreeLAMP.com">
   <meta name="date" content="2026-10-19">
@@ -15,11 +15,15 @@
   <!-- Open Graph：文章页 -->
   <meta property="og:type" content="article">
   <meta property="og:title" content="同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么">
-  <meta property="og:description" content="一个人把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。本文顺着他的思路解释 InnoDB 的三个保证、Iceberg 的俄罗斯套娃式三层剪枝、两种原子提交的相反解法，并特别保留他自己承认的那个错误：他把日期放在主表里">
+  <meta property="og:description" content="一个人把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。本文顺着他的思路解释 InnoDB 的三个保证、Iceberg 的俄罗斯套娃式三层剪枝、两种原子提交的相反解法，并特别保留他自己承认的那个错误…">
   <meta property="og:url" content="https://freelamp.com/articles/2026-10-19_innodb-vs-iceberg-olap-migration-internals/">
+  <meta property="og:image" content="https://freelamp.com/covers/2026-10-19_innodb-vs-iceberg-olap-migration-internals.webp">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
   <meta property="og:site_name" content="FreeLAMP.com">
   <meta property="og:locale" content="zh_CN">
   <meta property="article:published_time" content="2026-10-19">
+  <meta property="article:modified_time" content="2026-10-19">
   <meta property="article:author" content="FreeLAMP.com">
   <meta property="article:section" content="InnoDB">
   <meta property="article:tag" content="InnoDB">
@@ -44,9 +48,10 @@
   <meta property="article:tag" content="量化分析">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么">
-  <meta name="twitter:description" content="一个人把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。本文顺着他的思路解释 InnoDB 的三个保证、Iceberg 的俄罗斯套娃式三层剪枝、两种原子提交的相反解法，并特别保留他自己承认的那个错误：他把日期放在主表里">
+  <meta name="twitter:description" content="一个人把自己的股票分析系统从 MySQL/InnoDB 迁到 Iceberg + Spark + Polaris，然后写了一篇逐项对照两个引擎内部机制的复盘。本文顺着他的思路解释 InnoDB 的三个保证、Iceberg 的俄罗斯套娃式三层剪枝、两种原子提交的相反解法，并特别保留他自己承认的那个错误…">
+  <meta name="twitter:image" content="https://freelamp.com/covers/2026-10-19_innodb-vs-iceberg-olap-migration-internals.webp">
   <meta name="twitter:site" content="@LeisureLinux">
   <meta name="twitter:creator" content="@LeisureLinux">
 
@@ -60,14 +65,18 @@
   "datePublished": "2026-10-19",
   "dateModified": "2026-10-19",
   "author": {
-    "@type": "Person",
+    "@type": "Organization",
     "name": "FreeLAMP.com",
-    "url": "https://github.com/LeisureLinux"
+    "url": "https://freelamp.com/about-freelamp.html"
   },
   "publisher": {
     "@type": "Organization",
     "name": "FreeLAMP.com",
-    "url": "https://freelamp.com"
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
   },
   "mainEntityOfPage": {
     "@type": "WebPage",
@@ -76,30 +85,47 @@
   "license": "https://creativecommons.org/licenses/by-sa/4.0/",
   "proficiencyLevel": "Expert",
   "inLanguage": "zh-CN",
-  "keywords": "InnoDB, Iceberg, OLTP, OLAP, lakehouse, MySQL, Spark, Polaris, MinIO, Parquet, MVCC, undo log, 列式存储, 分区, manifest, 快照, copy-on-write, merge-on-read, 数据建模, 量化分析"
+  "keywords": "InnoDB, Iceberg, OLTP, OLAP, lakehouse, MySQL, Spark, Polaris, MinIO, Parquet, MVCC, undo log, 列式存储, 分区, manifest, 快照, copy-on-write, merge-on-read, 数据建模, 量化分析",
+  "about": [
+    "InnoDB",
+    "Iceberg",
+    "OLTP",
+    "OLAP",
+    "lakehouse"
+  ],
+  "image": [
+    "https://freelamp.com/covers/2026-10-19_innodb-vs-iceberg-olap-migration-internals.webp"
+  ],
+  "citation": [
+    {
+      "@type": "CreativeWork",
+      "url": "https://marcpaul.io/logs/same-job-two-engines-innodb-and-iceberg-internals/",
+      "name": "marcpaul.io 技术博客（作者自建股票分析系统 v1 → v2 的完整复盘）"
+    }
+  ]
 }
   </script>
 
-  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
   <script type="application/ld+json">
   {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    "itemListElement": [
-      {
-        "@type": "ListItem",
-        "position": 1,
-        "name": "FreeLAMP.com",
-        "item": "https://freelamp.com/"
-      },
-      {
-        "@type": "ListItem",
-        "position": 2,
-        "name": "同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么",
-        "item": "https://freelamp.com/articles/2026-10-19_innodb-vs-iceberg-olap-migration-internals/"
-      }
-    ]
-  }
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "同一个活，两种引擎：一个 100GB 的教训，把 OLTP 换成 lakehouse 到底换掉了什么",
+      "item": "https://freelamp.com/articles/2026-10-19_innodb-vs-iceberg-olap-migration-internals/"
+    }
+  ]
+}
   </script>
 
   <style>
