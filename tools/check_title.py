@@ -105,6 +105,8 @@ CORE = {
     "epyc", "turin", "zen 5", "google cloud", "gke", "compute engine", "tsa", "transient scheduler", "tsa-fill", "tsa-sq", "tsa-l1", "verw", "cpuid", "microcode", "linux-firmware", "xen project", "xsa-525", "c4d", "n4d", "h4d", "z4d",
     "xdesk", "termux:x11", "displayport alt mode", "shizuku", "android auto", "pulseaudio", "h.264", "webcodecs", "proot-distro", "chroot", "zink", "turnip", "adreno", "lorieview", "hyperos",
     "vagrant", "hashicorp", "ibm", "busl", "mit license", "vagrant cloud", "hcp vagrant", "mitchell hashimoto", "virtualbox", "vagrantfile",
+    "winehq", "wine", "arm64ec", "avx", "xstate", "cldr", "wow64", "kitesurf", "cloudflare", "chrome devtools protocol", "puppeteer", "webmcp", "workers", "blitz", "stylo", "boa", "xraid", "zoned xfs", "xfs", "mdraid", "draid", "smr", "christoph hellwig", "mdash", "forge lab", "cve flood", "buildroot",
+    "bash", "zsh", "fifo", "mkfifo", "xargs", "flock", "gnu parallel", "shell queue", "thread pool", "job control", "lorenzo stoakes", "greg kroah-hartman", "linux kernel cve",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

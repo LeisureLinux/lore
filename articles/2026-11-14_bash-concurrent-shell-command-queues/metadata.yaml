@@ -1,0 +1,10 @@
+title: "Bash 并发命令队列：用 mkfifo 加 xargs -P 造一个线程池"
+date: 2026-11-14
+slug: bash-concurrent-shell-command-queues
+category: 技术/解读
+author: FreeLAMP.com
+original_source: "一手核对：Christian Emmer《Concurrent Shell Command Queues》（emmer.dev，页面标注 2026-11-07 / 正文 Nov 6, 2026，10 min read；含 queue_start / queue_submit / queue_wait / _queue_stop 四个函数完整源码与逐行注释、Postman Echo 的 5 个并发 curl+jq 示例及输出、Known issues 五条、Why not just xargs -P 章节标题）＋ 文中引用的 man7 mkfifo(1) 与 GNU xargs 语义 ＋ 相关背景：GNU Parallel、Bash job control、FIFO/PIPE_BUF 行为（本文按通用 Unix 语义说明，未另引第三方资料）"
+original_date: 2026-11-06
+original_url: "https://emmer.dev/blog/concurrent-shell-command-queues/"
+description: "解读 Christian Emmer 的《Concurrent Shell Command Queues》：如何在 Bash/Zsh 里做一个可随时提交命令、限制并发数的线程池，而且不需要事先知道全部命令。文章拆四个函数：queue_start 校验并行度为正整数、在 3–9 里找空闲文件描述符、用 mktemp -d 建私有临时目录并 mkfifo 出队列文件、用 ps 取当前 shell 名、后台起 xargs -0 -n1 -P N 读 NUL 分隔命令、把 stderr 经 fd 副本转给 xargs 的真实 stderr、关掉 job control 隐藏 job 消息、打开写端等待读端就绪后立刻删目录、注册 EXIT/HUP/INT/TERM trap；queue_submit 用 env printf '%s\\0' 把命令写进 fd，交互 shell 前台写、非交互后台写再 wait，以免满队列时延迟信号 trap；queue_wait 关写端、轮询 kill -0 等 xargs 退出；_queue_stop 递归 pgrep -P 找后代，先 STOP 再递归 TERM 最后 CONT，保证 zsh 行为接近 bash。解释几个精妙点：命令输出先捕获再打印以避免交错、把非零退出码统一压成 1 因为 255 会让 xargs 停下、FIFO 两端都打开后即可 unlink、写端被子进程继承使 subshell 也能提交。也原样列出作者自认的五条 Known issues：一个 shell 只能有一个队列、输出不流式且超过 PIPE_BUF 仍可能交错、queue_wait 不返回任务失败、必须等 queue_start 之后启动的进程都关掉写端、_queue_stop 会无差别杀掉其他后台任务。给 Postman Echo 的 5 并发示例，并写明作者自己的忠告：用 Python 之类语言通常更合适，做这个纯属喜欢 Bash 与挑战。结论：这是一份难得的「防御式 shell 编程」样本，价值在于把 fd 生命周期、信号、进程树、退出码这些边界显式处理了一遍；生产环境应优先用成熟工具。"
+published: true

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XRAID：给 XFS 带来 declustered parity — FreeLAMP.com</title>
+  <meta name="description" content="解读 Christoph Hellwig 于 2026-11-13 公布首个公开版 XRAID：集成进 XFS 的 declustered parity RAID。文章按公告原文逐层拆解：它建在 zoned allocator 之上，用 RT subvolume 把文件数据与元数据分开，只对文件数据做 parity R">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-14">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="XRAID：给 XFS 带来 declustered parity">
+  <meta property="og:description" content="解读 Christoph Hellwig 于 2026-11-13 公布首个公开版 XRAID：集成进 XFS 的 declustered parity RAID。文章按公告原文逐层拆解：它建在 zoned allocator 之上，用 RT subvolume 把文件数据与元数据分开，只对文件数据做 parity R">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-14">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="XRAID：给 XFS 带来 declustered parity">
+  <meta name="twitter:description" content="解读 Christoph Hellwig 于 2026-11-13 公布首个公开版 XRAID：集成进 XFS 的 declustered parity RAID。文章按公告原文逐层拆解：它建在 zoned allocator 之上，用 RT subvolume 把文件数据与元数据分开，只对文件数据做 parity R">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "XRAID：给 XFS 带来 declustered parity",
+  "description": "11 月 13 日，LWN 转发了一条内核存储侧的公告：Christoph Hellwig 公布 XRAID 的首个公开版本 —— 集成进 XFS 的 declustered parity RAID。这条消息短，但信息密度高，值得按公告原文逐层拆。 先把最重要的状态说在前面：作者原话是「we aren't anywhere near ready for an upstream submission",
+  "datePublished": "2026-11-14",
+  "dateModified": "2026-11-14",
+  "author": {
+    "@type": "Person",
+    "name": "FreeLAMP.com",
+    "url": "https://github.com/LeisureLinux"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN"
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑 -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "FreeLAMP.com",
+        "item": "https://freelamp.com/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "XRAID：给 XFS 带来 declustered parity",
+        "item": "https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/"
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-14">2026-11-14</div>
+        <h1 class="post-title" itemprop="headline">XRAID：给 XFS 带来 declustered parity</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>11 月 13 日，LWN 转发了一条内核存储侧的公告：Christoph Hellwig 公布 XRAID 的首个公开版本 —— 集成进 XFS 的 declustered parity RAID。这条消息短，但信息密度高，值得按公告原文逐层拆。</p>
+<p>先把最重要的状态说在前面：作者原话是「we aren't anywhere near ready for an upstream submission」，即离上游提交还很远，现在征求更广泛反馈与测试。所以这不是「Linux 要合并新 RAID 了」，是一个一年半工作的公开预览。</p>
+<h2>一、两个目标</h2>
+<p>公告开头给了两条：</p>
+<ol><li>让 parity RAID 能跑在 zoned 设备上，例如 SMR 硬盘；</li><li>做一个没有固有数据完整性问题的快速 RAID 实现。</li></ol>
+<p>XRAID 和 zoned XFS 一样，在传统硬盘、SSD 上也能用；只是没针对 SSD 做优化。即便如此，作者给的口径是写入最高比 mdraid 快 20 倍 —— 这是公告里的自述，LWN 未附基准，本文也没跑，读的时候请当厂商侧数字。</p>
+<p>第二条里的「固有数据完整性问题」指向传统 RAID 的老麻烦（写洞、掉电时校验不一致一类），公告没有展开具体机制，本文不替它补论证。</p>
+<h2>二、为什么必须和 zoned XFS 绑在一起</h2>
+<p>关键在 zoned allocator。它用 XFS 的 RT（realtime）subvolume 把文件数据与元数据分开存放：只有文件数据落到要求顺序写的 zone 上，元数据放在常规设备或常规 zone 里。</p>
+<p>XRAID 借这个分工做了一个很聪明的切分：</p>
+<ul><li>只对文件数据做 parity RAID —— parity RAID 在大块顺序写场景下效率最好；</li><li>元数据冗余交给现有堆叠驱动（例如 MD RAID 镜像）—— 小对象、原地更新更适合镜像，而不是校验条带。</li></ul>
+<p>实现位置上，RAID 层坐在 Zoned XFS I/O 路径下方，类似一个堆叠块驱动：把底层各设备的物理 zone 聚合成逻辑 zone，再交给 Zoned XFS 当作 realtime group 使用。</p>
+<p>也就是说，它不是「在块设备层硬套一层 RAID，再让文件系统往里写」，而是文件系统知道数据放在哪些 zone，RAID 跟着这个布局走。SMR 的顺序写约束与 parity 条带因此不必互相打架 —— 这是整份公告最值钱的一点。</p>
+<h2>三、declustered 到底改了什么</h2>
+<p>公告给的定义：传统 RAID 的每组条带固定在 D 块数据盘 + P 块校验盘上；declustered RAID 把 D+P 的数据与校验块散布到一个成员盘数量多于 D+P 的存储池里，于是：</p>
+<ul><li>所有盘都参与读、写与重建，不再有「一块热备盘闲着、其余盘累死」；</li><li>空闲容量分散在所有盘上，而不是集中成专用 spare。</li></ul>
+<p>由此带来的重建优势，公告列了四条：</p>
+<ul><li>可重建到任何还有空闲容量的设备；</li><li>重建顺序是动态的：先修有多重冗余丢失的 zone，降低再次故障的风险；</li><li>先重建数据 zone，再重建 parity zone，以减少降级读的开销；</li><li>整体重建时间比传统 RAID 快得多，也更容易把大量磁盘放进同一个存储池。</li></ul>
+<p>LWN 评论区有人立刻指出：公告没提 ZFS 的 dRAID，也没做对比或致谢。这个质疑成立 —— 两者都属于 declustered 思路的不同实现，但本文未展开性能或设计差异，只把这条读者反馈记在这里。</p>
+<h2>四、当前能做什么、不能做什么</h2>
+<table><thead><tr><th>项</th><th>状态（公告原文）</th></tr></thead><tbody><tr><td>开发时长</td><td>一年半</td></tr><tr><td>上游提交</td><td>明确「远未准备好」，现在征集反馈与测试</td></tr><tr><td>parity 数量</td><td>当前 0 到 2 重</td></tr><tr><td>3 重及以上</td><td>用 SnapRAID parity 库做过实验，未纳入当前版本；代码已为此预留，未来计划支持</td></tr><tr><td>xfsprogs</td><td>分支里带 mkfs 支持与新的 <code>xraid</code> 工具（管理设备、检查 XRAID 文件系统）</td></tr><tr><td>可视化</td><td>扩展了 Zonar（zoned 文件系统可视化工具），显示每个逻辑 zone 如何映射到各设备的物理 zone</td></tr><tr><td>代码</td><td><code>linux-xraid.git</code>、<code>xfsprogs-xraid.git</code>、<code>xfstests-xraid.git</code>，三个仓库都在 git.infradead.org 的 hch 用户下，分支 <code>xfs-raid</code></td></tr><tr><td>社区</td><td><code>xraid@lists.infradead.org</code> 邮件列表</td></tr><tr><td>资料</td><td>FOSSY 2026 八月演讲（含 zoned 与常规设备基准），幻灯片 <code>raid-sucks.pdf</code>；LWN 说视频尚不可用</td></tr></tbody></table>
+<p>注意「0 parity」也在支持范围内 —— 相当于只做条带/聚合而不带校验，这点容易被「parity RAID」这个名字盖过去。</p>
+<h2>五、边界</h2>
+<ul><li>本文依据 LWN 新闻与其邮件列表归档的公告全文；Hellwig 的 FOSSY 幻灯片与视频未逐页观看，20 倍写性能、具体基准数字均为公告自述。</li><li>公告未给出与 mdraid、ZFS dRAID、传统 RAID5/6 的可复现对比方法，也未说明测试硬件、盘数、zone 配置，本文不做性能推断。</li><li>「无固有数据完整性问题」是作者的目标表述，公告未展开实现细节或形式化论证。</li><li>XRAID 目前是外部 git 仓库里的实验代码，不在主线内核、也不在任何发行版默认 xfsprogs 中；本文未编译、未部署、未跑 xfstests。</li><li>LWN 新闻页正文有省略号截断，本文引用的完整段落以邮件列表原文为准。</li></ul>
+<h2>六、结论</h2>
+<p>XRAID 值得记的地方在它把文件系统的布局知识下放到 RAID 层，而非又多一个 RAID 实现：zoned allocator 已经把数据与元数据分开、把数据按 zone 组织好，RAID 只需要顺着这个结构把物理 zone 聚成逻辑 zone，顺便只对适合的大块数据做校验。</p>
+<p>这样，SMR 的顺序写要求、parity 的效率前提、以及元数据的小块原地更新，三者各得其所。再加上 declustered 布局带来的动态重建顺序，思路上比「在块层再堆一层 mdraid」干净不少。</p>
+<p>但它离能用还早：一年半开发、明确不准备上游、最多两重 parity、性能数字只有作者口径。现在适合读代码、跑测试、提反馈，不适合规划生产存储。</p>
+<h2>Sources</h2>
+<ul><li>LWN《Announcing XRAID: declustered parity RAID for zoned XFS》（2026-11-13）：<a href="https://lwn.net/Articles/1107473/" target="_blank" rel="noopener noreferrer">https://lwn.net/Articles/1107473/</a></li><li>公告原文（LWN 邮件列表归档）：<a href="https://lwn.net/ml/all/20261113112913.GA31748%40lst.de/" target="_blank" rel="noopener noreferrer">https://lwn.net/ml/all/20261113112913.GA31748%40lst.de/</a></li><li>FOSSY 2026 演讲页：<a href="https://2026.fossy.ca/schedule/presentation/451/" target="_blank" rel="noopener noreferrer">https://2026.fossy.ca/schedule/presentation/451/</a> ｜ 幻灯片：<a href="https://verein.lst.de/~hch/raid-sucks.pdf" target="_blank" rel="noopener noreferrer">https://verein.lst.de/~hch/raid-sucks.pdf</a></li><li>代码仓库：<a href="https://git.infradead.org/users/hch/linux-xraid.git/shortlog/refs/heads/xfs-raid" target="_blank" rel="noopener noreferrer">https://git.infradead.org/users/hch/linux-xraid.git/shortlog/refs/heads/xfs-raid</a> ｜ <a href="https://git.infradead.org/users/hch/xfsprogs-xraid.git/shortlog/refs/heads/xfs-raid" target="_blank" rel="noopener noreferrer">https://git.infradead.org/users/hch/xfsprogs-xraid.git/shortlog/refs/heads/xfs-raid</a> ｜ <a href="https://git.infradead.org/users/hch/xfstests-xraid.git/shortlog/refs/heads/xfs-raid" target="_blank" rel="noopener noreferrer">https://git.infradead.org/users/hch/xfstests-xraid.git/shortlog/refs/heads/xfs-raid</a></li><li>对照参考：OpenZFS dRAID Howto <a href="https://openzfs.github.io/openzfs-docs/Basic%20Concepts/Pool%20Structure/dRAID%20Howto.html" target="_blank" rel="noopener noreferrer">https://openzfs.github.io/openzfs-docs/Basic%20Concepts/Pool%20Structure/dRAID%20Howto.html</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/",
+      title: "XRAID\uff1a\u7ed9 XFS \u5e26\u6765 declustered parity"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
