@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了 | FreeLAMP.com</title>
+  <meta name="description" content="解读 KVM Forum 2026 上 Peter Xu 的 QEMU memory tiering 演讲。先把状态说清：这是 Red Hat 在评估的几条路线，不是已合并特性；`MADV_PAGEOUT_FULL` 目前只在议程摘要里出现，未检到公开补丁。背景是 AI 部署推高内存价格，目标是让 QEMU VM…">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-14">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-14_qemu-vm-memory-tiering-kvm-forum-2026/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了">
+  <meta property="og:description" content="解读 KVM Forum 2026 上 Peter Xu 的 QEMU memory tiering 演讲。先把状态说清：这是 Red Hat 在评估的几条路线，不是已合并特性；`MADV_PAGEOUT_FULL` 目前只在议程摘要里出现，未检到公开补丁。背景是 AI 部署推高内存价格，目标是让 QEMU VM…">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-14_qemu-vm-memory-tiering-kvm-forum-2026/">
+  <meta property="og:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-14">
+  <meta property="article:modified_time" content="2026-11-14">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了">
+  <meta name="twitter:description" content="解读 KVM Forum 2026 上 Peter Xu 的 QEMU memory tiering 演讲。先把状态说清：这是 Red Hat 在评估的几条路线，不是已合并特性；`MADV_PAGEOUT_FULL` 目前只在议程摘要里出现，未检到公开补丁。背景是 AI 部署推高内存价格，目标是让 QEMU VM…">
+  <meta name="twitter:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了",
+  "description": "11 月 14 日 Phoronix 报了一条虚拟化侧的动向：Red Hat 工程师在给 QEMU 虚拟机做内存分层，目标很现实 —— AI 部署把内存价格推得太高，想让相对便宜的 NVMe SSD 在更多场景里替下 DRAM，同时别把 VM 性能拖垮。 消息源自 Peter Xu 在温哥华 KVM Forum 2026（11 月 12 日 15:45–16:15，Harbour B）的 30 分",
+  "datePublished": "2026-11-14",
+  "dateModified": "2026-11-14",
+  "author": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com/about-freelamp.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-14_qemu-vm-memory-tiering-kvm-forum-2026/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "image": [
+    "https://freelamp.com/tc-promotion-banner-1200x400.png"
+  ],
+  "citation": [
+    {
+      "@type": "CreativeWork",
+      "url": "https://www.phoronix.com/news/QEMU-VM-Memory-Tiering",
+      "name": "一手核对：Phoronix《Red Hat Working To Improve Memory Tiering For QEMU VMs To Save RAM》（Michael Larabel，2026-11-14 08:12 AM EST；Red Hat 工程师在评估几条路线，目标是内存涨价背景下让 QEMU VM 更多用 NVMe SSD 省 DRAM；Peter Xu 在温哥华 KVM Forum 2026 演讲；列出新 maccess() 系统调用、QEMU 全用户态分层、用现有内核 API 迁移冷热三条路线，称最后一条目前领先、无需改内核且 QEMU 改动小，另有补 MADV_PAGEOUT 局限的内核补丁）＋ KVM Forum 2026 官方议程页《QEMU memory tiering》（talk QPSFWD，2026-11-12 15:45–16:15，Harbour B，Peter Xu / Red Hat；摘要全文：AI 部署推高内存价格、SSD/CXL 作慢层、Linux 用 swap 提供两级层次已有几十年、可用 memcg 做 per-VM、QEMU 可把分层逻辑完全卸载给内核并搭 MGLRU 便车；但 QEMU 不感知分层，live migration 等操作会引发严重性能问题；探索新 syscall 让用户态做 tier-aware 访问、或让 QEMU 自己用 idle page tracking / userfaultfd 做全量分层，代价是重复跟踪冷热页、缺页处理效率下降、特性冲突；最终介绍基于现有接口 mincore()+MADV_PAGEOUT 的方案，以及可能的 MADV_PAGEOUT_FULL「几乎解决整个问题」，会提供对比数字并征求意见）＋ Peter Xu 在 LKML 2026-04-24 关于 `[RFC, PATCH 00/12] userfaultfd: working set tracking for VM guest memory` 的两封回信（A-bit 作为内核并发消费者不可靠、PG_idle 与 MGLRU 兼容问题、per-mm 跟踪思路；明确写出 Plan A＝提 maccess() 给 QEMU 迁移用、继续依赖内核跟踪冷热与回收，Plan B＝在 QEMU 里实现 swap、主要挑战是 MGLRU 兼容）＋ 2026-02-10 LSF/MM/BPF 议题提案「Userspace-driven memory tiering」（经搜索摘要确认 Peter Xu 提出该讨论主题，正文未完整取得）＋ MADV_COLD / MADV_PAGEOUT 的 2019 年原始补丁说明（`MADV_PAGEOUT` 立即回收私有页的非破坏性提示）＋ 2026-10 Meta 工程师 Gregory Price 的 `mm/madvise: refactor cold and pageout page table walks` 与 selftests 补丁（说明 MADV_PAGEOUT 的页表遍历、THP/大 folio 处理仍在被重构，属当前内核活跃区）＋ arXiv《Efficient Memory Tiering in a Virtual Machine》（GPAC，2506.06067v2；宿主机大页下热点基页分散/偏斜会让 host-level tiering 误判整个大页为热，guest 侧整合可降近端内存 50–70%、多 VM 性能提升 4–11%，作为学术对照）＋ QEMU 官方 guest-memfd 文档（guest_memfd 现状与 hugetlb/THP 限制，作为「别混为一谈」的边界）"
+    }
+  ]
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了",
+      "item": "https://freelamp.com/articles/2026-11-14_qemu-vm-memory-tiering-kvm-forum-2026/"
+    }
+  ]
+}
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-14">2026-11-14</div>
+        <h1 class="post-title" itemprop="headline">QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>11 月 14 日 Phoronix 报了一条虚拟化侧的动向：Red Hat 工程师在给 QEMU 虚拟机做内存分层，目标很现实 —— AI 部署把内存价格推得太高，想让相对便宜的 NVMe SSD 在更多场景里替下 DRAM，同时别把 VM 性能拖垮。</p>
+<p>消息源自 Peter Xu 在温哥华 KVM Forum 2026（11 月 12 日 15:45–16:15，Harbour B）的 30 分钟演讲《QEMU memory tiering》。我顺手把议程摘要、4 月 LKML 的相关讨论和 <code>MADV_PAGEOUT</code> 的内核现状都对了一遍，发现这条新闻真正有意思的地方，不在「拿 SSD 当内存」，而在一个很朴素的误判：虚拟机最便宜的冷热信号，会被 hypervisor 自己污染。</p>
+<p>先把状态钉死：这是方案探讨与几条候选路线，不是已合并的 QEMU/KVM 特性；Phoronix 也说 Red Hat 还在评估几种可能路线。演讲摘要提到会给出对比数字，但议程页与报道都没刊出可复现基准，本文不替它编数字。</p>
+<h2>一、现成的地基：Linux 的 swap 本来就是两级层次</h2>
+<p>摘要第一层论证很稳：Linux 用 swap 做了几十年的两级内存层次，热页留在 DRAM、冷页换到慢设备；再借 memcg 很容易做到 per-VM 的分层。这样一来 QEMU 可以把整个分层逻辑卸载给内核，还顺便吃到内核后续的所有改进 —— 摘要点名了 MGLRU（multi-gen LRU）。</p>
+<p>这条路的好处是几乎不用 QEMU 做什么：Guest RAM 在宿主机看来就是 QEMU 进程的匿名内存，内核的 LRU、回收、swap 路径照常工作。</p>
+<p>坏处也正来自这里：QEMU 不知道哪些页被换出去了。</p>
+<h2>二、问题出在 live migration</h2>
+<p>QEMU 做热迁移时，要按顺序把 Guest RAM 逐页读出来发到目标主机。对内核的 LRU 来说，这是一次「全内存顺序扫描」：原本躺在 swap/NVMe 上的冷页被依次缺页换入、访问位被置起，看起来全变成了热页。</p>
+<p>于是分层失效：该留在慢层的冷页被抬回 DRAM，宿主内存压力陡增、迁移本身也变慢。议程摘要的原话是 QEMU「isn't tier-aware」，某些操作（点名 live migration）会造成严重性能问题，并说会在演讲里给数字。</p>
+<p>这是虚拟化里挺典型的一类坑：测量行为本身改变了被测对象。内核通过「谁访问了这页」判断冷热，而 hypervisor 出于维护目的的遍历，在数据面上和 Guest 真的用这页没有区别。类似情况还有备份、快照、脏页位图扫描、某些模拟 DMA 路径 —— 4 月 LKML 里 Peter Xu 还专门讨论过 vhost/模拟 DMA 碰过的页「该算热」，唯独迁移该排除。</p>
+<h2>三、三条路线怎么取舍</h2>
+<p>摘要列了三条，Phoronix 概括为「新 <code>maccess()</code> 系统调用 / QEMU 全用户态分层 / 用现有内核 API 迁移冷热」，并说第三条目前领先。把 4 月的 LKML 回信叠起来看，取舍就更清楚：</p>
+<table><thead><tr><th>路线</th><th>做法</th><th>代价</th></tr></thead><tbody><tr><td>A. 新 syscall（maccess / swap_access）</td><td>给 Linux 加一个「tier-aware 访问」接口：QEMU 迁移时用这个 API 读页，内核知道这类访问不该把页提升为热；冷热跟踪与回收继续完全交给内核</td><td>要改内核 UAPI，得说服 mm 社区；只能覆盖 QEMU 主动改用新接口的那几处访问</td></tr><tr><td>B. QEMU 自己管分层</td><td>用 idle page tracking 跟踪热度、用 userfaultfd 管缺页，QEMU 自己拥有一层慢速内存并实现换入换出</td><td>摘要直说会「重复劳动、效率更低、特性冲突」：用户态和内核都要跟踪冷热、都要处理缺页；Peter Xu 4 月还点名 MGLRU 兼容性是主要挑战</td></tr><tr><td>C. 现有接口组合（领先）</td><td><code>mincore()</code> 看哪些页还在内存 / 已被换出，<code>MADV_PAGEOUT</code> 把误抬回 DRAM 的冷页再压回慢层；不改内核、QEMU 改动小</td><td>依赖 <code>MADV_PAGEOUT</code> 现有语义，摘要说其行为有局限；于是再提一个可选的 <code>MADV_PAGEOUT_FULL</code>，称「几乎解决了整个问题」</td></tr></tbody></table>
+<p>4 月 24 日 Peter Xu 在 LKML 上其实已经把前两条写成过 Plan A / Plan B：</p>
+<blockquote>Plan A：提 <code>maccess()</code> 并给 QEMU 迁移用，继续依赖内核做冷热跟踪和回收，「考虑到用户态与内核两边，目前最好也最简单」；<br>
+Plan B：若 A 走不通，就在 QEMU 里实现 swap，主要难点是 MGLRU 兼容。</blockquote>
+    <!-- 腾讯云 CPS 推广横幅 -->
+    <div class="tc-ad">
+      <span class="tc-ad-label">推广</span>
+      <a href="https://curl.qcloud.com/P0rebqgV" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】2核2G4M 服务器新客99元/年起">
+        <img src="https://freelamp.com/tc-promotion-banner-1200x400.png" alt="【腾讯云】2核2G4M 服务器新客99元/年起" loading="lazy" decoding="async">
+      </a>
+    </div>
+
+<p>同一批讨论还解释了为什么不能直接拿页表 Accessed 位当信号：A-bit 是内核自己在并发消费的，回收路径清位、缺页路径置位，用户态读到的并不等于 Guest 的真实访问；<code>PG_idle</code> 那套在旧 LRU 上还能配合，到了 MGLRU 就对不上了。所以最终回到「让内核继续做它擅长的事，只把迁移这类伪访问摘出去」，逻辑上是自洽的。</p>
+<h2>四、<code>MADV_PAGEOUT_FULL</code> 现在到哪一步了</h2>
+<p>必须标清：<code>MADV_PAGEOUT_FULL</code> 目前只在 KVM Forum 议程摘要里作为「possible new」出现，我没有检到对应的公开补丁或合入记录。Phoronix 说的是「可以通过一个新内核补丁解决 <code>MADV_PAGEOUT</code> 的行为局限」，同样属于提案语气。</p>
+<p><code>MADV_PAGEOUT</code> 本身不新：2019 年 Minchan Kim 的补丁把它定义为「非破坏性地立即回收私有页」的 <code>madvise</code> 提示，和 <code>MADV_COLD</code> 一起补足 <code>MADV_DONTNEED</code> / <code>MADV_FREE</code>。而 2026 年 10 月 Meta 的 Gregory Price 还在发 <code>mm/madvise: refactor cold and pageout page table walks</code> 与一批 selftests，处理 THP、PTE-mapped 大 folio、folio 拆分与延迟回收的遍历逻辑 —— 说明这条路径的内核实现至今仍是活跃区，「只改一个 madvise 标志」并没有听起来那么轻。</p>
+<p>顺带把容易混的线划开：QEMU 官方文档里的 guest-memfd 是给 KVM 更紧密管理 Guest 私有内存用的（机密计算起家，目前实验性，还不支持 hugetlb 与 THP），跟这次「用 swap/NVMe 做冷热分层」不是同一件事。CXL/NUMA 那类「把慢速内存挂成另一个 NUMA 节点」的方案，以及学术界 GPAC（把 Guest 里分散的热点基页归拢，让宿主机大页级分层别误判，论文报近端内存降 50–70%、多 VM 性能提升 4–11%）也都是相邻但不同的题目，本文不把它们的数字安到 Red Hat 这条方案上。</p>
+<h2>五、边界</h2>
+<ul><li>演讲摘要说会提供数字并比较方案，但议程页与 Phoronix 报道均未给出具体基准；本文不引用任何性能百分比归因于该演讲。</li><li><code>maccess()</code>、<code>MADV_PAGEOUT_FULL</code> 均为提案/构想；<code>maccess()</code> 在 4 月 LKML 里也还是「等它准备好再说」的措辞，未检到已合入的 UAPI。</li><li>LSF/MM/BPF 2026 的「用户态驱动内存分层」议题提案我只取到搜索摘要，正文未完整读取，仅作为「该方向年初已在社区提出」的背景。</li><li>「C 路线领先」是 Phoronix 对演讲口径的转述加上议程摘要的落脚顺序，不是社区决议；摘要结尾明确写「comments will be more than welcomed」，欢迎社区提意见。</li><li>本文未编译内核、未跑 QEMU、未复现迁移抖动；<code>MADV_PAGEOUT</code> 现状依据 2019 原始补丁与 2026-10 内核邮件。</li></ul>
+<h2>六、结论</h2>
+<p>这条新闻容易被读成「QEMU 要用 SSD 省内存了」，但分层本身 Linux 早就有了，memcg 也能按 VM 切。真正的增量是：当 hypervisor 自己为了迁移而扫一遍内存时，内核的冷热判断会被骗，于是才需要 <code>maccess()</code> 这样的新接口，或者 <code>mincore()</code> + <code>MADV_PAGEOUT</code> 这样的事后纠偏。</p>
+<p>从「给内核加新系统调用」退到「用现成接口、小改 QEMU」，再留一个 <code>MADV_PAGEOUT_FULL</code> 补丁补缺口，是一个挺务实的收敛：先不碰 UAPI，把最吵的那类伪访问处理掉。至于能不能真省下 DRAM、省多少，得等幻灯片/视频里的基准，以及后续补丁进 linux-mm 之后的讨论。</p>
+<h2>Sources</h2>
+<ul><li>Phoronix《Red Hat Working To Improve Memory Tiering For QEMU VMs To Save RAM》（2026-11-14）：<a href="https://www.phoronix.com/news/QEMU-VM-Memory-Tiering" target="_blank" rel="noopener noreferrer">https://www.phoronix.com/news/QEMU-VM-Memory-Tiering</a></li><li>KVM Forum 2026 议程《QEMU memory tiering》（talk QPSFWD，Peter Xu）：<a href="https://pretalx.com/kvm-forum-2026/talk/QPSFWD/" target="_blank" rel="noopener noreferrer">https://pretalx.com/kvm-forum-2026/talk/QPSFWD/</a> ｜ 大会：<a href="https://kvm-forum.qemu.org/" target="_blank" rel="noopener noreferrer">https://kvm-forum.qemu.org/</a></li><li>Peter Xu，LKML 2026-04-24 关于 userfaultfd working-set tracking 的两封回信：<a href="https://lkml.iu.edu/2604.3/01093.html" target="_blank" rel="noopener noreferrer">https://lkml.iu.edu/2604.3/01093.html</a> ｜ <a href="https://lkml.iu.edu/2604.3/01112.html" target="_blank" rel="noopener noreferrer">https://lkml.iu.edu/2604.3/01112.html</a></li><li><code>MADV_COLD</code> / <code>MADV_PAGEOUT</code> 原始补丁（2019）：<a href="https://lore.kernel.org/lkml/20190610111252.239156-1-minchan@kernel.org/" target="_blank" rel="noopener noreferrer">https://lore.kernel.org/lkml/20190610111252.239156-1-minchan@kernel.org/</a> ｜ 2026-10 重构：<a href="https://patchew.org/linux/20261014183024.2075709-1-gourry@gourry.net/" target="_blank" rel="noopener noreferrer">https://patchew.org/linux/20261014183024.2075709-1-gourry@gourry.net/</a></li><li>QEMU 官方 guest-memfd 文档：<a href="https://www.qemu.org/docs/master/system/guest-memfd.html" target="_blank" rel="noopener noreferrer">https://www.qemu.org/docs/master/system/guest-memfd.html</a></li><li>学术对照：GPAC《Efficient Memory Tiering in a Virtual Machine》：<a href="https://arxiv.org/html/2506.06067v2" target="_blank" rel="noopener noreferrer">https://arxiv.org/html/2506.06067v2</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-14_qemu-vm-memory-tiering-kvm-forum-2026/",
+      title: "QEMU \u5185\u5b58\u5206\u5c42\uff1a\u5148\u8ba9\u865a\u62df\u673a\u522b\u88ab\u81ea\u5df1\u7684\u8fc1\u79fb\u7ebf\u7a0b\u9a97\u4e86"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

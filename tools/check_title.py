@@ -109,6 +109,7 @@ CORE = {
     "bash", "zsh", "fifo", "mkfifo", "xargs", "flock", "gnu parallel", "shell queue", "thread pool", "job control", "lorenzo stoakes", "greg kroah-hartman", "linux kernel cve",
     "sla", "azure", "microsoft 365", "exchange online", "service credit", "outlook web access", "uptime percentage", "error budget", "dr", "bcp", "single point of failure", "mtda",
     "fireworks ai", "claude code", "anthropic", "open vsx", "vsix", "ssh backdoor", "svc-telemetry", "indicators of compromise", "llmjacking", "unit 42", "supply chain attack", "secret scanning",
+    "kvm forum", "madv_pageout", "madv_pageout_full", "maccess", "mincore", "mglru", "memcg", "idle page tracking", "userfaultfd", "numa", "cxl", "swap", "tiered memory", "peter xu", "memory tiering",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

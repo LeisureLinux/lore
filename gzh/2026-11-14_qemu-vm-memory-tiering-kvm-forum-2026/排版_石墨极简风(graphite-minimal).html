@@ -1,0 +1,379 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">虚拟化里最便宜的冷热信号，会被 hypervisor 自己的维护操作污染；先让迁移线程别骗过内核的 LRU，才谈得上省 DRAM。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">KVM Forum 2026 议程摘要与 Peter Xu 的 LKML 讨论</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">11 月 14 日 Phoronix 报了一条虚拟化侧的动向：Red Hat 工程师在给 QEMU 虚拟机做内存分层，目标很现实 —— AI 部署把内存价格推得太高，想让相对便宜的 NVMe SSD 在更多场景里替下 DRAM，同时别把 VM 性能拖垮。</span></p>
+  </section>
+
+    <section style="margin:0 10px 26px;padding:14px 16px;border-left:3px solid #EF4444;background:#FEF2F2;">
+      <p style="margin:0 0 8px;font-size:13px;color:#DC2626;font-weight:400;letter-spacing:0.5px;"><span leaf="">老徐的话：</span></p>
+      <p style="margin:0;font-size:15px;line-height:1.9;color:#B91C1C;text-align:justify;letter-spacing:0.3px;"><span leaf="">（此处填老徐的话）</span></p>
+    </section>
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">现成的地基：Linux 的…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">问题出在 live mig…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">三条路线怎么取舍</span></p>
+      </section>
+    </section>
+    <section style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">`MADV_PAGEOUT…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">边界</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">06</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">结论</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一、现成的地基：Linux 的 swap 本来就是两级层次</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">摘要第一层论证很稳：Linux 用 swap 做了几十年的两级内存层次，热页留在 DRAM、冷页换到慢设备；再借 memcg 很容易做到 per-VM 的分层。这样一来 QEMU 可以把整个分层逻辑卸载给内核，还顺便吃到内核后续的所有改进 —— 摘要点名了 MGLRU（multi-gen LRU）。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这条路的好处是几乎不用 QEMU 做什么：Guest RAM 在宿主机看来就是 QEMU 进程的匿名内存，内核的 LRU、回收、swap 路径照常工作。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">坏处也正来自这里：QEMU 不知道哪些页被换出去了。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">二、问题出在 live migration</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">QEMU 做热迁移时，要按顺序把 Guest RAM 逐页读出来发到目标主机。对内核的 LRU 来说，这是一次「全内存顺序扫描」：原本躺在 swap/NVMe 上的冷页被依次缺页换入、访问位被置起，看起来全变成了热页。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">于是分层失效：该留在慢层的冷页被抬回 DRAM，宿主内存压力陡增、迁移本身也变慢。议程摘要的原话是 QEMU「isn't tier-aware」，某些操作（点名 live migration）会造成严重性能问题，并说会在演讲里给数字。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这是虚拟化里挺典型的一类坑：测量行为本身改变了被测对象。内核通过「谁访问了这页」判断冷热，而 hypervisor 出于维护目的的遍历，在数据面上和 Guest 真的用这页没有区别。类似情况还有备份、快照、脏页位图扫描、某些模拟 DMA 路径 —— 4 月 LKML 里 Peter Xu 还专门讨论过 vhost/模拟 DMA 碰过的页「该算热」，唯独迁移该排除。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三、三条路线怎么取舍</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">摘要列了三条，Phoronix 概括为「新 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">maccess()</span><span leaf=""> 系统调用 / QEMU 全用户态分层 / 用现有内核 API 迁移冷热」，并说第三条目前领先。把 4 月的 LKML 回信叠起来看，取舍就更清楚：</span></p>
+    <section style="margin:0 10px 24px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">A. 新 syscall（maccess / swap_access）</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">给 Linux 加一个「tier-aware 访问」接口：QEMU 迁移时用这个 API 读页，内核知道这类访问不该把页提升为热；冷热跟踪与回收继续完全交给内核</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">要改内核 UAPI，得说服 mm 社区；只能覆盖 QEMU 主动改用新接口的那几处访问</span></th>
+          </tr>
+        </thead>
+        <tbody>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">B. QEMU 自己管分层</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">用 idle page tracking 跟踪热度、用 userfaultfd 管缺页，QEMU 自己拥有一层慢速内存并实现换入换出</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;vertical-align:top;"><span leaf="">摘要直说会「重复劳动、效率更低、特性冲突」：用户态和内核都要跟踪冷热、都要处理缺页；Peter Xu 4 月还点名 MGLRU 兼容性是主要挑战</span></td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">C. 现有接口组合（领先）</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mincore()</span><span leaf=""> 看哪些页还在内存 / 已被换出，</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 把误抬回 DRAM 的冷页再压回慢层；不改内核、QEMU 改动小</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;background:#FAFAFA;vertical-align:top;"><span leaf="">依赖 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 现有语义，摘要说其行为有局限；于是再提一个可选的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT_FULL</span><span leaf="">，称「几乎解决了整个问题」</span></td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">4 月 24 日 Peter Xu 在 LKML 上其实已经把前两条写成过 Plan A / Plan B：</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">Plan A：提 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">maccess()</span><span leaf=""> 并给 QEMU 迁移用，继续依赖内核做冷热跟踪和回收，「考虑到用户态与内核两边，目前最好也最简单」；</span></p><p style="margin:0;font-size:13px;color:#A1A1AA;line-height:1.6;text-align:right;"><span leaf="">Plan B：若 A 走不通，就在 QEMU 里实现 swap，主要难点是 MGLRU 兼容。</span></p>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">同一批讨论还解释了为什么不能直接拿页表 Accessed 位当信号：A-bit 是内核自己在并发消费的，回收路径清位、缺页路径置位，用户态读到的并不等于 Guest 的真实访问；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">PG_idle</span><span leaf=""> 那套在旧 LRU 上还能配合，到了 MGLRU 就对不上了。所以最终回到「让内核继续做它擅长的事，只把迁移这类伪访问摘出去」，逻辑上是自洽的。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">四、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT_FULL</span><span leaf=""> 现在到哪一步了</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">必须标清：</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT_FULL</span><span leaf=""> 目前只在 KVM Forum 议程摘要里作为「possible new」出现，我没有检到对应的公开补丁或合入记录。Phoronix 说的是「可以通过一个新内核补丁解决 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 的行为局限」，同样属于提案语气。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 本身不新：2019 年 Minchan Kim 的补丁把它定义为「非破坏性地立即回收私有页」的 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">madvise</span><span leaf=""> 提示，和 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_COLD</span><span leaf=""> 一起补足 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_DONTNEED</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_FREE</span><span leaf="">。而 2026 年 10 月 Meta 的 Gregory Price 还在发 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mm/madvise: refactor cold and pageout page table walks</span><span leaf=""> 与一批 selftests，处理 THP、PTE-mapped 大 folio、folio 拆分与延迟回收的遍历逻辑 —— 说明这条路径的内核实现至今仍是活跃区，「只改一个 madvise 标志」并没有听起来那么轻。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">顺带把容易混的线划开：QEMU 官方文档里的 guest-memfd 是给 KVM 更紧密管理 Guest 私有内存用的（机密计算起家，目前实验性，还不支持 hugetlb 与 THP），跟这次「用 swap/NVMe 做冷热分层」不是同一件事。CXL/NUMA 那类「把慢速内存挂成另一个 NUMA 节点」的方案，以及学术界 GPAC（把 Guest 里分散的热点基页归拢，让宿主机大页级分层别误判，论文报近端内存降 50–70%、多 VM 性能提升 4–11%）也都是相邻但不同的题目，本文不把它们的数字安到 Red Hat 这条方案上。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">五、边界</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">演讲摘要说会提供数字并比较方案，但议程页与 Phoronix 报道均未给出具体基准；本文不引用任何性能百分比归因于该演讲。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">maccess()</span><span leaf="">、</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT_FULL</span><span leaf=""> 均为提案/构想；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">maccess()</span><span leaf=""> 在 4 月 LKML 里也还是「等它准备好再说」的措辞，未检到已合入的 UAPI。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">LSF/MM/BPF 2026 的「用户态驱动内存分层」议题提案我只取到搜索摘要，正文未完整读取，仅作为「该方向年初已在社区提出」的背景。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">「C 路线领先」是 Phoronix 对演讲口径的转述加上议程摘要的落脚顺序，不是社区决议；摘要结尾明确写「comments will be more than welcomed」，欢迎社区提意见。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">本文未编译内核、未跑 QEMU、未复现迁移抖动；</span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 现状依据 2019 原始补丁与 2026-10 内核邮件。</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">六、结论</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">这条新闻容易被读成「QEMU 要用 SSD 省内存了」，但分层本身 Linux 早就有了，memcg 也能按 VM 切。真正的增量是：当 hypervisor 自己为了迁移而扫一遍内存时，内核的冷热判断会被骗，于是才需要 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">maccess()</span><span leaf=""> 这样的新接口，或者 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">mincore()</span><span leaf=""> + </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 这样的事后纠偏。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">从「给内核加新系统调用」退到「用现成接口、小改 QEMU」，再留一个 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT_FULL</span><span leaf=""> 补丁补缺口，是一个挺务实的收敛：先不碰 UAPI，把最吵的那类伪访问处理掉。至于能不能真省下 DRAM、省多少，得等幻灯片/视频里的基准，以及后续补丁进 linux-mm 之后的讨论。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SOURCES</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Sources</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Phoronix《Red Hat Working To Improve Memory Tiering For QEMU VMs To Save RAM》（2026-11-14）：&lt;https://www.phoronix.com/news/QEMU-VM-Memory-Tiering&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">KVM Forum 2026 议程《QEMU memory tiering》（talk QPSFWD，Peter Xu）：&lt;https://pretalx.com/kvm-forum-2026/talk/QPSFWD/&gt; ｜ 大会：&lt;https://kvm-forum.qemu.org/&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Peter Xu，LKML 2026-04-24 关于 userfaultfd working-set tracking 的两封回信：&lt;https://lkml.iu.edu/2604.3/01093.html&gt; ｜ &lt;https://lkml.iu.edu/2604.3/01112.html&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_COLD</span><span leaf=""> / </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">MADV_PAGEOUT</span><span leaf=""> 原始补丁（2019）：&lt;https://lore.kernel.org/lkml/20190610111252.239156-1-minchan@kernel.org/&gt; ｜ 2026-10 重构：&lt;https://patchew.org/linux/20261014183024.2075709-1-gourry@gourry.net/&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">QEMU 官方 guest-memfd 文档：&lt;https://www.qemu.org/docs/master/system/guest-memfd.html&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">学术对照：GPAC《Efficient Memory Tiering in a Virtual Machine》：&lt;https://arxiv.org/html/2506.06067v2&gt;</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">16</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">新闻点</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Phoronix 2026-11-14 报道 Red Hat 评估 QEMU VM 内存分层；源是 Peter Xu 在 KVM Forum 2026 的演讲</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">状态</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">方案探讨，不是已合并特性；多条候选路线仍在比较，摘要欢迎社区意见</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">背景</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">AI 部署推高内存价格；目标让 NVMe SSD / CXL 在更多场景替下 DRAM 且保持 VM 性能</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">现成地基</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Linux 用 swap 提供两级内存层次已有几十年，memcg 可做 per-VM，QEMU 可把分层逻辑交给内核并搭 MGLRU 便车</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">核心问题</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">QEMU 不感知分层；live migration 顺序读遍 Guest RAM，把冷页误标成热页换回 DRAM，造成严重性能问题</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">路线 A</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">新增 maccess() / swap_access() 之类系统调用，让迁移等伪访问不提升页热度，冷热跟踪仍归内核</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">路线 B</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">QEMU 用 idle page tracking + userfaultfd 自己全量分层；代价是重复跟踪、缺页效率下降、特性冲突与 MGLRU 兼容</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">路线 C</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">现有 mincore() + MADV_PAGEOUT 纠偏，无需改内核、QEMU 改动小，Phoronix 称目前领先</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">补丁提案</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">MADV_PAGEOUT_FULL 只在议程摘要中作为「possible new」出现，称几乎解决整个问题；未检到公开补丁或合入记录</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">4 月 LKML</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Peter Xu 已把 maccess() 与 QEMU 自实现 swap 写成 Plan A / Plan B，并讨论 A-bit、PG_idle 与 MGLRU 兼容</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">A-bit 问题</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">页表 Accessed 位被内核自身并发消费，回收清位与缺页置位使用户态读到的热度不等于 Guest 真实访问</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">MADV_PAGEOUT 现状</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">2019 年 Minchan Kim 引入；2026-10 Meta 仍在重构其页表遍历与 THP/大 folio 处理并补 selftests</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">别混淆</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">guest-memfd 是 KVM 管理 Guest 私有内存（机密计算起家，暂不支持 hugetlb/THP）；CXL/NUMA 分层与学术 GPAC 是相邻但不同题目</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">GPAC 对照</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">论文报近端内存降 50–70%、多 VM 性能提升 4–11%，数字属该学术方案，不能安到 Red Hat 方案上</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">边界</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">演讲称会给数字但议程页与报道未刊基准；本文未编译内核、未跑 QEMU、未复现迁移抖动</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">结论</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">从加新 UAPI 退到用现成接口小改 QEMU，是务实收敛；省多少 DRAM 要等幻灯片/视频与后续 linux-mm 补丁</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">先处理最吵的那类伪访问，再谈用 SSD 省下多少 DRAM。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Linux 7.4：ext4 iomap 转正、HPFS 移除与一次存储栈换挡</span><br>
+        <span leaf="">· XRAID：给 XFS 带来 declustered parity</span><br>
+        <span leaf="">· glibc malloc：一个 bump allocator 怎么会快 22 倍</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>
