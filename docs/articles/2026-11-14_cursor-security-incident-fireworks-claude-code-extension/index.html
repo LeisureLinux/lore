@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机 | FreeLAMP.com</title>
+  <meta name="description" content="解读 Cursor 11 月 13 日的安全事件复盘。文章把攻击链拆成五段：起点是 Cursor 发给推理供应商 Fireworks 的 access key 被 Fireworks 侧暴露，攻击者据此复制一个只读共享桶里 2025 年、非 Privacy Mode 且允许用于训练的 coding agent…">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-14">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机">
+  <meta property="og:description" content="解读 Cursor 11 月 13 日的安全事件复盘。文章把攻击链拆成五段：起点是 Cursor 发给推理供应商 Fireworks 的 access key 被 Fireworks 侧暴露，攻击者据此复制一个只读共享桶里 2025 年、非 Privacy Mode 且允许用于训练的 coding agent…">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/">
+  <meta property="og:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-14">
+  <meta property="article:modified_time" content="2026-11-14">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机">
+  <meta name="twitter:description" content="解读 Cursor 11 月 13 日的安全事件复盘。文章把攻击链拆成五段：起点是 Cursor 发给推理供应商 Fireworks 的 access key 被 Fireworks 侧暴露，攻击者据此复制一个只读共享桶里 2025 年、非 Privacy Mode 且允许用于训练的 coding agent…">
+  <meta name="twitter:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机",
+  "description": "11 月 13 日，Cursor 发了两周前那起安全事件的复盘。10 月 29 日大家先看到的是「扩展市场里出现冒牌 Claude Code 扩展」，当时的公开信息止于一个 11 小时窗口、两个版本号和一个 SSH 后门。这次复盘把前面半条链补上了：起点不在扩展市场，在一把给供应商的密钥。 这篇文章值得按运维视角读，因为它几乎把「凭据链攻击」的每一环都演示了一遍，而且官方通报里的几个百分比很容易被",
+  "datePublished": "2026-11-14",
+  "dateModified": "2026-11-14",
+  "author": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com/about-freelamp.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "image": [
+    "https://freelamp.com/tc-promotion-banner-1200x400.png"
+  ],
+  "citation": [
+    {
+      "@type": "CreativeWork",
+      "url": "https://cursor.com/blog/security-incident-update",
+      "name": "一手核对：Cursor《An update on our recent security incident》（Cursor Team，2026-11-13；10-29 首报、两周调查、攻击链五步、Fireworks 暴露的 access key、只读桶里 2025 年非 Privacy Mode 的 coding agent traces、未脱敏凭证、少于 0.01% 客户 API 凭证暴露、非 Privacy Mode 用户中少于 0.05% 的 traces 暴露、10-29 Cache 投毒、最多 5000 用户 / 约 11 小时、11-01 最后一次被阻断的攻击者活动、未受影响清单、七项整改、道歉与 security@cursor.com）＋ Cursor《Security notice — malicious version of Anthropic.claude-code (2.1.312 and 2.1.313) identified in the Cursor VS Code Extension Marketplace》（2026-10-29，10-30 11:30 PT 更新 IOC；2:27am–1:35pm PT 窗口、Windows/macOS、恶意行为、svc-telemetry 公钥与指纹、134.209.82.225:8099/beacon、macOS LaunchAgent com.apple.sysmond.plist / Windows 计划任务 SysMon / Linux cron @reboot、卸载扩展不足、检测与整改脚本、四个 VSIX SHA-256）＋ Fireworks AI 安全公告两篇（2026-10-09/10 首发：10-06 发现内部凭证被滥用、evaluation jobs 环境变量中的 API keys/tokens、ZDR、通知与轮换时间线、给客户的四条动作；2026-11-09 更新：通知执法机关并请 Palo Alto Unit 42 取证、涉及账户/账单信息、部分账户的 secrets/datasets/未完成模型、归因于以倒卖 LLM tokens 为目的的 LLMJacking 团伙、10-23 第三方云厂商事故导致 10-24 开发机被触达、10-25 后未再发现成功未授权访问、四类加固、暂停自助数据集上传下载）＋ The Hacker News《Official Claude Code Extension on Cursor Marketplace Trojanized with Persistent SSH Backdoor》（2026-10-30；OpenSourceMalware 的 66 行 loader、Anthropic 官方渠道与 Open VSX / 微软市场 / npm 未受影响、Anthropic 与微软独立声明、Socket 复核、2.1.314 为官方最新）＋ Expel《Fake Claude Code extension in Cursor: How to find the backdoor》（2026-10-30；四起真实事件、其中一起首次恶意活动在窗口关闭约 8 小时后、非管理员机器上隧道仍外连、只查 svc-telemetry 会漏、MITRE ATT&CK 映射、检测清单）＋ Dark Reading / Ars Technica / Field Effect 的同期报道作时间线与「SolarWinds 式微型翻版」定性交叉验证"
+    }
+  ]
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机",
+      "item": "https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/"
+    }
+  ]
+}
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-14">2026-11-14</div>
+        <h1 class="post-title" itemprop="headline">Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>11 月 13 日，Cursor 发了两周前那起安全事件的复盘。10 月 29 日大家先看到的是「扩展市场里出现冒牌 Claude Code 扩展」，当时的公开信息止于一个 11 小时窗口、两个版本号和一个 SSH 后门。这次复盘把前面半条链补上了：起点不在扩展市场，在一把给供应商的密钥。</p>
+<p>这篇文章值得按运维视角读，因为它几乎把「凭据链攻击」的每一环都演示了一遍，而且官方通报里的几个百分比很容易被误读成「没事」。</p>
+<h2>一、把攻击链按时间摆开</h2>
+<p>Cursor 给出的五步，配上 Fireworks 与 10-29 通告的日期，可以排成一条完整时间线：</p>
+<table><thead><tr><th>时间</th><th>事件</th><th>出处</th></tr></thead><tbody><tr><td>2026-10-06</td><td>Fireworks 发现内部凭证被未授权使用，部分客户 evaluation jobs 的环境变量（含 API keys/tokens）被读取</td><td>Fireworks 10-09 公告</td></tr><tr><td>2026-10-09/10</td><td>Fireworks 首发公告，轮换员工 API key 与服务账号 token</td><td>Fireworks</td></tr><tr><td>2026-10-23/24</td><td>Fireworks 的第三方云厂商出事，攻击者触达 Fireworks 开发机并跑未授权工作负载；10-25 后未再发现成功入侵</td><td>Fireworks 11-09 更新</td></tr><tr><td>期间</td><td>攻击者拿到 Cursor 发给 Fireworks 的 access key（Cursor 称由 Fireworks 暴露），复制双方共享的只读存储桶</td><td>Cursor 11-13</td></tr><tr><td>2026-10-29 02:27–13:35 PT</td><td>冒牌 <code>Anthropic.claude-code</code> 2.1.312 / 2.1.313 出现在 Cursor VS Code 扩展市场缓存，约 11 小时</td><td>Cursor 10-29</td></tr><tr><td>2026-10-29</td><td>Cursor 发首份安全通告，下线整个扩展市场、轮换密钥、重建市场</td><td>Cursor</td></tr><tr><td>2026-10-30 11:30 PT</td><td>通告更新：补上 2.1.312 并修正 IOC</td><td>Cursor / Expel</td></tr><tr><td>2026-11-01</td><td>Cursor 看到的最后一次攻击者活动，被阻断</td><td>Cursor 11-13</td></tr><tr><td>2026-11-09</td><td>Fireworks 更新归因与扩展影响（账单信息、部分 secrets/datasets/未完成模型、LLMJacking）</td><td>Fireworks</td></tr><tr><td>2026-11-13</td><td>Cursor 发布完整复盘</td><td>Cursor</td></tr></tbody></table>
+<p>链条本身很清楚：供应商密钥 → 只读桶里的历史训练 traces → traces 里没脱敏的凭证 → 内部 SaaS 工具 → 归档源码/客服数据/更多凭证 → 扩展市场服务缓存投毒 → 开发者机器。</p>
+<p>这不是「Claude Code 有漏洞」。Anthropic 没发布这个包，Open VSX 作为市场源从未带毒，微软确认 Visual Studio Marketplace 与 npm 上的 <code>@anthropic-ai/claude-code</code> 均未被污染；The Hacker News 引 OpenSourceMalware 的分析说，恶意代码是插在合法扩展主 bundle 前的 66 行 loader，却仍挂在 <code>anthropic.claude-code</code> 这个合法 ID 与版本号下 —— 所以「扩展名对得上」在缓存被投毒时并不构成验证。</p>
+<h2>二、被拿走的到底是什么</h2>
+<p>Cursor 的桶里装的是有限 coding agent traces，主要来自 2025 年、未开启 Privacy Mode、且允许用于模型训练的会话。问题出在「少量 traces 里含有未脱敏的凭证」。这一步把一次数据暴露升级成了横向移动：</p>
+<ul><li>从这些凭证出发，攻击者进了 Cursor 使用的部分 SaaS 工具；</li><li>从那里触达归档的非生产源码仓库（部分含商务联系人信息）、有限的客服数据与邮件对话、产品用量指标与联系方式、部分 coding agent 会话摘要，以及用户发给 Cursor 支持团队的凭证；</li><li>10-29 再用其中偷来的凭证，把恶意 VSIX 直接放到服务扩展市场的缓存上（不是源站）。</li></ul>
+<p>Cursor 给的两个数字要按原句读：</p>
+<ul><li>非 Privacy Mode 用户中，traces 被暴露的少于 0.05%，已逐一通知；没收到通知即不在其中；</li><li>少于 0.01% 客户有 API 凭证暴露，管理员收到需要轮换的具体 key 列表，Cursor 也请签发方吊销。</li></ul>
+<p>「少于 0.01%」听着极小，但它对应的是凭证，不是日志行 —— 一个未轮换的 key 就够走完上面整条链。这里该读的是绝对动作（有没有收到通知、有没有要轮换的 key），不是百分比。</p>
+<p>未受影响的清单同样要按厂商口径标注：Privacy Mode 下的 prompt 与代码、当前实时流量、生产系统、官方 App 与客户端/云端发布代码（发布走另一套代码托管、签名密钥未暴露）、客户代码仓库、其他扩展、Cloud Agents / Grok Bot 等。这些是 Cursor 的自述，Anthropic 与微软的独立声明确认了「官方渠道未被污染」那部分。</p>
+<h2>三、开发者这一端：卸载扩展远远不够</h2>
+<p>10-29 通告里最该抄进 runbook 的是这段。</p>
+<p>冒牌扩展在 VS Code 启动或 webview 打开时加载，做的事包括：收集主机名、用户名、OS、架构、家目录路径、环境变量名、工作目录、Git email、公网 IP 并 POST 到攻击者服务器；把标签为 <code>svc-telemetry</code> 的 ed25519 公钥写进 <code>authorized_keys</code>；尝试开启本地 SSH 服务、建立到 <code>134.209.82[.]225</code> 的反向隧道；按平台装持久化：</p>
+<table><thead><tr><th>平台</th><th>持久化</th></tr></thead><tbody><tr><td>macOS</td><td><code>~/Library/LaunchAgents/com.apple.sysmond.plist</code>（伪装成 Apple 组件）</td></tr><tr><td>Windows</td><td>计划任务 <code>SysMon</code>（尝试 SYSTEM）+ Startup 脚本回退</td></tr><tr><td>Linux</td><td><code>cron @reboot /bin/sh ~/.config/.smt</code></td></tr></tbody></table>
+<p>后台脚本约每 60 秒重试隧道。Cursor 明写「Uninstalling the extension may not be sufficient」：卸载或更新扩展不会移除写在安装目录之外的持久化产物，必须单独清 key、脚本、启动项，并从可信机器轮换该机器能触达的凭证与会话；官方给了 macOS/Windows 的检测一行命令与整改脚本，以及四个 VSIX 的 SHA-256、<code>svc-telemetry</code> 公钥指纹、<code>extension.js</code> 哈希等 IOC。</p>
+<p>这里有一处厂商口径与实测冲突，值得单独标出。 Cursor 说开启本地 SSH 需要管理员权限，多数 macOS/Windows 主机上这一步会失败、攻击者无法经隧道登录；但 Expel 在四起真实客户事件里观察到：</p>
+<ul><li>其中一起的首次恶意活动出现在官方 11 小时窗口关闭约 8 小时后（下载发生在窗口内、Cursor 下次启动才执行）；</li><li>一台非管理员 Mac 上隧道照样向外连接；</li><li>四起里至少有一台是本地管理员，且远程登录可能本来就开着；</li><li>有机器上隧道在跑、却找不到 <code>svc-telemetry</code> key —— 只跑那一条 grep 会漏。</li></ul>
+<p>所以排查范围不能只框在「10-29 那 11 小时内安装过」，也不能只查一个 key 标签；Expel 的建议是查所有跑 Cursor 的机器、查到 <code>134.209.82[.]225</code> 的连接、<code>tunnel@</code> 与 <code>-R *:0:localhost:22</code> 命令行、<code>.stk_&lt;10 hex&gt;</code> 临时文件、<code>.smt</code>/<code>.smtk</code>、<code>com.apple.sysmond.plist</code> 与文件哈希。</p>
+<h2>四、Fireworks 那一边不是一句「供应商背锅」</h2>
+<p>Cursor 的归因是该密钥由 Fireworks 侧暴露。把 Fireworks 自己的两份公告读一下，会发现这是同一起更长的事件链，而不是单点失误：</p>
+<ul><li>10-09 首报：10-06 发现内部凭证被滥用，部分客户 evaluation jobs 的环境变量（含 API keys/tokens）被读取；平台默认 ZDR，当时未发现模型/数据集/训练数据/推理流量被访问；给了客户四条动作，其中特别强调「删掉存起来的 secret 不等于吊销底层凭证，必须去找签发方」。</li><li>11-09 更新：已通知执法机关并请 Palo Alto Networks Unit 42 取证；后续发现账户与账单信息、部分账户的 secrets / datasets / 未完成模型权重也受影响；证据指向以倒卖 LLM tokens 到 illicit routing gateways 为动机的 LLMJacking 团伙（并引 Google Threat Intelligence / Mandiant 11-02 的报告）；10-23 其第三方云厂商出事，10-24 被用来触达 Fireworks 开发机；10-25 后未再发现成功未授权访问。整改包括凭证与服务账号轮换、去掉多余高权限、网络隔离、收紧数据存储访问、加固日志，并暂停自助数据集上传下载。</li></ul>
+<p>也就是说，Cursor 这次是下游受害者之一。两家公告合起来看，值得记的是同一个教训：给第三方的数据共享桶、评估任务里的环境变量、服务商侧的开发机，全都是你自己的攻击面。</p>
+<h2>五、值得抄进 checklist 的五件事</h2>
+<ol><li>共享桶按「会泄露」设计：只读不等于无害；训练/分析用的历史 traces 出口前必须做 secret scanning 与脱敏，且保留可审计的脱敏失败率。Cursor 事后才「在所有代码仓库加 secret scanning 并扩展到内部数据源」，这一步本该在桶之前。</li><li>供应商密钥最小化：按数据集/用途/来源 IP 限定，能短期就别长期；Cursor 事后补的正是「扩展服务商网络访问限制，让被盗凭证不能在预期位置之外使用」。</li><li>缓存必须与源站做一致性校验：这次被投毒的是服务缓存，Open VSX 源站干净、官方发布渠道干净，所以按源站校验、按签名校验才有意义；只信扩展 ID 与版本号不够。</li><li>扩展自动更新延迟放行：The Hacker News 与 Expel 都提到自动更新是最容易中招的路径；对开发者工具可考虑新版本延迟数天放行，并保留可回滚的安装清单。</li><li>通报里的百分比要配绝对动作：收到通知 → 查具体 key 列表 → 从可信机器轮换 → 查机器侧持久化 → 保留证据/必要时重建。没收到通知不等于可以跳过资产盘点，尤其有自动更新的机器。</li></ol>
+<h2>六、边界</h2>
+<ul><li>本文的攻击链、比例、未受影响清单与整改措施来自 Cursor 两份官方公告；Fireworks 侧时间线、归因与数据类别来自其两份安全公告；两家的调查都仍在进行，Cursor 称若有新信息会直接通知客户，Fireworks 明写「调查可能揭示更多信息」。</li><li>「由 Fireworks 暴露」是 Cursor 的归因表述；Fireworks 公告未逐字确认这一具体 key 的暴露路径，本文按各自出处标注，不替任何一方判定责任。</li><li>第三方技术细节（66 行 loader、非管理员隧道外连、窗口后 8 小时首次活动、MITRE 映射）来自 OpenSourceMalware / Expel / 微软 / Socket 等独立分析，与厂商口径并列呈现。</li><li>本文未下载 VSIX、未运行整改脚本、未连接任何 IOC 地址；IOC 仅作为检测项转述，具体值请以 Cursor 10-29 通告（10-30 更新版）为准。</li><li>10-29 通告自身在 10-30 修正过受影响版本与 IOC，引用旧版哈希或只查 2.1.313 会漏。</li></ul>
+<h2>七、结论</h2>
+<p>这起事件最该被记住的是那条从一把供应商密钥走到开发者机器的完整凭据链，而非「最多 5000 台机器装了冒牌扩展」：历史训练数据里残留的 secret、内部 SaaS 的横向可达、分发缓存的可写权限，每一环单看都不致命，串起来就是一次供应链投毒。</p>
+<p>Cursor 的处置算完整 —— 撤 key、全量轮换、下线市场、重建、迁走推理流量、加 secret scanning、重部署生产、请外部取证、逐一通知；Fireworks 也把 LLMJacking 归因与硬化措施公开了。但对读者更有用的，是把这份复盘当成一次自查：你的共享桶里有没有没脱敏的历史数据，你的第三方凭证能不能在别处使用，你的缓存有没有和源站做签名校验，以及你的开发机在卸载一个扩展之后，还留着什么。</p>
+<h2>Sources</h2>
+<ul><li>Cursor《An update on our recent security incident》（2026-11-13）：<a href="https://cursor.com/blog/security-incident-update" target="_blank" rel="noopener noreferrer">https://cursor.com/blog/security-incident-update</a></li><li>Cursor《Security notice — malicious version of Anthropic.claude-code (2.1.312 and 2.1.313)》（2026-10-29，10-30 更新）：<a href="https://cursor.com/blog/claude-code-extension-security-notice" target="_blank" rel="noopener noreferrer">https://cursor.com/blog/claude-code-extension-security-notice</a></li><li>Fireworks AI《October 2026 security incident》：<a href="https://fireworks.ai/security/bulletins/october-2026-security-incident" target="_blank" rel="noopener noreferrer">https://fireworks.ai/security/bulletins/october-2026-security-incident</a> ｜《Update on October 2026 security incident》：<a href="https://fireworks.ai/security/bulletins/october-2026-security-incident-update" target="_blank" rel="noopener noreferrer">https://fireworks.ai/security/bulletins/october-2026-security-incident-update</a> ｜ 索引：<a href="https://fireworks.ai/security/bulletins" target="_blank" rel="noopener noreferrer">https://fireworks.ai/security/bulletins</a></li><li>The Hacker News《Official Claude Code Extension on Cursor Marketplace Trojanized with Persistent SSH Backdoor》：<a href="https://thehackernews.com/2026/10/official-claude-code-vs-code-extension.html" target="_blank" rel="noopener noreferrer">https://thehackernews.com/2026/10/official-claude-code-vs-code-extension.html</a></li><li>Expel《Fake Claude Code extension in Cursor: How to find the backdoor》：<a href="https://expel.com/blog/blog-fake-claude-code-extension-cursor-ssh-backdoor" target="_blank" rel="noopener noreferrer">https://expel.com/blog/blog-fake-claude-code-extension-cursor-ssh-backdoor</a></li><li>微软安全博客（经 THN 转述）：<a href="https://www.microsoft.com/en-us/security/blog/2026/10/30/inside-malicious-claude-code-branded-cursor-extension-persistent-ssh-backdoor/" target="_blank" rel="noopener noreferrer">https://www.microsoft.com/en-us/security/blog/2026/10/30/inside-malicious-claude-code-branded-cursor-extension-persistent-ssh-backdoor/</a> ｜ Socket 分析：<a href="https://socket.dev/blog/claude-code-extension-compromise" target="_blank" rel="noopener noreferrer">https://socket.dev/blog/claude-code-extension-compromise</a></li><li>Dark Reading：<a href="https://www.darkreading.com/cyberattacks-data-breaches/devs-trojanized-claude-code-extension-cursor" target="_blank" rel="noopener noreferrer">https://www.darkreading.com/cyberattacks-data-breaches/devs-trojanized-claude-code-extension-cursor</a> ｜ Field Effect：<a href="https://fieldeffect.com/blog/trojanized-claude-code-extension-distributed-cursor-marketplace" target="_blank" rel="noopener noreferrer">https://fieldeffect.com/blog/trojanized-claude-code-extension-distributed-cursor-marketplace</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/",
+      title: "Cursor \u5b89\u5168\u4e8b\u4ef6\u590d\u76d8\uff1a\u4e00\u628a\u4f9b\u5e94\u5546\u5bc6\u94a5\uff0c\u600e\u6837\u8d70\u5230 5000 \u53f0\u5f00\u53d1\u673a"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

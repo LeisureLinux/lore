@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-14 | [Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机](https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/) | Cursor · Fireworks AI · Claude Code · Anthropic · Open VSX · VSIX · SSH 后门 · svc-telemetry · LLMJacking · Unit 42 · 供应链攻击 · secret scanning · 技术解读 |
 | 2026-11-14 | [Microsoft 365 丢掉几个 9：SLA 的合同算术与架构师的账本](https://freelamp.com/articles/2026-11-14_microsoft-365-sla-three-nines-ops-architect/) | Microsoft 365 · SLA · 三个 9 · Exchange Online · Outlook Web Access · user-minutes · service credit · 99.9% · 故障域 · 带外通信 · BC/DR · RTO · 运维 · 架构 · 技术解读 |
 | 2026-11-14 | [Bash 并发命令队列：用 mkfifo 加 xargs -P 造一个线程池](https://freelamp.com/articles/2026-11-14_bash-concurrent-shell-command-queues/) | Bash · Zsh · mkfifo · FIFO · xargs -P · 线程池 · 文件描述符 · job control · trap · PIPE_BUF · GNU Parallel · 技术解读 |
 | 2026-11-14 | [XRAID：给 XFS 带来 declustered parity](https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/) | XRAID · XFS · zoned XFS · SMR · declustered RAID · parity · mdraid · RT subvolume · realtime group · Christoph Hellwig · LWN · 技术解读 |
