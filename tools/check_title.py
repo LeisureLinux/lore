@@ -107,6 +107,7 @@ CORE = {
     "vagrant", "hashicorp", "ibm", "busl", "mit license", "vagrant cloud", "hcp vagrant", "mitchell hashimoto", "virtualbox", "vagrantfile",
     "winehq", "wine", "arm64ec", "avx", "xstate", "cldr", "wow64", "kitesurf", "cloudflare", "chrome devtools protocol", "puppeteer", "webmcp", "workers", "blitz", "stylo", "boa", "xraid", "zoned xfs", "xfs", "mdraid", "draid", "smr", "christoph hellwig", "mdash", "forge lab", "cve flood", "buildroot",
     "bash", "zsh", "fifo", "mkfifo", "xargs", "flock", "gnu parallel", "shell queue", "thread pool", "job control", "lorenzo stoakes", "greg kroah-hartman", "linux kernel cve",
+    "sla", "azure", "microsoft 365", "exchange online", "service credit", "outlook web access", "uptime percentage", "error budget", "dr", "bcp", "single point of failure", "mtda",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

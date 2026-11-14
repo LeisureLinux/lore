@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-14 | [Microsoft 365 丢掉几个 9：SLA 的合同算术与架构师的账本](https://freelamp.com/articles/2026-11-14_microsoft-365-sla-three-nines-ops-architect/) | Microsoft 365 · SLA · 三个 9 · Exchange Online · Outlook Web Access · user-minutes · service credit · 99.9% · 故障域 · 带外通信 · BC/DR · RTO · 运维 · 架构 · 技术解读 |
 | 2026-11-14 | [Bash 并发命令队列：用 mkfifo 加 xargs -P 造一个线程池](https://freelamp.com/articles/2026-11-14_bash-concurrent-shell-command-queues/) | Bash · Zsh · mkfifo · FIFO · xargs -P · 线程池 · 文件描述符 · job control · trap · PIPE_BUF · GNU Parallel · 技术解读 |
 | 2026-11-14 | [XRAID：给 XFS 带来 declustered parity](https://freelamp.com/articles/2026-11-14_xraid-declustered-parity-zoned-xfs/) | XRAID · XFS · zoned XFS · SMR · declustered RAID · parity · mdraid · RT subvolume · realtime group · Christoph Hellwig · LWN · 技术解读 |
 | 2026-11-14 | [Linux 内核 AI 缺陷报告：59 个真洞背后，卡住的是人](https://freelamp.com/articles/2026-11-14_ai-bug-reports-linux-windows-review-bottleneck/) | Linux 内核 · AI 缺陷报告 · MDASH · FORGE Lab · CVE 洪流 · Lorenzo Stoakes · Greg Kroah-Hartman · Linus Torvalds · curl · reviewer 瓶颈 · 技术解读 |
