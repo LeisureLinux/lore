@@ -113,6 +113,7 @@ CORE = {
     "buildroot", "uclibc", "busybox", "yocto", "openembedded", "embedded linux", "peter korsgaard", "cyclonedx", "sbom", "br2_external", "cra", "lts",
     "unbound", "doh", "dot", "qname minimization", "qname minimisation", "dnssec", "pi-hole", "adguard home", "ech", "encrypted client hello", "sni", "nlnet labs", "authoritative nameserver", "root server",
     "workday", "hcm", "payroll", "fortune 500", "fox business", "disaster recovery", "dr site", "downdetector", "open enrollment", "wd1", "business continuity",
+    "asus", "ascent qn10", "snapdragon x2 elite", "glymur", "oryon", "adreno x2", "hexagon npu", "device tree", "qseecom", "uefisecapp", "ps195", "gl3590", "dgx", "gb10", "copilot+",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

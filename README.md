@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-15 | [ASUS Ascent QN10：X2 Elite 迷你机的 Linux 设备树](https://freelamp.com/articles/2026-11-15_asus-ascent-qn10-snapdragon-x2-elite-linux/) | ASUS · Ascent QN10 · Snapdragon X2 Elite · Glymur · Oryon · Adreno X2-90 · Hexagon NPU · 设备树 · qseecom · uefisecapp · PS195 · GL3590 · LKML · Linux 7.5 · 技术解读 |
 | 2026-11-15 | [Workday 故障：一次灾备演练把薪资系统带下线了](https://freelamp.com/articles/2026-11-15_workday-outage-disaster-recovery-test-hr-payroll/) | Workday · HCM · 薪资 · Fortune 500 · DR Site · 生产数据库 · WD1 · reindexing · 开放注册 · Downdetector · Microsoft 365 · 业务连续性 · 技术解读 |
 | 2026-11-14 | [Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单](https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/) | Unbound · DNS 隐私 · Cloudflare 1.1.1.1 · Google Public DNS · DoH · DoT · QNAME minimization · DNSSEC · 完整递归 · 转发器 · ECH · SNI · RFC 7816 · RFC 8020 · 技术解读 |
 | 2026-11-14 | [Buildroot 25 年：不用等 LWN，git 历史自己会讲话](https://freelamp.com/articles/2026-11-14_buildroot-25-years-git-history/) | Buildroot · LWN · GitLab · Eric Andersen · Peter Korsgaard · uClibc · BusyBox · OpenEmbedded · Yocto · BR2_EXTERNAL · SBOM · CycloneDX · LTS · CRA · 嵌入式 Linux · 技术解读 |
