@@ -1998,6 +1998,7 @@ def main():
         "jd-aohan-xiaomi.jpg",  # 京东购买卡片商品图（农合天下敖汉黄小米）
         "tc-promotion-banner-1200x400.png",  # 腾讯云 CPS 推广横幅（双十一大促）
         "workbuddy-logo.jpg",  # 腾讯云 WorkBuddy CPS footer 推广条 logo
+        "void-install.sh",      # Void live CD 一键安装入口（freelamp.com/void-install.sh）
         # 可在此添加其他验证文件，如：
         # "BingSiteAuth.xml",  # Bing 验证
     ]
