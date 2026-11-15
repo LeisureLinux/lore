@@ -112,6 +112,7 @@ CORE = {
     "kvm forum", "madv_pageout", "madv_pageout_full", "maccess", "mincore", "mglru", "memcg", "idle page tracking", "userfaultfd", "numa", "cxl", "swap", "tiered memory", "peter xu", "memory tiering",
     "buildroot", "uclibc", "busybox", "yocto", "openembedded", "embedded linux", "peter korsgaard", "cyclonedx", "sbom", "br2_external", "cra", "lts",
     "unbound", "doh", "dot", "qname minimization", "qname minimisation", "dnssec", "pi-hole", "adguard home", "ech", "encrypted client hello", "sni", "nlnet labs", "authoritative nameserver", "root server",
+    "workday", "hcm", "payroll", "fortune 500", "fox business", "disaster recovery", "dr site", "downdetector", "open enrollment", "wd1", "business continuity",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
