@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单 | FreeLAMP.com</title>
+  <meta name="description" content="解读 MakeUseOf 那篇「不再把浏览历史交给 Google / Cloudflare / ISP」的核心论点：加密 DNS 只把查询从 ISP 手里挪到所选提供商手里，换提供商只是换谁持有完整清单。文章用 Cloudflare 1.1.1.1 与 Google Public DNS 的官方隐私文档核了媒体口径…">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-14">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单">
+  <meta property="og:description" content="解读 MakeUseOf 那篇「不再把浏览历史交给 Google / Cloudflare / ISP」的核心论点：加密 DNS 只把查询从 ISP 手里挪到所选提供商手里，换提供商只是换谁持有完整清单。文章用 Cloudflare 1.1.1.1 与 Google Public DNS 的官方隐私文档核了媒体口径…">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/">
+  <meta property="og:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-14">
+  <meta property="article:modified_time" content="2026-11-14">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单">
+  <meta name="twitter:description" content="解读 MakeUseOf 那篇「不再把浏览历史交给 Google / Cloudflare / ISP」的核心论点：加密 DNS 只把查询从 ISP 手里挪到所选提供商手里，换提供商只是换谁持有完整清单。文章用 Cloudflare 1.1.1.1 与 Google Public DNS 的官方隐私文档核了媒体口径…">
+  <meta name="twitter:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单",
+  "description": "11 月 14 日 MakeUseOf 有篇标题很长的文章，论点却干脆：作者过去一遇到宣传更隐私的 DNS 提供商就切换，后来发现只要仍由某家公司处理全部 DNS 查询，就只是换了谁持有完整清单。 这句话值得从运维视角展开，因为它把「DNS 隐私」里最常被混在一起的三件事分开了：谁在传输路上能看见、谁替你做递归、以及每一站究竟听到了多少。我核了 Cloudflare、Google 与 Unboun",
+  "datePublished": "2026-11-14",
+  "dateModified": "2026-11-14",
+  "author": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com/about-freelamp.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "image": [
+    "https://freelamp.com/tc-promotion-banner-1200x400.png"
+  ],
+  "citation": [
+    {
+      "@type": "CreativeWork",
+      "url": "https://www.makeuseof.com/unbound-private-dns-without-trusting-another-provider/",
+      "name": "一手核对：MakeUseOf《I stopped handing my browsing history to Google, Cloudflare, and my ISP, and the fix wasn't another provider》（Afam Onyimadu，2026-11-14 09:30 EST；作者自述过去一有更私密的 DNS 提供商就切换、后来意识到只要仍由一家公司处理全部查询就只是换了持有者；Cloudflare 1.1.1.1 截断 IP 末段、25 小时内删除截断 IP 与 resolver 日志、请四大会计所审计并公开报告、采样至多 0.05% 数据包用于排障/DoS 缓解、可无限期保留聚合域名统计；Google 保留含完整 IP 的日志 24–48 小时后仅留城市级数据；加密 DNS 只挡 ISP、不挡对端；给出四种 setup 对照表；Unbound 两种跑法、完整递归从根跟随 referral、QNAME minimization 逐层少给信息、转发模式下对方仍拿到完整请求；缓存命中本地答；作者用 1.24.2，Windows Smart App Control 拦未签名安装包后改用 WSL；权衡：SNI/ECH、递归查询多为明文、权威服务器看到自家公网 IP、失去公共解析器的 crowd cover；Pi-hole/OPNsense/pfSense/OpenWrt 支持但默认不同）＋ Cloudflare 官方《1.1.1.1 Public DNS Resolver》隐私承诺（不出售/不用于广告、非易失存储不留源 IP、IPv4 截末段 / IPv6 截后 80 位且 25 小时内删除、Public Resolver Logs 25 小时内删、0.05% 随机采样包仅排障与 DoS、与 APNIC 研究合作、四大会计所审计、聚合数据可无限期保留；并明确 resolver 向权威服务器发出的子请求日志里含 subrequest.queryName）＋ Google 官方《Your Privacy | Public DNS》（临时日志同时含设备 IP 与 DNS 查询、24–48 小时删除、DoH 另记 Content-Type 与 Accept 头、安全/滥用场景可超过 48 小时；永久日志抽样去掉 IP 换成城市/区域级位置，含域名、请求类型、ASN、时间戳、ECS 前缀长度等）＋ NLnet Labs Unbound 官方 About（开源 validating recursive resolver、校验 DNSSEC、缓存；支持直接走 DNS 层次或转发选定查询；通过 QNAME minimisation 减少不必要的查询信息披露）＋ RFC 7816 QNAME minimisation 与 RFC 8020 NXDOMAIN cut 的背景（用于解释「遇坏应答会回退多发细节」）＋ 作者自建 Unbound/Adhole 相关开源电子书《DNS 的加密和隐私防护——从如何加固 Unbound 说起》公开大纲与 llms.txt（仅借概念框架：存根/缓存/转发/递归四种角色、DNSSEC 与 DoT/DoH 分工、QMIN 严格模式与 CDN 兼容、多个 forward-addr 是并发竞速而非主备；不写入本地路径与项目内部细节）"
+    }
+  ]
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单",
+      "item": "https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/"
+    }
+  ]
+}
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-14">2026-11-14</div>
+        <h1 class="post-title" itemprop="headline">Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>11 月 14 日 MakeUseOf 有篇标题很长的文章，论点却干脆：作者过去一遇到宣传更隐私的 DNS 提供商就切换，后来发现只要仍由某家公司处理全部 DNS 查询，就只是换了谁持有完整清单。</p>
+<p>这句话值得从运维视角展开，因为它把「DNS 隐私」里最常被混在一起的三件事分开了：谁在传输路上能看见、谁替你做递归、以及每一站究竟听到了多少。我核了 Cloudflare、Google 与 Unbound 的官方文档，顺手用一份公开的 Unbound 中文电子书大纲校准了几个工程边界。</p>
+<h2>一、换提供商解决的是「信任对象」，不是「集中持有」</h2>
+<p>先看两家公共解析器自己怎么写。</p>
+<p>Cloudflare 1.1.1.1 的官方承诺：不出售公共解析器用户数据、不用于广告定向；非易失存储里不留源 IP，IPv4 截掉末段、IPv6 截掉后 80 位，截断后的地址与 Public Resolver Logs 都在 25 小时内删除；最多 0.05% 的随机采样包仅用于排障与 DoS 缓解；请四大会计所之一审计并公开报告；与 APNIC 有研究合作但只给匿名数据的有限查询权限。聚合数据（按区域、数据中心统计的域名请求计数等）可以无限期保留。</p>
+<p>有个媒体没强调的细节：Cloudflare 明写 resolver 向权威服务器发出的子请求日志里含 <code>subrequest.queryName</code>、查询类型、应答码、记录数据等字段 —— 即「对外递归那一跳」同样在日志口径内，只是同样 25 小时内删除。</p>
+<p>Google Public DNS 的官方页则写：临时日志是唯一同时保存「设备 IP + DNS 查询」的地方，24–48 小时内删除；DoH 还记 Content-Type 与 Accept 头；为处理安全与滥用可保留超过 48 小时。永久日志是临时日志的抽样，去掉 IP、换成国家/区域/城市级位置，保留域名、请求类型、ASN、时间戳、ECS 前缀长度等。</p>
+<p>MakeUseOf 那张对照表因此成立：ISP 解析器、1.1.1.1、8.8.8.8 三者的日志政策确实不同，但留存期内，那一家公司仍能看到你查过的所有站点。加密 DNS（DoH / DoT）把查询从 ISP 眼皮底下挪走，却没有改变「对端是唯一全量持有者」这个结构。</p>
+<h2>二、Unbound 的完整递归：把清单拆散到 DNS 层次里</h2>
+<p>文章给的第三条路是在家跑 Unbound 做完整递归。按 NLnet Labs 官方定义，Unbound 是开源的 validating、recursive、caching resolver：校验 DNSSEC、缓存应答；既能直接走 DNS 层次解析，也能把选定查询转发给别的解析器 —— 这两种跑法做的事完全不同。</p>
+<p>完整递归时没有公共递归商在中间：</p>
+<ol><li>Unbound 从 DNS 根开始，跟随 referral 一层层往下；</li><li>配合 QNAME minimization（QMIN），每一站只给完成这一跳必需的名字标签；</li><li>文中那个简化例子：根只被问到 <code>com</code>，<code>.com</code> 服务器只被问到 <code>example.com</code>，只有该域自己的权威服务器才听到完整的 <code>www.example.com</code>；</li><li>TTL 未过期时，重复查询直接由本地缓存回答，不产生任何外发流量。</li></ol>
+<p>于是没有任何单一公司拿到全量列表：根、TLD、各权威服务器各看到碎片，完整清单只在你自己的缓存里。Unbound 官方把这点表述为「reduce unnecessary disclosure of query information through QNAME minimisation」。</p>
+<p>转发模式的边界必须写死：如果 Unbound 被配成把查询转给某个上游，那个上游收到的仍是完整请求。转发器自己也可以用 QMIN，但它与上游之间那一跳已经把全名交出去了；「装了 Unbound」不等于「摆脱了单一持有者」。</p>
+<p>工程上还有两个容易被科普文略过的点。其一，QMIN 是「尽量少给」，不是绝对：实际查询会随缓存与委派方式变化，遇到不合规或坏应答时 Unbound 会回退多发一些标签（QMIN 严格模式撞上不遵循 NXDOMAIN cut 的 CDN 区就是典型）。其二，若给转发器配多个上游，常见实现是并发竞速取最快，不是主备 —— 这既影响隐私边界，也会让基于「只走某一个上游」的过滤策略失效。</p>
+<h2>三、代价：这不是 DNS 隐身</h2>
+<p>原作者没有把 Unbound 写成银弹，这几条恰好是架构师最该先算的账：</p>
+<table><thead><tr><th>代价</th><th>含义</th></tr></thead><tbody><tr><td>SNI 仍暴露站点名</td><td>没有 ECH（且站点也支持）时，即使 DNS 全程加密，ISP 仍能从 TLS 握手读到站点名；Unbound 改变的是「谁处理 DNS」，不是「所有上网痕迹都消失」</td></tr><tr><td>递归查询多为明文</td><td>完整递归是直接与根/TLD/权威服务器通信，通常没有 DoH/DoT 包裹；ISP 不能再从自己的解析器日志里读，但可以主动抓包</td></tr><tr><td>权威服务器看到你的公网 IP</td><td>用大公共解析器时，权威侧看到的是解析器 IP；自建递归等于拿自己的出口 IP 去问，放弃了群体掩护</td></tr><tr><td>运维归属回到自己</td><td>缓存、DNSSEC 信任锚、失败回退、日志与排障都由自己承担；文中 Windows 上还遇到 Smart App Control 拦未签名安装包，最后改用 WSL</td></tr></tbody></table>
+<p>作者给的取舍很清楚：担心 ISP 抓 DNS 明文，就把 Unbound 配成加密转发，代价是重新接受「某家提供商能看到完整历史」；不想把全量清单交给任何一家，就用完整递归，代价是上面三条。Pi-hole、OPNsense、pfSense、OpenWrt 都能配 Unbound，但默认各不相同，值得先看路由器/网关到底把查询交给了谁。</p>
+<p>顺带把术语边界摆正（这也是那份公开 Unbound 电子书大纲里反复强调的）：存根、缓存、转发、递归是四种角色；DNSSEC 管的是数据完整性与来源认证，DoT/DoH 管的是传输加密与链路隐私，两者不互相替代；本地过滤表（<code>local-zone</code> 一类）在递归/转发之前生效，属于另一层。把这些层分开，才不会把「我开了 DoH」误当成「没人知道我查了什么」。</p>
+<h2>四、边界</h2>
+<ul><li>本文依据 MakeUseOf 原文与 Cloudflare / Google / NLnet Labs 官方文档；未安装或实测 Unbound、未抓包验证 QMIN 行为，文中 <code>www.example.com</code> 的逐层示例是原文给出的简化说明，实际查询随缓存与委派变化。</li><li>文中 1.24.2 版本号、WSL 安装经历、各网关默认配置差异均为原作者自述。</li><li>Cloudflare 的 25 小时、0.05%、聚合统计无限期，Google 的 24–48 小时与「安全滥用可延长」均取自两家官方页；政策可能更新，读时以官方页为准。</li><li>概念框架参考了公开的 Unbound 中文电子书大纲（四种角色、DNSSEC 与传输加密分工、QMIN 严格模式与多上游竞速），未引用其任何本地文件、路径或项目内部细节。</li><li>加密 DNS 与 ECH 的覆盖范围按原文口径标注；ECH 需要浏览器与站点双方支持。</li></ul>
+<h2>五、结论</h2>
+<p>这篇文章真正值得记住的是一个结构判断，而非「快去装 Unbound」：只要有一台递归解析器替你跑完全部查询，它就天然持有完整清单。换提供商、开 DoH、挑一家承诺删日志更快的，都是在改善「持有者是谁、留多久」，没有改变「有人持有全部」。</p>
+<p>自建完整递归做的事不同 —— 它把可见性按 DNS 层次拆开，让根、TLD、权威各拿到碎片，完整列表只留在自己的缓存里。换来的是明文外发、权威侧看到自家 IP、以及运维责任回到自己手上。</p>
+<p>对读者来说，判断顺序可以是：先确认现在是谁在回答你的查询；再想清楚最介意的是 ISP、公共解析器，还是「任何单一公司」；最后才决定要加密转发，还是在家跑一台从根开始问的 Unbound。DNS 隐私没有「全关掉」的开关，只有把信任放在哪一层的选择。</p>
+<h2>Sources</h2>
+<ul><li>MakeUseOf《I stopped handing my browsing history to Google, Cloudflare, and my ISP, and the fix wasn't another provider》（Afam Onyimadu，2026-11-14）：<a href="https://www.makeuseof.com/unbound-private-dns-without-trusting-another-provider/" target="_blank" rel="noopener noreferrer">https://www.makeuseof.com/unbound-private-dns-without-trusting-another-provider/</a></li><li>Cloudflare《1.1.1.1 Public DNS Resolver》隐私承诺：<a href="https://developers.cloudflare.com/1.1.1.1/privacy/public-dns-resolver/" target="_blank" rel="noopener noreferrer">https://developers.cloudflare.com/1.1.1.1/privacy/public-dns-resolver/</a></li><li>Google《Your Privacy | Public DNS》：<a href="https://developers.google.com/speed/public-dns/privacy" target="_blank" rel="noopener noreferrer">https://developers.google.com/speed/public-dns/privacy</a></li><li>NLnet Labs《Unbound - About》：<a href="https://nlnetlabs.nl/projects/unbound/about/" target="_blank" rel="noopener noreferrer">https://nlnetlabs.nl/projects/unbound/about/</a> ｜ 文档：<a href="https://unbound.docs.nlnetlabs.nl/en/latest/" target="_blank" rel="noopener noreferrer">https://unbound.docs.nlnetlabs.nl/en/latest/</a></li><li>RFC 7816（QNAME minimisation）：<a href="https://www.rfc-editor.org/rfc/rfc7816" target="_blank" rel="noopener noreferrer">https://www.rfc-editor.org/rfc/rfc7816</a> ｜ RFC 8020（NXDOMAIN cut）：<a href="https://www.rfc-editor.org/rfc/rfc8020" target="_blank" rel="noopener noreferrer">https://www.rfc-editor.org/rfc/rfc8020</a></li><li>概念框架参考（公开电子书）：<a href="https://github.com/LeisureLinux/ebook-unbound" target="_blank" rel="noopener noreferrer">https://github.com/LeisureLinux/ebook-unbound</a> ｜ 在线阅读：<a href="https://leisurelinux.github.io/ebook-unbound/" target="_blank" rel="noopener noreferrer">https://leisurelinux.github.io/ebook-unbound/</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/",
+      title: "Unbound \u4e0e DNS \u9690\u79c1\uff1a\u6362\u63d0\u4f9b\u5546\u53ea\u662f\u6362\u8c01\u62ff\u7740\u5b8c\u6574\u6e05\u5355"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

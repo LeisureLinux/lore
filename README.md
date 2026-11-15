@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-14 | [Unbound 与 DNS 隐私：换提供商只是换谁拿着完整清单](https://freelamp.com/articles/2026-11-14_unbound-dns-privacy-recursive-qname-minimization/) | Unbound · DNS 隐私 · Cloudflare 1.1.1.1 · Google Public DNS · DoH · DoT · QNAME minimization · DNSSEC · 完整递归 · 转发器 · ECH · SNI · RFC 7816 · RFC 8020 · 技术解读 |
 | 2026-11-14 | [Buildroot 25 年：不用等 LWN，git 历史自己会讲话](https://freelamp.com/articles/2026-11-14_buildroot-25-years-git-history/) | Buildroot · LWN · GitLab · Eric Andersen · Peter Korsgaard · uClibc · BusyBox · OpenEmbedded · Yocto · BR2_EXTERNAL · SBOM · CycloneDX · LTS · CRA · 嵌入式 Linux · 技术解读 |
 | 2026-11-14 | [QEMU 内存分层：先让虚拟机别被自己的迁移线程骗了](https://freelamp.com/articles/2026-11-14_qemu-vm-memory-tiering-kvm-forum-2026/) | QEMU · KVM Forum 2026 · Peter Xu · Red Hat · memory tiering · NVMe SSD · CXL · swap · memcg · MGLRU · live migration · maccess · mincore · MADV_PAGEOUT · MADV_PAGEOUT_FULL · userfaultfd · 技术解读 |
 | 2026-11-14 | [Cursor 安全事件复盘：一把供应商密钥，怎样走到 5000 台开发机](https://freelamp.com/articles/2026-11-14_cursor-security-incident-fireworks-claude-code-extension/) | Cursor · Fireworks AI · Claude Code · Anthropic · Open VSX · VSIX · SSH 后门 · svc-telemetry · LLMJacking · Unit 42 · 供应链攻击 · secret scanning · 技术解读 |
