@@ -115,6 +115,7 @@ CORE = {
     "workday", "hcm", "payroll", "fortune 500", "fox business", "disaster recovery", "dr site", "downdetector", "open enrollment", "wd1", "business continuity",
     "asus", "ascent qn10", "snapdragon x2 elite", "glymur", "oryon", "adreno x2", "hexagon npu", "device tree", "qseecom", "uefisecapp", "ps195", "gl3590", "dgx", "gb10", "copilot+",
     "osint", "opsec", "ofac", "sdn list", "indictment", "affidavit", "burner email", "persona address", "username pivot", "threat actor attribution", "maltego", "shodan", "opensanctions", "krebsonsecurity",
+    "dankwiki", "nick black", "streetfighting computer scientists", "addison-wesley", "mit press", "morgan kaufmann", "cambridge university press", "no starch press", "prentice hall", "springer",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

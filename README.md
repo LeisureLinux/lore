@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-15 | [dankwiki 街头格斗书单：36 本硬核 CS 书与出版信息核对](https://freelamp.com/articles/2026-11-15_dankwiki-streetfighting-computer-scientists-book-list/) | dankwiki · Nick Black · streetfighting computer scientists · 英文书名 · 作者 · 出版年月 · 出版社 · Addison-Wesley · MIT Press · Morgan Kaufmann · Cambridge University Press · No Starch Press · Open Library · 书单核对 |
 | 2026-11-15 | [OSINT 案例研究：12 起网络犯罪调查与公共记录核对](https://freelamp.com/articles/2026-11-15_osint-case-studies-12-cybercrime-investigations/) | OSINT · 开源情报 · 公共记录 · OPSEC · OFAC · SDN · pivot · persona address · burner email · evidence ladder · threat actor attribution · 术语对照表 · 技术译文 |
 | 2026-11-15 | [ASUS Ascent QN10：X2 Elite 迷你机的 Linux 设备树](https://freelamp.com/articles/2026-11-15_asus-ascent-qn10-snapdragon-x2-elite-linux/) | ASUS · Ascent QN10 · Snapdragon X2 Elite · Glymur · Oryon · Adreno X2-90 · Hexagon NPU · 设备树 · qseecom · uefisecapp · PS195 · GL3590 · LKML · Linux 7.5 · 技术解读 |
 | 2026-11-15 | [Workday 故障：一次灾备演练把薪资系统带下线了](https://freelamp.com/articles/2026-11-15_workday-outage-disaster-recovery-test-hr-payroll/) | Workday · HCM · 薪资 · Fortune 500 · DR Site · 生产数据库 · WD1 · reindexing · 开放注册 · Downdetector · Microsoft 365 · 业务连续性 · 技术解读 |
