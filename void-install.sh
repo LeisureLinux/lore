@@ -15,7 +15,9 @@
 # 不带任何参数时只下载 bootstrap 并打印用法，绝不抹盘。
 
 set -eu
-BASE="https://raw.githubusercontent.com/LeisureLinux/bilibili/master/scripts"
+# pin 到确定提交，避免 raw.githubusercontent.com 的 master CDN 缓存延迟
+PIN=82599d6
+BASE="https://raw.githubusercontent.com/LeisureLinux/bilibili/$PIN/scripts"
 OUT="${TMPDIR:-/tmp}/void-bootstrap.sh"
 
 xbps-uhelper fetch "$BASE/void-bootstrap.sh>$OUT" >/dev/null 2>&1 || {
