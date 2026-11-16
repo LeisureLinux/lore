@@ -116,6 +116,7 @@ CORE = {
     "asus", "ascent qn10", "snapdragon x2 elite", "glymur", "oryon", "adreno x2", "hexagon npu", "device tree", "qseecom", "uefisecapp", "ps195", "gl3590", "dgx", "gb10", "copilot+",
     "osint", "opsec", "ofac", "sdn list", "indictment", "affidavit", "burner email", "persona address", "username pivot", "threat actor attribution", "maltego", "shodan", "opensanctions", "krebsonsecurity",
     "dankwiki", "nick black", "streetfighting computer scientists", "addison-wesley", "mit press", "morgan kaufmann", "cambridge university press", "no starch press", "prentice hall", "springer",
+    "hpe", "juniper", "faa", "l3harris", "fti", "tdm", "ground stop", "air traffic control", "copper network", "el dorado", "amarillo", "indianapolis center", "rebecca guy", "sean duffy", "bryan bedford",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

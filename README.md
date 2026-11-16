@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-16 | [FAA 全国停飞：两台 Juniper 路由器，压垮了几十年的铜线网络](https://freelamp.com/articles/2026-11-16_faa-ground-stop-juniper-routers-copper-tdm-network/) | FAA · HPE · Juniper · L3Harris · FTI · TDM · 铜线 · 光纤 · ground stop · ARTCC · broadcasting function · 故障域 · 网络分段 · Rebecca Guy · 技术解读 |
 | 2026-11-15 | [dankwiki 街头格斗书单：36 本硬核 CS 书与出版信息核对](https://freelamp.com/articles/2026-11-15_dankwiki-streetfighting-computer-scientists-book-list/) | dankwiki · Nick Black · streetfighting computer scientists · 英文书名 · 作者 · 出版年月 · 出版社 · Addison-Wesley · MIT Press · Morgan Kaufmann · Cambridge University Press · No Starch Press · Open Library · 书单核对 |
 | 2026-11-15 | [OSINT 案例研究：12 起网络犯罪调查与公共记录核对](https://freelamp.com/articles/2026-11-15_osint-case-studies-12-cybercrime-investigations/) | OSINT · 开源情报 · 公共记录 · OPSEC · OFAC · SDN · pivot · persona address · burner email · evidence ladder · threat actor attribution · 术语对照表 · 技术译文 |
 | 2026-11-15 | [ASUS Ascent QN10：X2 Elite 迷你机的 Linux 设备树](https://freelamp.com/articles/2026-11-15_asus-ascent-qn10-snapdragon-x2-elite-linux/) | ASUS · Ascent QN10 · Snapdragon X2 Elite · Glymur · Oryon · Adreno X2-90 · Hexagon NPU · 设备树 · qseecom · uefisecapp · PS195 · GL3590 · LKML · Linux 7.5 · 技术解读 |
