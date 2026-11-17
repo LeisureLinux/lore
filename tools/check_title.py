@@ -118,6 +118,7 @@ CORE = {
     "dankwiki", "nick black", "streetfighting computer scientists", "addison-wesley", "mit press", "morgan kaufmann", "cambridge university press", "no starch press", "prentice hall", "springer",
     "hpe", "juniper", "faa", "l3harris", "fti", "tdm", "ground stop", "air traffic control", "copper network", "el dorado", "amarillo", "indianapolis center", "rebecca guy", "sean duffy", "bryan bedford",
     "office 365", "teams", "sharepoint", "onedrive", "capacity unit", "lock contention", "failover", "cascading failure", "bulkhead", "headroom", "post-incident review", "pirm", "rollback", "flighting", "feature flags",
+    "almalinux", "mauve lion", "podman", "modsecurity", "owasp crs", "fapolicyd", "keylime", "libreswan", "ml-kem", "x86_64_v2", "crb repository", "dnf upgrade", "gawk", "awk", "arnold robbins", "minrx", "gmp", "mpfr", "regex",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",
