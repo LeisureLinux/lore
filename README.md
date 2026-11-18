@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-16 | [Infisical：AD 时代结束了吗？机器身份的边界正在从目录转向联邦](https://freelamp.com/articles/2026-11-16_infisical-active-directory-machine-identity/) | Infisical · Active Directory · 机器身份 · gMSA · dMSA · Kerberos · LDAP · OIDC · IMDS · secrets manager · TPM · EK · Credential Guard · kerberoasting · 技术解读 |
 | 2026-11-16 | [Debian 12 内核更新冻住服务器：被 revert 过的 ext4 回归](https://freelamp.com/articles/2026-11-16_debian-12-kernel-ext4-regression-dla-4906/) | Debian 12 · bookworm · DLA-4906-1 · DLA-4906-2 · Linux 6.1.192-1 · ext4 · mballoc · folio · jbd2 · NULL 解引用 · NoisyTCP · CVE-2026-99288 · 技术解读 |
 | 2026-11-16 | [AlmaLinux 10.3：把 RHEL 10.3 丢掉的 36 个 CVE 修复补回去](https://freelamp.com/articles/2026-11-16_almalinux-10-3-mauve-lion-rhel-cve-backfills/) | AlmaLinux · Mauve Lion · RHEL 10.3 · CVE 补回 · Podman 6 · ModSecurity · OWASP CRS 4.22 · fapolicyd · ML-KEM · GCC Toolset 16 · x86_64_v2 · 技术解读 |
 | 2026-11-16 | [GNU gawk 5.4.2：正则引擎内存管理重写，没给性能数字](https://freelamp.com/articles/2026-11-16_gnu-gawk-5-4-2-minrx-performance/) | GNU · gawk · AWK · 5.4.2 · minrx.c · 正则引擎 · 性能 · GMP · MPFR · Arnold Robbins · pkgsrc · 技术解读 |
