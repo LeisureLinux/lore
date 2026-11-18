@@ -1,0 +1,350 @@
+<section style="max-width:677px;margin:0 auto;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#52525B;line-height:1.8;letter-spacing:0.3px;overflow-x:hidden;">
+
+  <section style="margin:10px 10px 40px;padding:32px 24px 24px;border-top:1px solid #E4E4E7;border-bottom:1px solid #E4E4E7;background:#FFFFFF;">
+    <p style="font-size:11px;color:#A1A1AA;letter-spacing:2px;margin:0 0 18px;font-weight:400;"><span leaf="">QUOTE</span></p>
+    <p style="font-size:18px;font-weight:700;color:#27272A;margin:0 0 8px;line-height:1.7;letter-spacing:0.5px;"><span leaf="">自建权威 DNS 的难点不在协议栈，而在无限记录背后的写入限流、一致性和公网暴露面。</span></p>
+    <p style="text-align:right;font-size:12px;color:#A1A1AA;margin:16px 0 0;letter-spacing:1px;"><span leaf="">S2.dev 自建权威 DNS 复盘</span></p>
+  </section>
+
+  <section style="padding:0 10px 8px;">
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">S2.dev 这篇博客的标题有点玩笑——「总是 DNS 的锅，那我们为什么不自己跑一个？」但内容很硬：他们把 AWS Route53 换成了自建权威 DNS 服务器，背后是一个被记录数量与一致性逼出来的架构决定。</span></p>
+  </section>
+
+    <section style="margin:0 10px 26px;padding:14px 16px;border-left:3px solid #EF4444;background:#FEF2F2;">
+      <p style="margin:0 0 8px;font-size:13px;color:#DC2626;font-weight:400;letter-spacing:0.5px;"><span leaf="">老徐的话：</span></p>
+      <p style="margin:0;font-size:15px;line-height:1.9;color:#B91C1C;text-align:justify;letter-spacing:0.3px;"><span leaf="">（此处填老徐的话）</span></p>
+    </section>
+  <section style="padding:0 10px 40px;">
+    <p style="font-size:11px;color:#A1A1AA;margin:0 0 16px;letter-spacing:2px;"><span leaf="">本文看点</span></p>
+    <section style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">01</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">为什么 Route53 不…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">02</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">自建方案：让 DNS 直接…</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">03</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">真正吓人的不是写代码，是暴…</span></p>
+      </section>
+    </section>
+    <section style="display:flex;justify-content:space-between;margin-bottom:8px;">
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">04</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">最终架构与运维账</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;margin-right:8px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">05</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">这件事能复用什么</span></p>
+      </section>
+      <section style="flex:1;background:#FAFAFA;border-top:1px solid #E4E4E7;padding:18px 12px 16px;">
+        <p style="font-size:11px;color:#A1A1AA;font-weight:500;margin:0 0 8px;letter-spacing:1px;"><span leaf="">06</span></p>
+        <p style="font-size:13px;font-weight:700;color:#27272A;margin:0;line-height:1.5;"><span leaf="">边界</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">01</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">一、为什么 Route53 不够用</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">S2 的产品里有个叫 basin 的概念：流的顶层命名空间，类似 S3 的 bucket。每个 basin 是一个子域 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">my-basin.b.s2.dev</span><span leaf="">，DNS 记录是一条 CNAME，把客户端路由到架构中正确的 cell。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">他们决定把 basin 从「每账户 100 个」放开到无限——那就需要无限条 DNS 记录。而且这些记录要强一致：basin 一创建，地址必须立即可解析，否则客户端就得干等一条被缓存的 NXDOMAIN 过期。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">Route53 本身看起来能承载无限记录，但API 限流卡住了：原文写的是当时约每秒 5 次 UPSERT（作者特意注明「AWS 限流文档最近改过，现在可能更高」）。他们吃过一次亏：一个恶意 actor 快速创建了数万个 basin，打满了整个 Route53 记录配额，产生数小时积压——正常 DNS 更新被卡住，一边在删记录一边在加记录。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">批处理？会破坏「立即可用」的目标；而且即使用批处理，「无限」仍然不成立，合法流量也可能撞限。GCP Cloud DNS、Cloudflare、Azure DNS 同样有 API 侧的强限制。结论：自建权威 DNS 服务器。</span></p>
+    <section style="border-left:3px solid #52525B;padding:16px 0 16px 24px;margin:0 0 28px;">
+      <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#27272A;line-height:1.7;"><span leaf="">口径提醒：AWS 现在的限流文档已经换成 token bucket 模型——每账户持续每秒 100 次变更、突发 1500，UPSERT 计 2 个 token，按 API 动作聚合。S2 的「5 UPSERT/s」是他们当时的经历，不能直接套到今天。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">02</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">二、自建方案：让 DNS 直接查账户库</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">需求被压缩成一句话：收到任意 DNS 请求，查一份能装无限记录、且始终最新的 zone map，回一个对应响应。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">他们的做法很干脆——不复刻一套数据、不再加一个同步环节，DNS 记录直接来自现有 basin 数据库：对 Cloud Spanner 做一次实时 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">SELECT</span><span leaf="">，把 DNS 变成这个强一致账户库的一个新 caller。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">技术选型有个反直觉点：团队是 Rust shop，却用 Go 写了这个 DNS 服务，理由是 Spanner 工具链和 GCP 生态在 Go 侧更成熟。DNS 库选了 miekg/dns，看中文档质量与支持的 RFC 数量。A、AAAA、NS、CNAME、SOA 都要支持，因为用的是库而非现成服务器，响应要自己构造。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">正确性测试下了本钱：单测之外，用 Ferret 做 RFC 合规测试，上线后再用真实流量做 smoke test。Ferret 来自 NSDI 2022 的 SCALE 论文——用形式化语义与符号执行自动生成 zone 文件和查询，论文里测了 BIND、PowerDNS、Knot、NSD 等 8 个实现，13000 多个测试文件中 62% 出现实现间差异，找出 30 个新 bug，其中包括 BIND 里一个可被远程利用、能崩掉解析器与权威服务器的严重漏洞。拿这种工具测自写 DNS 服务，是这篇博客里最硬核的一段。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">证书环节他们没有硬上：basin 区用通配符证书，ACME DNS-01 挑战不由自己的服务器提供，而是通过 CNAME delegation 甩到一个单独的 Route53 zone——省得改证书续期系统，也避免在自家 DNS 上服务动态 TXT 记录。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">03</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">三、真正吓人的不是写代码，是暴露在公网</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">他们和 AI 做了几轮设计讨论。设计本身清楚，但 AI 不断往里加东西：coalescing、negative caching、throttling、rate limiting、DNS cookies……对一个直接面对公网的权威 DNS 来说，这些防护并非多余，但堆起来让人越想越怕。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">最让他们担心的是 NXDOMAIN 攻击：每一个随机的、不存在的域名查询，都会触发一次全新的数据库查询。他们试过在应用内做防御，但作者的原话大意是——这是最糟糕的 DDoS，真的没什么能挡住。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">于是去找「DNS 反向代理防火墙」，符合「无限记录 + DNS 防火墙」要求的只有 Cloudflare 和 Akamai，最后选了 Cloudflare DNS Firewall：自家 DNS 源站只允许 Cloudflare 的已知 IP 访问，典型的「Cloudflare 在前、谁也别想直连源站」部署。Cloudflare 官网对这类产品的定位正是位于递归 resolver 与权威 NS 之间，提供限流、边缘缓存兜底（源站挂了还能用 stale 答案顶一阵）和隐藏源 IP。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">一个容易踩的细节：作为权威服务器必须回答 SOA 和 NS 查询，而这些记录指向 nameserver IP。他们特别确保返回的永远是 Cloudflare 的 IP，而不是自己的负载均衡器 IP，并加了 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">ns-leak-test</span><span leaf=""> 回归测试防止源 IP 泄漏。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">04</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">四、最终架构与运维账</span></h3>
+      </section>
+    </section>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">高可用上，DNS 服务跑在两个不同区域的 GKE 集群里（尽量靠近 Spanner），每个集群多副本，前面挂 TCP 和 UDP 负载均衡器。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">可观测性和培训被作者特别点出来：用 Route53 时没人专门监控它、托管服务是别人的 pager；换成自建后，告警、runbook、半夜起来恢复的流程都得自己建。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">委托链也变得绕：主域在 Cloudflare 的常规 zone → 把 basin 子域委托给 Cloudflare 的 DNS Firewall（一个 service，不是一个 zone）→ 再连到 GKE；另外还有一个 Route53 zone 专门给证书。作者自嘲「理解整条 delegation chain 挺好笑的」。</span></p>
+    <p style="margin-bottom:22px;font-size:15px;line-height:1.8;text-align:justify;color:#52525B;letter-spacing:0.3px;"><span leaf="">上线几周后状态稳定：客户已经能创建数千个 basin 且立即可用于流；提交历史 mostly 是 CVE 修复、依赖升级和省钱。内部 TODO 还有缓存调优、客户端/DNS Firewall/DNS 应用之间的优化，以及 DNSSEC。作者的收尾很妙：「I think we’re now in a place where we can blame DNS in one of our post-incident reviews.」—— 现在终于有资格在某次事故复盘里怪 DNS 了。</span></p>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">05</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">五、这件事能复用什么</span></h3>
+      </section>
+    </section>
+    <section style="margin:0 0 24px;padding-left:4px;">
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span style="color:#27272A;font-weight:800;">1.</span> <span leaf="">先算清楚瓶颈在哪。 S2 的瓶颈落在托管 DNS 的 API 写入限流上，与 DNS 协议本身或记录容量无关；它和托管 DNS 的 API 写入限流与业务「无限 + 立即可用」要求的冲突。如果你的记录是静态的或低频变更，Route53 之类的托管服务依然省心得多。</span></p>
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span style="color:#27272A;font-weight:800;">2.</span> <span leaf="">强一致需求决定了数据不能复制。 「DNS 直接读账户库」之所以成立，是因为他们接受一次实时 </span><span style="background:#F1F5F9;color:#27272A;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:14px;">SELECT</span><span leaf=""> 的代价，换掉一整套同步链路。这是权衡，不是普适最佳实践。</span></p>
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span style="color:#27272A;font-weight:800;">3.</span> <span leaf="">自写协议服务器，要用工具对 RFC 做差分测试。 Ferret 这类工具的存在本身就是提醒：DNS 的边界情况比想象中多，连 BIND 都被测出过可远程崩溃的 bug。</span></p>
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span style="color:#27272A;font-weight:800;">4.</span> <span leaf="">暴露在公网的服务，防护往往比核心逻辑更贵。 让方案真正能落地的，是前面那层 DNS Firewall，以及围绕 SOA/NS 泄漏做的一批细节；那段 Go 代码反而是较容易的部分。</span></p>
+      <p style="margin:0 0 8px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;"><span style="color:#27272A;font-weight:800;">5.</span> <span leaf="">别低估运维账单。 告警、runbook、培训、复杂的委托链——这些在托管服务里是「别人替你操心」的部分，自建后全变成自己的。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">06</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SECTION</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">六、边界</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">原文是厂商博客（S2.dev，2026-10-16），讲的是 S2 自己的选择与经历；「稳定」「数周」等是作者自述，本文未独立验证其线上指标。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">这是权威 DNS的决策，不是递归解析器、DNS-over-HTTPS 或公共 DNS 的替代方案；别把它读成「大家都该自建 DNS」。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Route53 限流数字已随 AWS 文档更新而变化，原文也注明；本文把「当时的 5 UPSERT/s」与「现在的 token bucket 口径」分开写，未把两者混用。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">本文未自建、未压测任何 DNS 服务，也未验证 Cloudflare DNS Firewall 的实际防护效果；相关产品描述来自其官网。</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">文中的「AI 建议加了一堆防护」是作者叙事情节，不代表 AI 工具的普遍行为结论。</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">07</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">SOURCES</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">Sources</span></h3>
+      </section>
+    </section>
+    <section style="margin-bottom:24px;">
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">S2.dev 博客原文（Cristian Caciuc，2026-10-16）：&lt;https://s2.dev/blog/dns-server&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">AWS Route53 API 限流文档：&lt;https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/throttling-api-requests.html&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">SCALE / Ferret（NSDI 2022）：&lt;https://www.usenix.org/conference/nsdi22/presentation/kakarla&gt; ｜ &lt;https://github.com/dns-groot/Ferret&gt;</span></p>
+      </section>
+      <section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#27272A;color:#fff;font-size:12px;font-weight:700;border-radius:50%;flex-shrink:0;margin-top:2px;"><span leaf="">·</span></span>
+        <p style="font-size:15px;color:#52525B;margin:0;line-height:1.8;flex:1;"><span leaf="">Cloudflare DNS Firewall：&lt;https://www.cloudflare.com/dns/dns-firewall/&gt;</span></p>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="position:relative;padding-bottom:20px;border-bottom:1px solid #E4E4E7;">
+      <p style="font-size:48px;font-weight:900;color:#E4E4E7;margin:0;line-height:1;letter-spacing:-2px;"><span leaf="">14</span></p>
+      <section style="margin-top:-8px;">
+        <p style="font-size:10px;color:#A1A1AA;font-weight:500;letter-spacing:3px;margin:0 0 6px;text-transform:uppercase;"><span leaf="">KEY FACTS</span></p>
+        <h3 style="font-size:20px;font-weight:800;color:#27272A;margin:0;letter-spacing:0.5px;line-height:1.4;"><span leaf="">关键事实速查</span></h3>
+      </section>
+    </section>
+    <section style="background:#FAFAFA;border:1px solid #E4E4E7;padding:20px 22px;margin:0 0 28px;">
+      <p style="font-size:11px;color:#A1A1AA;margin:0 0 12px;letter-spacing:2px;font-weight:500;"><span leaf="">KEY FACTS</span></p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">项目</span></th>
+          <th style="background:#27272A;color:#fff;font-weight:700;padding:8px 12px;text-align:left;"><span leaf="">内容</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">场景</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">S2 的 basin 是流的顶层命名空间；每账户从 100 个放开到无限，每个 basin 是子域 my-basin.b.s2.dev，CNAME 指向正确 cell；需强一致、创建即解析</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">弃用 Route53 原因</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">原文称当时约 5 UPSERT/s 的 API 限流；恶意 actor 建数万 basin 打满配额，积压数小时，正常更新被卡；GCP/Azure/Cloudflare 托管 DNS 同样有 API 限制</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">口径更新</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">AWS 现文档为 token bucket：每账户持续 100 changes/s、突发 1500，UPSERT 计 2 token；原文的 5 UPSERT/s 是当时经历，不可套用今天</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">自建方案</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">Go + miekg/dns；团队是 Rust shop，但为 Spanner/GCP 工具链选 Go；直接查 Cloud Spanner 做实时 SELECT，DNS 成为强一致账户库的 caller</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">记录类型</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">支持 A/AAAA/NS/CNAME/SOA，用库需自己构造响应；单测 + Ferret RFC 合规 + 线上 smoke</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">Ferret</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">NSDI 2022 SCALE 工具，测过 BIND/PowerDNS/Knot/NSD 等 8 个实现，13000+ 测试中 62% 有差异，30 个新 bug，含 BIND 可远程崩溃</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">证书</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">ACME DNS-01 不自己服务，用 CNAME delegation 甩到单独 Route53 zone，避免动态 TXT 与改续期系统</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">安全顾虑</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">NXDOMAIN 攻击（随机不存在查询每次查库）最可怕，作者称 in-app 防不住；AI 还建议 coalescing/negative caching/throttling/DNS cookies</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">DNS 防火墙</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">选 Cloudflare DNS Firewall 作反向代理，源站只放行 Cloudflare IP；SOA/NS 应答需返回 Cloudflare IP 并加 ns-leak-test 防源 IP 泄漏</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">高可用</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">两个异地 GKE 集群（靠近 Spanner）各多副本，前面挂 TCP/UDP LB；告警、runbook、培训是自建后的运维账</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">委托链</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">Cloudflare 主区把 basin 子域委托给 DNS Firewall（service 非 zone）→ GKE；另有 Route53 zone 专供证书</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">现状与 TODO</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;background:#FAFAFA;color:#52525B;"><span leaf="">数周稳定、客户创建数千 basin 立即可用；TODO 含缓存调优、链路优化与 DNSSEC</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;font-weight:600;"><span leaf="">可复用</span></td>
+            <td style="padding:8px 12px;border-bottom:1px solid #E4E4E7;color:#52525B;"><span leaf="">瓶颈是写入限流而非 DNS 容量；强一致决定数据不复制；自写协议用工具做 RFC 差分测试；公网防护比核心逻辑更费心；别低估运维账</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;font-weight:600;"><span leaf="">边界</span></td>
+            <td style="padding:8px 12px;background:#FAFAFA;color:#52525B;"><span leaf="">厂商博客自述、未独立验证线上指标；只讲权威 DNS 非递归解析；未自建未压测；Route53 口径已变且分开写</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="height:1px;background:#E4E4E7;margin:0;">
+      <span leaf=""><br></span>
+    </section>
+  </section>
+
+  <section style="margin-top:56px;margin-bottom:32px;padding:0 10px;">
+    <section style="border-left:3px solid #27272A;padding:14px 0 14px 22px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#27272A;margin:0;line-height:1.8;"><span leaf="">把已打补丁变成真的可用，靠的是一次有准备的验证——自建 DNS 也一样，代码只是开头。</span></p>
+    </section>
+  </section>
+
+  <section style="padding:0 10px;">
+    <section style="text-align:center;margin:0 0 36px;">
+      <section style="display:flex;align-items:center;justify-content:center;">
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-right:16px;"><span leaf=""><br></span></span>
+        <span style="font-size:10px;color:#A1A1AA;letter-spacing:4px;font-weight:500;"><span leaf="">END</span></span>
+        <span style="height:1px;width:48px;background:#E4E4E7;margin-left:16px;"><span leaf=""><br></span></span>
+      </section>
+    </section>
+  </section>
+
+  <section style="padding:0 10px 20px;">
+    <p style="margin:0 0 8px;font-size:13px;color:#3F3F46;font-weight:600;"><span leaf="">您或许也对以下文章感兴趣：</span></p>
+    <p style="margin:0;font-size:13px;color:#71717A;line-height:1.8;">
+        <span leaf="">· Unbound 与 DNS 隐私：递归解析器的 QNAME Minimization</span><br>
+        <span leaf="">· Cloudflare 1.1.1.1：DNS 缓存内存优化实践</span><br>
+        <span leaf="">· 一次 DNS 故障复盘：缓存、TTL 与降级</span>
+    </p>
+  </section>
+
+  <section style="padding:0 10px 24px;">
+    <section style="border-top:1px solid #E4E4E7;padding-top:28px;">
+      <p style="margin-bottom:14px;font-size:13px;line-height:1.8;color:#3F3F46;text-align:center;">
+        <span leaf="">本文同步发布于 freelamp.com 与 B站「LeisureLinux」</span>
+      </p>
+      <p style="margin-bottom:16px;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">我是 FreeLAMP.com，专注开源安全工具与工程实践，持续分享安全入门与前沿技术的观察。</span>
+      </p>
+      <p style="margin-bottom:0;font-size:15px;line-height:1.8;color:#52525B;text-align:justify;">
+        <span leaf="">如果今天这篇有收获，欢迎</span><strong style="color:#27272A;"><span leaf="">点赞、在看、转发</span></strong><span leaf="">三连，我们下篇见。</span>
+      </p>
+    </section>
+  </section>
+
+</section>

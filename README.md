@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-17 | [S2 为什么弃用 Route53 自建 DNS：当记录数变成无限](https://freelamp.com/articles/2026-11-17_s2-route53-custom-authoritative-dns-server/) | S2.dev · Route53 · 权威 DNS · Spanner · Go · miekg/dns · Ferret · DNS Firewall · NXDOMAIN · 技术解读 |
 | 2026-11-17 | [Debian 13.8 预告：上百个包里，真正该先看的是哪几类](https://freelamp.com/articles/2026-11-17_debian-13-8-point-release-sua-291-1/) | Debian 13 · trixie · 13.8 · SUA 291-1 · point release · glibc · GRUB · Secure Boot · SBAT · intel-microcode · OpenStack · CVE · tzdata · debian-installer · 技术解读 |
 | 2026-11-16 | [Infisical：AD 时代结束了吗？机器身份的边界正在从目录转向联邦](https://freelamp.com/articles/2026-11-16_infisical-active-directory-machine-identity/) | Infisical · Active Directory · 机器身份 · gMSA · dMSA · Kerberos · LDAP · OIDC · IMDS · secrets manager · TPM · EK · Credential Guard · kerberoasting · 技术解读 |
 | 2026-11-16 | [Debian 12 内核更新冻住服务器：被 revert 过的 ext4 回归](https://freelamp.com/articles/2026-11-16_debian-12-kernel-ext4-regression-dla-4906/) | Debian 12 · bookworm · DLA-4906-1 · DLA-4906-2 · Linux 6.1.192-1 · ext4 · mballoc · folio · jbd2 · NULL 解引用 · NoisyTCP · CVE-2026-99288 · 技术解读 |
