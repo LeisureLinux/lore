@@ -123,6 +123,7 @@ CORE = {
     "infisical", "active directory", "machine identity", "gmsa", "dmsa", "kerberos", "ldap", "oidc", "service account", "secret manager", "istio", "spiffe", "workload identity", "credential guard",
     "trixie", "sua 291-1", "trixie-proposed-updates", "point release", "debian-release", "base-files", "debian-installer", "intel-microcode", "sbat", "clamav", "mariadb", "postgresql 18", "openstack", "tzdata", "thunderbird 153", "rebuild", "abi",
     "s2", "basin", "route53", "aws", "spanner", "gke", "miekg/dns", "ferret", "coredns", "cname", "nxdomain", "ddos", "dnssec", "acme", "ip 地址",
+    "onlyoffice", "agpl", "docuseal", "makeuseof", "nebula", "siglip", "directml", "winui", "euro-office", "ascensio", "cluster", "logo", "trademark", "fork",
     "cve", "ghsa", "cert", "tls", "ssl", "dns", "bgp", "ospf",
     "wireguard", "openvpn", "tailscale", "zerotier", "netsh",
     "nftables", "iptables", "ebpf", "cilium", "calico", "flannel",

@@ -17,6 +17,8 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-17 | [Nebula：把整座照片库放进 3D 星云，用一句话找出里面的内容](https://freelamp.com/articles/2026-11-17_nebula-local-ai-photo-search-3d/) | Nebula · Windows · 本地 AI · SigLIP 2 · DirectML · WinUI 3 · 照片搜索 · 3D · Apache-2.0 |
+| 2026-11-17 | [Nextcloud 与 ONLYOFFICE 分手：多数自托管者没读过的那条许可证](https://freelamp.com/articles/2026-11-17_nextcloud-onlyoffice-agpl-logo-license-split/) | Nextcloud · ONLYOFFICE · Euro-Office · AGPL · 第7条 · 商标 · logo · further restriction · FSF · 许可证 |
 | 2026-11-17 | [S2 为什么弃用 Route53 自建 DNS：当记录数变成无限](https://freelamp.com/articles/2026-11-17_s2-route53-custom-authoritative-dns-server/) | S2.dev · Route53 · 权威 DNS · Spanner · Go · miekg/dns · Ferret · DNS Firewall · NXDOMAIN · 技术解读 |
 | 2026-11-17 | [Debian 13.8 预告：上百个包里，真正该先看的是哪几类](https://freelamp.com/articles/2026-11-17_debian-13-8-point-release-sua-291-1/) | Debian 13 · trixie · 13.8 · SUA 291-1 · point release · glibc · GRUB · Secure Boot · SBAT · intel-microcode · OpenStack · CVE · tzdata · debian-installer · 技术解读 |
 | 2026-11-16 | [Infisical：AD 时代结束了吗？机器身份的边界正在从目录转向联邦](https://freelamp.com/articles/2026-11-16_infisical-active-directory-machine-identity/) | Infisical · Active Directory · 机器身份 · gMSA · dMSA · Kerberos · LDAP · OIDC · IMDS · secrets manager · TPM · EK · Credential Guard · kerberoasting · 技术解读 |
