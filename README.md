@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-19 | [Linux 到 PHP 全线失守：AI 扫描器一周撬开互联网底座](https://freelamp.com/articles/2026-11-19_internet-foundation-ai-fuzzing-zero-day-wave/) | Linux · SCTP · Apache · NGINX · MySQL · PHP · Ruby · OpenJDK · AI fuzzing · CVE · 技术解读 |
 | 2026-11-17 | [Nebula：把整座照片库放进 3D 星云，用一句话找出里面的内容](https://freelamp.com/articles/2026-11-17_nebula-local-ai-photo-search-3d/) | Nebula · Windows · 本地 AI · SigLIP 2 · DirectML · WinUI 3 · 照片搜索 · 3D · Apache-2.0 |
 | 2026-11-17 | [Nextcloud 与 ONLYOFFICE 分手：多数自托管者没读过的那条许可证](https://freelamp.com/articles/2026-11-17_nextcloud-onlyoffice-agpl-logo-license-split/) | Nextcloud · ONLYOFFICE · Euro-Office · AGPL · 第7条 · 商标 · logo · further restriction · FSF · 许可证 |
 | 2026-11-17 | [S2 为什么弃用 Route53 自建 DNS：当记录数变成无限](https://freelamp.com/articles/2026-11-17_s2-route53-custom-authoritative-dns-server/) | S2.dev · Route53 · 权威 DNS · Spanner · Go · miekg/dns · Ferret · DNS Firewall · NXDOMAIN · 技术解读 |
