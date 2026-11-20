@@ -51,7 +51,7 @@ CORE = {
     "nix", "nixpkgs", "guix", "redis", "postgres", "postgresql", "mysql",
     "mariadb", "sqlite", "mongodb", "elasticsearch", "kafka", "rabbitmq",
     "nginx", "apache", "caddy", "envoy", "traefik", "haproxy",
-    "systemd", "dbus", "glibc", "musl", "coreutils", "busybox",
+    "apt", "dpkg", "systemd", "dbus", "glibc", "musl", "coreutils", "busybox",
     "openssl", "curl", "wget", "bash", "zsh", "fish", "tmux", "screen",
     "vim", "neovim", "emacs", "nano", "kitty", "alacritty", "wezterm",
     "ghostty", "iterm", "terminator", "ripgrep", "fd", "bat", "fzf",

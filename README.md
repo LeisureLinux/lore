@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-20 | [APT 要删掉老仓库支持：AI 把兼容性的账算到了 Debian 头上](https://freelamp.com/articles/2026-11-20_apt-removing-legacy-repository-features/) | APT · Debian · Release.gpg · MD5/SHA1 · allow-insecure · fallback · CVE-2026-109518 · AI 安全 · 技术解读 |
 | 2026-11-20 | [PHP 大写 S 漏洞：一行 scheme[4]=='s'，TLS 静默失效了 23 年](https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/) | PHP · CVE-2026-128064 · GHSA-f6gg-rchx-xw8j · stream wrapper · use_ssl · scheme 大小写 · FTPS · AUTH TLS · 明文降级 · 重定向 · CWE-319 · 技术解读 |
 | 2026-11-19 | [Linux 到 PHP 全线失守：AI 扫描器一周撬开互联网底座](https://freelamp.com/articles/2026-11-19_internet-foundation-ai-fuzzing-zero-day-wave/) | Linux · SCTP · Apache · NGINX · MySQL · PHP · Ruby · OpenJDK · AI fuzzing · CVE · 技术解读 |
 | 2026-11-17 | [Nebula：把整座照片库放进 3D 星云，用一句话找出里面的内容](https://freelamp.com/articles/2026-11-17_nebula-local-ai-photo-search-3d/) | Nebula · Windows · 本地 AI · SigLIP 2 · DirectML · WinUI 3 · 照片搜索 · 3D · Apache-2.0 |
