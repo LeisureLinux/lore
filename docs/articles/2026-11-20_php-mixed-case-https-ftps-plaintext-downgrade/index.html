@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PHP 大写 S 漏洞：一行 scheme[4]==&#x27;s&#x27;，TLS 静默失效了 23 年 | FreeLAMP.com</title>
+  <meta name="description" content="拆解 CVE-2026-128064：PHP 的 http/ftp stream wrapper 用 scheme[4] == &#x27;s&#x27; 判断是否加密，而协议名解析、重定向前缀判断、同源判断全都大小写不敏感。于是 HTTPS://、httpS://、FTPS:// 会退回明文 HTTP/FTP，把 Basic 认证…">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-20">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="PHP 大写 S 漏洞：一行 scheme[4]==&#x27;s&#x27;，TLS 静默失效了 23 年">
+  <meta property="og:description" content="拆解 CVE-2026-128064：PHP 的 http/ftp stream wrapper 用 scheme[4] == &#x27;s&#x27; 判断是否加密，而协议名解析、重定向前缀判断、同源判断全都大小写不敏感。于是 HTTPS://、httpS://、FTPS:// 会退回明文 HTTP/FTP，把 Basic 认证…">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/">
+  <meta property="og:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-20">
+  <meta property="article:modified_time" content="2026-11-20">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PHP 大写 S 漏洞：一行 scheme[4]==&#x27;s&#x27;，TLS 静默失效了 23 年">
+  <meta name="twitter:description" content="拆解 CVE-2026-128064：PHP 的 http/ftp stream wrapper 用 scheme[4] == &#x27;s&#x27; 判断是否加密，而协议名解析、重定向前缀判断、同源判断全都大小写不敏感。于是 HTTPS://、httpS://、FTPS:// 会退回明文 HTTP/FTP，把 Basic 认证…">
+  <meta name="twitter:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "PHP 大写 S 漏洞：一行 scheme[4]=='s'，TLS 静默失效了 23 年",
+  "description": "一个协议名里的大写字母，把加密关掉了。 2026 年 11 月 19 日，PHP 发布 8.2.36、8.3.37、8.4.28、8.5.13 与 8.6.0，修掉一个听着像段子的问题：只要 URL 的 scheme 里那个 s 写成大写，PHP 的 HTTP 与 FTP stream wrapper 就会走明文传输。HTTPS://、httpS://、FTPS:// 全都中招，file_get_",
+  "datePublished": "2026-11-20",
+  "dateModified": "2026-11-20",
+  "author": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com/about-freelamp.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "image": [
+    "https://freelamp.com/tc-promotion-banner-1200x400.png"
+  ]
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "PHP 大写 S 漏洞：一行 scheme[4]=='s'，TLS 静默失效了 23 年",
+      "item": "https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/"
+    }
+  ]
+}
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-20">2026-11-20</div>
+        <h1 class="post-title" itemprop="headline">PHP 大写 S 漏洞：一行 scheme[4]==&#x27;s&#x27;，TLS 静默失效了 23 年</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>一个协议名里的大写字母，把加密关掉了。</p>
+<p>2026 年 11 月 19 日，PHP 发布 8.2.36、8.3.37、8.4.28、8.5.13 与 8.6.0，修掉一个听着像段子的问题：只要 URL 的 scheme 里那个 <code>s</code> 写成大写，PHP 的 HTTP 与 FTP stream wrapper 就会走明文传输。<code>HTTPS://</code>、<code>httpS://</code>、<code>FTPS://</code> 全都中招，<code>file_get_contents()</code>、<code>fopen()</code>、<code>getimagesize()</code>、<code>simplexml_load_file()</code>、<code>DOMDocument::load()</code>、<code>md5_file()</code>、以及 <code>SoapClient</code> 读 WSDL 这些入口一个不落。</p>
+<p>漏洞编号 CVE-2026-128064，GitHub 安全公告 GHSA-f6gg-rchx-xw8j，CVSS 4.0 打分 8.2，CWE-319（敏感信息明文传输）。按公告的说法，应用直接传混合大小写 URL 的情况从 PHP 5.2.0 就存在，重定向跳到混合大小写 URL 的情况从 PHP 4.3.0 就存在——这是代码审查得出的结论，不是推测。</p>
+<p>值得说清楚的一点是：这不是“忘了转小写”那么简单。同一个 scheme 字符串，在四个地方被判断，前三个都不区分大小写，唯独真正决定要不要加密的那一个区分。这种“语义只做了一半”的错，才是它活了二十三年的原因。</p>
+<h2>一、先看那两行代码</h2>
+<p>问题出在两个文件、两行赋值。</p>
+<p>HTTP 侧，<code>ext/standard/http_fopen_wrapper.c</code> 的 <code>php_stream_url_wrap_http_ex()</code>，在 php-8.4.27 tag 里是第 471 行：</p>
+<pre><code class="c">		use_ssl = (ZSTR_LEN(resource-&gt;scheme) &gt; 4) &amp;&amp; ZSTR_VAL(resource-&gt;scheme)[4] == 's';
+		/* choose default ports */
+		if (use_ssl &amp;&amp; resource-&gt;port == 0)
+			resource-&gt;port = 443;
+		else if (resource-&gt;port == 0)
+			resource-&gt;port = 80;</code></pre>
+<p>FTP 侧，<code>ext/standard/ftp_fopen_wrapper.c</code> 的 <code>php_ftp_fopen_connect()</code>，第 144 行：</p>
+<pre><code class="c">	use_ssl = resource-&gt;scheme &amp;&amp; (ZSTR_LEN(resource-&gt;scheme) &gt; 3) &amp;&amp; ZSTR_VAL(resource-&gt;scheme)[3] == 's';</code></pre>
+<p>两处都是“数到第 N 个字符，看它是不是小写 s”。<code>"HTTPS"[4]</code> 是 <code>'S'</code>，<code>"FTPS"[3]</code> 也是 <code>'S'</code>，比较结果是假，<code>use_ssl</code> 就是 0。</p>
+<p>HTTP 那行的后果是连锁的。往下几行，传输层字符串这样拼：</p>
+<pre><code class="c">			transport_string = zend_strpprintf(0, "%s://%s:%d", use_ssl ? "ssl" : "tcp", ZSTR_VAL(resource-&gt;host), resource-&gt;port);</code></pre>
+<p><code>use_ssl</code> 为 0，transport 变成 <code>tcp://host:80</code>。注意默认端口也跟着退到了 80，所以 <code>HTTPS://example.com/x</code> 这种没写端口的 URL，会被送到对方的 80 端口去。</p>
+<p>再往后，<code>php_stream_xport_crypto_setup()</code> 只在 <code>use_ssl</code> 为真时才调用。也就是说，整条路径上根本没有发起过 TLS 握手——不是握手失败，不是证书校验被跳过，是<strong>压根没打算加密</strong>。</p>
+<h2>二、为什么 <code>HTTPS://</code> 能进 http wrapper</h2>
+<p>有人会问：scheme 写成 <code>HTTPS</code>，PHP 怎么知道该用 http wrapper？</p>
+<p>答案是 <code>main/streams/streams.c</code> 里的 <code>php_stream_locate_url_wrapper()</code>，它查 wrapper 注册表时做了小写化（8.4.27 tag 第 2081 行起）：</p>
+<pre><code class="c">	if (protocol) {
+		if (NULL == (wrapper = zend_hash_str_find_ptr(wrapper_hash, protocol, n))) {
+			char *tmp = estrndup(protocol, n);
+			zend_str_tolower(tmp, n);
+			if (NULL == (wrapper = zend_hash_str_find_ptr(wrapper_hash, tmp, n))) {</code></pre>
+<p>第一次按原样查（<code>HTTPS</code>）失败，转成小写再查（<code>https</code>）成功。所以分发阶段是<strong>大小写不敏感</strong>的，URL 顺利进了 http wrapper。</p>
+<p>但接下来，wrapper 拿到的是<strong>原始的 path 字符串</strong>，而 <code>php_url_parse()</code> 也不会把 scheme 规范化成小写。于是 wrapper 内部看到的 <code>resource-&gt;scheme</code> 依然是 <code>"HTTPS"</code>，第 471 行那句按位置取字符的判断就落空了。</p>
+<p>这就是整个 bug 的结构：入口宽容，出口严格，中间没有一次归一化。</p>
+<h2>三、重定向才是真正危险的那条路</h2>
+<p>应用自己拼出 <code>HTTPS://</code> 的概率不高——正常人写代码都是小写。但<strong>重定向目标是别人给的</strong>。</p>
+<p><code>vuln_http_fopen_wrapper.c</code> 里处理 <code>Location</code> 头的这段（第 1121 行）：</p>
+<pre><code class="c">			if (header_info.location_len &lt; 8 ||
+					(strncasecmp(header_info.location, "http://",  sizeof("http://")-1) &amp;&amp;
+					 strncasecmp(header_info.location, "https://", sizeof("https://")-1) &amp;&amp;
+					 strncasecmp(header_info.location, "ftp://",  sizeof("ftp://")-1) &amp;&amp;
+					 strncasecmp(header_info.location, "ftps://", sizeof("ftps://")-1)))
+			{ /* 相对路径：拼当前 scheme + host */ }
+			else { new_path = header_info.location; }
+			...
+			php_url *new_resource = php_url_parse(new_path);</code></pre>
+<p><code>strncasecmp</code> 是大小写不敏感的，所以 <code>Location: HTTPS://attacker.example/</code> 会被判定为“绝对 URL”，原样丢给 <code>php_url_parse()</code>，然后函数<strong>递归调用自己</strong>，第二轮重新算 <code>use_ssl</code>，又得到 0。</p>
+<p>同一段代码里，判断“是不是同源”用的也是不敏感比较（第 1170 行附近）：</p>
+<pre><code class="c">			bool same_origin = zend_string_equals_ci(resource-&gt;scheme, new_resource-&gt;scheme)
+				&amp;&amp; zend_string_equals_ci(resource-&gt;host, new_resource-&gt;host)
+				&amp;&amp; (resource-&gt;port ? resource-&gt;port : default_port)
+					== (new_resource-&gt;port ? new_resource-&gt;port : default_port);</code></pre>
+<p>于是 <code>https://example.com</code> 跳到 <code>HTTPS://example.com/other</code>，会被判成同源，<code>HTTP_WRAPPER_STRIP_AUTH</code> 不会加上，<code>Authorization</code> 与 <code>Cookie</code> 头保留；如果服务端回的是 307，POST body 也保留（代码里 301/302/303 会剥 body，307/308 保留）。</p>
+<p>结果就是：一条合法的 HTTPS 请求，被中间人或者一个被攻陷的第三方服务用一行 <code>Location</code> 头，诱导 PHP 把带凭证的完整请求明文发出去。公告里特意写了——<strong>即使目标拒绝这条明文连接，数据也已经泄露了</strong>，因为请求已经发完了。</p>
+<h2>四、FTP 侧更直白：<code>AUTH TLS</code> 整块被跳过</h2>
+<p>FTP wrapper 的判断更简单，后果也更直接。第 178 行开始的整段加密协商，被包在 <code>if (use_ssl) { ... }</code> 里：</p>
+<pre><code class="c">	if (use_ssl)	{
+		/* send the AUTH TLS request name */
+		php_stream_write_string(stream, "AUTH TLS\r\n");
+		...
+	}
+
+	if (use_ssl) {
+		if (php_stream_xport_crypto_setup(stream,
+				STREAM_CRYPTO_METHOD_SSLv23_CLIENT, NULL) &lt; 0</code></pre>
+<p><code>FTPS://</code> 写错一个大小写，<code>AUTH TLS</code> 不发，后面的 <code>USER</code> 与 <code>PASS</code> 就是明文上线，控制通道和数据通道一起裸奔。FTPS 的登录口令往往是那种“一个账号能读整个对账目录”的服务账号。</p>
+<h2>五、修复：两行，改成整串不敏感比较</h2>
+<p>修复提交是 <code>9c0b44ffd6631cea9906db32deca945bcbc93361</code>，作者 Jakub Zelenka（bukka），2026 年 11 月 19 日进各分支：</p>
+<pre><code class="diff">--- a/ext/standard/http_fopen_wrapper.c
++++ b/ext/standard/http_fopen_wrapper.c
+@@ -439,7 +439,7 @@ static php_stream *php_stream_url_wrap_http_ex(...)
+-		use_ssl = resource-&gt;scheme &amp;&amp; (ZSTR_LEN(resource-&gt;scheme) &gt; 4) &amp;&amp; ZSTR_VAL(resource-&gt;scheme)[4] == 's';
++		use_ssl = zend_string_equals_literal_ci(resource-&gt;scheme, "https");
+
+--- a/ext/standard/ftp_fopen_wrapper.c
++++ b/ext/standard/ftp_fopen_wrapper.c
+@@ -141,7 +141,7 @@ static php_stream *php_ftp_fopen_connect(...)
+-	use_ssl = resource-&gt;scheme &amp;&amp; (ZSTR_LEN(resource-&gt;scheme) &gt; 3) &amp;&amp; ZSTR_VAL(resource-&gt;scheme)[3] == 's';
++	use_ssl = resource-&gt;scheme &amp;&amp; zend_string_equals_literal_ci(resource-&gt;scheme, "ftps");</code></pre>
+<p>从“看第 5 个字符”变成“整串比 <code>https</code>，不区分大小写”。这样 <code>https</code>、<code>HTTPS</code>、<code>httpS</code>、<code>HtTpS</code> 全部命中，而 <code>http</code>、<code>ftp</code>、<code>sftp</code>、以及任何自定义 scheme 都不会被误判成加密。</p>
+<p>一个细节：HTTP 那行顺手去掉了 <code>resource-&gt;scheme &amp;&amp;</code> 判空，因为 <code>zend_string_equals_literal_ci()</code> 不接受 NULL——函数上方第 443 行已经有 <code>ZEND_ASSERT(resource-&gt;scheme)</code> 兜底。FTP 那行保留了判空，因为它所在的位置没有这个断言。</p>
+<h2>六、回归测试：只看第一个字节</h2>
+<p>新加的两个 phpt 测试写得很利落，值得抄进自己的项目。</p>
+<p><code>ext/standard/tests/http/ghsa-f6gg-rchx-xw8j.phpt</code> 起一个裸 TCP server，accept 之后<strong>只读一个字节</strong>：</p>
+<pre><code class="php">    $request = fread($conn, 1);
+    if ($request === "\x16") {
+        $result = 'TLS';
+    } else {
+        while (($line = stream_get_line($conn, 8192, "\r\n")) !== false) { ... }
+        $result = str_contains($request, 'Authorization: Basic ')
+            &amp;&amp; str_contains($request, 'X-Opensec-Request: validation')
+            &amp;&amp; str_contains($request, 'opensec-sensitive-body')
+                ? 'plaintext credentials and body'
+                : 'unexpected plaintext request';
+    }</code></pre>
+<p><code>\x16</code> 是 TLS 记录层 handshake 的类型字节，第一个字节就能判定对方有没有打算加密，不用解析任何协议。</p>
+<p>客户端这一侧是完整的攻击面还原：</p>
+<pre><code class="php">    $context = stream_context_create([
+        'http' =&gt; [
+            'method' =&gt; 'POST',
+            'content' =&gt; 'opensec-sensitive-body',
+            'header' =&gt; "X-Opensec-Request: validation\r\n",
+        ],
+        'ssl' =&gt; ['verify_peer' =&gt; false, 'verify_peer_name' =&gt; false],
+    ]);
+    var_dump(@file_get_contents('HTTPS://alice:secret@{{ ADDR }}/secret', false, $context));</code></pre>
+<p>期望输出是 <code>bool(false)</code> 加 <code>TLS</code>：修复后请求走 TLS，跟这个裸 server 握手失败返回 false，但<strong>至少是 TLS</strong>。修复前这里会打印 <code>plaintext credentials and body</code>。</p>
+<p>FTP 那个测试更省事，server 只回一句 <code>220 Ready</code>，然后读第一条命令，期望是 <code>AUTH TLS</code>：</p>
+<pre><code class="php">    var_dump(@fopen('FTPS://{{ ADDR }}/secret', 'r'));</code></pre>
+<h2>七、本机三十秒复现</h2>
+<p>不需要装任何扩展，也不需要证书：</p>
+<pre><code class="bash">nc -l 8080
+
+# 终端 B
+php -r 'var_dump(@file_get_contents("HTTPs://127.0.0.1:8080/t"));'</code></pre>
+<ul><li>老版本：终端 A 直接看到明文 <code>POST /t HTTP/1.0</code> 加 <code>Authorization: Basic ...</code>，<code>var_dump</code> 还能打出响应体。</li><li>新版本：终端 A 收到一堆二进制（ClientHello），或者连接直接断掉。</li></ul>
+<p>对照组把 scheme 改成全小写 <code>https://</code>，老版本也会正常走 TLS。这正是它难被测出来的原因——<strong>只有在拼接 URL 的地方大小写不统一时才会触发</strong>，而绝大多数测试用例写的都是小写。</p>
+<h2>八、为什么 curl、Guzzle、Symfony HttpClient 都没事</h2>
+<p>这三个是公告里点名的“不受影响”，原因很简单：它们不走 PHP 的 stream wrapper。</p>
+<ul><li>curl 自己解析 URL、自己决定 TLS。libcurl 早就对 scheme 做了大小写不敏感处理，同类问题在 2018 年就修过（CVE-2018-1000007 是另一件事：重定向时跨源转发凭证，PHP 的 stream wrapper 直到 2026 年 9 月的 GHSA-fpwc-w8rq-cr92 才对上）。</li><li>Guzzle 底层是 curl。</li><li>Symfony HttpClient 走 curl 或自己实现的 native client，不碰 <code>http_fopen_wrapper.c</code>。</li></ul>
+<p>所以这个漏洞的边界非常清晰：<strong>只影响用 PHP 自带 stream wrapper 的那条路</strong>。判断方法不是看你用哪个 HTTP 客户端，而是看代码里有没有 <code>file_get_contents</code>、<code>fopen</code>、<code>getimagesize</code> 这类函数接收 URL。</p>
+<h2>九、影响面清单</h2>
+<p>按公告与源码，走这条路、可能被喂进混合大小写 URL 的函数至少包括：</p>
+<ul><li><code>file_get_contents()</code>、<code>fopen()</code>、<code>readfile()</code>、<code>copy()</code> 的 URL 形式</li><li><code>getimagesize()</code>、<code>exif_read_data()</code>、<code>md5_file()</code>、<code>sha1_file()</code>——图片与文件校验场景里极常见</li><li><code>simplexml_load_file()</code>、<code>DOMDocument::load()</code> / <code>loadHTMLFile()</code>、<code>XMLReader::open()</code>——解析远程 XML、RSS、SVG</li><li><code>SoapClient</code> 拉取 WSDL</li><li>任何自己 <code>stream_context_create()</code> 之后调 stream 函数的代码</li><li>开了 <code>allow_url_include</code> 的场景（虽然默认关闭）</li></ul>
+<p>暴露的数据按公告列举：Basic 认证凭证、Bearer token、Cookie、POST body、FTP 登录凭证、传输的文件内容。</p>
+<h2>十、这个 bug 真正草的地方</h2>
+<p>把四处判断排在一起看，问题就很清楚了：</p>
+<table><thead><tr><th>环节</th><th>大小写处理</th></tr></thead><tbody><tr><td><code>php_stream_locate_url_wrapper</code> 查注册表</td><td>不敏感（<code>zend_str_tolower</code>）</td></tr><tr><td><code>Location:</code> 前缀判定</td><td>不敏感（<code>strncasecmp</code>）</td></tr><tr><td><code>same_origin</code> 同源判定</td><td>不敏感（<code>zend_string_equals_ci</code>）</td></tr><tr><td><strong><code>use_ssl</code> 是否加密</strong></td><td><strong>敏感（<code>scheme[4] == 's'</code>）</strong></td></tr></tbody></table>
+<p>所有“这是不是 https”的判断都不敏感，唯独唯一真正决定要不要加密的那一处敏感。</p>
+<p>而且这个写法从 PHP 4.3 / 5.2 一路抄到今天，二十三年没人动过。原因不难理解：正常代码里 scheme 永远是小写，测试也只写小写，边界输入——用户可控的 URL、第三方返回的 <code>Location</code>——根本没人试。代码审查时，<code>scheme[4] == 's'</code> 看起来甚至像个聪明的微优化：不分配字符串、不做比较，直接取一个字节。</p>
+<p>同类问题在别的项目里也有先例。凡是“协议名/枚举值从字符串里解析出来”的地方，只要有一处按位置取字符，就迟早会遇到大小写、空白、编码变体。正确的做法只有一条：<strong>在解析入口把 scheme 归一化一次，之后全流程只认归一化后的值</strong>。PHP 这次选择了在每个判断点各自做不敏感比较，能修掉这个 CVE，但没有消除“同一个字符串被判断四次”的结构。</p>
+<h2>十一、现在该做什么</h2>
+<ol><li><strong>升级</strong>。8.2.36、8.3.37、8.4.28、8.5.13、8.6.0。8.1 及更早没有官方补丁，只能等发行版回移植，或者按下面的办法自己挡。</li><li><strong>临时缓解（不能马上升级时）</strong>：在把 URL 交给 stream 函数之前，强制把 scheme 转小写；如果允许自动重定向，把 <code>follow_location</code> 关掉，自己校验并归一化每一个跳转目标。注意：<strong>只归一化初始 URL 不管用</strong>，重定向那条路照样能把你送进明文。</li><li><strong>代码审计</strong>：grep 一遍 <code>file_get_contents(</code>、<code>fopen(</code>、<code>getimagesize(</code>、<code>simplexml_load_file(</code>、<code>new SoapClient(</code>，看这些调用的 URL 是从哪来的。用户可控、数据库里存的、第三方 API 返回的，都算不可信来源。</li><li><strong>别把“用了 HTTPS”当成“加密了”</strong>。这条漏洞的全部杀伤力，就建立在“代码里写着 https，运行时却是 tcp”这个错觉上。抓包验证一次，比读十遍配置有用。</li></ol>
+<p>一句话收尾：加密这件事，判断依据必须是完整、归一化后的 scheme，而不是某个位置上的一个字符。少写一个 <code>tolower</code>，代价是二十三年的静默明文。</p>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/",
+      title: "PHP \u5927\u5199 S \u6f0f\u6d1e\uff1a\u4e00\u884c scheme[4]=='s'\uff0cTLS \u9759\u9ed8\u5931\u6548\u4e86 23 \u5e74"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>
