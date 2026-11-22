@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-24 | [Rust 版 coreutils 兼容性：Behave 拿 GNU 当基准撞出几十个缺陷](https://freelamp.com/articles/2026-11-24_behave-differential-testing-uutils-coreutils/) | Rust · uutils · coreutils · Behave · 差分测试 · 黑盒测试 · Ubuntu 26.10 · GNU · 兼容性 · 技术解读 |
 | 2026-11-23 | [GnuPG 生态的 GPGME 双重释放：一个超长用户 ID，让邮件客户端漏出数据](https://freelamp.com/articles/2026-11-23_gnupg-gpgme-cve-2026-129975-double-free/) | GnuPG · GPGME · CVE-2026-129975 · T8557 · OpenPGP · double free · Gpg4win · GitLab · Ruby2Shell · 技术解读 |
 | 2026-11-22 | [Ghostscript 越狱漏洞：一个字体加载器，让上传文件变成远程 shell](https://freelamp.com/articles/2026-11-22_ghostscript-upload2shell-cve-2026-125396/) | Ghostscript · CVE-2026-125396 · Upload2Shell · -dSAFER · Type 1 字体 · CUPS · WordPress · Roundcube · 沙箱逃逸 · 技术解读 |
 | 2026-11-21 | [Intel NPU 驱动 1.39.1：15 行补丁铺垫一年，Nova Lake 正式可用](https://freelamp.com/articles/2026-11-21_intel-npu-driver-1-39-1-nova-lake/) | Intel · NPU · Nova Lake · IVPU · NPU60xx · OpenVINO · Level Zero · AI PC · Linux 硬件支持 · 技术解读 |
