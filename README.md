@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-21 | [Intel NPU 驱动 1.39.1：15 行补丁铺垫一年，Nova Lake 正式可用](https://freelamp.com/articles/2026-11-21_intel-npu-driver-1-39-1-nova-lake/) | Intel · NPU · Nova Lake · IVPU · NPU60xx · OpenVINO · Level Zero · AI PC · Linux 硬件支持 · 技术解读 |
 | 2026-11-20 | [KVM 虚拟机逃逸：一个 INIT 信号，让客机读到 127GB 宿主机内存](https://freelamp.com/articles/2026-11-20_kvm-cve-2026-99312-guest-to-host-escape/) | KVM · CVE-2026-99312 · AMD · 嵌套虚拟化 · NPT · VMCB · 虚拟机逃逸 · 页表伪造 · 7.3.5 · 技术解读 |
 | 2026-11-20 | [APT 要删掉老仓库支持：AI 把兼容性的账算到了 Debian 头上](https://freelamp.com/articles/2026-11-20_apt-removing-legacy-repository-features/) | APT · Debian · Release.gpg · MD5/SHA1 · allow-insecure · fallback · CVE-2026-109518 · AI 安全 · 技术解读 |
 | 2026-11-20 | [PHP 大写 S 漏洞：一行 scheme[4]=='s'，TLS 静默失效了 23 年](https://freelamp.com/articles/2026-11-20_php-mixed-case-https-ftps-plaintext-downgrade/) | PHP · CVE-2026-128064 · GHSA-f6gg-rchx-xw8j · stream wrapper · use_ssl · scheme 大小写 · FTPS · AUTH TLS · 明文降级 · 重定向 · CWE-319 · 技术解读 |
