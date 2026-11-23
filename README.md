@@ -17,6 +17,7 @@
 
 | 日期 | 标题 | 领域 |
 |------|------|------|
+| 2026-11-26 | [Intel TDX 被 AI Agent 重新点着：模型只回答，Agent 会动手](https://freelamp.com/articles/2026-11-26_ai-agents-reignite-confidential-computing/) | Intel TDX · AI Agent · 机密计算 · TEE · Fortanix · CNCF CoCo · Apple PCC · SGX · Diamond Rapids · 技术解读 |
 | 2026-11-25 | [CachyOS 十一月版：给 EAC 游戏一套独立签名内核](https://freelamp.com/articles/2026-11-25_cachyos-november-2026-eac-recovery/) | CachyOS · Easy Anti-Cheat · Secure Boot · linux-cachyos-eac · Btrfs 快照 · 恢复环境 · Package Installer 2.0 · Linux 7.3.5 · WSL · 技术解读 |
 | 2026-11-24 | [Rust 版 coreutils 兼容性：Behave 拿 GNU 当基准撞出几十个缺陷](https://freelamp.com/articles/2026-11-24_behave-differential-testing-uutils-coreutils/) | Rust · uutils · coreutils · Behave · 差分测试 · 黑盒测试 · Ubuntu 26.10 · GNU · 兼容性 · 技术解读 |
 | 2026-11-23 | [GnuPG 生态的 GPGME 双重释放：一个超长用户 ID，让邮件客户端漏出数据](https://freelamp.com/articles/2026-11-23_gnupg-gpgme-cve-2026-129975-double-free/) | GnuPG · GPGME · CVE-2026-129975 · T8557 · OpenPGP · double free · Gpg4win · GitLab · Ruby2Shell · 技术解读 |
