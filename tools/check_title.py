@@ -41,7 +41,7 @@ CORE = {
     "eMudhra".lower(), "digicert", "entrust", "globalsign", "sectigo",
     "comodo", "letencrypt", "cloudflare", "fastly", "akamai",
     # 语言 / 运行时
-    "rust", "go", "golang", "python", "php", "ruby", "perl", "node",
+    "rust", "go", "golang", "python", "php", "ruby", "perl", "node", "asp.net", "aspnet",
     "nodejs", "deno", "bun", "java", "kotlin", "swift", "zig", "nim",
     "c", "c++", "cpp", "javaScript".lower(), "typescript", "lua",
     # 工具链 / 数据库 / 中间件
