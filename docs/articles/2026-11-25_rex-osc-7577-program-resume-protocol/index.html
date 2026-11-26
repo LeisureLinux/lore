@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活 | FreeLAMP.com</title>
+  <meta name="description" content="解读 Mitchell Hashimoto 今天开源的 OSC 7577 终端程序恢复协议与 Rex 实现：OSC 转义序列上报 argv/pid/time/mac，终端验证后存为 record，重启后按规则重跑命令。讲清 token（OSC7577_TOKEN）如何防住 cat 文件和 ssh 远程输出伪造恢复…">
+  <meta name="keywords" content="Linux, DevOps, 技术">
+  <meta name="author" content="FreeLAMP.com">
+  <meta name="date" content="2026-11-25">
+  <link rel="canonical" href="https://freelamp.com/articles/2026-11-25_rex-osc-7577-program-resume-protocol/">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+  <link rel="alternate" type="application/rss+xml" title="FreeLAMP.com RSS 订阅" href="/rss.xml">
+  <!-- Open Graph：文章页 -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活">
+  <meta property="og:description" content="解读 Mitchell Hashimoto 今天开源的 OSC 7577 终端程序恢复协议与 Rex 实现：OSC 转义序列上报 argv/pid/time/mac，终端验证后存为 record，重启后按规则重跑命令。讲清 token（OSC7577_TOKEN）如何防住 cat 文件和 ssh 远程输出伪造恢复…">
+  <meta property="og:url" content="https://freelamp.com/articles/2026-11-25_rex-osc-7577-program-resume-protocol/">
+  <meta property="og:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="675">
+  <meta property="og:site_name" content="FreeLAMP.com">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="article:published_time" content="2026-11-25">
+  <meta property="article:modified_time" content="2026-11-25">
+  <meta property="article:author" content="FreeLAMP.com">
+  <meta property="article:section" content="Linux">
+  
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活">
+  <meta name="twitter:description" content="解读 Mitchell Hashimoto 今天开源的 OSC 7577 终端程序恢复协议与 Rex 实现：OSC 转义序列上报 argv/pid/time/mac，终端验证后存为 record，重启后按规则重跑命令。讲清 token（OSC7577_TOKEN）如何防住 cat 文件和 ssh 远程输出伪造恢复…">
+  <meta name="twitter:image" content="https://freelamp.com/tc-promotion-banner-1200x400.png">
+  <meta name="twitter:site" content="@LeisureLinux">
+  <meta name="twitter:creator" content="@LeisureLinux">
+
+  <!-- JSON-LD：TechArticle 结构化数据（SEO 核心） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活",
+  "description": "服务器重启了，那个跑了几个小时的 Claude Code 会话还能原地复活吗？ 11 月 25 日，Ghostty 创作者 Mitchell Hashimoto 给出了一个新答案：他所在的 Superlogical 开源了 OSC 7577（Program Resume Protocol）——一条终端转义序列，让程序自己告诉终端「怎么把我重新启动」。Rex 已经内置 Claude Code 的支持",
+  "datePublished": "2026-11-25",
+  "dateModified": "2026-11-25",
+  "author": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com/about-freelamp.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "FreeLAMP.com",
+    "url": "https://freelamp.com",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://freelamp.com/favicon.ico"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://freelamp.com/articles/2026-11-25_rex-osc-7577-program-resume-protocol/"
+  },
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "proficiencyLevel": "Expert",
+  "inLanguage": "zh-CN",
+  "image": [
+    "https://freelamp.com/tc-promotion-banner-1200x400.png"
+  ]
+}
+  </script>
+
+  <!-- JSON-LD：BreadcrumbList 面包屑（由 json.dumps 生成，避免引号破坏） -->
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "FreeLAMP.com",
+      "item": "https://freelamp.com/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活",
+      "item": "https://freelamp.com/articles/2026-11-25_rex-osc-7577-program-resume-protocol/"
+    }
+  ]
+}
+  </script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: #F9FAFB; color: #374151; line-height: 1.75;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    
+    nav {
+      background: #fff; border-bottom: 1px solid #E5E7EB;
+      padding: 12px 0; position: sticky; top: 0; z-index: 10;
+    }
+    nav .container { display: flex; align-items: center; justify-content: space-between; }
+    nav a { color: #059669; text-decoration: none; font-weight: 600; font-size: 14px; }
+    nav .brand { font-weight: 800; color: #111827; font-size: 15px; text-decoration: none; }
+    
+    .post-header { padding: 48px 0 32px; border-bottom: 1px solid #E5E7EB; margin-bottom: 32px; }
+    .post-date { font-size: 13px; color: #9CA3AF; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+    .post-title { font-size: 28px; font-weight: 900; color: #111827; line-height: 1.3; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .post-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .post-tags a {
+      background: #ECFDF5; color: #059669; padding: 3px 10px;
+      border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;
+    }
+    .post-tags a:hover { background: #D1FAE5; }
+    
+    .post-content { padding-bottom: 48px; }
+    .post-content h2 {
+      font-size: 22px; font-weight: 800; color: #111827;
+      margin: 40px 0 16px; padding-bottom: 8px;
+      border-bottom: 2px solid #059669;
+    }
+    .post-content h3 {
+      font-size: 17px; font-weight: 700; color: #111827;
+      margin: 28px 0 12px;
+    }
+    .post-content h4 {
+      font-size: 15px; font-weight: 700; color: #374151;
+      margin: 20px 0 10px;
+    }
+    .post-content p { margin-bottom: 16px; font-size: 15px; line-height: 1.9; }
+    .post-content ul, .post-content ol { margin: 0 0 16px 24px; }
+    .post-content li { margin-bottom: 8px; font-size: 15px; line-height: 1.8; }
+    .post-content strong { color: #059669; }
+    .post-content code {
+      background: #F3F4F6; color: #1F2937; padding: 2px 6px;
+      border-radius: 4px; font-size: 13px; font-family: 'SF Mono', Consolas, Monaco, monospace;
+    }
+    .post-content pre {
+      background: #1E293B; color: #E2E8F0; padding: 16px 20px;
+      border-radius: 8px; overflow-x: auto; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .post-content pre code {
+      background: none; color: inherit; padding: 0; font-size: inherit;
+    }
+    .post-content table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .post-content th {
+      background: #059669; color: #fff; padding: 10px 12px;
+      text-align: left; font-weight: 700;
+    }
+    .post-content td {
+      padding: 8px 12px; border-bottom: 1px solid #E5E7EB;
+    }
+    .post-content tr:nth-child(even) td { background: #F9FAFB; }
+    .post-content blockquote {
+      border-left: 4px solid #059669; background: #ECFDF5;
+      padding: 12px 20px; margin: 0 0 20px; border-radius: 0 8px 8px 0;
+    }
+    .post-content hr { border: none; border-top: 1px solid #E5E7EB; margin: 32px 0; }
+    
+    .buy-card {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 8px 0 24px; padding: 16px 20px;
+      background: #FFF7F7; border: 1px solid #FFD9D9; border-radius: 12px;
+    }
+    .buy-card .buy-label { color: #E6373A; font-weight: 600; font-size: 13px; }
+    .buy-card .buy-text { color: #6B7280; font-size: 13px; line-height: 1.6; margin-top: 4px; }
+    .buy-card .buy-btn {
+      flex-shrink: 0; display: inline-block; background: #E6373A; color: #fff;
+      padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .buy-card .buy-btn:hover { background: #cf2c2f; }
+    .buy-card.buy-card-prod { align-items: stretch; }
+    .buy-prod-img {
+      flex-shrink: 0; display: block; width: 92px; height: 92px;
+      border-radius: 8px; overflow: hidden; border: 1px solid #FFD9D9;
+      background: #fff;
+    }
+    .buy-prod-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .buy-info { flex: 1; min-width: 0; }
+    .buy-card .buy-prod-title {
+      margin-top: 6px; color: #111827; font-size: 13px; font-weight: 600;
+      line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    @media (max-width: 520px) {
+      .buy-card.buy-card-prod { flex-wrap: wrap; }
+      .buy-card.buy-card-prod .buy-btn { width: 100%; text-align: center; }
+    }
+    .tc-ad { margin: 20px 0 24px; }
+    .tc-ad .tc-ad-label {
+      display: block; text-align: right; font-size: 11px;
+      color: #9CA3AF; line-height: 1; margin-bottom: 3px;
+    }
+    .tc-ad a { display: block; border-radius: 8px; overflow: hidden; }
+    .tc-ad a:hover { opacity: 0.92; }
+    .tc-ad img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid #E5E7EB; border-radius: 8px; background: #fff;
+    }
+    .share-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+      padding: 22px 0 26px; margin-top: 8px;
+      border-top: 1px dashed #E5E7EB;
+    }
+    .share-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; cursor: pointer; padding: 0;
+      color: #fff; transition: transform .15s ease, box-shadow .15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,.14);
+    }
+    .share-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.20); }
+    .share-btn:active { transform: translateY(-1px); }
+    .share-btn svg { width: 24px; height: 24px; fill: #fff; }
+    .ico-wx { background: #07C160; }
+    .ico-weibo { background: #E6162D; }
+    .ico-x { background: #000; }
+
+    .post-comments {
+      margin-top: 40px; padding: 28px 28px 40px;
+      border: 1px solid #D1FAE5; border-radius: 16px;
+      background: #FFFFFF; box-shadow: 0 4px 24px rgba(5,150,105,0.08);
+    }
+    .comments-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .comments-head .comments-badge {
+      font-size: 12px; font-weight: 800; color: #fff; background: #059669;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: .5px;
+    }
+    .comments-title {
+      font-size: 20px; font-weight: 900; color: #059669;
+      margin: 0;
+    }
+    .comments-sub {
+      font-size: 13px; color: #6B7280; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid #E5E7EB;
+    }
+    .giscus { min-height: 320px; }
+
+    footer {
+      text-align: center; padding: 32px 0; color: #9CA3AF;
+      font-size: 13px; border-top: 1px solid #E5E7EB;
+    }
+    footer a { color: #059669; text-decoration: none; }
+  </style>
+  <!-- 百度统计（异步加载，不阻塞渲染） -->
+  <script>
+  var _hmt = _hmt || [];
+  (function() {
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?aa427f018a2cbb4f12e8b81eda96de51";
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+  </script>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a class="brand" href="/">FreeLAMP.com 像风一样自由</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <article itemscope itemtype="https://schema.org/TechArticle">
+      <div class="post-header">
+        <div class="post-date" itemprop="datePublished" content="2026-11-25">2026-11-25</div>
+        <h1 class="post-title" itemprop="headline">Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活</h1>
+        <div class="post-tags"></div>
+        <meta itemprop="author" content="FreeLAMP.com">
+        <meta itemprop="license" content="https://creativecommons.org/licenses/by-sa/4.0/">
+      </div>
+
+      <div class="post-content" itemprop="articleBody">
+<p>服务器重启了，那个跑了几个小时的 Claude Code 会话还能原地复活吗？</p>
+<p>11 月 25 日，Ghostty 创作者 Mitchell Hashimoto 给出了一个新答案：他所在的 Superlogical 开源了 <strong>OSC 7577（Program Resume Protocol）</strong>——一条终端转义序列，让程序自己告诉终端「怎么把我重新启动」。Rex 已经内置 Claude Code 的支持，规范与 Herdr 协作完成，并经过多家终端模拟器和终端程序作者审阅。</p>
+<h2>一、不依赖任何私有通道，就是一条 OSC 序列</h2>
+<p>现有做法要么靠 tmux/screen 这种嵌套终端（嵌套终端自己结束时问题照旧），要么靠硬编码名单、进程名匹配、或者绕开 pty 的私有 RPC。OSC 7577 的路线是：<strong>程序知道自己怎么恢复，那就由程序通过它本来就有的 pty 告诉终端</strong>，终端决定是否在重启后照做。</p>
+<p>一条典型的报告长这样（Neovim 存好 session 文件之后）：</p>
+<pre><code>ESC ] 7577 ; pid=74877:time=1795543200:argv=bnZpbQ==,LVM=,...:mac=9dbb99bf... ESC \</code></pre>
+<p><code>argv</code> 的 base64 解码后是 <code>nvim</code>、<code>-S</code>、<code>/home/user/.local/state/nvim/sessions/8f2c1d.vim</code>。整条序列只有 <code>key=value</code> 对，用冒号分隔，值域排除了 <code>:</code> 和 <code>;</code>，所以不需要转义；最后一个键必须是 <code>mac</code>。</p>
+<p>必填项是 <code>pid</code>（归属进程）、<code>time</code>（Unix 秒）、<code>mac</code>（校验值）；可选项包括 <code>argv</code>（恢复命令，base64 数组）、<code>cwd</code>（工作目录）、<code>clear</code>（撤销之前的记录）、<code>need</code>（声明终端必须支持的扩展键）。解析是<strong>严格</strong>的：值不合法、键重复、缺必填项、base64 解不开、解码后不是合法 UTF-8 或含控制字符，整条报告直接拒收。</p>
+<h2>二、安全是重点：token 让 <code>cat</code> 文件和 ssh 输出无法伪造恢复</h2>
+<p>终端程序恢复天生有个信任难题：终端弹出一条可执行命令，这条命令是本地程序说的，还是 <code>cat</code> 出来的某个文件里藏的转义序列？</p>
+<p>规范的解法是<strong>能力凭证</strong>——终端在每个 pty 的第一个进程环境里注入一个随机 token：<code>OSC7577_TOKEN</code>（22～64 个字符，必须是密码学随机源生成，不能是计数器、时间或 PID）。程序计算 <code>mac</code> 时用它，但<strong>永远不会把 token 发出去</strong>：</p>
+<pre><code>mac = SHA256( 报告中 mac= 之前的全部原始字节 + ":" + token )</code></pre>
+<p>终端收到报告先算 hash 比对，不对就当没看见。这一下就把威胁模型的边界画清楚了：</p>
+<ul><li><code>cat</code> 一个文件、tail 日志、ssh 远端程序的输出——<strong>都拿不到 token，注册不了恢复记录</strong>；</li><li>会话录制工具录下的原始输出里没有 token，回放旧报告最多在原报告的 60 秒 <code>time</code> 窗口内生效，过期作废；</li><li>同一用户或 root 启动的程序能读到 token（Linux 上 <code>/proc/&lt;pid&gt;/environ</code>），规范<strong>明确不防这个</strong>——那本来就是用户已经信任要执行的代码。</li></ul>
+<p>故意不用 HMAC 也有讲究：规范说 HMAC 常用实现方式会把密钥放到命令行上被别的用户看到，而普通 SHA-256 配 <code>sha256sum</code> 走标准输入就行；token 放在末尾，是为了让知道一个 <code>mac</code> 的人推不出更长 body 的 <code>mac</code>。</p>
+<p><code>time</code> 除了防重放，还有一层顺序保证：终端必须忽略同一 <code>pid</code> 时间戳早于已接受报告的报告。<code>pid</code> 则主要用于<strong>生命周期</strong>：进程正常退出后记录自动清除（但关机前一两秒的退出算「还在」，免得恢复不了），PID 被复用时靠进程启动时间识别。<code>need</code> 键给未来扩展留了门：终端不支持某个必需键就必须拒绝报告，而不是悄悄忽略后按旧语义恢复。</p>
+<h2>三、恢复时执行的是命令，不是「进程快照」</h2>
+<p>这一步的安全细节同样多：终端把 <code>argv</code> 的每个元素<strong>原样</strong>作为一个参数传给程序，绝不拼成 shell 源码重新解析——参数里的 <code>$(reboot)</code> 或 <code>a; b</code> 就是普通文本。临时把 shell 函数/内建（比如 <code>eval</code>）压过 PATH 里真程序的花招也要挡掉。恢复命令以<strong>原用户身份</strong>运行，用户变了就丢弃记录；保存记录文件和 shell 启动脚本一样敏感，其他用户不能读写。</p>
+<p>关于「原样复活」的实际边界，规范写得很直白：</p>
+<ul><li>环境变量<strong>不保存也不恢复</strong>——恢复时拿到的是终端新起 shell 的环境，需要特定值的程序应当把它们写进 <code>argv</code>；</li><li>恢复的是一个全新进程，终端模式、alternate screen、鼠标/键盘模式等状态不会回来；shell 变量、历史、stopped jobs 都不恢复；</li><li>飞行中的工具调用和 socket 不会跟着复活——重启后只是把上报的 argv 在一个新 shell 里重跑，所以<strong>恢复命令必须可以安全地跑第二次</strong>；</li><li>工作目录按 <code>cwd</code> → 操作系统读到的进程目录 → OSC 7（无 token 保护，默认不信任，需 opt-in）→ 新 shell 默认目录的顺序取；<code>cwd</code> 指明的目录已不存在时，终端不应恢复。</li></ul>
+<h2>四、Rex 的一侧：Lua 白名单，逐程序 opt-in</h2>
+<p>协议只定义了「程序如何声明自己可恢复」，「信不信」由终端自己决定。Rex 的做法是三层白名单，每条规则由三部分组成：</p>
+<table><thead><tr><th>部分</th><th>作用</th></tr></thead><tbody><tr><td><code>command</code></td><td>恢复命令的开头，如 <code>claude --resume &lt;uuid&gt;</code></td></tr><tr><td><code>flags</code></td><td>允许哪些参数、哪些参数在恢复时保留</td></tr><tr><td><code>dir</code></td><td>允许在哪些目录里恢复</td></tr></tbody></table>
+<p>Rex 拿程序上报的命令跟用户规则交叉核对，<strong>以规则为准</strong>，而且会做自己的检查：进程必须真是那条命令启动的程序（<code>claude</code> 和 <code>/opt/homebrew/bin/claude</code>、<code>node /opt/homebrew/bin/claude</code> 都算 claude，npm 装的 Claude Code 就是这样跑的），跑在 sandbox 之类的程序下面的不算——只恢复命令会把 sandbox 丢掉。</p>
+<p>内置规则覆盖 Claude Code、Codex、OpenCode。Claude 规则保留 <code>--model</code>、<code>--permission-mode</code>、<code>--dangerously-skip-permissions</code> 这类塑造会话的参数，丢掉 <code>--continue</code> 这类「选会话或起任务」的参数（恢复由 <code>--resume</code> 负责）；用 <code>--print</code> 起的 Claude Code 不恢复。规则可以改，例如只允许在 <code>~/code</code> 下恢复：</p>
+<pre><code class="lua">rex.set("resume.trust.claude.dir", "~/code")
+rex.set("resume.trust.codex", false)</code></pre>
+<p>一条 <code>rex.set("resume.defaults", false)</code> 就能关掉全部内置规则。Rex 还自带 Claude Code 支持——通过 session start hook 发出 OSC 7577 报告。</p>
+<h2>五、它和 OSC 7501 是同一个故事</h2>
+<p>这套设计延续了 Hashimoto 上个月发布的 <strong>OSC 7501（Program Status Protocol）</strong>：程序通过 pty 用转义序列告诉终端自己在忙、在等用户、已完成还是失败；Rex 把它显示成 tab 上的指示器。两个协议都是「终端原生、通用、无产品专有字段」，都从 libghostty 和 Rex 两侧实现过。</p>
+<p>真正的价值不在某个终端多炫的功能，而在生态接口：程序只要几行代码发出一条转义序列，任何支持协议的终端都能恢复它。它不会让 tmux 消失——但至少，「服务器重启后程序还能不能回来」这个问题，第一次有了跨终端、跨程序的标准答案。</p>
+<h2>参考资料</h2>
+<ul><li>Superlogical 官方 OSC 7577 规范：<a href="https://www.superlogical.com/rex/docs/build/program-resume" target="_blank" rel="noopener noreferrer">https://www.superlogical.com/rex/docs/build/program-resume</a></li><li>Rex Resume Rules 文档：<a href="https://www.superlogical.com/rex/docs/customize/resume-rules" target="_blank" rel="noopener noreferrer">https://www.superlogical.com/rex/docs/customize/resume-rules</a></li><li>Mitchell Hashimoto 发布帖（2026-11-25）：<a href="https://x.com/mitchellh/status/2125713695233970521" target="_blank" rel="noopener noreferrer">https://x.com/mitchellh/status/2125713695233970521</a></li><li>此前 OSC 7501 协议介绍：<a href="https://mitchellh.com/writing/program-status-osc7501" target="_blank" rel="noopener noreferrer">https://mitchellh.com/writing/program-status-osc7501</a></li></ul>
+    <aside class="cross-ref" style="margin:40px 0 8px;padding:18px 20px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-soft,#fafafa);font-size:14px;line-height:1.9;color:var(--text-muted,#555);">
+      <p style="margin:0 0 6px;font-weight:600;color:var(--text,#222);">📌 本文同步发布于</p>
+      <p style="margin:0;">微信公众号 <strong>LeisureLinux</strong> ｜ B站视频频道 <a href="https://space.bilibili.com/517298151" target="_blank" rel="noopener">LeisureLinux</a> （图文深度版与视频版同步更新）</p>
+    </aside>
+
+      </div>
+    </article>
+
+    <!-- 京东购买卡片（CPS 推广，带商品图） -->
+    <div class="buy-card buy-card-prod">
+      <a class="buy-prod-img" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/jd-aohan-xiaomi.jpg" alt="农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤" loading="lazy" decoding="async"></a>
+      <div class="buy-info">
+        <span class="buy-label">支持作者</span>
+        <div class="buy-text">本文有帮助？可看看下方这款相关商品，通过京东下单给作者一点小支持。</div>
+        <div class="buy-prod-title">农合天下 内蒙古赤峰敖汉黄小米 五谷杂粮 5斤</div>
+      </div>
+      <a class="buy-btn" href="https://u.jd.com/4DxNxMi" target="_blank" rel="nofollow noopener sponsored">京东购买 ↗</a>
+    </div>
+
+
+    <!-- 社交媒体分享栏：文章结尾、评论区上方（品牌小图标） -->
+    <div class="share-bar">
+      <button type="button" class="share-btn ico-wx" onclick="shareWechat()" title="微信扫码分享" aria-label="分享到微信">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .718-.098 11.223 11.223 0 0 0 2.836.379c.276 0 .543-.027.811-.05-.03-.21-.049-.424-.049-.642 0-3.893 3.567-7.05 7.964-7.05.158 0 .313.012.469.02C17.367 5.119 13.484 2.188 8.691 2.188zm-2.51 4.925c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zm5.925 0c.653 0 1.182.523 1.182 1.168 0 .645-.529 1.168-1.182 1.168-.653 0-1.182-.523-1.182-1.168 0-.645.529-1.168 1.182-1.168zM20.985 12.242c0 3.542-3.319 6.414-7.414 6.414-.72 0-1.416-.09-2.064-.256a.63.63 0 0 0-.524.07l-1.386.81a.28.28 0 0 1-.122.04.215.215 0 0 1-.212-.215c0-.052.021-.104.035-.154l.285-1.079a.43.43 0 0 0-.156-.485C8.082 16.811 7.1 15.548 7.1 14.057c0-3.542 3.319-6.414 7.414-6.414 4.095 0 6.471 2.872 6.471 6.414zm-2.894-.646c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852zm-3.517 0c-.476 0-.862-.382-.862-.852 0-.47.386-.852.862-.852.476 0 .862.382.862.852 0 .47-.386.852-.862.852z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-weibo" onclick="openShare('https://service.weibo.com/share/share.php?url='+encodeURIComponent(SHARE.url)+'&title='+encodeURIComponent(SHARE.title))" title="分享到微博" aria-label="分享到微博">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10.996 1.885c-4.944.047-9.071 3.731-9.993 8.484-.984 5.069 3.143 9.193 8.787 9.193 4.832 0 8.752-3.375 9.755-7.884.505-2.274.05-4.487-1.537-6.033-1.37-1.336-3.36-1.947-5.506-1.761h-1.506zM9.173 16.142c-3.227.013-5.84-1.826-5.84-4.107 0-2.281 2.614-4.119 5.84-4.107 3.227.011 5.84 1.849 5.84 4.13 0 2.281-2.613 4.071-5.84 4.084zm0-1.554c2.42.011 4.38-1.14 4.38-2.546 0-1.406-1.96-2.548-4.38-2.548-2.42 0-4.38 1.142-4.38 2.548 0 1.406 1.96 2.535 4.38 2.546zm0-3.826c1.091 0 1.975.573 1.975 1.28s-.884 1.28-1.975 1.28-1.975-.573-1.975-1.28.884-1.28 1.975-1.28zm4.631-5.902c-1.396-.527-1.093-2.264.411-2.348 1.504-.084 2.331 1.546.913 2.213-.354.166-.763.225-1.324.135zm-1.324 1.544c2.279.15 3.536 1.782 2.829 3.549-.707 1.768-3.195 2.484-5.475 2.335-2.279-.15-3.536-1.782-2.829-3.549.708-1.768 3.196-2.484 5.475-2.335zM14.972 3.394c.694.055 1.224.223 1.59.504.366.28.502.651.407 1.112-.095.461-.489.648-.783.701-.295.054-.747-.014-1.356-.203-.609-.188-.799-.642-.569-1.361.23-.72.447-1.065.711-1.002zm-3.977.238c-2.273.022-4.576 1.112-6.205 2.827-1.319 1.388-2.102 3.085-2.178 4.88-.077 1.795.585 3.617 1.738 5.124 1.153 1.506 2.841 2.511 4.709 2.858 1.868.348 3.876-.042 5.533-1.065 1.656-1.022 2.884-2.559 3.421-4.369.537-1.81.417-3.791-.211-5.344-.629-1.554-1.846-2.832-3.476-3.602-1.233-.583-2.549-.847-3.834-.841z"/></svg>
+      </button>
+      <button type="button" class="share-btn ico-x" onclick="openShare('https://twitter.com/intent/tweet?text='+encodeURIComponent(SHARE.title+' '+SHARE.url))" title="分享到 X" aria-label="分享到 X">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+      </button>
+    </div>
+
+    <!-- giscus 点评（GitHub Discussions 驱动） -->
+    <section class="post-comments" id="comments">
+      <div class="comments-head">
+        <h2 class="comments-title">点评与讨论</h2>
+        <span class="comments-badge">GITHUB 账号登录</span>
+      </div>
+      <p class="comments-sub">有疑问、有补充、有不同看法？欢迎留下你的点评，一起把技术聊透。👇</p>
+      <div class="giscus" id="giscus">
+        <script src="https://giscus.app/client.js"
+          data-repo="LeisureLinux/lore"
+          data-repo-id="R_kgDOTpxbbg"
+          data-category="General"
+          data-category-id="DIC_kwDOTpxbbs4DCp0C"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="zh-CN"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+
+      <!-- 腾讯云 WorkBuddy CPS footer 推广条 -->
+      <div style="max-width:640px;margin:0 auto 22px;padding:12px 16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;display:flex;align-items:center;gap:12px;">
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" aria-hidden="true" tabindex="-1"><img src="https://freelamp.com/workbuddy-logo.jpg" alt="" loading="lazy" decoding="async" style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;"></a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" title="【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月" style="flex:1;min-width:0;color:#374151;text-decoration:none;font-size:13px;font-weight:600;line-height:1.55;text-align:left;">【腾讯云】WorkBuddy 全场景 AI 办公工作台，团队旗舰版低至198元/月</a>
+        <a href="https://cloud.tencent.com/act/cps/redirect?redirect=6871&amp;cps_key=67b706032429841cde38a5f27b3aca89&amp;from=console&amp;cps_promotion_id=103055" target="_blank" rel="nofollow noopener sponsored" style="flex-shrink:0;padding:6px 14px;border-radius:999px;background:#059669;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">了解详情 ↗</a>
+      </div>
+
+      <p>© 2026 LeisureLinux · <a href="https://github.com/LeisureLinux/lore">GitHub</a> · <a href="/about-freelamp.html">关于 FreeLAMP</a> · <a href="/rss.xml">RSS 订阅</a> · <a href="/leisurelinux.html">LeisureLinux</a></p>
+      <p style="margin-top: 8px; font-size: 12px;">本文以 <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> 协议开源</p>
+      <!-- 备案号占位:ICP 备案已按要求移除;需要时在此处加回 <p class="beian">…</p>
+      公安备案号待补充:把下方链接里的 recordcode 与文案替换成实际值
+      <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=待补充" target="_blank" rel="nofollow" style="margin-left: 12px;">沪公网安备 待补充号</a>
+      -->
+    </div>
+  </footer>
+
+  <script>
+    var SHARE = {
+      url: "https://freelamp.com/articles/2026-11-25_rex-osc-7577-program-resume-protocol/",
+      title: "Rex \u5f00\u6e90 OSC 7577\uff1a\u4e00\u6761\u8f6c\u4e49\u5e8f\u5217\uff0c\u8ba9\u7ec8\u7aef\u7a0b\u5e8f\u8de8\u91cd\u542f\u539f\u5730\u590d\u6d3b"
+    };
+    function openShare(u) { window.open(u, '_blank', 'noopener,width=680,height=560'); }
+    function shareWechat() { window.open('https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(SHARE.url), 'wechat_qr', 'width=380,height=420,noopener'); }
+  </script>
+</body>
+</html>

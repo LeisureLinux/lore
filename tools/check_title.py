@@ -56,6 +56,7 @@ CORE = {
     "openssl", "curl", "wget", "bash", "zsh", "fish", "tmux", "screen",
     "vim", "neovim", "emacs", "nano", "kitty", "alacritty", "wezterm",
     "ghostty", "iterm", "terminator", "ripgrep", "fd", "bat", "fzf",
+    "rex", "herdr", "superlogical", "osc 7577",
     "htop", "btop", "glances", "nmap", "wireshark", "tcpdump", "strace",
     "ltrace", "gdb", "lldb", "perf", "valgrind", "eBPF".lower(),
     "bpf", "systemtap", "bpftrace", "openssl",
