@@ -20,6 +20,7 @@
 | 2026-12-02 | [NGINX HTTP/2 UAF：残留标记让 DNS 内存被释放两次](https://freelamp.com/articles/2026-12-02_nginx-http2-cve-2026-123633-uaf/) | NGINX · HTTP/2 · CVE-2026-123633 · use-after-free · DNS resolver · ASan · Unit 42 · 1.31.9 · 技术解读 |
 | 2026-11-30 | [OpenAI 开源 Shirudo：补丁没来，先用 AI 生成的盾牌挡漏洞](https://freelamp.com/articles/2026-11-30_openai-cisco-shirudo-ebpf-shield/) | OpenAI · Cisco · Shirudo · eBPF · 漏洞缓解 · Java4Shell · Elasticsearch · Tetragon · TPM · 技术解读 |
 | 2026-11-25 | [Rex 开源 OSC 7577：一条转义序列，让终端程序跨重启原地复活](https://freelamp.com/articles/2026-11-25_rex-osc-7577-program-resume-protocol/) | Rex · OSC 7577 · Ghostty · Mitchell Hashimoto · 终端协议 · Claude Code · Lua · token · 技术解读 |
+| 2026-11-25 | [Servo 0.8 发布：588 次提交创纪录，视频字幕与 Flutter Web 跑通](https://freelamp.com/articles/2026-11-25_servo-0-8-october-2026-video-captions-flutter/) | Servo · Rust · 浏览器引擎 · WebView · Flutter · WebGPU · CEF · 技术解读 |
 | 2026-11-24 | [SUSE Agama 接入 MCP：AI 代理能装系统，但默认关着](https://freelamp.com/articles/2026-11-24_suse-agama-mcp-ai-installer/) | SUSE · Agama · MCP · openSUSE · AI 安装器 · Token 隔离 · JSON Schema · 裸机部署 · 技术解读 |
 | 2026-11-24 | [Red Hat 数字主权报告：66% 说关键，只有 2.9% 真能扛住断供](https://freelamp.com/articles/2026-11-24_red-hat-digital-sovereignty-2026-futurum/) | Red Hat · Futurum · 数字主权 · 运营韧性 · NIS2 · DORA · 供应链 · 混合云 · 技术解读 |
 | 2026-11-29 | [SSH 私钥别再放磁盘：用 Bitwarden 的 agent 把密钥收进密码库](https://freelamp.com/articles/2026-11-29_ssh-keys-off-disk-bitwarden-agent/) | SSH · Bitwarden · ssh-agent · 私钥 · IdentityAgent · SSH_AUTH_SOCK · git 签名 · Secure Enclave · 技术解读 |
