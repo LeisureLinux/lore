@@ -18,6 +18,7 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-12-02 | [NGINX HTTP/2 UAF：残留标记让 DNS 内存被释放两次](https://freelamp.com/articles/2026-12-02_nginx-http2-cve-2026-123633-uaf/) | NGINX · HTTP/2 · CVE-2026-123633 · use-after-free · DNS resolver · ASan · Unit 42 · 1.31.9 · 技术解读 |
+| 2026-11-26 | [Microsoft 365 史上最严重宕机后立军令状：全球故障一小时内恢复](https://freelamp.com/articles/2026-11-26_microsoft-365-code-red-one-hour-recovery/) | Microsoft 365 · Code Red · Exchange Online · 宕机 · SLA · SaaS · 业务连续性 · 云服务 · 技术解读 |
 | 2026-11-25 | [Ubuntu 补丁慢到被点名：远程内核漏洞该按小时修](https://freelamp.com/articles/2026-11-25_ubuntu-slow-security-response-oss-security/) | Ubuntu · oss-security · Hanno Böck · CVE-2026-99288 · 内核补丁 · 回移 · LTS · 安全 · 技术解读 |
 | 2026-11-25 | [Linux NFS 服务 12 年老洞：一条 TCP 连接换 root shell](https://freelamp.com/articles/2026-11-25_linux-nfsd-cve-2026-99362-nfs2root/) | Linux · NFS · nfsd · CVE-2026-99362 · 预认证堆溢出 · KASLR · 内核 · 安全 · 技术解读 |
 | 2026-11-26 | [1Password 遭 GitHub 账号入侵：客户数据和源码被拷走，但保险库没破](https://freelamp.com/articles/2026-11-26_1password-github-breach-vaults-safe/) | 1Password · GitHub · 零知识 · SRP · CI/CD · 钓鱼 · 密码管理器 · 安全 · 技术解读 |
