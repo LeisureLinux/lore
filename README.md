@@ -18,6 +18,7 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-12-02 | [NGINX HTTP/2 UAF：残留标记让 DNS 内存被释放两次](https://freelamp.com/articles/2026-12-02_nginx-http2-cve-2026-123633-uaf/) | NGINX · HTTP/2 · CVE-2026-123633 · use-after-free · DNS resolver · ASan · Unit 42 · 1.31.9 · 技术解读 |
+| 2026-11-26 | [Brush 0.5：Rust 写的 Bash 兼容 shell，跑通 96% 上游测试](https://freelamp.com/articles/2026-11-26_brush-0-5-rust-bash-shell/) | Brush · Rust · Bash · shell · bash-completion · 可嵌入 · Windows · 开发工具 · 技术解读 |
 | 2026-11-26 | [Palo Alto 防火墙被 Fragnesia 打穿：web shell 到 root](https://freelamp.com/articles/2026-11-26_palo-alto-fragnesia-php2shell-panos/) | Palo Alto · PAN-OS · Fragnesia · PHP2Shell · CVE-2026-46300 · 防火墙 · 提权 · 安全 · 技术解读 |
 | 2026-11-26 | [Linux 内核要把 AI Agent 技能收进源码树](https://freelamp.com/articles/2026-11-26_linux-kernel-ai-agent-skills-7-5/) | Linux · 内核 · AI Agent · agents/skills · Sasha Levin · Ted Ts'o · Fixes 标签 · KUnit · 技术解读 |
 | 2026-11-26 | [Microsoft 365 史上最严重宕机后立军令状：全球故障一小时内恢复](https://freelamp.com/articles/2026-11-26_microsoft-365-code-red-one-hour-recovery/) | Microsoft 365 · Code Red · Exchange Online · 宕机 · SLA · SaaS · 业务连续性 · 云服务 · 技术解读 |
