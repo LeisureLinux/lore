@@ -18,6 +18,7 @@
 | 日期 | 标题 | 领域 |
 |------|------|------|
 | 2026-12-02 | [NGINX HTTP/2 UAF：残留标记让 DNS 内存被释放两次](https://freelamp.com/articles/2026-12-02_nginx-http2-cve-2026-123633-uaf/) | NGINX · HTTP/2 · CVE-2026-123633 · use-after-free · DNS resolver · ASan · Unit 42 · 1.31.9 · 技术解读 |
+| 2026-11-21 | [Owl OS 1.0 对标 Kali：275 个自研工具，但 README 说是专有软件](https://freelamp.com/articles/2026-11-21_owl-os-1-0-pentest-distro/) | Owl OS · Kali · 渗透测试 · Debian · Cinnamon · 许可争议 · 发行版 · 技术解读 |
 | 2026-11-30 | [Red Hat 再谈数字主权：97% 扛不住断供，但超大规模云用量还在涨](https://freelamp.com/articles/2026-11-30_red-hat-futurum-97-percent-cloud-cutoff/) | Red Hat · Futurum · 数字主权 · 控制权 · 退出权 · 混合云 · 开源 · 企业IT · 技术解读 |
 | 2026-11-27 | [Cacti 未修 0day：四个 HTTP 请求从访客到 root，没有补丁](https://freelamp.com/articles/2026-11-27_cacti-4http2shell-zero-day-rce/) | Cacti · 4HTTP2SHELL · 零日 · SQL 二阶注入 · popen · guest · RCE · 安全 · 技术解读 |
 | 2026-11-26 | [Brush 0.5：Rust 写的 Bash 兼容 shell，跑通 96% 上游测试](https://freelamp.com/articles/2026-11-26_brush-0-5-rust-bash-shell/) | Brush · Rust · Bash · shell · bash-completion · 可嵌入 · Windows · 开发工具 · 技术解读 |
